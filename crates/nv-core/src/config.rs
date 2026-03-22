@@ -97,7 +97,8 @@ impl Config {
 /// Runtime secrets sourced exclusively from environment variables.
 #[derive(Debug, Clone)]
 pub struct Secrets {
-    pub anthropic_api_key: String,
+    /// Optional — only needed if using direct API calls instead of Claude CLI.
+    pub anthropic_api_key: Option<String>,
     pub telegram_bot_token: Option<String>,
     pub jira_api_token: Option<String>,
     pub jira_username: Option<String>,
@@ -106,11 +107,11 @@ pub struct Secrets {
 impl Secrets {
     /// Read secrets from environment variables.
     ///
-    /// Fails if `ANTHROPIC_API_KEY` is not set. All other keys are optional.
+    /// All keys are optional. The Claude CLI handles its own authentication
+    /// via OAuth, so ANTHROPIC_API_KEY is not required.
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(Self {
-            anthropic_api_key: std::env::var("ANTHROPIC_API_KEY")
-                .context("ANTHROPIC_API_KEY must be set")?,
+            anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
             telegram_bot_token: std::env::var("TELEGRAM_BOT_TOKEN").ok(),
             jira_api_token: std::env::var("JIRA_API_TOKEN").ok(),
             jira_username: std::env::var("JIRA_USERNAME").ok(),
@@ -240,7 +241,7 @@ model = "claude-sonnet-4-20250514"
         }
 
         let secrets = Secrets::from_env().unwrap();
-        assert_eq!(secrets.anthropic_api_key, "sk-test-key");
+        assert_eq!(secrets.anthropic_api_key.as_deref(), Some("sk-test-key"));
         assert_eq!(secrets.telegram_bot_token.as_deref(), Some("tg-token"));
 
         // Cleanup
@@ -251,18 +252,13 @@ model = "claude-sonnet-4-20250514"
     }
 
     #[test]
-    fn secrets_from_env_missing_required() {
+    fn secrets_from_env_missing_key_is_none() {
         // Make sure the key is absent
         unsafe {
             std::env::remove_var("ANTHROPIC_API_KEY");
         }
 
-        let result = Secrets::from_env();
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("ANTHROPIC_API_KEY"),
-            "Error should mention missing key, got: {err_msg}"
-        );
+        let secrets = Secrets::from_env().unwrap();
+        assert!(secrets.anthropic_api_key.is_none());
     }
 }

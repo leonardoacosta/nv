@@ -1,25 +1,22 @@
-use std::time::Duration;
+use std::process::Stdio;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 // ── Error Types ─────────────────────────────────────────────────────
 
 #[derive(thiserror::Error, Debug)]
 pub enum ApiError {
-    #[error("HTTP {status}: {body}")]
-    HttpError {
-        status: reqwest::StatusCode,
-        body: String,
-    },
-    #[error("Rate limited, retry after {retry_after_secs}s")]
-    RateLimited { retry_after_secs: u64 },
-    #[error("Authentication failed (HTTP 401): {body}")]
-    AuthError { body: String },
-    #[error("Network error: {0}")]
-    Network(#[from] reqwest::Error),
+    #[error("CLI execution failed: {message}")]
+    CliError { message: String },
+    #[error("Authentication failed: {0}")]
+    AuthError(String),
     #[error("Deserialization error: {0}")]
     Deserialize(String),
+    #[error("Process error: {0}")]
+    Process(#[from] std::io::Error),
 }
 
 // ── API Request/Response Types ──────────────────────────────────────
@@ -87,13 +84,14 @@ impl Message {
     }
 }
 
-/// Response from the Anthropic Messages API.
+/// Response from the Claude CLI (mapped to match the API format the agent loop expects).
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiResponse {
     #[allow(dead_code)]
     pub id: String,
     pub content: Vec<ContentBlock>,
     pub stop_reason: StopReason,
+    #[allow(dead_code)]
     pub usage: Usage,
 }
 
@@ -129,6 +127,7 @@ pub enum StopReason {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
@@ -142,143 +141,268 @@ pub struct ToolDefinition {
     pub input_schema: serde_json::Value,
 }
 
-// ── Claude API Client ───────────────────────────────────────────────
+// ── CLI JSON Response Types ─────────────────────────────────────────
+
+/// The JSON response format from `claude -p --output-format json`.
+#[derive(Debug, Deserialize)]
+struct CliJsonResponse {
+    #[serde(default)]
+    result: String,
+    #[serde(default)]
+    is_error: bool,
+    #[serde(default)]
+    #[allow(dead_code)]
+    stop_reason: String,
+    #[serde(default)]
+    session_id: String,
+    #[serde(default)]
+    usage: CliUsage,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct CliUsage {
+    #[serde(default)]
+    input_tokens: u32,
+    #[serde(default)]
+    output_tokens: u32,
+}
+
+// ── Claude CLI Client ───────────────────────────────────────────────
 
 pub struct ClaudeClient {
-    http: reqwest::Client,
-    api_key: String,
     model: String,
+    #[allow(dead_code)]
     max_tokens: u32,
 }
 
 impl ClaudeClient {
-    pub fn new(api_key: String, model: String, max_tokens: u32) -> Self {
-        Self {
-            http: reqwest::Client::new(),
-            api_key,
-            model,
-            max_tokens,
-        }
+    /// Create a new client. The `_api_key` parameter is ignored — the CLI uses
+    /// its own OAuth session. Kept for backward-compatible constructor signature.
+    pub fn new(_api_key: String, model: String, max_tokens: u32) -> Self {
+        Self { model, max_tokens }
     }
 
-    /// Send a messages request to the Anthropic API.
+    /// Send a messages request via the Claude CLI subprocess.
     ///
-    /// Handles retries for rate limits (429) and server errors (5xx).
+    /// The CLI handles authentication (OAuth) internally, so no API key is needed.
+    /// Each call is a single-turn `claude -p` invocation with the full conversation
+    /// formatted as the prompt. Tool definitions are embedded in the system prompt
+    /// so Claude can request tool calls via structured JSON output.
     pub async fn send_messages(
         &self,
         system: &str,
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ApiResponse> {
-        let body = serde_json::json!({
-            "model": self.model,
-            "max_tokens": self.max_tokens,
-            "system": system,
-            "messages": messages,
-            "tools": tools,
-        });
+        // Build the full prompt from system + conversation history
+        let prompt = build_prompt(system, messages, tools);
 
-        let mut last_err: Option<anyhow::Error> = None;
+        // Spawn claude CLI
+        let mut child = Command::new("claude")
+            .args([
+                "--dangerously-skip-permissions",
+                "-p",
+                "--output-format",
+                "json",
+                "--model",
+                &self.model,
+                "--no-session-persistence",
+                "--tools",
+                "",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| ApiError::CliError {
+                message: format!("Failed to spawn claude CLI: {e}"),
+            })?;
 
-        // Retry loop: up to 3 attempts for retryable errors
-        for attempt in 0..3u32 {
-            if attempt > 0 {
-                let delay = Duration::from_secs(1 << (attempt - 1)); // 1s, 2s
-                tracing::warn!(attempt, delay_secs = delay.as_secs(), "retrying Claude API call");
-                tokio::time::sleep(delay).await;
+        // Write prompt to stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(prompt.as_bytes()).await?;
+            drop(stdin); // Close stdin to signal EOF
+        }
+
+        // Wait for completion
+        let output = child.wait_with_output().await?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if !stderr.is_empty() {
+            tracing::debug!(stderr = %stderr, "claude CLI stderr");
+        }
+
+        // Parse CLI JSON response
+        let cli_response: CliJsonResponse = serde_json::from_str(&stdout).map_err(|e| {
+            tracing::error!(stdout = %stdout, error = %e, "failed to parse CLI response");
+            ApiError::Deserialize(format!("CLI JSON parse error: {e}"))
+        })?;
+
+        // Check for auth errors
+        if cli_response.is_error
+            && cli_response
+                .result
+                .to_lowercase()
+                .contains("not logged in")
+        {
+            return Err(ApiError::AuthError(cli_response.result).into());
+        }
+
+        if cli_response.is_error {
+            return Err(ApiError::CliError {
+                message: cli_response.result,
             }
+            .into());
+        }
 
-            let result = self
-                .http
-                .post("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", "2023-06-01")
-                .header("content-type", "application/json")
-                .json(&body)
-                .send()
-                .await;
+        tracing::debug!(
+            input_tokens = cli_response.usage.input_tokens,
+            output_tokens = cli_response.usage.output_tokens,
+            session_id = %cli_response.session_id,
+            "Claude CLI response received"
+        );
 
-            let response = match result {
-                Ok(r) => r,
-                Err(e) => {
-                    tracing::warn!(attempt, error = %e, "network error calling Claude API");
-                    last_err = Some(ApiError::Network(e).into());
-                    continue;
-                }
-            };
+        // Parse the result text for tool use requests
+        let (content, stop_reason) = parse_tool_calls(&cli_response.result);
 
-            let status = response.status();
+        Ok(ApiResponse {
+            id: cli_response.session_id,
+            content,
+            stop_reason,
+            usage: Usage {
+                input_tokens: cli_response.usage.input_tokens,
+                output_tokens: cli_response.usage.output_tokens,
+            },
+        })
+    }
+}
 
-            // 401 — auth error, do not retry
-            if status == reqwest::StatusCode::UNAUTHORIZED {
-                let body_text = response.text().await.unwrap_or_default();
-                return Err(ApiError::AuthError { body: body_text }.into());
+// ── Prompt Builder ──────────────────────────────────────────────────
+
+/// Build a single-turn prompt that includes the system prompt, tool definitions,
+/// and the full conversation history.
+fn build_prompt(system: &str, messages: &[Message], tools: &[ToolDefinition]) -> String {
+    let mut prompt = String::new();
+
+    // System prompt
+    prompt.push_str(system);
+    prompt.push_str("\n\n");
+
+    // Tool definitions (embedded in prompt so Claude knows what's available)
+    if !tools.is_empty() {
+        prompt.push_str("## Available Tools\n\n");
+        prompt.push_str(
+            "When you need to use a tool, respond with ONLY a JSON block in this exact format:\n",
+        );
+        prompt.push_str("```tool_call\n");
+        prompt.push_str("{\"tool\": \"tool_name\", \"input\": {\"param\": \"value\"}}\n");
+        prompt.push_str("```\n\n");
+        prompt.push_str("Available tools:\n\n");
+        for tool in tools {
+            prompt.push_str(&format!("### {}\n", tool.name));
+            prompt.push_str(&format!("{}\n", tool.description));
+            prompt.push_str(&format!(
+                "Parameters: {}\n\n",
+                serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
+            ));
+        }
+        prompt.push_str("If you don't need a tool, respond normally with text.\n\n");
+    }
+
+    // Conversation history
+    prompt.push_str("## Conversation\n\n");
+    for msg in messages {
+        let role_label = if msg.role == "user" { "User" } else { "Assistant" };
+        prompt.push_str(&format!("{role_label}: "));
+        match &msg.content {
+            MessageContent::Text(text) => {
+                prompt.push_str(text);
             }
-
-            // 429 — rate limited, retry once after delay
-            if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                let retry_after = response
-                    .headers()
-                    .get("retry-after")
-                    .and_then(|v| v.to_str().ok())
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(5);
-                tracing::warn!(retry_after_secs = retry_after, "rate limited by Claude API");
-                tokio::time::sleep(Duration::from_secs(retry_after)).await;
-                last_err = Some(ApiError::RateLimited { retry_after_secs: retry_after }.into());
-                continue;
-            }
-
-            // 5xx — server error, retry with backoff
-            if status.is_server_error() {
-                let body_text = response.text().await.unwrap_or_default();
-                tracing::warn!(attempt, status = %status, "server error from Claude API");
-                last_err = Some(
-                    ApiError::HttpError {
-                        status,
-                        body: body_text,
+            MessageContent::Blocks(blocks) => {
+                for block in blocks {
+                    match block {
+                        ContentBlock::Text { text } => {
+                            prompt.push_str(text);
+                        }
+                        ContentBlock::ToolUse { name, input, .. } => {
+                            prompt.push_str(&format!(
+                                "[Called tool: {name} with {}]",
+                                serde_json::to_string(input).unwrap_or_default()
+                            ));
+                        }
+                        ContentBlock::ToolResult {
+                            content, is_error, ..
+                        } => {
+                            if *is_error {
+                                prompt.push_str(&format!("[Tool error: {content}]"));
+                            } else {
+                                prompt.push_str(&format!("[Tool result: {content}]"));
+                            }
+                        }
                     }
-                    .into(),
-                );
-                continue;
-            }
-
-            // Other non-success status codes
-            if !status.is_success() {
-                let body_text = response.text().await.unwrap_or_default();
-                return Err(ApiError::HttpError {
-                    status,
-                    body: body_text,
-                }
-                .into());
-            }
-
-            // Success — parse JSON
-            let response_text = response.text().await.map_err(ApiError::Network)?;
-            match serde_json::from_str::<ApiResponse>(&response_text) {
-                Ok(api_response) => {
-                    tracing::debug!(
-                        input_tokens = api_response.usage.input_tokens,
-                        output_tokens = api_response.usage.output_tokens,
-                        stop_reason = ?api_response.usage,
-                        "Claude API response received"
-                    );
-                    return Ok(api_response);
-                }
-                Err(e) => {
-                    tracing::error!(
-                        body = %response_text,
-                        error = %e,
-                        "failed to deserialize Claude API response"
-                    );
-                    return Err(ApiError::Deserialize(e.to_string()).into());
                 }
             }
         }
-
-        Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Claude API call failed after 3 attempts")))
+        prompt.push_str("\n\n");
     }
+
+    prompt
 }
+
+// ── Tool Call Parser ────────────────────────────────────────────────
+
+/// Parse Claude's response text for tool call requests.
+///
+/// If the response contains a ```tool_call JSON block, extract it as a
+/// ContentBlock::ToolUse. Otherwise, return as plain text.
+fn parse_tool_calls(result: &str) -> (Vec<ContentBlock>, StopReason) {
+    // Look for tool call blocks
+    if let Some(start) = result.find("```tool_call") {
+        let after_marker = &result[start + "```tool_call".len()..];
+        if let Some(end) = after_marker.find("```") {
+            let json_str = after_marker[..end].trim();
+            if let Ok(call) = serde_json::from_str::<ToolCall>(json_str) {
+                let mut content = Vec::new();
+
+                // Include any text before the tool call
+                let text_before = result[..start].trim();
+                if !text_before.is_empty() {
+                    content.push(ContentBlock::Text {
+                        text: text_before.to_string(),
+                    });
+                }
+
+                content.push(ContentBlock::ToolUse {
+                    id: format!("cli-{}", uuid::Uuid::new_v4()),
+                    name: call.tool,
+                    input: call.input,
+                });
+
+                return (content, StopReason::ToolUse);
+            }
+        }
+    }
+
+    // No tool call — plain text response
+    let content = if result.is_empty() {
+        vec![]
+    } else {
+        vec![ContentBlock::Text {
+            text: result.to_string(),
+        }]
+    };
+
+    (content, StopReason::EndTurn)
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolCall {
+    tool: String,
+    input: serde_json::Value,
+}
+
+// ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -377,7 +501,6 @@ mod tests {
         assert_eq!(json["type"], "tool_result");
         assert_eq!(json["tool_use_id"], "tu-1");
         assert_eq!(json["content"], "file contents here");
-        // is_error: false should be skipped
         assert!(json.get("is_error").is_none());
     }
 
@@ -390,48 +513,6 @@ mod tests {
         };
         let json = serde_json::to_value(&block).unwrap();
         assert_eq!(json["is_error"], true);
-    }
-
-    #[test]
-    fn api_response_deserialization() {
-        let json = serde_json::json!({
-            "id": "msg_123",
-            "content": [
-                {"type": "text", "text": "Hello there"}
-            ],
-            "stop_reason": "end_turn",
-            "usage": {"input_tokens": 100, "output_tokens": 50}
-        });
-        let resp: ApiResponse = serde_json::from_value(json).unwrap();
-        assert_eq!(resp.id, "msg_123");
-        assert_eq!(resp.content.len(), 1);
-        assert_eq!(resp.stop_reason, StopReason::EndTurn);
-        assert_eq!(resp.usage.input_tokens, 100);
-        assert_eq!(resp.usage.output_tokens, 50);
-    }
-
-    #[test]
-    fn api_response_tool_use_deserialization() {
-        let json = serde_json::json!({
-            "id": "msg_456",
-            "content": [
-                {"type": "text", "text": "Let me check that for you."},
-                {"type": "tool_use", "id": "tu-1", "name": "read_memory", "input": {"topic": "tasks"}}
-            ],
-            "stop_reason": "tool_use",
-            "usage": {"input_tokens": 200, "output_tokens": 80}
-        });
-        let resp: ApiResponse = serde_json::from_value(json).unwrap();
-        assert_eq!(resp.stop_reason, StopReason::ToolUse);
-        assert_eq!(resp.content.len(), 2);
-        match &resp.content[1] {
-            ContentBlock::ToolUse { id, name, input } => {
-                assert_eq!(id, "tu-1");
-                assert_eq!(name, "read_memory");
-                assert_eq!(input["topic"], "tasks");
-            }
-            _ => panic!("expected tool_use block"),
-        }
     }
 
     #[test]
@@ -453,15 +534,81 @@ mod tests {
     }
 
     #[test]
-    fn stop_reason_max_tokens() {
+    fn parse_tool_calls_plain_text() {
+        let (content, reason) = parse_tool_calls("Hello, how can I help?");
+        assert_eq!(reason, StopReason::EndTurn);
+        assert_eq!(content.len(), 1);
+        match &content[0] {
+            ContentBlock::Text { text } => assert_eq!(text, "Hello, how can I help?"),
+            _ => panic!("expected text"),
+        }
+    }
+
+    #[test]
+    fn parse_tool_calls_with_tool_call() {
+        let result = "Let me check that.\n```tool_call\n{\"tool\": \"read_memory\", \"input\": {\"topic\": \"tasks\"}}\n```";
+        let (content, reason) = parse_tool_calls(result);
+        assert_eq!(reason, StopReason::ToolUse);
+        assert_eq!(content.len(), 2);
+        match &content[0] {
+            ContentBlock::Text { text } => assert_eq!(text, "Let me check that."),
+            _ => panic!("expected text"),
+        }
+        match &content[1] {
+            ContentBlock::ToolUse { name, input, .. } => {
+                assert_eq!(name, "read_memory");
+                assert_eq!(input["topic"], "tasks");
+            }
+            _ => panic!("expected tool use"),
+        }
+    }
+
+    #[test]
+    fn parse_tool_calls_empty_result() {
+        let (content, reason) = parse_tool_calls("");
+        assert_eq!(reason, StopReason::EndTurn);
+        assert!(content.is_empty());
+    }
+
+    #[test]
+    fn build_prompt_includes_system_and_messages() {
+        let system = "You are NV.";
+        let messages = vec![Message::user("hello")];
+        let tools = vec![];
+        let prompt = build_prompt(system, &messages, &tools);
+        assert!(prompt.contains("You are NV."));
+        assert!(prompt.contains("User: hello"));
+    }
+
+    #[test]
+    fn build_prompt_includes_tools() {
+        let system = "You are NV.";
+        let messages = vec![Message::user("hello")];
+        let tools = vec![ToolDefinition {
+            name: "read_memory".into(),
+            description: "Read a topic".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        }];
+        let prompt = build_prompt(system, &messages, &tools);
+        assert!(prompt.contains("### read_memory"));
+        assert!(prompt.contains("tool_call"));
+    }
+
+    #[test]
+    fn cli_response_deserialization() {
         let json = serde_json::json!({
-            "id": "msg_789",
-            "content": [{"type": "text", "text": "partial..."}],
-            "stop_reason": "max_tokens",
-            "usage": {"input_tokens": 100, "output_tokens": 4096}
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "result": "Hello there!",
+            "stop_reason": "end_turn",
+            "session_id": "abc-123",
+            "usage": {"input_tokens": 100, "output_tokens": 10}
         });
-        let resp: ApiResponse = serde_json::from_value(json).unwrap();
-        assert_eq!(resp.stop_reason, StopReason::MaxTokens);
+        let resp: CliJsonResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(resp.result, "Hello there!");
+        assert!(!resp.is_error);
+        assert_eq!(resp.session_id, "abc-123");
     }
 }
 

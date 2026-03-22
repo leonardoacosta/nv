@@ -570,18 +570,11 @@ impl AgentLoop {
         // Check if it's an auth error (non-retryable)
         if let Some(api_err) = error.downcast_ref::<ApiError>() {
             match api_err {
-                ApiError::AuthError { .. } => {
-                    tracing::error!("Authentication failed — check ANTHROPIC_API_KEY");
+                ApiError::AuthError(..) => {
+                    tracing::error!("Authentication failed — check Claude CLI login");
                     self.send_error_to_telegram(
-                        "NV API authentication failed. Check ANTHROPIC_API_KEY configuration.",
+                        "NV authentication failed. Run `claude login` on the host.",
                     )
-                    .await;
-                }
-                ApiError::RateLimited { retry_after_secs } => {
-                    tracing::warn!(retry_after_secs, "rate limited after retries");
-                    self.send_error_to_telegram(&format!(
-                        "NV is rate limited. Will resume on next trigger (retry after {retry_after_secs}s)."
-                    ))
                     .await;
                 }
                 _ => {

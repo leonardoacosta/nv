@@ -25,6 +25,7 @@ prost-types = { workspace = true }
 tracing-appender = { workspace = true }
 tokio-util = { workspace = true }
 sd-notify = { workspace = true }
+rusqlite = { workspace = true }
 
 [build-dependencies]
 tonic-build = "0.12"

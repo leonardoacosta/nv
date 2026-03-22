@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use crate::claude::ToolDefinition;
 use crate::jira;
 use crate::memory::Memory;
+use crate::messages::MessageStore;
 use crate::nexus;
 
 /// Register all available tool definitions for the Anthropic API.
@@ -103,6 +104,20 @@ pub fn register_tools() -> Vec<ToolDefinition> {
                 "required": ["content"]
             }),
         },
+        ToolDefinition {
+            name: "get_recent_messages".into(),
+            description: "Get recent messages from the conversation history. Returns the last N messages formatted with timestamps and senders.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of recent messages to return (default: 20, max: 100)"
+                    }
+                },
+                "required": []
+            }),
+        },
     ];
 
     // Add all Jira tool definitions
@@ -184,6 +199,7 @@ pub async fn execute_tool(
     memory: &Memory,
     jira_client: Option<&jira::JiraClient>,
     nexus_client: Option<&nexus::client::NexusClient>,
+    message_store: Option<&MessageStore>,
 ) -> Result<ToolResult> {
     match name {
         // ── Memory Tools ────────────────────────────────────────
@@ -307,6 +323,35 @@ pub async fn execute_tool(
             ))
         }
 
+        // ── Message Store Tools ─────────────────────────────
+        "get_recent_messages" => {
+            let store = message_store
+                .ok_or_else(|| anyhow!("Message store not available"))?;
+            let count = input["count"]
+                .as_u64()
+                .unwrap_or(20)
+                .min(100) as usize;
+            let messages = store.recent(count)?;
+            if messages.is_empty() {
+                return Ok(ToolResult::Immediate("No messages in history.".into()));
+            }
+            let mut lines = Vec::with_capacity(messages.len());
+            for msg in &messages {
+                let time_part = if msg.timestamp.len() >= 16 {
+                    &msg.timestamp[11..16]
+                } else {
+                    &msg.timestamp
+                };
+                let sender = if msg.direction == "outbound" {
+                    "Nova"
+                } else {
+                    &msg.sender
+                };
+                lines.push(format!("[{time_part}] {sender}: {}", msg.content));
+            }
+            Ok(ToolResult::Immediate(lines.join("\n")))
+        }
+
         // ── Nexus Tools ──────────────────────────────────────
         "query_nexus" => {
             let client = nexus_client
@@ -398,15 +443,16 @@ mod tests {
     }
 
     #[test]
-    fn register_tools_returns_thirteen() {
+    fn register_tools_returns_fourteen() {
         let tools = register_tools();
-        // 3 memory + 2 bootstrap/soul + 2 nexus + 6 jira = 13
-        assert_eq!(tools.len(), 13);
+        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira = 14
+        assert_eq!(tools.len(), 14);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
         assert!(names.contains(&"search_memory"));
         assert!(names.contains(&"write_memory"));
+        assert!(names.contains(&"get_recent_messages"));
         assert!(names.contains(&"complete_bootstrap"));
         assert!(names.contains(&"update_soul"));
         assert!(names.contains(&"query_nexus"));
@@ -465,6 +511,7 @@ mod tests {
             &memory,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -481,6 +528,7 @@ mod tests {
             "read_memory",
             &serde_json::json!({"topic": "nonexistent"}),
             &memory,
+            None,
             None,
             None,
         )
@@ -501,6 +549,7 @@ mod tests {
             "search_memory",
             &serde_json::json!({"query": "Stripe"}),
             &memory,
+            None,
             None,
             None,
         )
@@ -524,6 +573,7 @@ mod tests {
             &memory,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -540,6 +590,7 @@ mod tests {
             "write_memory",
             &serde_json::json!({"topic": "notes", "content": "hello world"}),
             &memory,
+            None,
             None,
             None,
         )
@@ -560,6 +611,7 @@ mod tests {
             &memory,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -576,6 +628,7 @@ mod tests {
             "jira_search",
             &serde_json::json!({"jql": "project = NV"}),
             &memory,
+            None,
             None,
             None,
         )
@@ -602,6 +655,7 @@ mod tests {
             }),
             &memory,
             Some(&client),
+            None,
             None,
         )
         .await
@@ -638,6 +692,7 @@ mod tests {
             }),
             &memory,
             Some(&client),
+            None,
             None,
         )
         .await
@@ -676,6 +731,7 @@ mod tests {
             &memory,
             Some(&client),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -698,7 +754,7 @@ mod tests {
     #[tokio::test]
     async fn execute_query_nexus_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None)
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None)
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
@@ -712,7 +768,7 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 7400,
         }]);
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client))
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None)
             .await
             .unwrap();
         match result {
@@ -732,6 +788,7 @@ mod tests {
             &memory,
             None,
             None,
+            None,
         )
         .await;
         assert!(result.is_err());
@@ -748,6 +805,7 @@ mod tests {
             &memory,
             None,
             Some(&client),
+            None,
         )
         .await;
         assert!(result.is_err());
@@ -757,7 +815,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None).await;
+        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -767,7 +825,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None).await;
+        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -779,6 +837,7 @@ mod tests {
             "write_memory",
             &serde_json::json!({"topic": "x"}),
             &memory,
+            None,
             None,
             None,
         )
@@ -800,6 +859,7 @@ mod tests {
             "complete_bootstrap",
             &serde_json::json!({}),
             &memory,
+            None,
             None,
             None,
         )
@@ -836,6 +896,7 @@ mod tests {
             &memory,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -862,6 +923,7 @@ mod tests {
             &memory,
             None,
             None,
+            None,
         )
         .await;
         assert!(result.is_err());
@@ -885,5 +947,84 @@ mod tests {
         let us = tools.iter().find(|t| t.name == "update_soul").unwrap();
         let required = us.input_schema["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v.as_str() == Some("content")));
+    }
+
+    #[test]
+    fn get_recent_messages_schema_has_optional_count() {
+        let tools = register_tools();
+        let grm = tools
+            .iter()
+            .find(|t| t.name == "get_recent_messages")
+            .unwrap();
+        let required = grm.input_schema["required"].as_array().unwrap();
+        assert!(required.is_empty());
+        assert!(grm.input_schema["properties"]["count"].is_object());
+    }
+
+    #[tokio::test]
+    async fn execute_get_recent_messages_empty_store() {
+        let (_dir, memory) = setup();
+        let tmp = TempDir::new().unwrap();
+        let db_path = tmp.path().join("messages.db");
+        let store = crate::messages::MessageStore::init(&db_path).unwrap();
+
+        let result = execute_tool(
+            "get_recent_messages",
+            &serde_json::json!({}),
+            &memory,
+            None,
+            None,
+            Some(&store),
+        )
+        .await
+        .unwrap();
+        match result {
+            ToolResult::Immediate(s) => assert!(s.contains("No messages")),
+            _ => panic!("expected Immediate"),
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_get_recent_messages_with_data() {
+        let (_dir, memory) = setup();
+        let tmp = TempDir::new().unwrap();
+        let db_path = tmp.path().join("messages.db");
+        let store = crate::messages::MessageStore::init(&db_path).unwrap();
+        store.log_inbound("telegram", "leo", "test message", "message").unwrap();
+        store.log_outbound("telegram", "test response", None, Some(500), Some(10), Some(5)).unwrap();
+
+        let result = execute_tool(
+            "get_recent_messages",
+            &serde_json::json!({"count": 10}),
+            &memory,
+            None,
+            None,
+            Some(&store),
+        )
+        .await
+        .unwrap();
+        match result {
+            ToolResult::Immediate(s) => {
+                assert!(s.contains("leo: test message"));
+                assert!(s.contains("Nova: test response"));
+            }
+            _ => panic!("expected Immediate"),
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_get_recent_messages_without_store() {
+        let (_dir, memory) = setup();
+        let result = execute_tool(
+            "get_recent_messages",
+            &serde_json::json!({}),
+            &memory,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Message store not available"));
     }
 }

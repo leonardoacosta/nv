@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::State;
@@ -10,12 +11,14 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::health::HealthState;
+use crate::messages::MessageStore;
 
 /// Shared state for the HTTP server.
 #[derive(Clone)]
 pub struct HttpState {
     pub trigger_tx: mpsc::UnboundedSender<Trigger>,
     pub health: Arc<HealthState>,
+    pub stats_db_path: PathBuf,
 }
 
 /// Request body for POST /ask.
@@ -43,6 +46,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/health", get(health_handler))
         .route("/ask", post(ask_handler))
         .route("/digest", post(digest_handler))
+        .route("/stats", get(stats_handler))
         .with_state(state)
 }
 
@@ -134,6 +138,34 @@ async fn digest_handler(
     )
 }
 
+/// GET /stats — returns message store statistics as JSON.
+///
+/// Opens a read-only connection to the message store database
+/// and returns aggregate stats (total messages, daily counts, etc.).
+async fn stats_handler(
+    State(state): State<Arc<HttpState>>,
+) -> impl IntoResponse {
+    match MessageStore::init(&state.stats_db_path) {
+        Ok(store) => match store.stats() {
+            Ok(report) => (StatusCode::OK, Json(serde_json::to_value(report).unwrap())).into_response(),
+            Err(e) => {
+                tracing::error!(error = %e, "failed to query message stats");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("Failed to query stats: {e}")})),
+                ).into_response()
+            }
+        },
+        Err(e) => {
+            tracing::error!(error = %e, "failed to open message store for stats");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to open message store: {e}")})),
+            ).into_response()
+        }
+    }
+}
+
 /// Start the HTTP server on the given port.
 ///
 /// Runs until the listener is dropped or the runtime shuts down.
@@ -141,8 +173,9 @@ pub async fn run_http_server(
     port: u16,
     trigger_tx: mpsc::UnboundedSender<Trigger>,
     health: Arc<HealthState>,
+    stats_db_path: PathBuf,
 ) -> anyhow::Result<()> {
-    let state = Arc::new(HttpState { trigger_tx, health });
+    let state = Arc::new(HttpState { trigger_tx, health, stats_db_path });
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
@@ -161,19 +194,24 @@ mod tests {
     use axum::http::Request;
     use tower::ServiceExt;
 
-    fn setup() -> (Arc<HttpState>, mpsc::UnboundedReceiver<Trigger>) {
+    fn setup() -> (Arc<HttpState>, mpsc::UnboundedReceiver<Trigger>, tempfile::TempDir) {
         let (tx, rx) = mpsc::unbounded_channel();
         let health = Arc::new(HealthState::new());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("messages.db");
+        // Initialize the message store so the DB file exists for /stats
+        let _store = MessageStore::init(&db_path).unwrap();
         let state = Arc::new(HttpState {
             trigger_tx: tx,
             health,
+            stats_db_path: db_path,
         });
-        (state, rx)
+        (state, rx, tmp)
     }
 
     #[tokio::test]
     async fn health_endpoint_returns_json() {
-        let (state, _rx) = setup();
+        let (state, _rx, _tmp) = setup();
         let app = build_router(state);
 
         let request = Request::builder()
@@ -194,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn ask_endpoint_empty_question_returns_bad_request() {
-        let (state, _rx) = setup();
+        let (state, _rx, _tmp) = setup();
         let app = build_router(state);
 
         let request = Request::builder()
@@ -210,7 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn ask_endpoint_sends_trigger_and_returns_answer() {
-        let (state, mut rx) = setup();
+        let (state, mut rx, _tmp) = setup();
         let app = build_router(state);
 
         // Spawn a task to simulate the agent loop responding
@@ -246,7 +284,7 @@ mod tests {
 
     #[tokio::test]
     async fn digest_endpoint_returns_accepted() {
-        let (state, mut rx) = setup();
+        let (state, mut rx, _tmp) = setup();
         let app = build_router(state);
 
         let request = Request::builder()
@@ -274,7 +312,7 @@ mod tests {
 
     #[tokio::test]
     async fn digest_endpoint_returns_unavailable_when_closed() {
-        let (state, rx) = setup();
+        let (state, rx, _tmp) = setup();
         drop(rx);
         let app = build_router(state);
 
@@ -290,7 +328,7 @@ mod tests {
 
     #[tokio::test]
     async fn ask_endpoint_returns_unavailable_when_channel_closed() {
-        let (state, rx) = setup();
+        let (state, rx, _tmp) = setup();
         drop(rx); // Close the receiver immediately
 
         let app = build_router(state);
@@ -304,5 +342,28 @@ mod tests {
 
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn stats_endpoint_returns_json() {
+        let (state, _rx, _tmp) = setup();
+        let app = build_router(state);
+
+        let request = Request::builder()
+            .uri("/stats")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(resp["total_messages"], 0);
+        assert_eq!(resp["messages_today"], 0);
+        assert_eq!(resp["total_tokens_in"], 0);
+        assert_eq!(resp["total_tokens_out"], 0);
     }
 }

@@ -18,6 +18,7 @@ use crate::claude::{
 };
 use crate::jira;
 use crate::memory::Memory;
+use crate::messages::MessageStore;
 use crate::nexus;
 use crate::query;
 use crate::state::State;
@@ -52,7 +53,7 @@ Before every response, classify internally:
 
 ## Tool Use
 Use tools proactively. Don't ask permission for reads. Don't describe tools to the operator.
-- Reads (immediate): read_memory, search_memory, jira_search, jira_get, query_nexus, query_session
+- Reads (immediate): read_memory, search_memory, get_recent_messages, jira_search, jira_get, query_nexus, query_session
 - Writes (confirm first): jira_create, jira_transition, jira_assign, jira_comment
 - Memory writes (autonomous): write_memory
 - Bootstrap (one-time): complete_bootstrap
@@ -159,6 +160,7 @@ pub struct AgentLoop {
     state: State,
     jira_client: Option<jira::JiraClient>,
     nexus_client: Option<nexus::client::NexusClient>,
+    message_store: MessageStore,
     conversation_history: Vec<Message>,
     system_prompt: String,
     tool_definitions: Vec<ToolDefinition>,
@@ -167,6 +169,7 @@ pub struct AgentLoop {
 }
 
 impl AgentLoop {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: AgentConfig,
         client: ClaudeClient,
@@ -175,6 +178,7 @@ impl AgentLoop {
         nv_base_path: PathBuf,
         jira_client: Option<jira::JiraClient>,
         nexus_client: Option<nexus::client::NexusClient>,
+        message_store: MessageStore,
     ) -> Self {
         let system_prompt = build_system_context();
         let bootstrapped = check_bootstrap_state();
@@ -207,6 +211,7 @@ impl AgentLoop {
             state,
             jira_client,
             nexus_client,
+            message_store,
             conversation_history: Vec::new(),
             system_prompt,
             tool_definitions,
@@ -248,6 +253,30 @@ impl AgentLoop {
             // Check session timeout — clear history if stale
             self.maybe_reset_session();
 
+            // Log inbound message triggers to the message store
+            for trigger in &triggers {
+                if let Trigger::Message(msg) = trigger {
+                    if let Err(e) = self.message_store.log_inbound(
+                        &msg.channel,
+                        &msg.sender,
+                        &msg.content,
+                        "message",
+                    ) {
+                        tracing::warn!(error = %e, "failed to log inbound message");
+                    }
+                }
+            }
+
+            // Load recent messages for context injection
+            let recent_messages_context = match self.message_store.format_recent_for_context(20) {
+                Ok(ctx) if !ctx.is_empty() => Some(ctx),
+                Ok(_) => None,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to load recent messages context");
+                    None
+                }
+            };
+
             // Load memory context to inject before the user message
             let memory_context = match self.memory.get_context_summary() {
                 Ok(ctx) if !ctx.is_empty() => Some(ctx),
@@ -286,6 +315,12 @@ impl AgentLoop {
 
             // Build the full user message with context injections
             let mut user_message = String::new();
+
+            if let Some(recent_ctx) = recent_messages_context {
+                user_message.push_str(&format!(
+                    "<recent_messages>\n{recent_ctx}\n</recent_messages>\n\n"
+                ));
+            }
 
             if let Some(ctx) = memory_context {
                 user_message.push_str(&format!(
@@ -355,7 +390,8 @@ impl AgentLoop {
                 None
             };
 
-            // Call Claude API
+            // Call Claude API — capture timing for response_time_ms
+            let call_start = Instant::now();
             match self
                 .client
                 .send_messages(
@@ -366,6 +402,9 @@ impl AgentLoop {
                 .await
             {
                 Ok(response) => {
+                    let response_time_ms = call_start.elapsed().as_millis() as i64;
+                    let tokens_in = response.usage.input_tokens as i64;
+                    let tokens_out = response.usage.output_tokens as i64;
                     // Stop the thinking ticker
                     cancel_token.cancel();
                     if let Some(h) = ticker_handle { h.abort(); }
@@ -409,6 +448,25 @@ impl AgentLoop {
                                 }
                             } else if let Err(e) = self.route_response(&final_content, &triggers).await {
                                 tracing::error!(error = %e, "failed to route response");
+                            }
+
+                            // Log outbound message to the message store
+                            let reply_channel = triggers
+                                .first()
+                                .and_then(|t| match t {
+                                    Trigger::Message(msg) => Some(msg.channel.as_str()),
+                                    _ => None,
+                                })
+                                .unwrap_or("telegram");
+                            if let Err(e) = self.message_store.log_outbound(
+                                reply_channel,
+                                &response_text,
+                                thinking_msg_id,
+                                Some(response_time_ms),
+                                Some(tokens_in),
+                                Some(tokens_out),
+                            ) {
+                                tracing::warn!(error = %e, "failed to log outbound message");
                             }
                         }
                         Err(e) => {
@@ -536,6 +594,7 @@ impl AgentLoop {
                     &self.memory,
                     self.jira_client.as_ref(),
                     self.nexus_client.as_ref(),
+                    Some(&self.message_store),
                 )
                 .await;
 

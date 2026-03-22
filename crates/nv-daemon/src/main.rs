@@ -5,6 +5,7 @@ mod health;
 mod http;
 mod jira;
 mod memory;
+mod messages;
 mod nexus;
 mod query;
 mod scheduler;
@@ -158,6 +159,10 @@ async fn main() -> anyhow::Result<()> {
     let st = state::State::new(&nv_base);
     st.init()?;
 
+    // Initialize message store
+    let message_store = messages::MessageStore::init(&nv_base.join("messages.db"))?;
+    tracing::info!("message store initialized");
+
     // Create shared health state
     let health_state = Arc::new(HealthState::new());
 
@@ -269,7 +274,7 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("bootstrap not complete — digest scheduler deferred");
     }
 
-    // Spawn the HTTP server for CLI triggers (POST /digest, GET /health, etc.)
+    // Spawn the HTTP server for CLI triggers (POST /digest, GET /health, GET /stats, etc.)
     let health_port = config
         .daemon
         .as_ref()
@@ -277,8 +282,9 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(8400);
     let http_tx = trigger_tx.clone();
     let http_health = Arc::clone(&health_state);
+    let stats_db_path = nv_base.join("messages.db");
     tokio::spawn(async move {
-        if let Err(e) = http::run_http_server(health_port, http_tx, http_health).await {
+        if let Err(e) = http::run_http_server(health_port, http_tx, http_health, stats_db_path).await {
             tracing::error!(error = %e, "HTTP server failed");
         }
     });
@@ -310,6 +316,7 @@ async fn main() -> anyhow::Result<()> {
         nv_base,
         jira_client,
         nexus_client,
+        message_store,
     );
 
     tracing::info!("starting agent loop");

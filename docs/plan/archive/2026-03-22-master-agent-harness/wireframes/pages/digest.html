@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NV — Proactive Digest</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="../index.html">Hub</a>
+      <a href="digest.html" class="active">Digest</a>
+      <a href="command.html">Command</a>
+      <a href="query.html">Query</a>
+      <a href="alert.html">Alert</a>
+      <a href="cli.html">CLI</a>
+    </nav>
+
+    <div class="chat-header">
+      <div class="avatar">NV</div>
+      <div class="info">
+        <h2>NV</h2>
+        <div class="status">online — last digest 2min ago</div>
+      </div>
+    </div>
+
+    <p class="page-title">Proactive Digest Flow</p>
+
+    <div class="chat">
+      <div class="date-sep">Today, 9:00 AM</div>
+
+      <!-- NV sends digest -->
+      <div class="digest">
+        <h3>📋 Morning Digest</h3>
+
+        <div class="section">
+          <div class="section-title">Jira — Needs Attention</div>
+          <div class="item"><span class="dot red"></span> OO-139 (P0 Bug) Checkout crash — unassigned, 3 days old</div>
+          <div class="item"><span class="dot yellow"></span> OO-141 (Task) DB migration — awaiting review</div>
+          <div class="item"><span class="dot green"></span> OO-138 (Bug) Fixed — ready to close</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Sessions — Nexus</div>
+          <div class="item"><span class="dot green"></span> homelab: 2 active (oo /apply add-webhooks, tc /feature auth)</div>
+          <div class="item"><span class="dot yellow"></span> macbook: 1 idle (mv, stale 2h)</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Channels — Overnight</div>
+          <div class="item"><span class="dot blue"></span> Teams: Maria asked about OO release timeline (yesterday 11pm)</div>
+          <div class="item"><span class="dot blue"></span> Discord: 3 messages in #dev, no action needed</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Suggested Actions</div>
+          <div class="item">1. Assign OO-139 to yourself (critical, unowned)</div>
+          <div class="item">2. Reply to Maria with OO-139 ETA</div>
+          <div class="item">3. Close OO-138 (fix verified)</div>
+        </div>
+
+        <div class="keyboard">
+          <div class="btn confirm">✅ Do All 3</div>
+          <div class="btn">Pick Actions</div>
+          <div class="btn danger">❌ Dismiss</div>
+        </div>
+      </div>
+
+      <!-- Leo taps Pick Actions -->
+      <div class="msg out">
+        Pick Actions
+        <div class="time">9:01 AM</div>
+      </div>
+
+      <!-- NV shows individual actions -->
+      <div class="msg in">
+        <div class="sender">NV</div>
+        Select which actions to execute:
+        <div class="keyboard">
+          <div class="btn confirm">1. Assign OO-139</div>
+          <div class="btn confirm">3. Close OO-138</div>
+        </div>
+        <div class="keyboard">
+          <div class="btn">2. Reply to Maria</div>
+          <div class="btn danger">Cancel</div>
+        </div>
+        <div class="time">9:01 AM</div>
+      </div>
+
+      <!-- Leo confirms 1 and 3 -->
+      <div class="msg out">
+        1 and 3
+        <div class="time">9:01 AM</div>
+      </div>
+
+      <!-- NV executes -->
+      <div class="msg in">
+        <div class="sender">NV</div>
+        ✅ OO-139 assigned to Leo, moved to In Progress<br>
+        ✅ OO-138 transitioned to Done<br>
+        <br>
+        Skipped: Reply to Maria (you can do this manually or say "reply to Maria")
+        <div class="time">9:02 AM</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

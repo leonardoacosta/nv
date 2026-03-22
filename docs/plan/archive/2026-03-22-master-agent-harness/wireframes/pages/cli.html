@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NV — CLI Interface</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="../index.html">Hub</a>
+      <a href="digest.html">Digest</a>
+      <a href="command.html">Command</a>
+      <a href="query.html">Query</a>
+      <a href="alert.html">Alert</a>
+      <a href="cli.html" class="active">CLI</a>
+    </nav>
+
+    <p class="page-title">CLI Interface — nv-cli</p>
+
+    <!-- nv status -->
+    <div class="cli">
+      <span class="prompt">❯ </span><span class="cmd">nv status</span><br>
+      <br>
+      <span class="label">NV Daemon</span> <span class="value" style="color: var(--green);">● running</span> <span class="dim">(pid 4821, uptime 3d 14h)</span><br>
+      <br>
+      <span class="label">Channels</span><br>
+      <span class="dim">  ├─</span> <span class="value">telegram</span> <span style="color: var(--green);">connected</span> <span class="dim">(polling, 142 msgs today)</span><br>
+      <span class="dim">  ├─</span> <span class="value">discord</span>  <span style="color: var(--text-muted);">disabled</span><br>
+      <span class="dim">  ├─</span> <span class="value">teams</span>    <span style="color: var(--text-muted);">disabled</span><br>
+      <span class="dim">  └─</span> <span class="value">email</span>    <span style="color: var(--text-muted);">disabled</span><br>
+      <br>
+      <span class="label">Integrations</span><br>
+      <span class="dim">  ├─</span> <span class="value">jira</span>   <span style="color: var(--green);">connected</span> <span class="dim">(leonardoacosta.atlassian.net)</span><br>
+      <span class="dim">  ├─</span> <span class="value">nexus</span>  <span style="color: var(--green);">2 agents</span> <span class="dim">(homelab:7400, macbook:7400)</span><br>
+      <span class="dim">  └─</span> <span class="value">daemon</span> <span style="color: var(--green);">connected</span> <span class="dim">(100.91.88.16:9999)</span><br>
+      <br>
+      <span class="label">Memory</span>     <span class="dim">~/.nv/memory/ (5 files, 12KB)</span><br>
+      <span class="label">Last Digest</span> <span class="dim">9:00 AM (next: 10:00 AM)</span><br>
+      <span class="label">Pending</span>     <span class="value">0 actions awaiting confirmation</span><br>
+      <span class="label">Agent</span>       <span class="dim">claude-sonnet-4-6 (thinking: on)</span><br>
+      <span class="label">Cost Today</span>  <span class="dim">$0.87 (34 API calls)</span>
+    </div>
+
+    <!-- nv ask -->
+    <div class="cli">
+      <span class="prompt">❯ </span><span class="cmd">nv ask "what's the status of OO-143?"</span><br>
+      <br>
+      <span class="dim">Querying: jira, memory, nexus...</span><br>
+      <br>
+      <span class="label">OO-143</span> Payment flow 500 error with multiple saved cards<br>
+      <span class="dim">  Status:</span>  <span style="color: var(--green);">Done</span> <span class="dim">(closed by CI pipeline 5:45 PM)</span><br>
+      <span class="dim">  Priority:</span> <span style="color: var(--red);">P0</span><br>
+      <span class="dim">  Assignee:</span> Leo<br>
+      <span class="dim">  Component:</span> stripe-integration<br>
+      <span class="dim">  Created:</span>  Today 2:16 PM<br>
+      <span class="dim">  Resolved:</span> Today 5:45 PM (3h 29m)<br>
+      <br>
+      <span class="dim">Related session: oo /apply add-webhooks completed (homelab, $2.14)</span>
+    </div>
+
+    <!-- nv digest --now -->
+    <div class="cli">
+      <span class="prompt">❯ </span><span class="cmd">nv digest --now</span><br>
+      <br>
+      <span class="dim">Gathering context from jira, nexus, memory...</span><br>
+      <span class="dim">Sending digest to Telegram...</span><br>
+      <span style="color: var(--green);">✓ Digest sent</span> <span class="dim">(3 sections, 2 suggested actions)</span>
+    </div>
+
+    <!-- nv config -->
+    <div class="cli">
+      <span class="prompt">❯ </span><span class="cmd">nv config</span><br>
+      <br>
+      <span class="label">Config</span> <span class="dim">~/.nv/nv.toml</span><br>
+      <br>
+      <span class="dim">[agent]</span><br>
+      <span class="value">  model</span> <span class="dim">=</span> <span style="color: var(--green);">"claude-sonnet-4-6"</span><br>
+      <span class="value">  think</span> <span class="dim">=</span> <span style="color: var(--accent);">true</span><br>
+      <span class="value">  digest_interval_minutes</span> <span class="dim">=</span> <span style="color: var(--accent);">60</span><br>
+      <br>
+      <span class="dim">[telegram]</span><br>
+      <span class="value">  chat_id</span> <span class="dim">=</span> <span style="color: var(--accent);">123456789</span><br>
+      <br>
+      <span class="dim">[jira]</span><br>
+      <span class="value">  instance</span> <span class="dim">=</span> <span style="color: var(--green);">"leonardoacosta.atlassian.net"</span><br>
+      <span class="value">  default_project</span> <span class="dim">=</span> <span style="color: var(--green);">"OO"</span><br>
+      <br>
+      <span class="dim">[nexus]</span><br>
+      <span class="value">  agents</span> <span class="dim">= [homelab:7400, macbook:7400]</span>
+    </div>
+
+    <!-- nv memory -->
+    <div class="cli">
+      <span class="prompt">❯ </span><span class="cmd">nv memory search "stripe fee"</span><br>
+      <br>
+      <span class="label">memory/decisions.md</span> <span class="dim">(line 42)</span><br>
+      <span class="output">  Stripe Fee Structure Decision (Mar 15):</span><br>
+      <span class="output">  Platform fee 5% for booth purchases. Stripe Connect</span><br>
+      <span class="output">  with destination charges. Application fee server-side.</span><br>
+      <br>
+      <span class="label">memory/tasks.md</span> <span class="dim">(line 18)</span><br>
+      <span class="output">  OO-128 (closed): Implement 5% platform fee</span><br>
+      <br>
+      <span class="dim">2 results in 3ms</span>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,304 @@
+/* NV Wireframes — Telegram Conversation Mockups */
+
+:root {
+  --bg: #17212b;
+  --chat-bg: #0e1621;
+  --msg-out: #2b5278;
+  --msg-in: #182533;
+  --text: #f5f5f5;
+  --text-muted: #7b8fa1;
+  --accent: #6ab2f2;
+  --green: #4fae4e;
+  --red: #e15241;
+  --yellow: #e5c441;
+  --border: #1f2936;
+  --btn-bg: #2b5278;
+  --btn-hover: #3a6a9a;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* Layout */
+.container {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Nav */
+nav {
+  background: var(--chat-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  transition: all 0.15s;
+}
+
+nav a:hover,
+nav a.active {
+  color: var(--accent);
+  background: rgba(106, 178, 242, 0.1);
+}
+
+/* Chat header */
+.chat-header {
+  background: var(--chat-bg);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chat-header .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.chat-header .info h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.chat-header .info .status {
+  font-size: 12px;
+  color: var(--green);
+}
+
+/* Chat area */
+.chat {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  background: var(--chat-bg);
+}
+
+/* Messages */
+.msg {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  position: relative;
+  word-wrap: break-word;
+}
+
+.msg.out {
+  background: var(--msg-out);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+
+.msg.in {
+  background: var(--msg-in);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+
+.msg .time {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: right;
+  margin-top: 4px;
+}
+
+.msg .sender {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Inline keyboard buttons (Telegram style) */
+.keyboard {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.keyboard .btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.keyboard .btn:hover {
+  background: rgba(106, 178, 242, 0.1);
+}
+
+.keyboard .btn.confirm {
+  color: var(--green);
+  border-color: rgba(79, 174, 78, 0.3);
+}
+
+.keyboard .btn.danger {
+  color: var(--red);
+  border-color: rgba(225, 82, 65, 0.3);
+}
+
+/* Digest card */
+.digest {
+  background: var(--msg-in);
+  border-radius: 12px;
+  padding: 12px;
+  max-width: 90%;
+  align-self: flex-start;
+}
+
+.digest h3 {
+  font-size: 14px;
+  color: var(--accent);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.digest .section {
+  margin-bottom: 10px;
+}
+
+.digest .section-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.digest .item {
+  font-size: 13px;
+  padding: 2px 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.digest .item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+.dot.red { background: var(--red); }
+.dot.yellow { background: var(--yellow); }
+.dot.green { background: var(--green); }
+.dot.blue { background: var(--accent); }
+
+/* CLI mockup */
+.cli {
+  background: #0d1117;
+  border-radius: 8px;
+  padding: 16px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-x: auto;
+  margin: 16px;
+}
+
+.cli .prompt {
+  color: var(--green);
+}
+
+.cli .cmd {
+  color: var(--text);
+}
+
+.cli .output {
+  color: var(--text-muted);
+}
+
+.cli .label {
+  color: var(--accent);
+}
+
+.cli .value {
+  color: var(--text);
+}
+
+.cli .dim {
+  color: #484f58;
+}
+
+/* Timestamp separator */
+.date-sep {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 0;
+}
+
+/* Page title */
+.page-title {
+  text-align: center;
+  padding: 20px 16px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Responsive */
+@media (min-width: 768px) {
+  .container {
+    max-width: 520px;
+    margin: 20px auto;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    min-height: calc(100vh - 40px);
+  }
+}

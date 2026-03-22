@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NV — Context Query</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <a href="../index.html">Hub</a>
+      <a href="digest.html">Digest</a>
+      <a href="command.html">Command</a>
+      <a href="query.html" class="active">Query</a>
+      <a href="alert.html">Alert</a>
+      <a href="cli.html">CLI</a>
+    </nav>
+
+    <div class="chat-header">
+      <div class="avatar">NV</div>
+      <div class="info">
+        <h2>NV</h2>
+        <div class="status">online — 14 projects tracked</div>
+      </div>
+    </div>
+
+    <p class="page-title">Context Query Flow</p>
+
+    <div class="chat">
+      <div class="date-sep">Today, 3:45 PM</div>
+
+      <!-- Cross-system query -->
+      <div class="msg out">
+        What's blocking the OO release?
+        <div class="time">3:45 PM</div>
+      </div>
+
+      <div class="msg in">
+        <div class="sender">NV</div>
+        <strong>OO Release Status</strong><br>
+        <br>
+        <strong>Blockers (2):</strong><br>
+        🔴 OO-143 (P0) Payment crash — In Review, assigned Leo<br>
+        🟡 OO-141 (Task) DB migration — awaiting review, unassigned<br>
+        <br>
+        <strong>Open non-blockers (3):</strong><br>
+        OO-145 (P3) Polish: checkout button alignment<br>
+        OO-146 (P4) Backlog: analytics dashboard<br>
+        OO-147 (P3) Polish: email template typo<br>
+        <br>
+        <strong>Sessions:</strong><br>
+        🟢 homelab: /apply add-webhooks (running 8min, $0.31)<br>
+        <br>
+        <strong>Recent channel activity:</strong><br>
+        Teams: Maria asked about timeline (yesterday 11pm, unanswered)<br>
+        Discord: No OO mentions in 48h
+        <div class="time">3:45 PM</div>
+      </div>
+
+      <!-- Follow-up -->
+      <div class="msg out">
+        Assign OO-141 to me and tell Maria the fix ships tomorrow
+        <div class="time">3:46 PM</div>
+      </div>
+
+      <div class="msg in">
+        <div class="sender">NV</div>
+        Two actions:<br>
+        <br>
+        <strong>1. Jira:</strong> Assign OO-141 to Leo, move to In Progress<br>
+        <strong>2. Teams:</strong> Reply to Maria: "The payment fix (OO-143) is in review now. Planning to ship tomorrow."
+
+        <div class="keyboard">
+          <div class="btn confirm">✅ Both</div>
+          <div class="btn">Just Jira</div>
+          <div class="btn">Just Teams</div>
+          <div class="btn danger">❌ Cancel</div>
+        </div>
+        <div class="time">3:46 PM</div>
+      </div>
+
+      <div class="msg out">
+        Just Jira for now
+        <div class="time">3:46 PM</div>
+      </div>
+
+      <div class="msg in">
+        <div class="sender">NV</div>
+        ✅ OO-141 assigned to Leo, moved to In Progress<br>
+        <br>
+        (Teams reply saved as draft — say "send the Teams reply" when ready)
+        <div class="time">3:46 PM</div>
+      </div>
+
+      <div class="date-sep">— later —</div>
+
+      <!-- Simple status query -->
+      <div class="msg out">
+        How many sessions are running?
+        <div class="time">5:20 PM</div>
+      </div>
+
+      <div class="msg in">
+        <div class="sender">NV</div>
+        <strong>3 sessions across 2 machines</strong><br>
+        <br>
+        homelab:<br>
+        &nbsp; 🟢 oo /apply add-webhooks (42min, $1.80)<br>
+        &nbsp; 🟢 tc /feature auth-middleware (12min, $0.45)<br>
+        <br>
+        macbook:<br>
+        &nbsp; 🟡 mv idle (stale 3h, no active command)
+        <div class="time">5:20 PM</div>
+      </div>
+
+      <!-- Memory query -->
+      <div class="msg out">
+        What did we decide about the Stripe fee structure last week?
+        <div class="time">5:25 PM</div>
+      </div>
+
+      <div class="msg in">
+        <div class="sender">NV</div>
+        From memory (decisions.md, Mar 15):<br>
+        <br>
+        <strong>Stripe Fee Structure Decision:</strong><br>
+        Platform fee set at 5% for booth purchases. Stripe Connect with destination charges. Application fee calculated server-side, not client-side. Reasoning: simpler refund handling, clearer audit trail.<br>
+        <br>
+        Related: OO-128 (closed) implemented this.
+        <div class="time">5:25 PM</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

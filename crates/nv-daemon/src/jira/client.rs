@@ -68,18 +68,23 @@ impl JiraClient {
 
     /// Search for issues using JQL.
     pub async fn search(&self, jql: &str) -> Result<Vec<JiraIssue>> {
-        let url = format!("{}/rest/api/3/search", self.base_url);
-        let body = serde_json::json!({
-            "jql": jql,
-            "maxResults": 50,
-            "fields": [
-                "summary", "status", "assignee", "priority",
-                "issuetype", "project", "labels", "created", "updated",
-                "description"
-            ]
-        });
+        // Atlassian migrated search to /rest/api/3/search/jql (the old
+        // /rest/api/3/search endpoint returns 410 Gone on Jira Cloud).
+        let url = format!("{}/rest/api/3/search/jql", self.base_url);
 
-        let resp = self.http.post(&url).json(&body).send().await?;
+        let resp = self
+            .http
+            .get(&url)
+            .query(&[
+                ("jql", jql),
+                ("maxResults", "50"),
+                (
+                    "fields",
+                    "summary,status,assignee,priority,issuetype,project,labels,created,updated,description",
+                ),
+            ])
+            .send()
+            .await?;
         let result: JiraSearchResult =
             self.handle_response(resp, "search").await?;
         Ok(result.issues)

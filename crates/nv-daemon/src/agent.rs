@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -16,7 +17,9 @@ use crate::claude::{
     ApiError, ApiResponse, ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition,
     ToolResultBlock,
 };
+use crate::diary::{DiaryEntry, DiaryWriter};
 use crate::jira;
+use crate::tts;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::nexus;
@@ -161,11 +164,15 @@ pub struct AgentLoop {
     jira_client: Option<jira::JiraClient>,
     nexus_client: Option<nexus::client::NexusClient>,
     message_store: MessageStore,
+    diary: DiaryWriter,
     conversation_history: Vec<Message>,
     system_prompt: String,
     tool_definitions: Vec<ToolDefinition>,
     last_activity: Instant,
     followup_manager: query::followup::FollowUpManager,
+    voice_enabled: Arc<AtomicBool>,
+    tts_client: Option<Arc<tts::TtsClient>>,
+    voice_max_chars: u32,
 }
 
 impl AgentLoop {
@@ -179,6 +186,10 @@ impl AgentLoop {
         jira_client: Option<jira::JiraClient>,
         nexus_client: Option<nexus::client::NexusClient>,
         message_store: MessageStore,
+        diary: DiaryWriter,
+        voice_enabled: Arc<AtomicBool>,
+        tts_client: Option<Arc<tts::TtsClient>>,
+        voice_max_chars: u32,
     ) -> Self {
         let system_prompt = build_system_context();
         let bootstrapped = check_bootstrap_state();
@@ -212,11 +223,15 @@ impl AgentLoop {
             jira_client,
             nexus_client,
             message_store,
+            diary,
             conversation_history: Vec::new(),
             system_prompt,
             tool_definitions,
             last_activity: Instant::now(),
             followup_manager,
+            voice_enabled,
+            tts_client,
+            voice_max_chars,
         }
     }
 
@@ -415,7 +430,7 @@ impl AgentLoop {
 
                     // Run tool loop if needed
                     match self.run_tool_loop(response).await {
-                        Ok(final_content) => {
+                        Ok((final_content, tool_names)) => {
                             let response_text = extract_text(&final_content);
 
                             // Send response to CLI channels if any
@@ -467,6 +482,71 @@ impl AgentLoop {
                                 Some(tokens_out),
                             ) {
                                 tracing::warn!(error = %e, "failed to log outbound message");
+                            }
+
+                            // Write diary entry
+                            let (trigger_type, trigger_source) = classify_triggers(&triggers);
+                            let result_summary = if response_text.is_empty() {
+                                "empty response".to_string()
+                            } else {
+                                let truncated: String = response_text.chars().take(80).collect();
+                                if response_text.len() > 80 {
+                                    format!("{truncated}...")
+                                } else {
+                                    truncated
+                                }
+                            };
+                            let sources_checked = summarize_sources(&tool_names);
+
+                            let diary_entry = DiaryEntry {
+                                timestamp: chrono::Local::now(),
+                                trigger_type,
+                                trigger_source,
+                                trigger_count: triggers.len(),
+                                tools_called: tool_names,
+                                sources_checked,
+                                result_summary,
+                                tokens_in: tokens_in as u32,
+                                tokens_out: tokens_out as u32,
+                            };
+                            if let Err(e) = self.diary.write_entry(&diary_entry) {
+                                tracing::warn!(error = %e, "failed to write diary entry");
+                            }
+
+                            // Voice delivery — send TTS voice message after text reply
+                            if self.voice_enabled.load(Ordering::Relaxed)
+                                && (response_text.len() as u32) <= self.voice_max_chars
+                                && !response_text.is_empty()
+                            {
+                                if let Some(tts_client) = &self.tts_client {
+                                    if let Some(tg) = self.channels.get("telegram") {
+                                        if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                            let tts_c = Arc::clone(tts_client);
+                                            let tg_client = tg_channel.client.clone();
+                                            let chat_id = tg_channel.chat_id;
+                                            let text_for_tts = response_text.clone();
+                                            let reply_to_id = thinking_msg_id;
+
+                                            tokio::spawn(async move {
+                                                match tts::synthesize(&tts_c, &text_for_tts).await {
+                                                    Ok(ogg_bytes) => {
+                                                        if let Err(e) = tg_client
+                                                            .send_voice(chat_id, ogg_bytes, reply_to_id)
+                                                            .await
+                                                        {
+                                                            tracing::warn!(error = %e, "failed to send voice message");
+                                                        } else {
+                                                            tracing::debug!("voice message sent");
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        tracing::warn!(error = %e, "TTS synthesis failed");
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
                             }
                         }
                         Err(e) => {
@@ -543,12 +623,15 @@ impl AgentLoop {
 
     /// Execute the tool use loop: when Claude returns tool_use, execute
     /// the tools and send results back until Claude produces a final response.
+    ///
+    /// Returns the final text content blocks and a list of all tool names called.
     async fn run_tool_loop(
         &mut self,
         initial_response: ApiResponse,
-    ) -> Result<Vec<ContentBlock>> {
+    ) -> Result<(Vec<ContentBlock>, Vec<String>)> {
         let mut response = initial_response;
         let mut all_text_content = Vec::new();
+        let mut all_tool_names = Vec::new();
 
         for iteration in 0..MAX_TOOL_LOOP_ITERATIONS {
             // Separate text and tool_use blocks
@@ -558,6 +641,7 @@ impl AgentLoop {
                     ContentBlock::Text { .. } => all_text_content.push(block.clone()),
                     ContentBlock::ToolUse { id, name, input } => {
                         tool_uses.push((id.clone(), name.clone(), input.clone()));
+                        all_tool_names.push(name.clone());
                     }
                     ContentBlock::ToolResult { .. } => {} // shouldn't appear in response
                 }
@@ -713,7 +797,7 @@ impl AgentLoop {
             }
         }
 
-        Ok(all_text_content)
+        Ok((all_text_content, all_tool_names))
     }
 
     // ── Response Routing ────────────────────────────────────────────
@@ -909,6 +993,64 @@ fn extract_text(content: &[ContentBlock]) -> String {
         .join("\n")
 }
 
+// ── Diary Helpers ───────────────────────────────────────────────────
+
+/// Classify a trigger batch into (trigger_type, trigger_source).
+fn classify_triggers(triggers: &[Trigger]) -> (String, String) {
+    match triggers.first() {
+        Some(Trigger::Message(msg)) => ("message".into(), msg.channel.clone()),
+        Some(Trigger::Cron(event)) => ("cron".into(), format!("{event:?}")),
+        Some(Trigger::NexusEvent(event)) => ("nexus".into(), event.agent_name.clone()),
+        Some(Trigger::CliCommand(req)) => ("cli".into(), format!("{:?}", req.command)),
+        None => ("unknown".into(), "none".into()),
+    }
+}
+
+/// Summarize which sources were checked based on tool names called.
+fn summarize_sources(tool_names: &[String]) -> String {
+    if tool_names.is_empty() {
+        return "none".into();
+    }
+
+    let mut parts = Vec::new();
+    let jira_count = tool_names
+        .iter()
+        .filter(|n| n.starts_with("jira_"))
+        .count();
+    let memory_count = tool_names
+        .iter()
+        .filter(|n| n.contains("memory"))
+        .count();
+    let nexus_count = tool_names
+        .iter()
+        .filter(|n| n.starts_with("query_nexus"))
+        .count();
+    let message_count = tool_names
+        .iter()
+        .filter(|n| n.contains("messages") || n.contains("get_recent"))
+        .count();
+
+    if jira_count > 0 {
+        parts.push(format!("jira: {jira_count} calls"));
+    }
+    if memory_count > 0 {
+        parts.push(format!("memory: {memory_count} calls"));
+    }
+    if nexus_count > 0 {
+        parts.push(format!("nexus: {nexus_count} calls"));
+    }
+    if message_count > 0 {
+        parts.push(format!("messages: {message_count} calls"));
+    }
+
+    if parts.is_empty() {
+        // Tools were called but none matched known source categories
+        format!("{} tool calls", tool_names.len())
+    } else {
+        parts.join(", ")
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1097,11 +1239,8 @@ mod tests {
         // Manually drain
         let first = agent_rx.recv().await.unwrap();
         let mut batch = vec![first];
-        loop {
-            match agent_rx.try_recv() {
-                Ok(trigger) => batch.push(trigger),
-                Err(_) => break,
-            }
+        while let Ok(trigger) = agent_rx.try_recv() {
+            batch.push(trigger);
         }
         assert_eq!(batch.len(), 1);
     }
@@ -1119,11 +1258,8 @@ mod tests {
 
         let first = agent_rx.recv().await.unwrap();
         let mut batch = vec![first];
-        loop {
-            match agent_rx.try_recv() {
-                Ok(trigger) => batch.push(trigger),
-                Err(_) => break,
-            }
+        while let Ok(trigger) = agent_rx.try_recv() {
+            batch.push(trigger);
         }
         assert_eq!(batch.len(), 5);
     }

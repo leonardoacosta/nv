@@ -269,6 +269,7 @@ impl Memory {
     /// Reads all topic files and truncates the total output to fit within
     /// a character budget (~4000 chars). Returns a formatted string suitable
     /// for injecting into Claude's context.
+    #[allow(dead_code)]
     pub fn get_context_summary(&self) -> Result<String> {
         let mut parts = Vec::new();
         let mut remaining = MAX_CONTEXT_CHARS;
@@ -554,10 +555,9 @@ fn extract_frontmatter_fields<'a>(
     let mut topic = default_topic.to_string();
     let mut created = default_timestamp.to_string();
 
-    if content.starts_with("---\n") {
-        if let Some(close_offset) = content[4..].find("\n---\n") {
-            let fm_end = 4 + close_offset;
-            let frontmatter = &content[4..fm_end];
+    if let Some(stripped) = content.strip_prefix("---\n") {
+        if let Some(close_offset) = stripped.find("\n---\n") {
+            let frontmatter = &stripped[..close_offset];
             for line in frontmatter.lines() {
                 if let Some(v) = line.strip_prefix("topic: ") {
                     topic = v.to_string();
@@ -673,12 +673,11 @@ fn truncate_to_chars(content: &str, max_chars: usize) -> String {
 ///   inline and never calls this with `is_new = true`).
 fn upsert_frontmatter(content: &str, topic: &str, timestamp: &str, is_new: bool) -> (String, u64) {
     // Does the file start with a frontmatter block?
-    if content.starts_with("---\n") {
+    if let Some(stripped) = content.strip_prefix("---\n") {
         // Find the closing `---`
-        if let Some(close_offset) = content[4..].find("\n---\n") {
-            let fm_end = 4 + close_offset; // index of the newline before closing ---
-            let frontmatter = &content[4..fm_end];
-            let rest = &content[fm_end + 5..]; // skip "\n---\n"
+        if let Some(close_offset) = stripped.find("\n---\n") {
+            let frontmatter = &stripped[..close_offset];
+            let rest = &stripped[close_offset + 5..]; // skip "\n---\n"
 
             // Parse existing fields line by line
             let mut topic_val = topic.to_string();

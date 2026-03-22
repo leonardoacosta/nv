@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use anyhow::bail;
+use reqwest::multipart;
 use reqwest::Client;
 
 use super::types::{BotUser, TelegramResponse, Update};
@@ -264,6 +265,57 @@ impl TelegramClient {
         });
         let _ = self.http.post(&url).json(&body).send().await?;
         Ok(())
+    }
+
+    /// Send a voice message (OGG/Opus) to a chat.
+    ///
+    /// Uses multipart/form-data to upload the audio bytes via Telegram's
+    /// `sendVoice` endpoint. The voice message appears as an inline
+    /// waveform bubble in the chat.
+    pub async fn send_voice(
+        &self,
+        chat_id: i64,
+        ogg_bytes: Vec<u8>,
+        reply_to: Option<i64>,
+    ) -> anyhow::Result<i64> {
+        let url = format!("{}/sendVoice", self.base_url);
+
+        let voice_part = multipart::Part::bytes(ogg_bytes)
+            .file_name("voice.ogg")
+            .mime_str("audio/ogg")?;
+
+        let mut form = multipart::Form::new()
+            .text("chat_id", chat_id.to_string())
+            .part("voice", voice_part);
+
+        if let Some(reply_id) = reply_to {
+            form = form.text("reply_to_message_id", reply_id.to_string());
+        }
+
+        let resp: TelegramResponse<serde_json::Value> = self
+            .http
+            .post(&url)
+            .multipart(form)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if !resp.ok {
+            bail!(
+                "Telegram sendVoice failed: {}",
+                resp.description.unwrap_or_default()
+            );
+        }
+
+        let msg_id = resp
+            .result
+            .as_ref()
+            .and_then(|r| r.get("message_id"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+
+        Ok(msg_id)
     }
 
     /// Acknowledge a callback query (dismisses the loading spinner on the

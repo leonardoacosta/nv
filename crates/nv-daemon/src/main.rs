@@ -1,5 +1,6 @@
 mod agent;
 mod claude;
+mod diary;
 mod digest;
 mod health;
 mod http;
@@ -14,8 +15,10 @@ mod shutdown;
 mod state;
 mod telegram;
 mod tools;
+mod tts;
 
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use nv_core::types::Trigger;
@@ -159,9 +162,58 @@ async fn main() -> anyhow::Result<()> {
     let st = state::State::new(&nv_base);
     st.init()?;
 
+    // Initialize diary
+    let diary_writer = diary::DiaryWriter::new(&nv_base.join("diary"));
+    diary_writer.init()?;
+    tracing::info!("diary initialized");
+
     // Initialize message store
     let message_store = messages::MessageStore::init(&nv_base.join("messages.db"))?;
     tracing::info!("message store initialized");
+
+    // Initialize voice/TTS support
+    let voice_config_enabled = config
+        .daemon
+        .as_ref()
+        .map(|d| d.voice_enabled)
+        .unwrap_or(false);
+
+    let voice_enabled = Arc::new(AtomicBool::new(voice_config_enabled));
+
+    let tts_client = if voice_config_enabled {
+        // Check ffmpeg availability
+        if !tts::check_ffmpeg().await {
+            tracing::warn!("voice_enabled=true but ffmpeg not found in PATH — voice disabled");
+            voice_enabled.store(false, std::sync::atomic::Ordering::Relaxed);
+            None
+        } else if let (Some(api_key), Some(voice_id)) = (
+            &secrets.elevenlabs_api_key,
+            config.daemon.as_ref().and_then(|d| d.elevenlabs_voice_id.as_deref()),
+        ) {
+            let model = config
+                .daemon
+                .as_ref()
+                .map(|d| d.elevenlabs_model.as_str())
+                .unwrap_or("eleven_multilingual_v2");
+            tracing::info!(voice_id, model, "TTS client initialized");
+            Some(Arc::new(tts::TtsClient::new(api_key, voice_id, model)))
+        } else {
+            tracing::warn!(
+                "voice_enabled=true but ELEVENLABS_API_KEY or elevenlabs_voice_id missing — voice disabled"
+            );
+            voice_enabled.store(false, std::sync::atomic::Ordering::Relaxed);
+            None
+        }
+    } else {
+        tracing::debug!("voice disabled by config");
+        None
+    };
+
+    let voice_max_chars = config
+        .daemon
+        .as_ref()
+        .map(|d| d.voice_max_chars)
+        .unwrap_or(500);
 
     // Create shared health state
     let health_state = Arc::new(HealthState::new());
@@ -208,8 +260,9 @@ async fn main() -> anyhow::Result<()> {
             }
         });
 
+        let poll_voice_enabled = voice_enabled.clone();
         tokio::spawn(async move {
-            run_poll_loop(tg_channel).await;
+            run_poll_loop(tg_channel, poll_voice_enabled).await;
         });
         tracing::info!("Telegram channel started");
     }
@@ -317,6 +370,10 @@ async fn main() -> anyhow::Result<()> {
         jira_client,
         nexus_client,
         message_store,
+        diary_writer,
+        voice_enabled.clone(),
+        tts_client,
+        voice_max_chars,
     );
 
     tracing::info!("starting agent loop");

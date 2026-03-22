@@ -1,7 +1,7 @@
 pub mod client;
 pub mod types;
 
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -108,7 +108,10 @@ impl Channel for TelegramChannel {
 /// Polls for updates and pushes `Trigger::Message` into the mpsc channel.
 /// Uses exponential backoff on failure (1s to 60s).
 /// Exits when the trigger receiver is dropped (daemon shutting down).
-pub async fn run_poll_loop(channel: TelegramChannel) {
+///
+/// The `voice_enabled` flag is toggled by the `/voice` command, which is
+/// intercepted here before reaching the agent loop.
+pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBool>) {
     let mut backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(60);
 
@@ -117,6 +120,23 @@ pub async fn run_poll_loop(channel: TelegramChannel) {
             Ok(messages) => {
                 backoff = Duration::from_secs(1); // Reset on success
                 for msg in messages {
+                    // Intercept /voice command — toggle voice and respond directly
+                    if msg.content.trim() == "/voice" {
+                        let was_enabled = voice_enabled.fetch_xor(true, Ordering::Relaxed);
+                        let now_enabled = !was_enabled;
+                        let status = if now_enabled { "enabled" } else { "disabled" };
+                        let reply = format!("Voice replies {status}.");
+                        tracing::info!(voice_enabled = now_enabled, "voice toggle");
+                        if let Err(e) = channel
+                            .client
+                            .send_message(channel.chat_id, &reply, Some(msg.id.clone()), None)
+                            .await
+                        {
+                            tracing::error!(error = %e, "failed to send /voice response");
+                        }
+                        continue;
+                    }
+
                     if let Err(e) = channel.trigger_tx.send(Trigger::Message(msg)).await {
                         tracing::error!("Failed to send trigger: {e}");
                         return; // Receiver dropped, daemon shutting down
@@ -140,9 +160,25 @@ pub async fn run_poll_loop(channel: TelegramChannel) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use chrono::Utc;
     use nv_core::types::{ActionStatus, ActionType, InlineKeyboard, PendingAction};
     use uuid::Uuid;
+
+    #[test]
+    fn voice_toggle_flips_atomic_bool() {
+        let voice_enabled = Arc::new(AtomicBool::new(false));
+
+        // Simulate first /voice toggle: false → true
+        let was_enabled = voice_enabled.fetch_xor(true, Ordering::Relaxed);
+        assert!(!was_enabled);
+        assert!(voice_enabled.load(Ordering::Relaxed));
+
+        // Simulate second /voice toggle: true → false
+        let was_enabled = voice_enabled.fetch_xor(true, Ordering::Relaxed);
+        assert!(was_enabled);
+        assert!(!voice_enabled.load(Ordering::Relaxed));
+    }
 
     #[test]
     fn confirm_action_keyboard_layout() {

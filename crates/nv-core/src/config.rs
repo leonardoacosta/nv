@@ -17,6 +17,14 @@ fn default_health_port() -> u16 {
     8400
 }
 
+fn default_voice_max_chars() -> u32 {
+    500
+}
+
+fn default_elevenlabs_model() -> String {
+    "eleven_multilingual_v2".to_string()
+}
+
 // ── Config structs ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,6 +73,13 @@ pub struct DaemonConfig {
     pub tts_url: Option<String>,
     #[serde(default = "default_health_port")]
     pub health_port: u16,
+    #[serde(default)]
+    pub voice_enabled: bool,
+    #[serde(default = "default_voice_max_chars")]
+    pub voice_max_chars: u32,
+    pub elevenlabs_voice_id: Option<String>,
+    #[serde(default = "default_elevenlabs_model")]
+    pub elevenlabs_model: String,
 }
 
 // ── Config loading ──────────────────────────────────────────────────
@@ -102,6 +117,7 @@ pub struct Secrets {
     pub telegram_bot_token: Option<String>,
     pub jira_api_token: Option<String>,
     pub jira_username: Option<String>,
+    pub elevenlabs_api_key: Option<String>,
 }
 
 impl Secrets {
@@ -115,6 +131,7 @@ impl Secrets {
             telegram_bot_token: std::env::var("TELEGRAM_BOT_TOKEN").ok(),
             jira_api_token: std::env::var("JIRA_API_TOKEN").ok(),
             jira_username: std::env::var("JIRA_USERNAME").ok(),
+            elevenlabs_api_key: std::env::var("ELEVENLABS_API_KEY").ok(),
         })
     }
 }
@@ -150,6 +167,10 @@ port = 9000
 [daemon]
 tts_url = "http://localhost:5500/tts"
 health_port = 9090
+voice_enabled = true
+voice_max_chars = 300
+elevenlabs_voice_id = "pNInz6obpgDQGcFmaJgB"
+elevenlabs_model = "eleven_turbo_v2_5"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.agent.model, "claude-sonnet-4-20250514");
@@ -171,6 +192,13 @@ health_port = 9090
         let daemon = config.daemon.unwrap();
         assert_eq!(daemon.tts_url.as_deref(), Some("http://localhost:5500/tts"));
         assert_eq!(daemon.health_port, 9090);
+        assert!(daemon.voice_enabled);
+        assert_eq!(daemon.voice_max_chars, 300);
+        assert_eq!(
+            daemon.elevenlabs_voice_id.as_deref(),
+            Some("pNInz6obpgDQGcFmaJgB")
+        );
+        assert_eq!(daemon.elevenlabs_model, "eleven_turbo_v2_5");
     }
 
     #[test]
@@ -228,6 +256,23 @@ model = "claude-sonnet-4-20250514"
 
         let config = Config::load_from(path).unwrap();
         assert_eq!(config.agent.model, "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn parse_daemon_voice_defaults() {
+        let toml_str = r#"
+[agent]
+model = "claude-sonnet-4-20250514"
+
+[daemon]
+tts_url = "http://localhost:5500/tts"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let daemon = config.daemon.unwrap();
+        assert!(!daemon.voice_enabled);
+        assert_eq!(daemon.voice_max_chars, 500);
+        assert!(daemon.elevenlabs_voice_id.is_none());
+        assert_eq!(daemon.elevenlabs_model, "eleven_multilingual_v2");
     }
 
     #[test]

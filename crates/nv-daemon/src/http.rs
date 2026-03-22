@@ -253,14 +253,12 @@ mod tests {
 
         // Spawn a task to simulate the agent loop responding
         tokio::spawn(async move {
-            if let Some(trigger) = rx.recv().await {
-                if let Trigger::CliCommand(req) = trigger {
-                    if let CliCommand::Ask(q) = &req.command {
-                        assert_eq!(q, "What's blocking OO?");
-                    }
-                    if let Some(tx) = req.response_tx {
-                        tx.send("OO-42 is blocking the release.".into()).ok();
-                    }
+            if let Some(Trigger::CliCommand(req)) = rx.recv().await {
+                if let CliCommand::Ask(q) = &req.command {
+                    assert_eq!(q, "What's blocking OO?");
+                }
+                if let Some(tx) = req.response_tx {
+                    tx.send("OO-42 is blocking the release.".into()).ok();
                 }
             }
         });

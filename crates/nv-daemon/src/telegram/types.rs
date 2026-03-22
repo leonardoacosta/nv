@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn chat_id_filtering() {
         let authorized_chat_id = 123_i64;
-        let updates = vec![
+        let updates = [
             make_message_update(123),  // authorized
             make_message_update(999),  // unauthorized
             make_callback_update(123), // authorized

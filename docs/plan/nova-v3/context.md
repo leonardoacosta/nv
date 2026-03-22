@@ -53,14 +53,16 @@ as read receipts (👀→✅). Priority queue for message dispatch.
 | GitHub | all | PRs, actions, issues | `gh` CLI |
 | Azure DevOps | ws | Pipelines, deployments | CLI + REST |
 
-### 🔴 Manual/Blocked
+### ~~🔴 Manual/Blocked~~ → Reclassified after research
 
-| Source | Projects | Notes |
-|--------|----------|-------|
-| Home Assistant | cl, hl | REST API available, home automation |
-| Docker | hl | Container health via REST |
-| Tailscale | hl, cw | VPN node status |
-| Plaid | cl | Banking (sensitive) |
+All 4 sources are accessible from Nova's homelab machine. None are truly blocked.
+
+| Source | Projects | Access | Auth | Effort |
+|--------|----------|--------|------|--------|
+| Docker | hl | Unix socket `/var/run/docker.sock` (nyaptor in docker group) | None | S |
+| Tailscale | hl, cw | `docker exec tailscale tailscale status --json` | None | S |
+| Home Assistant | cl, hl | REST API `localhost:8123` (12 entities running) | HA long-lived token (generate in UI) | S-M |
+| Plaid | cl | Read via cortex-postgres DB (encrypted tokens, read-only) | DB password | M (+ policy: financial PII scoping) |
 
 ## Leo's Core Problem (from memory/decisions.md)
 

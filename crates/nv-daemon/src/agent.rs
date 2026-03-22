@@ -177,7 +177,14 @@ impl AgentLoop {
         nexus_client: Option<nexus::client::NexusClient>,
     ) -> Self {
         let system_prompt = build_system_context();
-        let tool_definitions = tools::register_tools();
+        let bootstrapped = check_bootstrap_state();
+        let tool_definitions = if bootstrapped {
+            tools::register_tools()
+        } else {
+            // During bootstrap, only allow memory writes and bootstrap completion.
+            // No Jira, Nexus, or read tools — keeps Claude focused on the conversation.
+            tools::register_bootstrap_tools()
+        };
         let memory = Memory::new(&nv_base_path);
         let state = State::new(&nv_base_path);
         let followup_manager = query::followup::FollowUpManager::new(&nv_base_path);

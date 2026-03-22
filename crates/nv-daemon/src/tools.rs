@@ -111,6 +111,55 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     tools
 }
 
+/// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
+/// Used during first-run to prevent Claude from searching Jira/Nexus/memory
+/// instead of focusing on the onboarding conversation.
+pub fn register_bootstrap_tools() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "write_memory".into(),
+            description: "Write content to a memory file (identity.md, user.md, soul.md, or any topic). Used during bootstrap to save configuration.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "The topic/filename to write (e.g. 'identity', 'user', 'soul')"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write"
+                    }
+                },
+                "required": ["topic", "content"]
+            }),
+        },
+        ToolDefinition {
+            name: "complete_bootstrap".into(),
+            description: "Mark first-run bootstrap as complete. Call this AFTER writing identity.md, user.md, and soul.md.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "update_soul".into(),
+            description: "Update Nova's soul/personality file (soul.md).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full new content for soul.md"
+                    }
+                },
+                "required": ["content"]
+            }),
+        },
+    ]
+}
+
 /// Result of executing a tool — either an immediate result or a
 /// pending action that requires Telegram confirmation.
 #[derive(Debug)]

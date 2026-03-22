@@ -87,7 +87,7 @@ All 4 sources are accessible from Nova's homelab machine. None are truly blocked
 | Docker | hl | Unix socket `/var/run/docker.sock` (nyaptor in docker group) | None | S |
 | Tailscale | hl, cw | `docker exec tailscale tailscale status --json` | None | S |
 | Home Assistant | cl, hl | REST API `localhost:8123` (12 entities running) | HA long-lived token (generate in UI) | S-M |
-| Plaid | cl | Read via cortex-postgres DB (encrypted tokens, read-only) | DB password | M (+ policy: financial PII scoping) |
+| Plaid | cl | Read via cortex-postgres — Rust tool reads only allowed columns (account name, type, balance, last updated). No merchant names, transaction details, or account numbers ever reach Claude. PII filtered in Rust before tool result. | DB password | M |
 
 ## Leo's Core Problem (from memory/decisions.md)
 

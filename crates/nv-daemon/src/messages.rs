@@ -251,7 +251,10 @@ impl MessageStore {
             return Ok(String::new());
         }
 
-        let mut lines = Vec::with_capacity(messages.len());
+        let mut lines = Vec::with_capacity(messages.len() + 10);
+        let mut in_turn = false;
+        let mut prev_direction: Option<&str> = None;
+
         for msg in &messages {
             // Extract HH:MM from the timestamp (format: "YYYY-MM-DD HH:MM:SS")
             let time_part = if msg.timestamp.len() >= 16 {
@@ -260,9 +263,14 @@ impl MessageStore {
                 &msg.timestamp
             };
 
-            // Truncate content at 500 chars
-            let content = if msg.content.len() > 500 {
-                format!("{}...", &msg.content[..500])
+            // Truncate content at 2000 chars
+            let content = if msg.content.len() > 2000 {
+                // Find a valid char boundary
+                let mut end = 2000;
+                while end > 0 && !msg.content.is_char_boundary(end) {
+                    end -= 1;
+                }
+                format!("{}...", &msg.content[..end])
             } else {
                 msg.content.clone()
             };
@@ -273,7 +281,30 @@ impl MessageStore {
                 &msg.sender
             };
 
+            // Turn-pair grouping: start a new turn group when we see a user message
+            // after an assistant message (or at the start)
+            if msg.direction == "inbound" {
+                if in_turn {
+                    lines.push("--- end turn ---".to_string());
+                }
+                lines.push("--- turn ---".to_string());
+                in_turn = true;
+            } else if !in_turn && prev_direction.is_none() {
+                // Orphan assistant message at the start
+                lines.push("--- turn ---".to_string());
+                in_turn = true;
+            }
+
             lines.push(format!("[{time_part}] {sender}: {content}"));
+            prev_direction = Some(if msg.direction == "outbound" {
+                "outbound"
+            } else {
+                "inbound"
+            });
+        }
+
+        if in_turn {
+            lines.push("--- end turn ---".to_string());
         }
 
         Ok(lines.join("\n"))
@@ -579,23 +610,60 @@ mod tests {
 
         let ctx = store.format_recent_for_context(20).unwrap();
         let lines: Vec<&str> = ctx.lines().collect();
-        assert_eq!(lines.len(), 2);
-        assert!(lines[0].contains("leo: hello"));
-        assert!(lines[1].contains("Nova: hi there"));
+        // Should have turn markers + 2 messages + end marker
+        assert!(ctx.contains("--- turn ---"));
+        assert!(ctx.contains("--- end turn ---"));
+        assert!(ctx.contains("leo: hello"));
+        assert!(ctx.contains("Nova: hi there"));
+        // 4 lines: turn marker, user msg, assistant msg, end turn marker
+        assert_eq!(lines.len(), 4);
     }
 
     #[test]
     fn format_recent_truncates_long_content() {
         let (_dir, store) = setup();
-        let long_content = "x".repeat(600);
+        let long_content = "x".repeat(2500);
         store
             .log_inbound("telegram", "leo", &long_content, "message")
             .unwrap();
 
         let ctx = store.format_recent_for_context(20).unwrap();
-        // Should be truncated to 500 chars + "..."
+        // Should be truncated to 2000 chars + "..."
         assert!(ctx.contains("..."));
-        assert!(ctx.len() < 600);
+        // The total context line should be < 2500 (plus some overhead for markers and prefix)
+        let content_line = ctx.lines().find(|l| l.contains("leo:")).unwrap();
+        // Content portion is after "[HH:MM] leo: " prefix
+        assert!(content_line.len() < 2100);
+    }
+
+    #[test]
+    fn format_recent_2000_char_content_not_truncated() {
+        let (_dir, store) = setup();
+        let content = "x".repeat(1999);
+        store
+            .log_inbound("telegram", "leo", &content, "message")
+            .unwrap();
+
+        let ctx = store.format_recent_for_context(20).unwrap();
+        // Should NOT be truncated (under 2000)
+        assert!(!ctx.contains("..."));
+    }
+
+    #[test]
+    fn format_recent_turn_grouping_multiple_turns() {
+        let (_dir, store) = setup();
+        // Turn 1
+        store.log_inbound("telegram", "leo", "question 1", "message").unwrap();
+        store.log_outbound("telegram", "answer 1", None, None, None, None).unwrap();
+        // Turn 2
+        store.log_inbound("telegram", "leo", "question 2", "message").unwrap();
+        store.log_outbound("telegram", "answer 2", None, None, None, None).unwrap();
+
+        let ctx = store.format_recent_for_context(20).unwrap();
+        let turn_starts: Vec<_> = ctx.lines().filter(|l| *l == "--- turn ---").collect();
+        let turn_ends: Vec<_> = ctx.lines().filter(|l| *l == "--- end turn ---").collect();
+        assert_eq!(turn_starts.len(), 2, "should have 2 turn groups");
+        assert_eq!(turn_ends.len(), 2, "should have 2 end markers");
     }
 
     #[test]

@@ -19,6 +19,7 @@ use crate::agent::{
     build_system_context, check_bootstrap_state, ChannelRegistry,
 };
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
+use crate::conversation::{ConversationStore, MAX_HISTORY_CHARS, MAX_HISTORY_TURNS};
 use crate::diary::{DiaryEntry, DiaryWriter};
 use crate::jira;
 use crate::memory::Memory;
@@ -57,12 +58,6 @@ pub enum WorkerEvent {
 }
 
 // ── Constants ───────────────────────────────────────────────────────
-
-/// Maximum number of conversation turns to keep in worker history.
-const MAX_HISTORY_TURNS: usize = 20;
-
-/// Maximum total characters across conversation history.
-const MAX_HISTORY_CHARS: usize = 50_000;
 
 /// Maximum tool use loop iterations per worker cycle (safety limit).
 const MAX_TOOL_LOOP_ITERATIONS: usize = 10;
@@ -150,6 +145,7 @@ pub struct SharedDeps {
     pub memory: Memory,
     pub state: State,
     pub message_store: Arc<std::sync::Mutex<MessageStore>>,
+    pub conversation_store: Arc<std::sync::Mutex<ConversationStore>>,
     pub diary: Arc<std::sync::Mutex<DiaryWriter>>,
     pub jira_client: Option<jira::JiraClient>,
     pub nexus_client: Option<nexus::client::NexusClient>,
@@ -429,7 +425,14 @@ impl Worker {
 
         user_message.push_str(&trigger_text);
 
-        let mut conversation_history = vec![Message::user(&user_message)];
+        // Load prior conversation turns from the shared store
+        let prior_turns = {
+            let mut store = deps.conversation_store.lock().unwrap();
+            store.load()
+        };
+
+        let mut conversation_history = prior_turns;
+        conversation_history.push(Message::user(&user_message));
 
         // Emit StageComplete for context build
         let _ = event_tx.send(WorkerEvent::StageComplete {
@@ -503,6 +506,14 @@ impl Worker {
         });
 
         let response_text = extract_text(&final_content);
+
+        // Push the completed turn (user + assistant) to the conversation store
+        {
+            let user_msg_for_store = Message::user(&user_message);
+            let assistant_msg_for_store = Message::assistant_blocks(final_content.clone());
+            let mut conv_store = deps.conversation_store.lock().unwrap();
+            conv_store.push(user_msg_for_store, assistant_msg_for_store);
+        }
 
         // Emit Complete event
         let _ = event_tx.send(WorkerEvent::Complete {

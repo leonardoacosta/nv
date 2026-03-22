@@ -17,6 +17,7 @@ use crate::claude::{
     ApiError, ApiResponse, ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition,
     ToolResultBlock,
 };
+use crate::conversation::{MAX_HISTORY_CHARS, MAX_HISTORY_TURNS, SESSION_TIMEOUT};
 use crate::diary::{DiaryEntry, DiaryWriter};
 use crate::jira;
 use crate::tts;
@@ -27,14 +28,8 @@ use crate::query;
 use crate::state::State;
 use crate::tools;
 
-// ── Constants (used by worker.rs) ────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────
 
-#[allow(dead_code)]
-const MAX_HISTORY_TURNS: usize = 20;
-#[allow(dead_code)]
-const MAX_HISTORY_CHARS: usize = 50_000;
-#[allow(dead_code)]
-const SESSION_TIMEOUT: Duration = Duration::from_secs(600);
 #[allow(dead_code)]
 const MAX_TOOL_LOOP_ITERATIONS: usize = 10;
 #[allow(dead_code)]

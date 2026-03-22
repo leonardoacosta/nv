@@ -3,6 +3,7 @@ mod aggregation;
 mod bash;
 mod callbacks;
 mod claude;
+mod conversation;
 mod diary;
 mod digest;
 mod discord;
@@ -684,11 +685,16 @@ async fn main() -> anyhow::Result<()> {
     let (worker_event_tx, worker_event_rx) =
         mpsc::unbounded_channel::<worker::WorkerEvent>();
 
+    // Initialize conversation store
+    let conversation_store = conversation::ConversationStore::new();
+    tracing::info!("conversation store initialized");
+
     // Build shared dependencies for workers
     let shared_deps = Arc::new(worker::SharedDeps {
         memory: memory::Memory::new(&nv_base),
         state: state::State::new(&nv_base),
         message_store: Arc::new(std::sync::Mutex::new(message_store)),
+        conversation_store: Arc::new(std::sync::Mutex::new(conversation_store)),
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),
         jira_client,
         nexus_client,

@@ -198,13 +198,67 @@ Package and deploy as systemd service.
 
 ---
 
+## Completed (v1 MVP — 2026-03-22)
+
+All 10 original specs applied and archived. Additional specs completed same session:
+
+| Spec | Status | Notes |
+|------|--------|-------|
+| 1-10 (original roadmap) | **Archived** | Full MVP: scaffold → deploy |
+| `add-bootstrap-soul` | **Archived** | 4-file prompt separation, first-run bootstrap |
+| `add-message-store` | **Archived** | SQLite persistence, auto-context, `nv stats` CLI |
+
+### Bonus (implemented without spec)
+
+- Claude CLI subprocess (OAuth support, no API key needed)
+- Sandbox isolation (no CLAUDE.md/hooks/MCP leak)
+- System prompt v2 (competitor research: OpenClaw, Khoj, Cline, Aider, Manus)
+- Filesystem tools (Read/Glob/Grep/Bash git)
+- Discord relay bot (`relays/discord/`)
+- Teams webhook relay (`relays/teams/`)
+- Jira v3 search endpoint migration
+- RTK in subprocess PATH
+- Notification gating (suppress empty digests)
+- Thinking indicator with 60s ticker
+- Markdown-to-HTML converter for Telegram
+- Edit-or-fallback message delivery
+- 2G memory limit (OOM fix)
+
+---
+
+## Deferred Tasks (MVP specs — polish)
+
+Open tasks from completed MVP specs. Functional code works; these are hardening/test items.
+
+### jira-integration (12 deferred)
+
+- Retry wrapper with exponential backoff (429/5xx/network)
+- Callback handlers: edit, cancel, expiry sweep
+- Callback routing in agent loop
+- HTTP mock tests (status codes, case-insensitive transitions)
+- Integration tests (real Jira, behind env var gate)
+- Manual e2e gate (Telegram → Jira create flow)
+
+### telegram-channel (2 deferred)
+
+- Integration test (real Telegram API, behind feature gate)
+- Manual e2e gate (send hello, bot echoes)
+
+### nexus-integration (1 deferred)
+
+- Wire Nexus error callbacks in Telegram handler (view error, create bug)
+
+---
+
 ## Future Specs (P1 — Next Week)
 
 ### Spec 11: `discord-channel` (P1)
 Implement Discord gateway WebSocket + REST channel adapter.
+*Note: relay bot exists at `relays/discord/` as interim solution.*
 
 ### Spec 12: `teams-channel` (P1)
 Implement MS Graph API channel adapter with OAuth2 flow.
+*Note: webhook relay exists at `relays/teams/` as interim solution.*
 
 ### Spec 13: `imessage-channel` (P1)
 Implement iMessage channel via BlueBubbles API or Mac relay.
@@ -212,32 +266,34 @@ Implement iMessage channel via BlueBubbles API or Mac relay.
 ### Spec 14: `jira-webhooks` (P1)
 Inbound Jira webhook handler for bidirectional sync.
 
+### Spec 15: `add-interaction-diary` (P2)
+Rust-written daily interaction log at `~/.nv/diary/`. *Spec written, not applied.*
+
+### Spec 16: `add-voice-reply` (P2)
+Telegram voice message replies via TTS. *Spec written, not applied.*
+
 ---
 
-## Spec Dependency Graph
+## Spec Dependency Graph (v1 — completed)
 
 ```
-spec-1 (scaffold)
-  └─→ spec-2 (core types)
-        ├─→ spec-3 (telegram)
-        │     └─→ spec-4 (agent loop)
-        │           ├─→ spec-5 (memory)
-        │           │     ├─→ spec-6 (jira)
-        │           │     │     ├─→ spec-7 (digest)
-        │           │     │     └─→ spec-8 (query)
-        │           │     └─→ spec-7 (digest)
-        │           └─→ spec-9 (nexus)
-        └─→ spec-9 (nexus)
+spec-1 (scaffold)          ✅
+  └─→ spec-2 (core types)  ✅
+        ├─→ spec-3 (telegram)  ✅
+        │     └─→ spec-4 (agent loop)  ✅
+        │           ├─→ spec-5 (memory)  ✅
+        │           │     ├─→ spec-6 (jira)  ✅
+        │           │     │     ├─→ spec-7 (digest)  ✅
+        │           │     │     └─→ spec-8 (query)  ✅
+        │           │     └─→ spec-7 (digest)  ✅
+        │           └─→ spec-9 (nexus)  ✅
+        └─→ spec-9 (nexus)  ✅
 
-spec-9 + spec-7 + spec-8 ──→ spec-10 (deploy)
+spec-9 + spec-7 + spec-8 ──→ spec-10 (deploy)  ✅
+
+Post-MVP:
+  spec-10 ──→ add-bootstrap-soul  ✅
+  spec-10 ──→ add-message-store   ✅
+  spec-10 ──→ add-interaction-diary  ⏸ (spec written)
+  spec-10 ──→ add-voice-reply       ⏸ (spec written)
 ```
-
-## Wave Execution Plan
-
-| Wave | Specs | Parallelism | Gate |
-|------|-------|-------------|------|
-| 1 | 1, 2 | Sequential | `cargo build` |
-| 2 | 3, 4 | Sequential (3→4) | Telegram echo test |
-| 3 | 5, 6 | Parallel (both need spec-4) | Memory recall + Jira create |
-| 4 | 7, 8 | Parallel | Digest arrives + query works |
-| 5 | 9, 10 | Sequential (9→10) | systemd running, Nexus connected |

@@ -216,8 +216,13 @@ impl ClaudeClient {
                 "--no-session-persistence",
                 "--tools",
                 "",
+                // Prevent CLAUDE.md discovery and skill/hook loading
+                "--system-prompt",
+                system,
+                "--strict-mcp-config",
             ])
             .env("HOME", &sandbox_home)
+            .current_dir(&sandbox_home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

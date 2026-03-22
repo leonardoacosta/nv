@@ -39,8 +39,8 @@
 - [x] Implement `write_memory(topic, content)` — append entry to topic file
 - [x] New topic: create file with H1 header + first entry as H2
 - [x] Existing topic: append H2 entry with timestamp
-- [ ] Update frontmatter: bump `updated` timestamp and `entries` count
-- [ ] Implement `update_frontmatter()` — parse and rewrite YAML frontmatter in-place
+- [x] Update frontmatter: bump `updated` timestamp and `entries` count
+- [x] Implement `update_frontmatter()` — parse and rewrite YAML frontmatter in-place
 - [x] Call `update_index()` to keep MEMORY.md current
 - [x] Wire into agent loop `execute_tool()` dispatch, replacing spec-4 stub
 - [ ] After write, check entry count and trigger summarization if over threshold
@@ -57,8 +57,8 @@
 ## Context Injection
 - [x] Implement `get_context_summary()` — returns formatted string for Claude's context
 - [x] Always include MEMORY.md index (truncated to 1000 chars) as first context block
-- [ ] Extract text from message triggers for keyword matching
-- [ ] Implement `find_relevant_topics(text)` — simple keyword match against topic filenames and first 500 chars of content
+- [x] Extract text from message triggers for keyword matching
+- [x] Implement `find_relevant_topics(text)` — simple keyword match against topic filenames and first 500 chars of content
 - [x] Load topic files up to MAX_CONTEXT_CHARS (4000 chars) budget
 - [x] Format each loaded topic as `[Memory: {topic}]\n{content}` separated by `---`
 - [x] Stop loading topics when remaining char budget drops below 200

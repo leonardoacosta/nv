@@ -277,16 +277,6 @@ impl AgentLoop {
                 }
             };
 
-            // Load memory context to inject before the user message
-            let memory_context = match self.memory.get_context_summary() {
-                Ok(ctx) if !ctx.is_empty() => Some(ctx),
-                Ok(_) => None,
-                Err(e) => {
-                    tracing::warn!(error = %e, "failed to load memory context");
-                    None
-                }
-            };
-
             // Load follow-up context if available
             let followup_context = match self.followup_manager.load() {
                 Ok(Some(state)) => {
@@ -312,6 +302,16 @@ impl AgentLoop {
             // Format the trigger batch into a user message
             let trigger_text = format_trigger_batch(&triggers);
             tracing::debug!(trigger_text = %trigger_text, "formatted trigger batch");
+
+            // Load memory context prioritized by relevance to the trigger text
+            let memory_context = match self.memory.get_context_summary_for(&trigger_text) {
+                Ok(ctx) if !ctx.is_empty() => Some(ctx),
+                Ok(_) => None,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to load memory context");
+                    None
+                }
+            };
 
             // Build the full user message with context injections
             let mut user_message = String::new();

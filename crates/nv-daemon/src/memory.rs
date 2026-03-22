@@ -18,6 +18,14 @@ const SEARCH_CONTEXT_LINES: usize = 2;
 /// Maximum characters for the context summary.
 const MAX_CONTEXT_CHARS: usize = 4000;
 
+/// Common English stop words filtered out during keyword extraction.
+const STOP_WORDS: &[&str] = &[
+    "the", "a", "an", "is", "are", "was", "were", "to", "of", "in", "for",
+    "on", "at", "by", "with", "it", "and", "or", "but", "not", "this", "that",
+    "from", "as", "be", "has", "have", "had", "do", "does", "did", "will",
+    "would", "can", "could", "should", "may", "might", "shall", "must", "need",
+];
+
 /// Default MEMORY.md index content.
 const DEFAULT_MEMORY_INDEX: &str = "\
 # NV Memory Index
@@ -178,19 +186,20 @@ impl Memory {
 
     /// Write content to a memory topic.
     ///
-    /// If the topic is new, creates the file with a header and updates
-    /// the MEMORY.md index. If existing, appends as a new entry with
-    /// a timestamp header.
+    /// If the topic is new, creates the file with YAML frontmatter and a header,
+    /// then updates the MEMORY.md index. If existing, appends a new entry with a
+    /// timestamp header and updates the frontmatter (`updated`, `entries`).
     pub fn write(&self, topic: &str, content: &str) -> Result<String> {
         let filename = sanitize_topic(topic);
         let path = self.base_path.join(format!("{filename}.md"));
         let now = Utc::now();
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let date_str = now.format("%Y-%m-%d %H:%M").to_string();
         let is_new = !path.exists();
 
         if is_new {
             let initial = format!(
-                "# {topic}\n\n## {date_str} -- Entry\n\n{content}\n"
+                "---\ntopic: {topic}\ncreated: {timestamp}\nupdated: {timestamp}\nentries: 1\n---\n\n# {topic}\n\n## {date_str} -- Entry\n\n{content}\n"
             );
             atomic_write(&path, &initial)?;
 
@@ -200,12 +209,15 @@ impl Memory {
             tracing::info!(topic, "created new memory topic");
             Ok(format!("Created new memory topic: {topic}"))
         } else {
-            // Append entry to existing file
+            // Append entry to existing file, then update frontmatter
             let entry = format!("\n## {date_str} -- Entry\n\n{content}\n");
             let mut existing = fs::read_to_string(&path)
                 .with_context(|| format!("failed to read {}", path.display()))?;
             existing.push_str(&entry);
             atomic_write(&path, &existing)?;
+
+            // Update frontmatter (updated timestamp + entries count)
+            self.update_frontmatter(&path, topic, &timestamp)?;
 
             tracing::info!(topic, "appended to memory topic");
             Ok(format!("Appended to memory topic: {topic}"))
@@ -272,6 +284,110 @@ impl Memory {
         Ok(parts.join("\n\n---\n\n"))
     }
 
+    /// Build a context summary prioritized by relevance to `trigger_text`.
+    ///
+    /// Extracts keywords from `trigger_text`, scores each topic file by keyword
+    /// matches in its filename and first 500 chars of content, then loads topics
+    /// in relevance order (highest score first) within the char budget.
+    ///
+    /// Falls back to alphabetical order when no trigger text is supplied.
+    pub fn get_context_summary_for(&self, trigger_text: &str) -> Result<String> {
+        let mut parts = Vec::new();
+        let mut remaining = MAX_CONTEXT_CHARS;
+
+        // Always include MEMORY.md index first
+        let index_path = self.base_path.join("MEMORY.md");
+        if index_path.exists() {
+            let index = fs::read_to_string(&index_path)?;
+            let index_trimmed = truncate_to_chars(&index, 1000.min(remaining));
+            remaining = remaining.saturating_sub(index_trimmed.len());
+            parts.push(format!("[Memory Index]\n{index_trimmed}"));
+        }
+
+        // Get topics ordered by relevance
+        let topics = self.find_relevant_topics(trigger_text)?;
+        for topic in &topics {
+            if remaining < 200 {
+                break;
+            }
+            let path = self.base_path.join(format!("{topic}.md"));
+            if let Ok(content) = fs::read_to_string(&path) {
+                let trimmed = truncate_to_chars(&content, remaining);
+                remaining = remaining.saturating_sub(trimmed.len());
+                parts.push(format!("[Memory: {topic}]\n{trimmed}"));
+            }
+        }
+
+        Ok(parts.join("\n\n---\n\n"))
+    }
+
+    /// Find topics relevant to `text`, sorted by keyword match score (desc).
+    ///
+    /// Keywords are extracted from `text` by splitting on whitespace, lowercasing,
+    /// and filtering out common stop words. Each topic is scored by the number of
+    /// keyword appearances in its filename and the first 500 chars of its content.
+    /// Topics with no matches are appended after matched topics, in alphabetical order.
+    pub fn find_relevant_topics(&self, text: &str) -> Result<Vec<String>> {
+        let keywords = extract_keywords(text);
+
+        let all_topics = self.list_topics()?;
+
+        if keywords.is_empty() {
+            return Ok(all_topics);
+        }
+
+        let mut scored: Vec<(String, usize)> = all_topics
+            .into_iter()
+            .map(|topic| {
+                let mut score: usize = 0;
+
+                // Score keyword hits in filename
+                let topic_lower = topic.to_lowercase();
+                for kw in &keywords {
+                    if topic_lower.contains(kw.as_str()) {
+                        score += 1;
+                    }
+                }
+
+                // Score keyword hits in first 500 chars of content
+                let path = self.base_path.join(format!("{topic}.md"));
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let preview = &content[..content.len().min(500)];
+                    let preview_lower = preview.to_lowercase();
+                    for kw in &keywords {
+                        // Count all occurrences in the preview
+                        let mut start = 0;
+                        while let Some(pos) = preview_lower[start..].find(kw.as_str()) {
+                            score += 1;
+                            start += pos + kw.len();
+                        }
+                    }
+                }
+
+                (topic, score)
+            })
+            .collect();
+
+        // Stable sort: highest score first; ties keep alphabetical order from list_topics
+        scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+        Ok(scored.into_iter().map(|(t, _)| t).collect())
+    }
+
+    /// Parse and rewrite YAML frontmatter in-place for a memory file.
+    ///
+    /// Updates the `updated` field to `timestamp`, increments `entries` by 1,
+    /// and rewrites the file atomically. If no frontmatter exists, inserts it
+    /// (backward-compatible with files created before this feature).
+    fn update_frontmatter(&self, path: &Path, topic: &str, timestamp: &str) -> Result<()> {
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+
+        let (new_content, _entries) = upsert_frontmatter(&content, topic, timestamp, false);
+        atomic_write(path, &new_content)?;
+        Ok(())
+    }
+
     /// Update the MEMORY.md index when a topic is written.
     ///
     /// Adds a new row if the topic is new, or updates the Last Updated column
@@ -316,6 +432,38 @@ impl Memory {
 }
 
 // ── Helper Functions ────────────────────────────────────────────────
+
+/// Extract meaningful keywords from `text` for topic relevance scoring.
+///
+/// Splits on whitespace, lowercases each token, strips leading/trailing
+/// non-alphanumeric characters, and removes stop words and tokens shorter
+/// than 3 characters.
+fn extract_keywords(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter_map(|word| {
+            // Strip punctuation from both ends
+            let cleaned: String = word
+                .chars()
+                .skip_while(|c| !c.is_alphanumeric())
+                .collect::<String>()
+                .chars()
+                .rev()
+                .skip_while(|c| !c.is_alphanumeric())
+                .collect::<String>()
+                .chars()
+                .rev()
+                .collect();
+            let lower = cleaned.to_lowercase();
+            if lower.len() < 3 {
+                return None;
+            }
+            if STOP_WORDS.contains(&lower.as_str()) {
+                return None;
+            }
+            Some(lower)
+        })
+        .collect()
+}
 
 /// Sanitize a topic name into a valid filename.
 ///
@@ -373,6 +521,58 @@ fn truncate_to_chars(content: &str, max_chars: usize) -> String {
     } else {
         truncated.to_string()
     }
+}
+
+/// Parse, update, or insert YAML frontmatter in a memory file's content.
+///
+/// Returns `(new_content, entries_count)`.
+///
+/// - If frontmatter exists (content starts with `---`): updates `updated` to
+///   `timestamp` and increments `entries` by 1.
+/// - If no frontmatter: inserts it before the rest of the content.
+/// - When `is_new` is true the entries count is set to 1 (used by callers that
+///   build the initial content from scratch, though `write()` embeds frontmatter
+///   inline and never calls this with `is_new = true`).
+fn upsert_frontmatter(content: &str, topic: &str, timestamp: &str, is_new: bool) -> (String, u64) {
+    // Does the file start with a frontmatter block?
+    if content.starts_with("---\n") {
+        // Find the closing `---`
+        if let Some(close_offset) = content[4..].find("\n---\n") {
+            let fm_end = 4 + close_offset; // index of the newline before closing ---
+            let frontmatter = &content[4..fm_end];
+            let rest = &content[fm_end + 5..]; // skip "\n---\n"
+
+            // Parse existing fields line by line
+            let mut topic_val = topic.to_string();
+            let mut created_val = timestamp.to_string();
+            let mut entries_val: u64 = 1;
+
+            for line in frontmatter.lines() {
+                if let Some(v) = line.strip_prefix("topic: ") {
+                    topic_val = v.to_string();
+                } else if let Some(v) = line.strip_prefix("created: ") {
+                    created_val = v.to_string();
+                } else if let Some(v) = line.strip_prefix("entries: ") {
+                    entries_val = v.parse().unwrap_or(1);
+                }
+                // `updated` is intentionally not kept — we always overwrite it
+            }
+
+            let new_entries = if is_new { 1 } else { entries_val + 1 };
+
+            let new_content = format!(
+                "---\ntopic: {topic_val}\ncreated: {created_val}\nupdated: {timestamp}\nentries: {new_entries}\n---\n{rest}"
+            );
+            return (new_content, new_entries);
+        }
+    }
+
+    // No valid frontmatter — insert it before the existing content
+    let new_entries: u64 = 1;
+    let new_content = format!(
+        "---\ntopic: {topic}\ncreated: {timestamp}\nupdated: {timestamp}\nentries: {new_entries}\n---\n\n{content}"
+    );
+    (new_content, new_entries)
 }
 
 /// Write content to a file atomically (write to .tmp, then rename).
@@ -607,5 +807,231 @@ mod tests {
         assert_eq!(fs::read_to_string(&path).unwrap(), "hello world");
         // No .tmp file should remain
         assert!(!dir.path().join("test.md.tmp").exists());
+    }
+
+    // ── Frontmatter tests ────────────────────────────────────────────
+
+    #[test]
+    fn upsert_frontmatter_inserts_when_missing() {
+        let content = "# My Topic\n\nsome content\n";
+        let (result, entries) =
+            upsert_frontmatter(content, "my-topic", "2024-01-01T00:00:00Z", false);
+        assert!(result.starts_with("---\n"));
+        assert!(result.contains("topic: my-topic"));
+        assert!(result.contains("created: 2024-01-01T00:00:00Z"));
+        assert!(result.contains("updated: 2024-01-01T00:00:00Z"));
+        assert!(result.contains("entries: 1"));
+        assert!(result.contains("# My Topic"));
+        assert_eq!(entries, 1);
+    }
+
+    #[test]
+    fn upsert_frontmatter_updates_existing() {
+        let content = "---\ntopic: my-topic\ncreated: 2024-01-01T00:00:00Z\nupdated: 2024-01-01T00:00:00Z\nentries: 3\n---\n\n# My Topic\n\ncontent\n";
+        let (result, entries) =
+            upsert_frontmatter(content, "my-topic", "2024-06-01T12:00:00Z", false);
+        assert!(result.contains("created: 2024-01-01T00:00:00Z")); // unchanged
+        assert!(result.contains("updated: 2024-06-01T12:00:00Z")); // new timestamp
+        assert!(result.contains("entries: 4")); // incremented
+        assert!(result.contains("# My Topic")); // body preserved
+        assert_eq!(entries, 4);
+    }
+
+    #[test]
+    fn upsert_frontmatter_preserves_topic_and_created() {
+        let content = "---\ntopic: original-name\ncreated: 2023-01-01T00:00:00Z\nupdated: 2023-01-01T00:00:00Z\nentries: 1\n---\n\nbody\n";
+        let (result, _) =
+            upsert_frontmatter(content, "ignored-topic", "2024-01-01T00:00:00Z", false);
+        assert!(result.contains("topic: original-name")); // kept from file
+        assert!(result.contains("created: 2023-01-01T00:00:00Z")); // kept from file
+    }
+
+    #[test]
+    fn write_new_topic_includes_frontmatter() {
+        let (_dir, memory) = setup();
+        memory.write("fm-test", "Initial content").unwrap();
+
+        let content = memory.read("fm-test").unwrap();
+        assert!(content.starts_with("---\n"));
+        assert!(content.contains("topic: fm-test"));
+        assert!(content.contains("entries: 1"));
+        assert!(content.contains("Initial content"));
+    }
+
+    #[test]
+    fn write_append_increments_entries() {
+        let (_dir, memory) = setup();
+
+        memory.write("counter-topic", "First").unwrap();
+        memory.write("counter-topic", "Second").unwrap();
+        memory.write("counter-topic", "Third").unwrap();
+
+        let content = memory.read("counter-topic").unwrap();
+        assert!(content.contains("entries: 3"));
+        assert!(content.contains("First"));
+        assert!(content.contains("Second"));
+        assert!(content.contains("Third"));
+    }
+
+    #[test]
+    fn write_append_updated_timestamp_present() {
+        let (_dir, memory) = setup();
+
+        memory.write("ts-topic", "First").unwrap();
+        memory.write("ts-topic", "Second").unwrap();
+
+        let content = memory.read("ts-topic").unwrap();
+        // `updated:` field must be present and look like an ISO-8601 timestamp
+        let updated_line = content
+            .lines()
+            .find(|l| l.starts_with("updated: "))
+            .expect("updated field missing from frontmatter");
+        assert!(updated_line.starts_with("updated: 20"));
+    }
+
+    #[test]
+    fn update_frontmatter_backward_compatible() {
+        // Simulate a legacy file that has no frontmatter
+        let (_dir, memory) = setup();
+        let legacy_path = memory.base_path.join("legacy.md");
+        fs::write(&legacy_path, "# Legacy Topic\n\nOld content\n").unwrap();
+
+        // Calling update_frontmatter on it should add frontmatter without error
+        memory
+            .update_frontmatter(&legacy_path, "legacy", "2024-01-01T00:00:00Z")
+            .unwrap();
+
+        let updated = fs::read_to_string(&legacy_path).unwrap();
+        assert!(updated.starts_with("---\n"));
+        assert!(updated.contains("topic: legacy"));
+        assert!(updated.contains("entries: 1"));
+        assert!(updated.contains("Old content"));
+    }
+
+    // ── extract_keywords tests ──────────────────────────────────────
+
+    #[test]
+    fn extract_keywords_basic() {
+        let kws = extract_keywords("What are the project decisions?");
+        assert!(kws.contains(&"project".to_string()));
+        assert!(kws.contains(&"decisions".to_string()));
+        assert!(!kws.contains(&"the".to_string()));
+        assert!(!kws.contains(&"are".to_string()));
+    }
+
+    #[test]
+    fn extract_keywords_strips_punctuation() {
+        let kws = extract_keywords("Hello, world!");
+        assert!(kws.contains(&"hello".to_string()));
+        assert!(kws.contains(&"world".to_string()));
+    }
+
+    #[test]
+    fn extract_keywords_filters_short_tokens() {
+        let kws = extract_keywords("do it now");
+        assert!(kws.contains(&"now".to_string()));
+        assert!(!kws.contains(&"do".to_string()));
+        assert!(!kws.contains(&"it".to_string()));
+    }
+
+    #[test]
+    fn extract_keywords_empty_text() {
+        let kws = extract_keywords("");
+        assert!(kws.is_empty());
+    }
+
+    // ── find_relevant_topics tests ──────────────────────────────────
+
+    #[test]
+    fn find_relevant_topics_returns_matched_first() {
+        let (_dir, memory) = setup();
+
+        memory.write("tasks", "Review the Stripe integration").unwrap();
+
+        let topics = memory.find_relevant_topics("decisions").unwrap();
+        let decisions_pos = topics.iter().position(|t| t == "decisions").unwrap();
+        let tasks_pos = topics.iter().position(|t| t == "tasks").unwrap();
+        assert!(decisions_pos < tasks_pos, "decisions should rank above tasks");
+    }
+
+    #[test]
+    fn find_relevant_topics_content_scoring() {
+        let (_dir, memory) = setup();
+
+        memory
+            .write("decisions", "We decided to use PostgreSQL for storage")
+            .unwrap();
+        memory
+            .write("tasks", "Review open issues this week")
+            .unwrap();
+
+        let topics = memory
+            .find_relevant_topics("postgresql database storage")
+            .unwrap();
+        let decisions_pos = topics.iter().position(|t| t == "decisions").unwrap();
+        let tasks_pos = topics.iter().position(|t| t == "tasks").unwrap();
+        assert!(decisions_pos < tasks_pos);
+    }
+
+    #[test]
+    fn find_relevant_topics_no_match_all_topics_returned() {
+        let (_dir, memory) = setup();
+
+        let topics = memory.find_relevant_topics("xyzunknown").unwrap();
+        let all_topics = memory.list_topics().unwrap();
+        assert_eq!(topics.len(), all_topics.len());
+    }
+
+    #[test]
+    fn find_relevant_topics_empty_text_falls_back() {
+        let (_dir, memory) = setup();
+
+        let topics_empty = memory.find_relevant_topics("").unwrap();
+        let topics_alpha = memory.list_topics().unwrap();
+        assert_eq!(topics_empty, topics_alpha);
+    }
+
+    // ── get_context_summary_for tests ──────────────────────────────
+
+    #[test]
+    fn get_context_summary_for_includes_index() {
+        let (_dir, memory) = setup();
+
+        let summary = memory
+            .get_context_summary_for("some trigger text")
+            .unwrap();
+        assert!(summary.contains("[Memory Index]"));
+        assert!(summary.contains("NV Memory Index"));
+    }
+
+    #[test]
+    fn get_context_summary_for_includes_relevant_topics() {
+        let (_dir, memory) = setup();
+
+        memory
+            .write("decisions", "Important decision about tasks")
+            .unwrap();
+
+        let summary = memory
+            .get_context_summary_for("decisions about the project")
+            .unwrap();
+        assert!(summary.contains("[Memory: decisions]"));
+    }
+
+    #[test]
+    fn get_context_summary_for_respects_budget() {
+        let (_dir, memory) = setup();
+
+        let big_content = "x".repeat(2000);
+        for i in 0..10 {
+            memory
+                .write(&format!("topic-{i}"), &big_content)
+                .unwrap();
+        }
+
+        let summary = memory
+            .get_context_summary_for("topic content")
+            .unwrap();
+        assert!(summary.len() <= MAX_CONTEXT_CHARS + 500);
     }
 }

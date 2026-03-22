@@ -1,0 +1,15 @@
+[Unit]
+Description=Nova Discord Relay Bot
+After=network-online.target nv.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.nv/relays/discord/venv/bin/python %h/nv/relays/discord/bot.py
+Restart=on-failure
+RestartSec=10s
+EnvironmentFile=-%h/.nv/env
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

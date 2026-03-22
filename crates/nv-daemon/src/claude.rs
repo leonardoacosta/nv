@@ -215,7 +215,7 @@ impl ClaudeClient {
                 &self.model,
                 "--no-session-persistence",
                 "--tools",
-                "",
+                "Read,Glob,Grep,Bash(git:*)",
                 // Prevent CLAUDE.md discovery and skill/hook loading
                 "--system-prompt",
                 system,
@@ -223,7 +223,7 @@ impl ClaudeClient {
             ])
             .env("HOME", &sandbox_home)
             .env("PATH", format!("{}/.local/bin:/usr/local/bin:/usr/bin:/bin", real_home))
-            .current_dir(&sandbox_home)
+            .current_dir(format!("{real_home}/dev"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

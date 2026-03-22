@@ -257,8 +257,9 @@ impl Orchestrator {
         tracing::info!("orchestrator started, waiting for triggers");
 
         /// Inactivity threshold — if a worker stage has been running this long
-        /// without a Complete or Error, send a status update to Telegram.
-        const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
+        /// Typing indicator refresh interval. Telegram's "typing..." indicator
+        /// expires after ~5s, so we refresh every 5s while workers are active.
+        const TYPING_REFRESH: Duration = Duration::from_secs(5);
 
         let mut trigger_closed = false;
 
@@ -273,7 +274,7 @@ impl Orchestrator {
             let next_inactivity = self
                 .worker_stage_started
                 .values()
-                .map(|(_, started)| *started + INACTIVITY_TIMEOUT)
+                .map(|(_, started)| *started + TYPING_REFRESH)
                 .min();
 
             let inactivity_sleep = match next_inactivity {
@@ -318,7 +319,7 @@ impl Orchestrator {
                     self.handle_worker_event(event).await;
                 }
                 () = &mut inactivity_sleep => {
-                    self.check_inactivity(INACTIVITY_TIMEOUT).await;
+                    self.check_inactivity(TYPING_REFRESH).await;
                 }
             }
         }
@@ -517,38 +518,35 @@ impl Orchestrator {
         }
     }
 
-    /// Check for workers that have been running a stage longer than the
-    /// inactivity threshold and send a status update to Telegram.
-    async fn check_inactivity(&mut self, threshold: Duration) {
-        let now = Instant::now();
-        let mut stale_workers = Vec::new();
-
-        for (worker_id, (stage, started)) in &self.worker_stage_started {
-            if now.duration_since(*started) >= threshold {
-                stale_workers.push((*worker_id, stage.clone()));
-            }
+    /// Check for active workers and refresh the Telegram typing indicator.
+    /// Status details go to debug log only — never sent as messages.
+    async fn check_inactivity(&mut self, _threshold: Duration) {
+        if self.worker_stage_started.is_empty() {
+            return;
         }
 
-        for (worker_id, stage) in stale_workers {
-            tracing::info!(
+        // Log stage details to debug (for journalctl optimization analysis)
+        for (worker_id, (stage, started)) in &self.worker_stage_started {
+            let elapsed = Instant::now().duration_since(*started);
+            tracing::debug!(
                 worker_id = %worker_id,
                 stage = %stage,
-                "worker inactivity detected, sending status update"
+                elapsed_secs = elapsed.as_secs(),
+                human = %humanize_stage(stage),
+                "worker active"
             );
+        }
 
-            if let Some(channel) = self.channels.get("telegram") {
-                let msg = OutboundMessage {
-                    channel: "telegram".into(),
-                    content: format!("Still working on it... {}", humanize_stage(&stage)),
-                    reply_to: None,
-                    keyboard: None,
-                };
-                let _ = channel.send_message(msg).await;
-            }
-
-            // Reset the timer so we don't spam — move start time forward
-            if let Some(entry) = self.worker_stage_started.get_mut(&worker_id) {
-                entry.1 = Instant::now();
+        // Refresh typing indicator — shows "Nova is typing..." in chat header
+        // Telegram typing indicator expires after ~5s, so we refresh every cycle
+        if let Some(tg) = self.channels.get("telegram") {
+            if let Some(tg_channel) =
+                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+            {
+                let _ = tg_channel
+                    .client
+                    .send_chat_action(tg_channel.chat_id, "typing")
+                    .await;
             }
         }
     }

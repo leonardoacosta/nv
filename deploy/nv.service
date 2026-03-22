@@ -15,7 +15,7 @@ Environment=RUST_LOG=info
 Environment=HOME=%h
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 LimitNOFILE=4096
-MemoryMax=512M
+MemoryMax=2G
 TasksMax=128
 
 [Install]

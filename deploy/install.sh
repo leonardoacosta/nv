@@ -27,6 +27,16 @@ echo "==> Creating NV directories..."
 mkdir -p "$NV_DIR"/{state,memory,logs}
 mkdir -p "$CONFIG_DIR"
 
+# Create Claude CLI sandbox — minimal ~/.claude with only auth credentials.
+# Prevents loading hooks, CLAUDE.md, agents, MCP servers from host config.
+SANDBOX_DIR="$NV_DIR/claude-sandbox/.claude"
+mkdir -p "$SANDBOX_DIR"
+if [ -f "$HOME/.claude/.credentials.json" ]; then
+    ln -sf "$HOME/.claude/.credentials.json" "$SANDBOX_DIR/.credentials.json"
+    echo '{}' > "$SANDBOX_DIR/settings.json"
+    echo "    Claude sandbox: $SANDBOX_DIR (auth-only)"
+fi
+
 # Copy example config if no config exists
 if [ ! -f "$NV_DIR/nv.toml" ] && [ -f "$PROJECT_DIR/config/nv.example.toml" ]; then
     cp "$PROJECT_DIR/config/nv.example.toml" "$NV_DIR/nv.toml"

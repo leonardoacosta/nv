@@ -197,7 +197,14 @@ impl ClaudeClient {
         // Build the full prompt from system + conversation history
         let prompt = build_prompt(system, messages, tools);
 
-        // Spawn claude CLI
+        // Spawn claude CLI in a sandboxed HOME with only auth credentials.
+        // This prevents loading hooks, CLAUDE.md, agents, MCP servers, and plugins
+        // from the host config (~14s → ~8s startup savings per invocation).
+        let real_home = std::env::var("REAL_HOME")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_else(|_| "/home/nyaptor".into());
+        let sandbox_home = format!("{real_home}/.nv/claude-sandbox");
+
         let mut child = Command::new("claude")
             .args([
                 "--dangerously-skip-permissions",
@@ -210,6 +217,7 @@ impl ClaudeClient {
                 "--tools",
                 "",
             ])
+            .env("HOME", &sandbox_home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

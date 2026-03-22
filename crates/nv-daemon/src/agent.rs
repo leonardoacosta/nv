@@ -307,18 +307,50 @@ impl AgentLoop {
             truncate_history(&mut self.conversation_history);
 
             // Send "thinking" indicator to Telegram (will be edited with real response)
-            let thinking_msg_id = if let Some(tg) = self.channels.get("telegram") {
-                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
-                    match tg_channel.client.send_thinking(tg_channel.chat_id).await {
-                        Ok(id) => Some(id),
-                        Err(e) => {
-                            tracing::warn!(error = %e, "failed to send thinking indicator");
-                            None
+            let (thinking_msg_id, thinking_chat_id, thinking_client) =
+                if let Some(tg) = self.channels.get("telegram") {
+                    if let Some(tg_channel) =
+                        tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                    {
+                        match tg_channel.client.send_thinking(tg_channel.chat_id).await {
+                            Ok(id) => (
+                                Some(id),
+                                Some(tg_channel.chat_id),
+                                Some(tg_channel.client.clone()),
+                            ),
+                            Err(e) => {
+                                tracing::warn!(error = %e, "failed to send thinking indicator");
+                                (None, None, None)
+                            }
                         }
+                    } else {
+                        (None, None, None)
                     }
                 } else {
-                    None
-                }
+                    (None, None, None)
+                };
+
+            // Spawn ticker that updates "thinking" message every 60 seconds
+            let cancel_token = tokio_util::sync::CancellationToken::new();
+            let ticker_handle = if let (Some(msg_id), Some(chat_id), Some(client)) =
+                (thinking_msg_id, thinking_chat_id, thinking_client)
+            {
+                let token = cancel_token.clone();
+                Some(tokio::spawn(async move {
+                    let mut elapsed_min = 0u64;
+                    loop {
+                        tokio::select! {
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                                elapsed_min += 1;
+                                let status = format!("Still thinking... ({elapsed_min} min)");
+                                if let Err(e) = client.edit_message(chat_id, msg_id, &status, None).await {
+                                    tracing::debug!(error = %e, "failed to update thinking ticker");
+                                }
+                            }
+                            _ = token.cancelled() => break,
+                        }
+                    }
+                }))
             } else {
                 None
             };
@@ -334,6 +366,10 @@ impl AgentLoop {
                 .await
             {
                 Ok(response) => {
+                    // Stop the thinking ticker
+                    cancel_token.cancel();
+                    if let Some(h) = ticker_handle { h.abort(); }
+
                     if response.stop_reason == StopReason::MaxTokens {
                         tracing::warn!("Claude response hit max_tokens — response may be partial");
                     }
@@ -383,6 +419,9 @@ impl AgentLoop {
                     self.last_activity = Instant::now();
                 }
                 Err(e) => {
+                    // Stop the thinking ticker
+                    cancel_token.cancel();
+
                     tracing::error!(error = %e, "Claude API call failed");
 
                     // Send error to CLI channels if any

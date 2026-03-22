@@ -9,6 +9,7 @@ use super::types::{BotUser, TelegramResponse, Update};
 const TELEGRAM_MAX_MESSAGE_LEN: usize = 4096;
 
 /// Thin HTTP wrapper for Telegram Bot API endpoints.
+#[derive(Clone)]
 pub struct TelegramClient {
     http: Client,
     base_url: String,

@@ -3,15 +3,19 @@ use std::path::PathBuf;
 
 use anyhow::{anyhow, Result};
 
+use crate::ado_tools;
+use crate::aggregation;
 use crate::bash;
 use crate::claude::ToolDefinition;
 use crate::docker_tools;
 use crate::github;
+use crate::ha_tools;
 use crate::jira;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::neon_tools;
 use crate::nexus;
+use crate::plaid_tools;
 use crate::posthog_tools;
 use crate::resend_tools;
 use crate::sentry_tools;
@@ -169,6 +173,18 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Upstash Redis tools
     tools.extend(upstash_tools::upstash_tool_definitions());
+
+    // Add Home Assistant tools
+    tools.extend(ha_tools::ha_tool_definitions());
+
+    // Add Azure DevOps tools
+    tools.extend(ado_tools::ado_tool_definitions());
+
+    // Add Plaid financial tools
+    tools.extend(plaid_tools::plaid_tool_definitions());
+
+    // Add aggregation composite tools
+    tools.extend(aggregation::aggregation_tool_definitions());
 
     tools
 }
@@ -550,6 +566,21 @@ pub async fn execute_tool_send(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Aggregation Tools ────────────────────────────────────
+        "project_health" => {
+            let code = input["code"].as_str().ok_or_else(|| anyhow!("missing 'code' parameter"))?;
+            let output = aggregation::project_health(code, jira_client, nexus_client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "homelab_status" => {
+            let output = aggregation::homelab_status().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "financial_summary" => {
+            let output = aggregation::financial_summary().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         // ── Scoped Bash Toolkit ──────────────────────────────────
         "git_status" | "git_log" | "git_branch" | "git_diff_stat"
         | "ls_project" | "cat_config" | "bd_ready" | "bd_stats" => {
@@ -706,6 +737,66 @@ pub async fn execute_tool_send(
             let output = upstash_tools::upstash_keys(pattern).await?;
             Ok(ToolResult::Immediate(output))
         }
+
+        // ── Home Assistant Tools ─────────────────────────────────────
+        "ha_states" => {
+            let output = ha_tools::ha_states().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "ha_entity" => {
+            let id = input["id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
+            let output = ha_tools::ha_entity(id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "ha_service_call" => {
+            let domain = input["domain"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
+            let service = input["service"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'service' parameter"))?;
+            let data = input
+                .get("data")
+                .ok_or_else(|| anyhow!("missing 'data' parameter"))?;
+            let description = ha_tools::describe_service_call(domain, service, data);
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::HaServiceCall,
+                payload: input.clone(),
+            })
+        }
+
+        // ── Azure DevOps Tools ───────────────────────────────────────
+        "ado_pipelines" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let output = ado_tools::ado_pipelines(project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "ado_builds" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let pipeline_id = input["pipeline_id"]
+                .as_u64()
+                .ok_or_else(|| anyhow!("missing 'pipeline_id' parameter"))? as u32;
+            let output = ado_tools::ado_builds(project, pipeline_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Plaid Financial Tools ────────────────────────────────────
+        "plaid_balances" => {
+            let output = plaid_tools::plaid_balances().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "plaid_bills" => {
+            let output = plaid_tools::plaid_bills().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -895,6 +986,23 @@ pub async fn execute_tool(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Aggregation Tools ────────────────────────────────────
+        "project_health" => {
+            let code = input["code"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'code' parameter"))?;
+            let output = aggregation::project_health(code, jira_client, nexus_client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "homelab_status" => {
+            let output = aggregation::homelab_status().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "financial_summary" => {
+            let output = aggregation::financial_summary().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         // ── Scoped Bash Toolkit ──────────────────────────────────
         "git_status" | "git_log" | "git_branch" | "git_diff_stat"
         | "ls_project" | "cat_config" | "bd_ready" | "bd_stats" => {
@@ -1057,6 +1165,66 @@ pub async fn execute_tool(
             let output = stripe_tools::stripe_invoices(status).await?;
             Ok(ToolResult::Immediate(output))
         }
+
+        // ── Home Assistant Tools ─────────────────────────────────────
+        "ha_states" => {
+            let output = ha_tools::ha_states().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "ha_entity" => {
+            let id = input["id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
+            let output = ha_tools::ha_entity(id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "ha_service_call" => {
+            let domain = input["domain"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
+            let service = input["service"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'service' parameter"))?;
+            let data = input
+                .get("data")
+                .ok_or_else(|| anyhow!("missing 'data' parameter"))?;
+            let description = ha_tools::describe_service_call(domain, service, data);
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::HaServiceCall,
+                payload: input.clone(),
+            })
+        }
+
+        // ── Azure DevOps Tools ───────────────────────────────────────
+        "ado_pipelines" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let output = ado_tools::ado_pipelines(project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "ado_builds" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let pipeline_id = input["pipeline_id"]
+                .as_u64()
+                .ok_or_else(|| anyhow!("missing 'pipeline_id' parameter"))? as u32;
+            let output = ado_tools::ado_builds(project, pipeline_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Plaid Financial Tools ────────────────────────────────────
+        "plaid_balances" => {
+            let output = plaid_tools::plaid_balances().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "plaid_bills" => {
+            let output = plaid_tools::plaid_bills().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -1179,8 +1347,9 @@ mod tests {
         let tools = register_tools();
         // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
         // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
-        // + 1 neon + 2 stripe + 2 resend + 2 upstash = 42
-        assert_eq!(tools.len(), 42);
+        // + 1 neon + 2 stripe + 2 resend + 2 upstash
+        // + 3 ha + 2 ado + 2 plaid + 3 aggregation = 52
+        assert_eq!(tools.len(), 52);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -1225,6 +1394,20 @@ mod tests {
         // Vercel tools
         assert!(names.contains(&"vercel_deployments"));
         assert!(names.contains(&"vercel_logs"));
+        // Home Assistant tools
+        assert!(names.contains(&"ha_states"));
+        assert!(names.contains(&"ha_entity"));
+        assert!(names.contains(&"ha_service_call"));
+        // Azure DevOps tools
+        assert!(names.contains(&"ado_pipelines"));
+        assert!(names.contains(&"ado_builds"));
+        // Plaid tools
+        assert!(names.contains(&"plaid_balances"));
+        assert!(names.contains(&"plaid_bills"));
+        // Aggregation tools
+        assert!(names.contains(&"project_health"));
+        assert!(names.contains(&"homelab_status"));
+        assert!(names.contains(&"financial_summary"));
     }
 
     #[test]

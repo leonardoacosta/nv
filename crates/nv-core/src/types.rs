@@ -185,6 +185,7 @@ pub enum ActionType {
     JiraAssign,
     JiraComment,
     ChannelReply,
+    HaServiceCall,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

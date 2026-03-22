@@ -1,4 +1,5 @@
 mod agent;
+mod aggregation;
 mod bash;
 mod callbacks;
 mod claude;
@@ -9,6 +10,9 @@ mod docker_tools;
 mod email;
 #[allow(dead_code)]
 mod github;
+mod ha_tools;
+mod ado_tools;
+mod plaid_tools;
 mod health;
 mod imessage;
 mod http;

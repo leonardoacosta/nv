@@ -103,7 +103,7 @@ fn load_file_optional(name: &str) -> Option<String> {
 /// Check whether the bootstrap has been completed.
 ///
 /// Returns `true` if `~/.nv/bootstrap-state.json` exists.
-fn check_bootstrap_state() -> bool {
+pub fn check_bootstrap_state() -> bool {
     let home = std::env::var("HOME").unwrap_or_default();
     let path = std::path::Path::new(&home)
         .join(".nv")

@@ -254,16 +254,20 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    // Spawn the cron scheduler for periodic digests
-    let _scheduler_handle = scheduler::spawn_scheduler(
-        trigger_tx.clone(),
-        config.agent.digest_interval_minutes,
-        &nv_base,
-    );
-    tracing::info!(
-        interval_minutes = config.agent.digest_interval_minutes,
-        "digest scheduler started"
-    );
+    // Spawn the cron scheduler for periodic digests (skip during bootstrap)
+    if agent::check_bootstrap_state() {
+        let _scheduler_handle = scheduler::spawn_scheduler(
+            trigger_tx.clone(),
+            config.agent.digest_interval_minutes,
+            &nv_base,
+        );
+        tracing::info!(
+            interval_minutes = config.agent.digest_interval_minutes,
+            "digest scheduler started"
+        );
+    } else {
+        tracing::info!("bootstrap not complete — digest scheduler deferred");
+    }
 
     // Spawn the HTTP server for CLI triggers (POST /digest, GET /health, etc.)
     let health_port = config

@@ -40,14 +40,21 @@ if [ -f "$HOME/.claude/.credentials.json" ]; then
     echo "    Claude sandbox: $SANDBOX_DIR (auth-only)"
 fi
 
-# Copy example config if no config exists
-if [ ! -f "$NV_DIR/nv.toml" ] && [ -f "$PROJECT_DIR/config/nv.example.toml" ]; then
-    cp "$PROJECT_DIR/config/nv.example.toml" "$NV_DIR/nv.toml"
-    echo "    Copied nv.example.toml to $NV_DIR/nv.toml -- edit with your values"
+# Copy example configs if no real configs exist
+if [ ! -f "$PROJECT_DIR/config/env" ]; then
+    cp "$PROJECT_DIR/config/env.example" "$PROJECT_DIR/config/env"
+    echo "    Created config/env from example -- edit with your tokens"
 fi
 
-# Symlink config files (soul, identity, user are editable at runtime via symlink)
+if [ ! -f "$PROJECT_DIR/config/nv.toml" ]; then
+    cp "$PROJECT_DIR/config/nv.example.toml" "$PROJECT_DIR/config/nv.toml" 2>/dev/null || true
+    echo "    Created config/nv.toml from example -- edit with your values"
+fi
+
+# Symlink config files (all source of truth lives in repo)
 echo "==> Linking config files..."
+ln -sf "$PROJECT_DIR/config/env" "$NV_DIR/env"
+ln -sf "$PROJECT_DIR/config/nv.toml" "$NV_DIR/nv.toml"
 ln -sf "$PROJECT_DIR/config/system-prompt.md" "$NV_DIR/system-prompt.md"
 ln -sf "$PROJECT_DIR/config/soul.md" "$NV_DIR/soul.md"
 ln -sf "$PROJECT_DIR/config/identity.md" "$NV_DIR/identity.md"

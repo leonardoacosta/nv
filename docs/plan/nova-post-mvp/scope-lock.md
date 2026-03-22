@@ -74,6 +74,14 @@ iMessage via BlueBubbles API or Mac relay.
 - Message polling or webhook
 - Maps to existing Channel trait
 
+### Spec: email-channel
+
+Email via MS Graph API (Outlook) or IMAP.
+- Poll or webhook for new messages
+- Filter by sender/subject/folder
+- Reply capability (with confirmation)
+- Maps to existing Channel trait
+
 ### Spec: jira-webhooks
 
 Inbound webhook handler for bidirectional Jira sync.
@@ -113,7 +121,6 @@ features feel better. If Nova is slow, no number of channels matters.
 - Web dashboard or TUI (Nexus handles dashboarding)
 - Embedding-based semantic memory search (grep works, deferred to v3)
 - Plugin SDK / marketplace
-- Email/Outlook channel (P2, not this phase)
 - Slack channel (P2, not this phase)
 
 ## Hard Constraints

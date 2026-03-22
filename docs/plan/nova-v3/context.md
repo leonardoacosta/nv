@@ -96,6 +96,11 @@ This means:
 5. **Worker DAG observability** — workers emit progress events (load_context → claude_call →
    tool_loop → route_response), orchestrator streams milestones to Telegram as sub-agents
    complete stages. Treat each worker execution as a DAG with observable nodes, not fire-and-forget.
+6. **Tool usage audit log** — every tool invocation (jira_search, query_nexus, vercel_status,
+   sentry_errors, etc.) must be logged to SQLite with timestamp, tool name, input params,
+   result summary, duration_ms, and which worker/trigger invoked it. This is foundational —
+   must exist BEFORE wiring new data sources. Enables: usage analytics, cost tracking,
+   debugging ("why did Nova query Jira 47 times today?"), and rate limit awareness.
 
 ## Discovery Metadata
 

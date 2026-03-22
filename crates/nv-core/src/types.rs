@@ -170,6 +170,12 @@ pub struct PendingAction {
     pub payload: serde_json::Value,
     pub status: ActionStatus,
     pub created_at: DateTime<Utc>,
+    /// Telegram message ID where the confirmation keyboard was sent.
+    #[serde(default)]
+    pub telegram_message_id: Option<i64>,
+    /// Telegram chat ID where the confirmation keyboard was sent.
+    #[serde(default)]
+    pub telegram_chat_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -188,6 +194,8 @@ pub enum ActionStatus {
     Rejected,
     Executed,
     Failed,
+    Cancelled,
+    Expired,
 }
 
 // ── Query Types ─────────────────────────────────────────────────────
@@ -296,6 +304,8 @@ mod tests {
             payload: serde_json::json!({"project": "PROJ", "summary": "Bug fix"}),
             status: ActionStatus::Pending,
             created_at: Utc::now(),
+            telegram_message_id: None,
+            telegram_chat_id: None,
         };
 
         // UUID is valid (non-nil)

@@ -26,6 +26,12 @@ pub struct PendingAction {
     pub payload: serde_json::Value,
     pub status: PendingStatus,
     pub created_at: DateTime<Utc>,
+    /// Telegram message ID where the confirmation keyboard was sent.
+    #[serde(default)]
+    pub telegram_message_id: Option<i64>,
+    /// Telegram chat ID where the confirmation keyboard was sent.
+    #[serde(default)]
+    pub telegram_chat_id: Option<i64>,
 }
 
 /// Status of a pending action.
@@ -36,6 +42,8 @@ pub enum PendingStatus {
     Approved,
     Rejected,
     Executed,
+    Cancelled,
+    Expired,
 }
 
 /// Wrapper for the pending-actions.json file.
@@ -148,11 +156,31 @@ impl State {
         self.write_pending_actions(&actions)
     }
 
+    /// Find a pending action by ID.
+    pub fn find_pending_action(&self, id: &Uuid) -> Result<Option<PendingAction>> {
+        let actions = self.load_pending_actions()?;
+        Ok(actions.into_iter().find(|a| a.id == *id))
+    }
+
+    /// Update the payload of a pending action by ID.
+    pub fn update_pending_action_payload(&self, id: &Uuid, payload: serde_json::Value) -> Result<()> {
+        let mut actions = self.load_pending_actions()?;
+        if let Some(action) = actions.iter_mut().find(|a| a.id == *id) {
+            action.payload = payload;
+        }
+        self.write_pending_actions(&actions)
+    }
+
     /// Remove a pending action by ID.
     pub fn remove_pending_action(&self, id: &Uuid) -> Result<()> {
         let mut actions = self.load_pending_actions()?;
         actions.retain(|a| a.id != *id);
         self.write_pending_actions(&actions)
+    }
+
+    /// Get the state directory path (for external callers that need it).
+    pub fn base_path(&self) -> &std::path::Path {
+        &self.base_path
     }
 
     fn write_pending_actions(&self, actions: &[PendingAction]) -> Result<()> {
@@ -308,6 +336,8 @@ mod tests {
             payload: serde_json::json!({"project": "NV"}),
             status: PendingStatus::AwaitingConfirmation,
             created_at: Utc::now(),
+            telegram_message_id: None,
+            telegram_chat_id: None,
         };
 
         state.save_pending_action(&action).unwrap();
@@ -329,6 +359,8 @@ mod tests {
             payload: serde_json::json!({}),
             status: PendingStatus::AwaitingConfirmation,
             created_at: Utc::now(),
+            telegram_message_id: None,
+            telegram_chat_id: None,
         };
 
         state.save_pending_action(&action).unwrap();
@@ -350,6 +382,8 @@ mod tests {
             payload: serde_json::json!({}),
             status: PendingStatus::AwaitingConfirmation,
             created_at: Utc::now(),
+            telegram_message_id: None,
+            telegram_chat_id: None,
         };
         let a2 = PendingAction {
             id: Uuid::new_v4(),
@@ -357,6 +391,8 @@ mod tests {
             payload: serde_json::json!({}),
             status: PendingStatus::AwaitingConfirmation,
             created_at: Utc::now(),
+            telegram_message_id: None,
+            telegram_chat_id: None,
         };
 
         state.save_pending_action(&a1).unwrap();

@@ -1,4 +1,5 @@
 mod agent;
+mod callbacks;
 mod claude;
 mod diary;
 mod digest;

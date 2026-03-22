@@ -8,7 +8,7 @@ use anyhow::Result;
 use nv_core::channel::Channel;
 use nv_core::config::AgentConfig;
 use nv_core::types::{
-    ActionStatus, InlineKeyboard, OutboundMessage, PendingAction, Trigger,
+    InlineKeyboard, OutboundMessage, Trigger,
 };
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -40,6 +40,9 @@ const SESSION_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
 
 /// Maximum tool use loop iterations per agent cycle (safety limit).
 const MAX_TOOL_LOOP_ITERATIONS: usize = 10;
+
+/// How often to check for expired pending actions.
+const EXPIRY_CHECK_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 
 // ── System Prompt ───────────────────────────────────────────────────
 
@@ -173,6 +176,10 @@ pub struct AgentLoop {
     voice_enabled: Arc<AtomicBool>,
     tts_client: Option<Arc<tts::TtsClient>>,
     voice_max_chars: u32,
+    /// UUID of the pending action currently being edited (set by edit callback).
+    editing_action_id: Option<uuid::Uuid>,
+    /// Last time we ran the expiry sweep for pending actions.
+    last_expiry_check: Instant,
 }
 
 impl AgentLoop {
@@ -232,6 +239,8 @@ impl AgentLoop {
             voice_enabled,
             tts_client,
             voice_max_chars,
+            editing_action_id: None,
+            last_expiry_check: Instant::now(),
         }
     }
 
@@ -260,6 +269,119 @@ impl AgentLoop {
                             if let Err(e) = channel.send_message(msg).await {
                                 tracing::error!(error = %e, "failed to send Nexus notification");
                             }
+                        }
+                    }
+                }
+            }
+
+            // Handle Nexus error callbacks directly (bypass Claude)
+            let mut handled_nexus_callbacks = false;
+            for trigger in &triggers {
+                if let Trigger::Message(msg) = trigger {
+                    if let Some(data) = msg.content.strip_prefix("[callback] ") {
+                        if let Some(rest) = data.strip_prefix("nexus_err:") {
+                            handled_nexus_callbacks = true;
+                            if let Some(session_id) = rest.strip_prefix("view:") {
+                                self.handle_nexus_view_error(session_id).await;
+                            } else if let Some(session_id) = rest.strip_prefix("bug:") {
+                                self.handle_nexus_create_bug(session_id).await;
+                            }
+                        }
+                    }
+                }
+            }
+            if handled_nexus_callbacks {
+                self.last_activity = Instant::now();
+                continue;
+            }
+
+            // Handle Jira action callbacks directly (bypass Claude)
+            let mut handled_jira_callbacks = false;
+            for trigger in &triggers {
+                if let Trigger::Message(msg) = trigger {
+                    if let Some(data) = msg.content.strip_prefix("[callback] ") {
+                        // Extract original message ID and chat ID from metadata
+                        let original_msg_id = msg.metadata.get("original_message_id")
+                            .and_then(|v| v.as_i64());
+                        let tg_chat_id = msg.metadata.get("chat_id")
+                            .and_then(|v| v.as_i64());
+
+                        if let Some(uuid_str) = data.strip_prefix("approve:") {
+                            handled_jira_callbacks = true;
+                            if let Some(jira_client) = &self.jira_client {
+                                if let Some(tg) = self.channels.get("telegram") {
+                                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                        let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                                        if let Err(e) = crate::callbacks::handle_approve(
+                                            uuid_str,
+                                            jira_client,
+                                            &tg_channel.client,
+                                            chat_id,
+                                            original_msg_id,
+                                            &self.state,
+                                        ).await {
+                                            tracing::error!(error = %e, "approve callback failed");
+                                        }
+                                    }
+                                }
+                            }
+                        } else if let Some(uuid_str) = data.strip_prefix("edit:") {
+                            handled_jira_callbacks = true;
+                            if let Some(tg) = self.channels.get("telegram") {
+                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                    let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                                    match crate::callbacks::handle_edit(
+                                        uuid_str,
+                                        &tg_channel.client,
+                                        chat_id,
+                                        &self.state,
+                                    ).await {
+                                        Ok(Some(uuid)) => {
+                                            self.editing_action_id = Some(uuid);
+                                        }
+                                        Ok(None) => {}
+                                        Err(e) => {
+                                            tracing::error!(error = %e, "edit callback failed");
+                                        }
+                                    }
+                                }
+                            }
+                        } else if let Some(uuid_str) = data.strip_prefix("cancel:") {
+                            handled_jira_callbacks = true;
+                            if let Some(tg) = self.channels.get("telegram") {
+                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                    let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                                    if let Err(e) = crate::callbacks::handle_cancel(
+                                        uuid_str,
+                                        &tg_channel.client,
+                                        chat_id,
+                                        original_msg_id,
+                                        &self.state,
+                                    ).await {
+                                        tracing::error!(error = %e, "cancel callback failed");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if handled_jira_callbacks {
+                self.last_activity = Instant::now();
+                continue;
+            }
+
+            // Run periodic expiry sweep for stale pending actions
+            if self.last_expiry_check.elapsed() >= EXPIRY_CHECK_INTERVAL {
+                self.last_expiry_check = Instant::now();
+                if let Some(tg) = self.channels.get("telegram") {
+                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                        if let Err(e) = crate::callbacks::check_expired_actions(
+                            &tg_channel.client,
+                            tg_channel.chat_id,
+                            &self.state,
+                        ).await {
+                            tracing::warn!(error = %e, "expiry sweep failed");
                         }
                     }
                 }
@@ -686,45 +808,50 @@ impl AgentLoop {
                     Ok(tools::ToolResult::Immediate(output)) => (output, false),
                     Ok(tools::ToolResult::PendingAction {
                         description,
-                        action_type,
+                        action_type: _action_type,
                         payload,
                     }) => {
-                        // Create and persist the pending action
-                        let action = PendingAction {
-                            id: Uuid::new_v4(),
-                            description: description.clone(),
-                            action_type,
-                            payload,
-                            status: ActionStatus::Pending,
-                            created_at: chrono::Utc::now(),
-                        };
+                        // Create the pending action
+                        let action_id = Uuid::new_v4();
+                        let created_at = chrono::Utc::now();
 
+                        // Send Telegram confirmation keyboard and capture message ID
+                        let keyboard = InlineKeyboard::confirm_action(&action_id.to_string());
+                        let mut tg_msg_id: Option<i64> = None;
+                        let mut tg_chat_id: Option<i64> = None;
+
+                        if let Some(tg) = self.channels.get("telegram") {
+                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                tg_chat_id = Some(tg_channel.chat_id);
+                                match tg_channel.client.send_message(
+                                    tg_channel.chat_id,
+                                    &format!("Pending action:\n{description}\n\nApprove, edit, or cancel?"),
+                                    None,
+                                    Some(&keyboard),
+                                ).await {
+                                    Ok(msg_id) => {
+                                        tg_msg_id = Some(msg_id);
+                                    }
+                                    Err(e) => {
+                                        tracing::error!(error = %e, "failed to send confirmation keyboard");
+                                    }
+                                }
+                            }
+                        }
+
+                        // Persist with Telegram message IDs for later editing
                         if let Err(e) = self.state.save_pending_action(
                             &crate::state::PendingAction {
-                                id: action.id,
-                                description: action.description.clone(),
-                                payload: action.payload.clone(),
+                                id: action_id,
+                                description: description.clone(),
+                                payload: payload.clone(),
                                 status: crate::state::PendingStatus::AwaitingConfirmation,
-                                created_at: action.created_at,
+                                created_at,
+                                telegram_message_id: tg_msg_id,
+                                telegram_chat_id: tg_chat_id,
                             },
                         ) {
                             tracing::error!(error = %e, "failed to save pending action");
-                        }
-
-                        // Send Telegram confirmation keyboard
-                        let keyboard = InlineKeyboard::confirm_action(&action.id.to_string());
-                        if let Some(channel) = self.channels.get("telegram") {
-                            let msg = OutboundMessage {
-                                channel: "telegram".into(),
-                                content: format!(
-                                    "Pending action:\n{description}\n\nApprove, edit, or cancel?"
-                                ),
-                                reply_to: None,
-                                keyboard: Some(keyboard),
-                            };
-                            if let Err(e) = channel.send_message(msg).await {
-                                tracing::error!(error = %e, "failed to send confirmation keyboard");
-                            }
                         }
 
                         (
@@ -876,6 +1003,110 @@ impl AgentLoop {
         } else {
             self.send_error_to_telegram(&format!("NV error: {error}"))
                 .await;
+        }
+    }
+
+    // ── Nexus Error Callback Handlers ──────────────────────────────
+
+    /// Handle "View Error" callback: query session details and send
+    /// the full error text as a Telegram reply.
+    async fn handle_nexus_view_error(&self, session_id: &str) {
+        let Some(nexus_client) = &self.nexus_client else {
+            tracing::warn!("nexus_err:view callback but no Nexus client configured");
+            return;
+        };
+
+        match nexus_client.query_session(session_id).await {
+            Ok(Some(session)) => {
+                let detail_text = nexus::notify::format_session_error_detail(&session);
+                if let Some(channel) = self.channels.get("telegram") {
+                    let msg = OutboundMessage {
+                        channel: "telegram".into(),
+                        content: detail_text,
+                        reply_to: None,
+                        keyboard: None,
+                    };
+                    if let Err(e) = channel.send_message(msg).await {
+                        tracing::error!(error = %e, "failed to send error detail to Telegram");
+                    }
+                }
+            }
+            Ok(None) => {
+                tracing::warn!(session_id, "nexus_err:view — session not found");
+                self.send_error_to_telegram(&format!(
+                    "Session {session_id} not found on any connected Nexus agent."
+                ))
+                .await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, session_id, "nexus_err:view — query failed");
+                self.send_error_to_telegram(&format!(
+                    "Failed to query session {session_id}: {e}"
+                ))
+                .await;
+            }
+        }
+    }
+
+    /// Handle "Create Bug" callback: query session, build a Jira create
+    /// pending action, persist it, and send the confirmation keyboard.
+    async fn handle_nexus_create_bug(&self, session_id: &str) {
+        let Some(nexus_client) = &self.nexus_client else {
+            tracing::warn!("nexus_err:bug callback but no Nexus client configured");
+            return;
+        };
+
+        match nexus_client.query_session(session_id).await {
+            Ok(Some(session)) => {
+                let action = nexus::notify::create_bug_from_session_error(&session);
+
+                // Persist the pending action
+                if let Err(e) = self.state.save_pending_action(
+                    &crate::state::PendingAction {
+                        id: action.id,
+                        description: action.description.clone(),
+                        payload: action.payload.clone(),
+                        status: crate::state::PendingStatus::AwaitingConfirmation,
+                        created_at: action.created_at,
+                        telegram_message_id: None,
+                        telegram_chat_id: None,
+                    },
+                ) {
+                    tracing::error!(error = %e, "failed to save bug pending action");
+                    return;
+                }
+
+                // Send Telegram confirmation keyboard
+                let keyboard = InlineKeyboard::confirm_action(&action.id.to_string());
+                if let Some(channel) = self.channels.get("telegram") {
+                    let msg = OutboundMessage {
+                        channel: "telegram".into(),
+                        content: format!(
+                            "Create Jira bug from session error?\n\n{}\n\nApprove, edit, or cancel?",
+                            action.description
+                        ),
+                        reply_to: None,
+                        keyboard: Some(keyboard),
+                    };
+                    if let Err(e) = channel.send_message(msg).await {
+                        tracing::error!(error = %e, "failed to send bug confirmation keyboard");
+                    }
+                }
+            }
+            Ok(None) => {
+                tracing::warn!(session_id, "nexus_err:bug — session not found");
+                self.send_error_to_telegram(&format!(
+                    "Session {session_id} not found on any connected Nexus agent."
+                ))
+                .await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, session_id, "nexus_err:bug — query failed");
+                self.send_error_to_telegram(&format!(
+                    "Failed to query session {session_id}: {e}"
+                ))
+                .await;
+            }
         }
     }
 

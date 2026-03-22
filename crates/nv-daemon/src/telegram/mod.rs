@@ -206,6 +206,8 @@ mod tests {
                 payload: serde_json::json!({}),
                 status: ActionStatus::Pending,
                 created_at: Utc::now(),
+                telegram_message_id: None,
+                telegram_chat_id: None,
             },
             PendingAction {
                 id: Uuid::new_v4(),
@@ -214,6 +216,8 @@ mod tests {
                 payload: serde_json::json!({}),
                 status: ActionStatus::Pending,
                 created_at: Utc::now(),
+                telegram_message_id: None,
+                telegram_chat_id: None,
             },
         ];
 
@@ -233,5 +237,49 @@ mod tests {
     fn from_actions_empty_list() {
         let kb = InlineKeyboard::from_actions(&[]);
         assert!(kb.rows.is_empty());
+    }
+
+    /// Integration test against real Telegram Bot API.
+    ///
+    /// Requires `NV_TELEGRAM_INTEGRATION_TEST=1`, `TELEGRAM_BOT_TOKEN`,
+    /// and `NV_TEST_CHAT_ID` environment variables.
+    ///
+    /// Run with: `cargo test -p nv-daemon --features integration telegram_real_api`
+    #[cfg(feature = "integration")]
+    #[tokio::test]
+    async fn telegram_real_api() {
+        if std::env::var("NV_TELEGRAM_INTEGRATION_TEST").is_err() {
+            eprintln!("Skipping: set NV_TELEGRAM_INTEGRATION_TEST=1 to run");
+            return;
+        }
+
+        let token = std::env::var("TELEGRAM_BOT_TOKEN")
+            .expect("TELEGRAM_BOT_TOKEN required for integration test");
+        let chat_id: i64 = std::env::var("NV_TEST_CHAT_ID")
+            .expect("NV_TEST_CHAT_ID required for integration test")
+            .parse()
+            .expect("NV_TEST_CHAT_ID must be i64");
+
+        let client = TelegramClient::new(&token);
+
+        // Verify bot token via getMe
+        let me = client.get_me().await.expect("get_me should succeed");
+        assert!(
+            me.username.is_some() && !me.username.as_ref().unwrap().is_empty(),
+            "Bot username should be non-empty"
+        );
+
+        // Send echo message
+        let msg_id = client
+            .send_message(
+                chat_id,
+                "Integration test: echo from nv-daemon",
+                None,
+                None,
+            )
+            .await
+            .expect("send_message should succeed");
+
+        assert!(msg_id > 0, "send_message should return a valid message ID");
     }
 }

@@ -8,6 +8,76 @@ use super::types::{BotUser, TelegramResponse, Update};
 /// Telegram Bot API maximum message length.
 const TELEGRAM_MAX_MESSAGE_LEN: usize = 4096;
 
+/// Convert common Markdown patterns from Claude's output to Telegram HTML.
+fn markdown_to_html(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+
+        // Headers → bold
+        if let Some(h) = trimmed.strip_prefix("### ") {
+            result.push_str(&format!("<b>{}</b>", escape_html(h)));
+        } else if let Some(h) = trimmed.strip_prefix("## ") {
+            result.push_str(&format!("<b>{}</b>", escape_html(h)));
+        } else if let Some(h) = trimmed.strip_prefix("# ") {
+            result.push_str(&format!("<b>{}</b>", escape_html(h)));
+        } else if trimmed == "---" {
+            result.push_str("—————");
+        } else {
+            // Inline formatting within the line
+            let escaped = escape_html(line);
+            let converted = convert_inline_markdown(&escaped);
+            result.push_str(&converted);
+        }
+        result.push('\n');
+    }
+
+    // Trim trailing newline
+    result.trim_end_matches('\n').to_string()
+}
+
+/// Escape HTML special characters.
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Convert inline Markdown formatting to HTML.
+/// Handles: **bold**, `code`, _italic_
+fn convert_inline_markdown(text: &str) -> String {
+    let mut result = text.to_string();
+
+    // **bold** → <b>bold</b> (do this before single *)
+    while let Some(start) = result.find("**") {
+        if let Some(end) = result[start + 2..].find("**") {
+            let end = start + 2 + end;
+            let inner = result[start + 2..end].to_string();
+            result = format!("{}<b>{inner}</b>{}", &result[..start], &result[end + 2..]);
+        } else {
+            break;
+        }
+    }
+
+    // `code` → <code>code</code>
+    while let Some(start) = result.find('`') {
+        if let Some(end) = result[start + 1..].find('`') {
+            let end = start + 1 + end;
+            let inner = result[start + 1..end].to_string();
+            result = format!(
+                "{}<code>{inner}</code>{}",
+                &result[..start],
+                &result[end + 1..]
+            );
+        } else {
+            break;
+        }
+    }
+
+    result
+}
+
 /// Thin HTTP wrapper for Telegram Bot API endpoints.
 #[derive(Clone)]
 pub struct TelegramClient {
@@ -82,7 +152,8 @@ impl TelegramClient {
         reply_to: Option<String>,
         keyboard: Option<&nv_core::InlineKeyboard>,
     ) -> anyhow::Result<i64> {
-        let chunks = chunk_message(text, TELEGRAM_MAX_MESSAGE_LEN);
+        let html_text = markdown_to_html(text);
+        let chunks = chunk_message(&html_text, TELEGRAM_MAX_MESSAGE_LEN);
         let last_idx = chunks.len().saturating_sub(1);
         let mut last_msg_id: i64 = 0;
 
@@ -146,10 +217,12 @@ impl TelegramClient {
         keyboard: Option<&nv_core::InlineKeyboard>,
     ) -> anyhow::Result<()> {
         let url = format!("{}/editMessageText", self.base_url);
+        let html_text = markdown_to_html(text);
+        let truncated = &html_text[..html_text.len().min(TELEGRAM_MAX_MESSAGE_LEN)];
         let mut body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id,
-            "text": &text[..text.len().min(TELEGRAM_MAX_MESSAGE_LEN)],
+            "text": truncated,
             "parse_mode": "HTML",
         });
 

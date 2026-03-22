@@ -1,22 +1,16 @@
 # NV Configuration
-# Copy to ~/.nv/nv.toml and fill in values.
-# Secrets should be set via environment variables (Doppler).
 
 [agent]
 model = "claude-sonnet-4-6"
 think = true
 digest_interval_minutes = 60
-# ANTHROPIC_API_KEY set via env var
 
 [telegram]
-chat_id = 123456789
-# TELEGRAM_BOT_TOKEN set via env var
+chat_id = 7380462766
 
 [jira]
 instance = "leonardoacosta.atlassian.net"
 default_project = "OO"
-# JIRA_API_TOKEN set via env var
-# JIRA_USERNAME set via env var
 
 [nexus]
 [[nexus.agents]]

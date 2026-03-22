@@ -93,6 +93,9 @@ This means:
 2. Fix the chat feedback bugs (tool call leak, response quality)
 3. Build the "project health dashboard" — per-project status aggregation
 4. Azure DevOps integration for work (ws) project
+5. **Worker DAG observability** — workers emit progress events (load_context → claude_call →
+   tool_loop → route_response), orchestrator streams milestones to Telegram as sub-agents
+   complete stages. Treat each worker execution as a DAG with observable nodes, not fire-and-forget.
 
 ## Discovery Metadata
 

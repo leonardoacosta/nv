@@ -13,6 +13,9 @@ NV_DIR="${HOME}/.nv"
 CONFIG_DIR="${HOME}/.config/nv"
 HEALTH_PORT="${NV_HEALTH_PORT:-8400}"
 
+echo "==> Stopping running services..."
+systemctl --user stop nv.service nv-discord-relay.service nv-teams-relay.service 2>/dev/null || true
+
 echo "==> Building NV (release)..."
 cd "$PROJECT_DIR"
 cargo build --release -p nv-daemon -p nv-cli

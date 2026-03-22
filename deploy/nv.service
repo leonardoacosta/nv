@@ -12,6 +12,7 @@ WatchdogSec=60
 TimeoutStopSec=30
 EnvironmentFile=-%h/.nv/env
 Environment=RUST_LOG=info
+Environment=HOME=%h
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 LimitNOFILE=4096
 MemoryMax=512M

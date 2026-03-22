@@ -476,6 +476,10 @@ impl Orchestrator {
                     tool = %tool,
                     "worker tool called"
                 );
+                // Update stage description with human-readable tool name
+                let desc = humanize_tool(tool);
+                self.worker_stage_started
+                    .insert(*worker_id, (desc, Instant::now()));
             }
             WorkerEvent::StageComplete {
                 worker_id,
@@ -535,7 +539,7 @@ impl Orchestrator {
             if let Some(channel) = self.channels.get("telegram") {
                 let msg = OutboundMessage {
                     channel: "telegram".into(),
-                    content: format!("Still working on it... (running {stage})"),
+                    content: format!("Still working on it... {}", humanize_stage(&stage)),
                     reply_to: None,
                     keyboard: None,
                 };
@@ -1121,6 +1125,41 @@ fn format_status_dots(code: &str, output: &str) -> String {
 }
 
 /// Strip ANSI escape codes from a string.
+/// Convert internal worker stage names to human-readable descriptions.
+fn humanize_stage(stage: &str) -> &str {
+    match stage {
+        "context_build" => "Loading memory and recent messages...",
+        "tool_loop" => "Processing with tools...",
+        "response" => "Drafting response...",
+        "claude_call" => "Thinking...",
+        _ => "Processing...",
+    }
+}
+
+/// Convert tool names to human-readable descriptions for status updates.
+fn humanize_tool(tool: &str) -> String {
+    match tool {
+        "jira_search" | "jira_get" => "Searching Jira...".into(),
+        "jira_create" | "jira_transition" | "jira_assign" => "Updating Jira...".into(),
+        "query_nexus" | "query_session" => "Checking Nexus sessions...".into(),
+        "read_memory" | "search_memory" => "Reading memory...".into(),
+        "write_memory" => "Saving to memory...".into(),
+        "vercel_deployments" | "vercel_logs" => "Checking Vercel deploys...".into(),
+        "sentry_issues" | "sentry_issue" => "Checking Sentry errors...".into(),
+        "posthog_trends" | "posthog_flags" => "Checking PostHog analytics...".into(),
+        "docker_status" | "docker_logs" => "Checking Docker containers...".into(),
+        "tailscale_status" | "tailscale_node" => "Checking Tailscale network...".into(),
+        "gh_pr_list" | "gh_run_status" | "gh_issues" => "Checking GitHub...".into(),
+        "neon_query" => "Querying database...".into(),
+        "stripe_customers" | "stripe_invoices" => "Checking Stripe...".into(),
+        "ha_states" | "ha_entity" => "Checking Home Assistant...".into(),
+        "project_health" => "Building project health report...".into(),
+        "homelab_status" => "Checking homelab status...".into(),
+        "search_messages" => "Searching conversation history...".into(),
+        t => format!("Running {t}..."),
+    }
+}
+
 fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

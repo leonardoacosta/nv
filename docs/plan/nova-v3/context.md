@@ -15,17 +15,42 @@ iMessage (code exists), Email (code exists), Jira webhooks (code exists).
 **Architecture:** Orchestrator → WorkerPool → PersistentSession. Telegram reactions
 as read receipts (👀→✅). Priority queue for message dispatch.
 
-## Known Bugs (carry-forward)
+## Known Bugs (carry-forward — ALL must be fixed in v3)
+
+### Critical (blocks usability)
 
 1. **Tool call JSON leaking to Telegram** — raw `` `tool_call` `` blocks visible to user
-   instead of being executed silently. Worker sends intermediate thinking + tool call JSON
-   to Telegram. Fix: filter tool_call blocks from response before sending.
+   instead of being executed silently. Worker sends intermediate thinking + tool call JSON.
+   Seen: `tool_call {"tool": "read_memory", "topic": "projects"}` shown to Leo.
+   Fix: filter tool_call blocks from response text before sending to Telegram.
 
-2. **Status updates not implemented** — orchestrator spec deferred the "Searching Jira..."
+2. **Worker deserialization crash** — `⚠️ Worker error: Deserialization error: CLI JSON parse
+   error: EOF while parsing a value at line 1 column 0`. Claude subprocess returns empty/invalid
+   JSON. Worker crashes instead of retrying or falling back.
+
+3. **Stalled tool calls** — "read_memory call stalled" then Nova self-reports the stall to user.
+   Tool execution hangs without timeout, eventually worker recovers but loses context.
+
+4. **Markdown table rendering broken** — Tables show raw `|------|----------|` in Telegram
+   (visible in CT epics response). HTML converter doesn't handle tables.
+
+### UX Issues
+
+5. **Status updates not implemented** — orchestrator spec deferred the "Searching Jira..."
    30-second status updates for workers.
 
-3. **Manual e2e gates** — 3 user tasks from hardening specs (Telegram echo, Nexus callbacks,
+6. **No reply threading** — Nova sends responses as new messages, not replies to the original.
+   In busy conversations, hard to tell which response maps to which question.
+
+7. **Manual e2e gates** — 3 user tasks from hardening specs (Telegram echo, Nexus callbacks,
    Jira create flow).
+
+### Positive (working well)
+
+- 👀 Reactions working as read receipts
+- Nova recovered from stall and continued conversation
+- CT epic scaffolding was good quality (8 relevant epics proposed)
+- Nova asked clarifying questions before acting
 
 ## Data Source Inventory
 

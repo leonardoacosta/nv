@@ -380,6 +380,11 @@ impl AgentLoop {
 
         let mut batch = vec![first];
 
+        // Debounce: wait 2 seconds for rapid follow-up messages before processing.
+        // This prevents "double message" issues where Leo sends a follow-up while
+        // the first message would otherwise already be processing.
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
         // Non-blocking drain of any additional queued triggers
         while let Ok(trigger) = self.trigger_rx.try_recv() {
             batch.push(trigger);

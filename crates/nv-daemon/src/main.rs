@@ -283,9 +283,9 @@ async fn main() -> anyhow::Result<()> {
     // Drop the original sender so the channel closes when all listener senders are dropped
     drop(trigger_tx);
 
-    // Create Claude API client
+    // Create Claude CLI client (uses OAuth via claude CLI, no API key needed)
     let client = ClaudeClient::new(
-        secrets.anthropic_api_key.clone(),
+        secrets.anthropic_api_key.clone().unwrap_or_default(),
         config.agent.model.clone(),
         4096, // max_tokens
     );

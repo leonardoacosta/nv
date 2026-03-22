@@ -5,10 +5,13 @@ use anyhow::{anyhow, Result};
 
 use crate::bash;
 use crate::claude::ToolDefinition;
+use crate::docker_tools;
+use crate::github;
 use crate::jira;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::nexus;
+use crate::tailscale;
 
 /// Register all available tool definitions for the Anthropic API.
 ///
@@ -129,6 +132,15 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add scoped bash toolkit definitions
     tools.extend(bash_tool_definitions());
+
+    // Add Docker container monitoring tools
+    tools.extend(docker_tool_definitions());
+
+    // Add Tailscale network tools
+    tools.extend(tailscale_tool_definitions());
+
+    // Add GitHub tools (gh CLI)
+    tools.extend(github::github_tool_definitions());
 
     tools
 }
@@ -258,6 +270,73 @@ fn bash_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["project"]
+            }),
+        },
+    ]
+}
+
+/// Tool definitions for Docker container monitoring.
+fn docker_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "docker_status".into(),
+            description: "List Docker containers with name, image, state, uptime, and ports. Returns running containers by default; pass all=true to include stopped containers.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "all": {
+                        "type": "boolean",
+                        "description": "Include stopped containers (default: false, only running)"
+                    }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "docker_logs".into(),
+            description: "Get recent log lines from a Docker container. Returns the last N lines (default 50, max 200).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "container": {
+                        "type": "string",
+                        "description": "Container name or ID"
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "Number of log lines to return (default: 50, max: 200)"
+                    }
+                },
+                "required": ["container"]
+            }),
+        },
+    ]
+}
+
+/// Tool definitions for Tailscale network monitoring.
+fn tailscale_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "tailscale_status".into(),
+            description: "List all Tailscale network nodes with online/offline state, IPs, OS, and last seen time. Nodes are sorted: online first, then offline.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "tailscale_node".into(),
+            description: "Get detailed info for a specific Tailscale node by hostname (case-insensitive). Returns hostname, DNSName, online, active, all IPs, OS, relay, last seen, and connection type.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The hostname of the Tailscale node to look up (case-insensitive)"
+                    }
+                },
+                "required": ["name"]
             }),
         },
     ]
@@ -411,6 +490,51 @@ pub async fn execute_tool_send(
             execute_bash_tool(name, input, project_registry).await
         }
 
+        // ── Docker Tools ────────────────────────────────────────────
+        "docker_status" => {
+            let all = input["all"].as_bool().unwrap_or(false);
+            let output = docker_tools::docker_status(all).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "docker_logs" => {
+            let container = input["container"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'container' parameter"))?;
+            let lines = input["lines"].as_u64();
+            let output = docker_tools::docker_logs(container, lines).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── GitHub Tools ─────────────────────────────────────────────
+        "gh_pr_list" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let output = github::gh_pr_list(repo).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_run_status" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let output = github::gh_run_status(repo).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_issues" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let output = github::gh_issues(repo).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+
+        // ── Tailscale Tools ──────────────────────────────────────────
+        "tailscale_status" => {
+            let output = tailscale::TailscaleClient::status().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "tailscale_node" => {
+            let name_param = input["name"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
+            let output = tailscale::TailscaleClient::node(name_param).await?;
+            Ok(ToolResult::Immediate(output))
+        }
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -606,6 +730,57 @@ pub async fn execute_tool(
             execute_bash_tool(name, input, project_registry).await
         }
 
+        // ── Docker Tools ────────────────────────────────────────────
+        "docker_status" => {
+            let all = input["all"].as_bool().unwrap_or(false);
+            let output = docker_tools::docker_status(all).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "docker_logs" => {
+            let container = input["container"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'container' parameter"))?;
+            let lines = input["lines"].as_u64();
+            let output = docker_tools::docker_logs(container, lines).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── GitHub Tools ─────────────────────────────────────────────
+        "gh_pr_list" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let output = github::gh_pr_list(repo).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_run_status" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let output = github::gh_run_status(repo).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_issues" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let output = github::gh_issues(repo).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+
+        // ── Tailscale Tools ──────────────────────────────────────────
+        "tailscale_status" => {
+            let output = tailscale::TailscaleClient::status().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "tailscale_node" => {
+            let name_param = input["name"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
+            let output = tailscale::TailscaleClient::node(name_param).await?;
+            Ok(ToolResult::Immediate(output))
+        }
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -724,10 +899,10 @@ mod tests {
     }
 
     #[test]
-    fn register_tools_returns_twentytwo() {
+    fn register_tools_returns_twentynine() {
         let tools = register_tools();
-        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash = 22
-        assert_eq!(tools.len(), 22);
+        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash + 2 docker + 2 tailscale + 3 github = 29
+        assert_eq!(tools.len(), 29);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -753,6 +928,16 @@ mod tests {
         assert!(names.contains(&"cat_config"));
         assert!(names.contains(&"bd_ready"));
         assert!(names.contains(&"bd_stats"));
+        // Docker tools
+        assert!(names.contains(&"docker_status"));
+        assert!(names.contains(&"docker_logs"));
+        // Tailscale tools
+        assert!(names.contains(&"tailscale_status"));
+        assert!(names.contains(&"tailscale_node"));
+        // GitHub tools
+        assert!(names.contains(&"gh_pr_list"));
+        assert!(names.contains(&"gh_run_status"));
+        assert!(names.contains(&"gh_issues"));
     }
 
     #[test]

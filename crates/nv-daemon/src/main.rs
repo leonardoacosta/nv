@@ -5,7 +5,10 @@ mod claude;
 mod diary;
 mod digest;
 mod discord;
+mod docker_tools;
 mod email;
+#[allow(dead_code)]
+mod github;
 mod health;
 mod imessage;
 mod http;
@@ -19,6 +22,8 @@ mod scheduler;
 mod shutdown;
 #[allow(dead_code)]
 mod state;
+#[allow(dead_code)]
+mod tailscale;
 mod teams;
 mod telegram;
 mod tools;

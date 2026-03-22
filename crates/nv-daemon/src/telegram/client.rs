@@ -89,7 +89,7 @@ impl TelegramClient {
             let mut body = serde_json::json!({
                 "chat_id": chat_id,
                 "text": chunk,
-                "parse_mode": "Markdown",
+                "parse_mode": "HTML",
             });
 
             // reply_to only on the first chunk
@@ -149,7 +149,7 @@ impl TelegramClient {
             "chat_id": chat_id,
             "message_id": message_id,
             "text": &text[..text.len().min(TELEGRAM_MAX_MESSAGE_LEN)],
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
         });
 
         if let Some(kb) = keyboard {

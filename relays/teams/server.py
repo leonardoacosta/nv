@@ -31,7 +31,7 @@ def forward_to_telegram(text: str) -> None:
     data = json.dumps({
         "chat_id": TG_CHAT_ID,
         "text": text,
-        "parse_mode": "Markdown",
+        "parse_mode": "HTML",
     }).encode()
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}

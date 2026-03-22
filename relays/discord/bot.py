@@ -41,7 +41,7 @@ async def forward_to_telegram(text: str) -> None:
         await session.post(url, json={
             "chat_id": TG_CHAT_ID,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
         })
 
 

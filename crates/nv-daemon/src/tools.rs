@@ -11,7 +11,10 @@ use crate::jira;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::nexus;
+use crate::posthog_tools;
+use crate::sentry_tools;
 use crate::tailscale;
+use crate::vercel_tools;
 
 /// Register all available tool definitions for the Anthropic API.
 ///
@@ -141,6 +144,15 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add GitHub tools (gh CLI)
     tools.extend(github::github_tool_definitions());
+
+    // Add PostHog analytics tools
+    tools.extend(posthog_tool_definitions());
+
+    // Add Vercel deployment tools
+    tools.extend(vercel_tools::vercel_tool_definitions());
+
+    // Add Sentry error tracking tools
+    tools.extend(sentry_tools::sentry_tool_definitions());
 
     tools
 }
@@ -342,6 +354,44 @@ fn tailscale_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Tool definitions for PostHog analytics.
+fn posthog_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "posthog_trends".into(),
+            description: "Get event trend data from PostHog for a project over the last 7 days. Returns daily counts with totals and trend direction.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    },
+                    "event": {
+                        "type": "string",
+                        "description": "PostHog event name (e.g. '$pageview', 'signup', 'purchase')"
+                    }
+                },
+                "required": ["project", "event"]
+            }),
+        },
+        ToolDefinition {
+            name: "posthog_flags".into(),
+            description: "List active feature flags from PostHog for a project. Returns flag keys, names, and rollout percentages.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+    ]
+}
+
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
 /// Used during first-run to prevent Claude from searching Jira/Nexus/memory
 /// instead of focusing on the onboarding conversation.
@@ -533,6 +583,59 @@ pub async fn execute_tool_send(
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
             let output = tailscale::TailscaleClient::node(name_param).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── PostHog Tools ───────────────────────────────────────────
+        "posthog_trends" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let event = input["event"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'event' parameter"))?;
+            let output = posthog_tools::query_trends(project, event).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "posthog_flags" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let output = posthog_tools::list_flags(project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Vercel Tools ─────────────────────────────────────────────
+        "vercel_deployments" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let client = vercel_tools::VercelClient::from_env()?;
+            let output = vercel_tools::vercel_deployments(&client, project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "vercel_logs" => {
+            let deploy_id = input["deploy_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'deploy_id' parameter"))?;
+            let client = vercel_tools::VercelClient::from_env()?;
+            let output = vercel_tools::vercel_logs(&client, deploy_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Sentry Tools ────────────────────────────────────────────
+        "sentry_issues" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let output = sentry_tools::sentry_issues(project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "sentry_issue" => {
+            let id = input["id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
+            let output = sentry_tools::sentry_issue(id).await?;
             Ok(ToolResult::Immediate(output))
         }
         _ => Err(anyhow!("unknown tool: {name}")),
@@ -781,6 +884,59 @@ pub async fn execute_tool(
             let output = tailscale::TailscaleClient::node(name_param).await?;
             Ok(ToolResult::Immediate(output))
         }
+
+        // ── PostHog Tools ───────────────────────────────────────────
+        "posthog_trends" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let event = input["event"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'event' parameter"))?;
+            let output = posthog_tools::query_trends(project, event).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "posthog_flags" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let output = posthog_tools::list_flags(project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Vercel Tools ─────────────────────────────────────────────
+        "vercel_deployments" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let client = vercel_tools::VercelClient::from_env()?;
+            let output = vercel_tools::vercel_deployments(&client, project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "vercel_logs" => {
+            let deploy_id = input["deploy_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'deploy_id' parameter"))?;
+            let client = vercel_tools::VercelClient::from_env()?;
+            let output = vercel_tools::vercel_logs(&client, deploy_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Sentry Tools ────────────────────────────────────────────
+        "sentry_issues" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let output = sentry_tools::sentry_issues(project).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "sentry_issue" => {
+            let id = input["id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
+            let output = sentry_tools::sentry_issue(id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -899,10 +1055,11 @@ mod tests {
     }
 
     #[test]
-    fn register_tools_returns_twentynine() {
+    fn register_tools_returns_expected_count() {
         let tools = register_tools();
-        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash + 2 docker + 2 tailscale + 3 github = 29
-        assert_eq!(tools.len(), 29);
+        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
+        // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel = 35
+        assert_eq!(tools.len(), 35);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -938,6 +1095,15 @@ mod tests {
         assert!(names.contains(&"gh_pr_list"));
         assert!(names.contains(&"gh_run_status"));
         assert!(names.contains(&"gh_issues"));
+        // Sentry tools
+        assert!(names.contains(&"sentry_issues"));
+        assert!(names.contains(&"sentry_issue"));
+        // PostHog tools
+        assert!(names.contains(&"posthog_trends"));
+        assert!(names.contains(&"posthog_flags"));
+        // Vercel tools
+        assert!(names.contains(&"vercel_deployments"));
+        assert!(names.contains(&"vercel_logs"));
     }
 
     #[test]

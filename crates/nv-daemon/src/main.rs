@@ -17,8 +17,10 @@ mod memory;
 mod messages;
 mod nexus;
 mod orchestrator;
+mod posthog_tools;
 mod query;
 mod scheduler;
+mod sentry_tools;
 mod shutdown;
 #[allow(dead_code)]
 mod state;
@@ -28,6 +30,7 @@ mod teams;
 mod telegram;
 mod tools;
 mod tts;
+mod vercel_tools;
 mod worker;
 
 use std::collections::HashMap;

@@ -170,6 +170,17 @@ This means:
     Discovery: audit CC session history for common git patterns Leo runs, build the
     allowlist from actual usage data.
 
+15. **Mature Nexus integration** — expand beyond read-only session queries:
+    - **Read open proposals**: list `openspec/changes/` across all projects via Nexus filesystem
+      access or scoped bash toolkit. "What specs are ready to apply on OO?"
+    - **Read beads status**: `bd ready`, `bd stats` per project via Nexus. "What's ready to
+      work on across all projects?"
+    - **Trigger commands** (with confirmation): `StartSession` RPC to launch CC sessions,
+      `SendCommand` RPC to run `/apply`, `/feature`, `/ci:gh` on remote projects.
+      "Apply the auth spec on TC" → Nova dispatches via Nexus gRPC → confirms via Telegram.
+    - **Stop sessions**: `StopSession` RPC for runaway or stale sessions.
+    - Makes Nova a **remote control for Claude Code** — manage all projects from Telegram.
+
 ## Discovery Metadata
 
 - **Project**: nv (Nova)

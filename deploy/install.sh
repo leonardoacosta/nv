@@ -56,25 +56,71 @@ if [ ! -f "$NV_DIR/bootstrap-state.json" ]; then
     echo "    Copied bootstrap.md (first-run template)"
 fi
 
-echo "==> Installing systemd user service..."
+# ── Discord Relay Bot ────────────────────────────────────────────────
+
+echo "==> Setting up Discord relay..."
+DISCORD_VENV="$NV_DIR/relays/discord/venv"
+mkdir -p "$NV_DIR/relays/discord"
+
+if [ ! -d "$DISCORD_VENV" ]; then
+    python3 -m venv "$DISCORD_VENV"
+    echo "    Created venv: $DISCORD_VENV"
+fi
+
+"$DISCORD_VENV/bin/pip" install -q -r "$PROJECT_DIR/relays/discord/requirements.txt"
+echo "    Discord relay dependencies installed"
+
+cp "$PROJECT_DIR/relays/discord/nv-discord-relay.service" "$SERVICE_DIR/"
+echo "    Discord relay service installed"
+
+# ── Teams Webhook Relay ──────────────────────────────────────────────
+
+echo "==> Setting up Teams webhook relay..."
+cp "$PROJECT_DIR/relays/teams/nv-teams-relay.service" "$SERVICE_DIR/"
+echo "    Teams relay service installed (port ${TEAMS_WEBHOOK_PORT:-8401})"
+
+# ── systemd Services ────────────────────────────────────────────────
+
+echo "==> Installing systemd services..."
 mkdir -p "$SERVICE_DIR"
 cp "$SCRIPT_DIR/nv.service" "$SERVICE_DIR/nv.service"
 
 systemctl --user daemon-reload
 systemctl --user enable nv.service
 
+# Enable relays if tokens are configured
+if grep -q "DISCORD_BOT_TOKEN" "$NV_DIR/env" 2>/dev/null; then
+    systemctl --user enable --now nv-discord-relay.service
+    echo "    Discord relay: enabled (token found)"
+else
+    systemctl --user disable nv-discord-relay.service 2>/dev/null || true
+    echo "    Discord relay: skipped (add DISCORD_BOT_TOKEN to ~/.nv/env)"
+fi
+
+if grep -q "TEAMS_WEBHOOK_SECRET\|TEAMS_WEBHOOK_PORT" "$NV_DIR/env" 2>/dev/null; then
+    systemctl --user enable --now nv-teams-relay.service
+    echo "    Teams relay: enabled"
+else
+    # Teams relay doesn't strictly need a secret — enable if env file exists
+    systemctl --user enable --now nv-teams-relay.service 2>/dev/null || true
+    echo "    Teams relay: enabled (port ${TEAMS_WEBHOOK_PORT:-8401})"
+fi
+
 echo "==> Restarting NV service..."
 systemctl --user restart nv.service
 
-echo "==> Waiting for service to start..."
+echo "==> Waiting for services to start..."
 sleep 3
 
-# Verify
+# ── Verify ───────────────────────────────────────────────────────────
+
+echo "==> Verifying..."
+
 ACTIVE=$(systemctl --user is-active nv.service 2>/dev/null || true)
 if [ "$ACTIVE" = "active" ]; then
-    echo "    systemd: active"
+    echo "    nv-daemon: active"
 else
-    echo "    systemd: $ACTIVE (expected 'active')"
+    echo "    nv-daemon: $ACTIVE (expected 'active')"
     echo "    Check logs: journalctl --user -u nv -n 50"
     exit 1
 fi
@@ -85,10 +131,22 @@ else
     echo "    health endpoint: not responding (may still be initializing)"
 fi
 
+DISCORD_ACTIVE=$(systemctl --user is-active nv-discord-relay.service 2>/dev/null || true)
+echo "    discord relay: $DISCORD_ACTIVE"
+
+TEAMS_ACTIVE=$(systemctl --user is-active nv-teams-relay.service 2>/dev/null || true)
+echo "    teams relay: $TEAMS_ACTIVE"
+
 echo ""
 echo "NV installed successfully."
-echo "  Binaries:  $INSTALL_DIR/nv-daemon, $INSTALL_DIR/nv"
-echo "  Config:    $NV_DIR/nv.toml"
-echo "  Service:   $SERVICE_DIR/nv.service"
-echo "  Logs:      journalctl --user -u nv -f"
-echo "  Status:    nv status"
+echo "  Binaries:   $INSTALL_DIR/nv-daemon, $INSTALL_DIR/nv"
+echo "  Config:     $NV_DIR/nv.toml"
+echo "  Services:   nv.service, nv-discord-relay.service, nv-teams-relay.service"
+echo "  Logs:       journalctl --user -u nv -f"
+echo "  Status:     nv status"
+echo ""
+echo "  Power Automate → POST http://$(hostname):${TEAMS_WEBHOOK_PORT:-8401}/"
+echo ""
+echo "  Missing tokens? Add to ~/.nv/env:"
+echo "    DISCORD_BOT_TOKEN=..."
+echo "    TELEGRAM_CHAT_ID=..."

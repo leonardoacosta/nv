@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "status": "ready",
+  "mode": "consolidated",
+  "generated_at": "2026-03-21T20:42:00Z",
+  "generated_by": "apply:all",
+  "source": "openspec/changes (new proposals)",
+  "git_sha": "174548b",
+  "spec_names": [
+    "add-review-local",
+    "add-apply-review-gate"
+  ],
+  "specs": [
+    {
+      "name": "add-review-local",
+      "wave": 1,
+      "priority": "P2",
+      "conflicts_with": ["add-apply-review-gate"],
+      "file_paths": [
+        "commands/review/local.md",
+        "agents/architecture-reviewer.md",
+        "rules/REFERENCE.md",
+        "CLAUDE.md"
+      ],
+      "status": "pending"
+    },
+    {
+      "name": "add-apply-review-gate",
+      "wave": 2,
+      "priority": "P2",
+      "conflicts_with": ["add-review-local"],
+      "file_paths": [
+        "commands/apply/all.md",
+        "rules/REFERENCE.md"
+      ],
+      "status": "pending"
+    }
+  ],
+  "conflict_map": {
+    "add-review-local": ["add-apply-review-gate"],
+    "add-apply-review-gate": ["add-review-local"]
+  },
+  "waves": {
+    "1": ["add-review-local"],
+    "2": ["add-apply-review-gate"]
+  },
+  "current_wave": 0,
+  "started_at": null,
+  "completed_at": null,
+  "completed_waves": [],
+  "failed_specs": []
+}

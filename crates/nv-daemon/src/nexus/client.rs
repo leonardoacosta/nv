@@ -1,0 +1,431 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+use chrono::{DateTime, Utc};
+use nv_core::config::NexusAgent;
+use tokio::sync::Mutex;
+
+use super::connection::{ConnectionStatus, NexusAgentConnection};
+use super::proto::{self, SessionFilter, SessionId};
+
+/// Summary of a Nexus session for display and digest integration.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SessionSummary {
+    pub id: String,
+    pub project: Option<String>,
+    pub status: String,
+    pub agent_name: String,
+    pub started_at: Option<DateTime<Utc>>,
+    pub duration_display: String,
+    pub branch: Option<String>,
+    pub spec: Option<String>,
+}
+
+/// Detailed session info returned by query_session.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct SessionDetail {
+    pub id: String,
+    pub project: Option<String>,
+    pub status: String,
+    pub agent_name: String,
+    pub started_at: Option<DateTime<Utc>>,
+    pub duration_display: String,
+    pub branch: Option<String>,
+    pub spec: Option<String>,
+    pub cwd: String,
+    pub command: Option<String>,
+    pub session_type: String,
+    pub model: Option<String>,
+    pub cost_usd: Option<f32>,
+}
+
+/// Client managing connections to multiple Nexus agents.
+///
+/// Thread-safe via `Arc<Mutex<>>` on each connection to allow
+/// concurrent query and event stream operations.
+#[derive(Clone)]
+pub struct NexusClient {
+    pub agents: Vec<Arc<Mutex<NexusAgentConnection>>>,
+}
+
+impl NexusClient {
+    /// Create a new client from config. Does not connect yet.
+    pub fn new(configs: &[NexusAgent]) -> Self {
+        let agents = configs
+            .iter()
+            .map(|c| {
+                Arc::new(Mutex::new(NexusAgentConnection::new(
+                    c.name.clone(),
+                    &c.host,
+                    c.port,
+                )))
+            })
+            .collect();
+
+        tracing::info!(
+            agent_count = configs.len(),
+            "NexusClient created"
+        );
+
+        Self { agents }
+    }
+
+    /// Connect to all configured agents in parallel.
+    ///
+    /// Failed connections are logged as warnings, not errors.
+    /// Partial connectivity is normal.
+    pub async fn connect_all(&self) {
+        let mut handles = Vec::new();
+
+        for agent in &self.agents {
+            let agent = Arc::clone(agent);
+            handles.push(tokio::spawn(async move {
+                let mut conn = agent.lock().await;
+                if let Err(e) = conn.connect().await {
+                    tracing::warn!(
+                        agent = %conn.name,
+                        endpoint = %conn.endpoint,
+                        error = %e,
+                        "failed to connect to Nexus agent"
+                    );
+                }
+            }));
+        }
+
+        for handle in handles {
+            let _ = handle.await;
+        }
+    }
+
+    /// Returns true if at least one agent is connected.
+    pub async fn is_connected(&self) -> bool {
+        for agent in &self.agents {
+            let conn = agent.lock().await;
+            if conn.status == ConnectionStatus::Connected {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Query all connected agents for sessions, merging results.
+    ///
+    /// Failed agents return empty results with a warning logged.
+    /// Results are sorted by start time (newest first).
+    pub async fn query_sessions(&self) -> Result<Vec<SessionSummary>> {
+        let mut all_sessions = Vec::new();
+        let mut unreachable = Vec::new();
+
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                unreachable.push(agent_name);
+                continue;
+            };
+
+            match client
+                .get_sessions(SessionFilter {
+                    status: None,
+                    project: None,
+                    session_type: None,
+                })
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let list = response.into_inner();
+                    for session in list.sessions {
+                        all_sessions.push(proto_session_to_summary(session, &agent_name));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        agent = %agent_name,
+                        error = %e,
+                        "GetSessions RPC failed"
+                    );
+                    conn.mark_disconnected();
+                    unreachable.push(agent_name);
+                }
+            }
+        }
+
+        if !unreachable.is_empty() {
+            tracing::warn!(agents = ?unreachable, "unreachable Nexus agents during query_sessions");
+        }
+
+        // Sort by start time, newest first
+        all_sessions.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+
+        Ok(all_sessions)
+    }
+
+    /// Query a specific session by ID across all connected agents.
+    pub async fn query_session(&self, id: &str) -> Result<Option<SessionDetail>> {
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                continue;
+            };
+
+            match client
+                .get_session(SessionId {
+                    id: id.to_string(),
+                })
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let session = response.into_inner();
+                    return Ok(Some(proto_session_to_detail(session, &agent_name)));
+                }
+                Err(e) => {
+                    // NOT_FOUND is expected when trying the wrong agent
+                    if e.code() == tonic::Code::NotFound {
+                        continue;
+                    }
+                    tracing::warn!(
+                        agent = %agent_name,
+                        session_id = %id,
+                        error = %e,
+                        "GetSession RPC failed"
+                    );
+                    conn.mark_disconnected();
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Get connection status summary for all agents.
+    pub async fn status_summary(&self) -> Vec<(String, ConnectionStatus)> {
+        let mut result = Vec::new();
+        for agent in &self.agents {
+            let conn = agent.lock().await;
+            result.push((conn.name.clone(), conn.status));
+        }
+        result
+    }
+}
+
+// ── Conversion Helpers ─────────────────────────────────────────────
+
+fn proto_timestamp_to_chrono(
+    ts: Option<prost_types::Timestamp>,
+) -> Option<DateTime<Utc>> {
+    ts.and_then(|t| {
+        chrono::DateTime::from_timestamp(t.seconds, t.nanos as u32)
+    })
+}
+
+fn proto_status_to_string(status: i32) -> String {
+    match proto::SessionStatus::try_from(status) {
+        Ok(proto::SessionStatus::Active) => "active".into(),
+        Ok(proto::SessionStatus::Idle) => "idle".into(),
+        Ok(proto::SessionStatus::Stale) => "stale".into(),
+        Ok(proto::SessionStatus::Errored) => "errored".into(),
+        _ => "unknown".into(),
+    }
+}
+
+fn proto_session_type_to_string(st: i32) -> String {
+    match proto::SessionType::try_from(st) {
+        Ok(proto::SessionType::Managed) => "managed".into(),
+        Ok(proto::SessionType::AdHoc) => "ad-hoc".into(),
+        _ => "unspecified".into(),
+    }
+}
+
+fn compute_duration_display(started_at: Option<DateTime<Utc>>) -> String {
+    let Some(start) = started_at else {
+        return "unknown".into();
+    };
+    let elapsed = Utc::now() - start;
+    let total_secs = elapsed.num_seconds();
+    if total_secs < 60 {
+        format!("{}s", total_secs)
+    } else if total_secs < 3600 {
+        format!("{}m", total_secs / 60)
+    } else {
+        let hours = total_secs / 3600;
+        let mins = (total_secs % 3600) / 60;
+        format!("{}h{}m", hours, mins)
+    }
+}
+
+fn proto_session_to_summary(session: proto::Session, agent_name: &str) -> SessionSummary {
+    let started_at = proto_timestamp_to_chrono(session.started_at);
+    SessionSummary {
+        id: session.id,
+        project: session.project,
+        status: proto_status_to_string(session.status),
+        agent_name: agent_name.to_string(),
+        duration_display: compute_duration_display(started_at),
+        started_at,
+        branch: session.branch,
+        spec: session.spec,
+    }
+}
+
+fn proto_session_to_detail(session: proto::Session, agent_name: &str) -> SessionDetail {
+    let started_at = proto_timestamp_to_chrono(session.started_at);
+    SessionDetail {
+        id: session.id,
+        project: session.project,
+        status: proto_status_to_string(session.status),
+        agent_name: agent_name.to_string(),
+        duration_display: compute_duration_display(started_at),
+        started_at,
+        branch: session.branch,
+        spec: session.spec,
+        cwd: session.cwd,
+        command: session.command,
+        session_type: proto_session_type_to_string(session.session_type),
+        model: session.telemetry.as_ref().and_then(|t| t.model.clone()),
+        cost_usd: session.telemetry.as_ref().and_then(|t| t.total_cost_usd),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_client_no_agents() {
+        let client = NexusClient::new(&[]);
+        assert!(client.agents.is_empty());
+    }
+
+    #[test]
+    fn new_client_with_agents() {
+        let configs = vec![
+            NexusAgent {
+                name: "homelab".into(),
+                host: "192.168.1.100".into(),
+                port: 7400,
+            },
+            NexusAgent {
+                name: "macbook".into(),
+                host: "192.168.1.101".into(),
+                port: 7400,
+            },
+        ];
+        let client = NexusClient::new(&configs);
+        assert_eq!(client.agents.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn is_connected_false_when_no_agents() {
+        let client = NexusClient::new(&[]);
+        assert!(!client.is_connected().await);
+    }
+
+    #[tokio::test]
+    async fn is_connected_false_when_all_disconnected() {
+        let configs = vec![NexusAgent {
+            name: "test".into(),
+            host: "127.0.0.1".into(),
+            port: 7400,
+        }];
+        let client = NexusClient::new(&configs);
+        // No connect_all called, so all disconnected
+        assert!(!client.is_connected().await);
+    }
+
+    #[tokio::test]
+    async fn query_sessions_returns_empty_when_disconnected() {
+        let configs = vec![NexusAgent {
+            name: "test".into(),
+            host: "127.0.0.1".into(),
+            port: 7400,
+        }];
+        let client = NexusClient::new(&configs);
+        let sessions = client.query_sessions().await.unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[tokio::test]
+    async fn query_session_returns_none_when_disconnected() {
+        let configs = vec![NexusAgent {
+            name: "test".into(),
+            host: "127.0.0.1".into(),
+            port: 7400,
+        }];
+        let client = NexusClient::new(&configs);
+        let result = client.query_session("s-1").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn status_summary_all_disconnected() {
+        let configs = vec![
+            NexusAgent {
+                name: "a".into(),
+                host: "127.0.0.1".into(),
+                port: 7400,
+            },
+            NexusAgent {
+                name: "b".into(),
+                host: "127.0.0.1".into(),
+                port: 7401,
+            },
+        ];
+        let client = NexusClient::new(&configs);
+        let summary = client.status_summary().await;
+        assert_eq!(summary.len(), 2);
+        assert_eq!(summary[0].1, ConnectionStatus::Disconnected);
+        assert_eq!(summary[1].1, ConnectionStatus::Disconnected);
+    }
+
+    #[test]
+    fn proto_status_to_string_values() {
+        assert_eq!(proto_status_to_string(0), "unknown");
+        assert_eq!(proto_status_to_string(1), "active");
+        assert_eq!(proto_status_to_string(2), "idle");
+        assert_eq!(proto_status_to_string(3), "stale");
+        assert_eq!(proto_status_to_string(4), "errored");
+        assert_eq!(proto_status_to_string(99), "unknown");
+    }
+
+    #[test]
+    fn proto_session_type_to_string_values() {
+        assert_eq!(proto_session_type_to_string(0), "unspecified");
+        assert_eq!(proto_session_type_to_string(1), "managed");
+        assert_eq!(proto_session_type_to_string(2), "ad-hoc");
+        assert_eq!(proto_session_type_to_string(99), "unspecified");
+    }
+
+    #[test]
+    fn compute_duration_short() {
+        let start = Utc::now() - chrono::Duration::seconds(45);
+        let d = compute_duration_display(Some(start));
+        assert!(d.ends_with('s'));
+    }
+
+    #[test]
+    fn compute_duration_minutes() {
+        let start = Utc::now() - chrono::Duration::minutes(15);
+        let d = compute_duration_display(Some(start));
+        assert!(d.ends_with('m'));
+    }
+
+    #[test]
+    fn compute_duration_hours() {
+        let start = Utc::now() - chrono::Duration::hours(2) - chrono::Duration::minutes(30);
+        let d = compute_duration_display(Some(start));
+        assert!(d.contains('h'));
+        assert!(d.contains('m'));
+    }
+
+    #[test]
+    fn compute_duration_none() {
+        assert_eq!(compute_duration_display(None), "unknown");
+    }
+}

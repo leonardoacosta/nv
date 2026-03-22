@@ -1,0 +1,33 @@
+[package]
+name = "nv-daemon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nv-core = { path = "../nv-core" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+base64 = "0.22"
+chrono = { workspace = true }
+uuid = { workspace = true }
+axum = { workspace = true }
+sha2 = "0.10"
+tonic = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+tracing-appender = { workspace = true }
+sd-notify = { workspace = true }
+
+[build-dependencies]
+tonic-build = "0.12"
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

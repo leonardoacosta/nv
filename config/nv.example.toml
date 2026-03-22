@@ -1,0 +1,34 @@
+# NV Configuration
+# Copy to ~/.nv/nv.toml and fill in values.
+# Secrets should be set via environment variables (Doppler).
+
+[agent]
+model = "claude-sonnet-4-6"
+think = true
+digest_interval_minutes = 60
+# ANTHROPIC_API_KEY set via env var
+
+[telegram]
+chat_id = 123456789
+# TELEGRAM_BOT_TOKEN set via env var
+
+[jira]
+instance = "leonardoacosta.atlassian.net"
+default_project = "OO"
+# JIRA_API_TOKEN set via env var
+# JIRA_USERNAME set via env var
+
+[nexus]
+[[nexus.agents]]
+name = "homelab"
+host = "homelab"
+port = 7400
+
+[[nexus.agents]]
+name = "macbook"
+host = "macbook"
+port = 7400
+
+[daemon]
+tts_url = "http://100.91.88.16:9999"
+health_port = 8400

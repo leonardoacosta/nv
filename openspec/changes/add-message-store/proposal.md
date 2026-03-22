@@ -40,8 +40,14 @@ CREATE TABLE messages (
     sender TEXT,                  -- username or 'nova'
     content TEXT NOT NULL,
     telegram_message_id INTEGER,
-    trigger_type TEXT             -- 'message' | 'cron' | 'nexus' | 'cli'
+    trigger_type TEXT,            -- 'message' | 'cron' | 'nexus' | 'cli'
+    response_time_ms INTEGER,    -- NULL for inbound, ms for outbound (time from trigger to send)
+    tokens_in INTEGER,           -- NULL for inbound, token count for outbound
+    tokens_out INTEGER           -- NULL for inbound, token count for outbound
 );
+
+CREATE INDEX idx_messages_timestamp ON messages(timestamp);
+CREATE INDEX idx_messages_direction ON messages(direction);
 ```
 
 ### Req-2: Automatic Logging
@@ -73,8 +79,8 @@ Default count: 20. Max: 100. Used when Claude wants to review more history than
 the auto-injected context provides.
 
 ## Scope
-- **IN**: SQLite store, auto-logging, context injection, get_recent_messages tool
-- **OUT**: Full-text search, message editing/deletion, multi-channel message routing, analytics
+- **IN**: SQLite store, auto-logging, context injection, get_recent_messages tool, response time tracking, message volume stats, usage dashboard via CLI (`nv stats`)
+- **OUT**: Full-text search, message editing/deletion, multi-channel message routing, topic frequency analysis (schema supports it later)
 
 ## Impact
 | Area | Change |

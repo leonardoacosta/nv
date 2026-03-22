@@ -23,4 +23,6 @@ prost-types = "0.13"
 tracing-appender = "0.2"
 sd-notify = "0.4"
 tokio-util = "0.7"
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+futures-util = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }

@@ -1,17 +1,20 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use nv_core::types::{CliCommand, CliRequest, CronEvent, Trigger};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::health::HealthState;
+use crate::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
+use crate::teams::types::{ChangeNotificationCollection, ChatMessage};
 
 /// Shared state for the HTTP server.
 #[derive(Clone)]
@@ -19,6 +22,12 @@ pub struct HttpState {
     pub trigger_tx: mpsc::UnboundedSender<Trigger>,
     pub health: Arc<HealthState>,
     pub stats_db_path: PathBuf,
+    /// Shared buffer for Teams webhook messages. None if Teams is not configured.
+    pub teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
+    /// Teams client for fetching full message content from notifications.
+    pub teams_client: Option<Arc<crate::teams::client::TeamsClient>>,
+    /// Jira webhook shared state. None if Jira webhooks are not configured.
+    pub jira_webhook_state: Option<Arc<JiraWebhookState>>,
 }
 
 /// Request body for POST /ask.
@@ -42,12 +51,88 @@ pub struct DigestResponse {
 
 /// Build the axum router with all HTTP endpoints.
 pub fn build_router(state: Arc<HttpState>) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/health", get(health_handler))
         .route("/ask", post(ask_handler))
         .route("/digest", post(digest_handler))
         .route("/stats", get(stats_handler))
-        .with_state(state)
+        .route("/webhooks/teams", post(teams_webhook_handler));
+
+    // Add Jira webhook route if configured (uses its own sub-state)
+    if let Some(jira_state) = &state.jira_webhook_state {
+        let jira_router = Router::new()
+            .route("/webhooks/jira", post(jira_webhook_handler))
+            .with_state(Arc::clone(jira_state));
+        router = router.merge(jira_router);
+    }
+
+    router.with_state(state)
+}
+
+/// Query params for Teams webhook validation handshake.
+#[derive(Debug, Deserialize)]
+pub struct TeamsWebhookQuery {
+    #[serde(rename = "validationToken")]
+    pub validation_token: Option<String>,
+}
+
+/// POST /webhooks/teams — receive MS Graph subscription notifications.
+///
+/// Handles two cases:
+/// 1. Subscription validation: returns validationToken as text/plain.
+/// 2. Change notifications: parses the payload, fetches full message content,
+///    and pushes to the shared Teams message buffer.
+async fn teams_webhook_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<TeamsWebhookQuery>,
+    body: String,
+) -> impl IntoResponse {
+    // Case 1: Subscription validation handshake
+    if let Some(token) = query.validation_token {
+        tracing::info!("Teams webhook validation handshake");
+        return (
+            StatusCode::OK,
+            [("content-type", "text/plain")],
+            token,
+        ).into_response();
+    }
+
+    // Case 2: Change notification
+    let (buffer, client) = match (&state.teams_message_buffer, &state.teams_client) {
+        (Some(buf), Some(client)) => (buf, client),
+        _ => {
+            tracing::warn!("Teams webhook received but Teams is not configured");
+            return StatusCode::OK.into_response();
+        }
+    };
+
+    let notifications: ChangeNotificationCollection = match serde_json::from_str(&body) {
+        Ok(n) => n,
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to parse Teams change notification");
+            // Return 200 to prevent MS Graph from retrying
+            return StatusCode::OK.into_response();
+        }
+    };
+
+    for notification in &notifications.value {
+        // Fetch the full message content via MS Graph API
+        let resource = &notification.resource;
+        match client.get_message(resource).await {
+            Ok(msg) => {
+                buffer.lock().await.push_back(msg);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    resource = %resource,
+                    error = %e,
+                    "Failed to fetch Teams message from notification"
+                );
+            }
+        }
+    }
+
+    StatusCode::OK.into_response()
 }
 
 /// GET /health — returns JSON with daemon health state.
@@ -174,8 +259,18 @@ pub async fn run_http_server(
     trigger_tx: mpsc::UnboundedSender<Trigger>,
     health: Arc<HealthState>,
     stats_db_path: PathBuf,
+    teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
+    teams_client: Option<Arc<crate::teams::client::TeamsClient>>,
+    jira_webhook_state: Option<Arc<JiraWebhookState>>,
 ) -> anyhow::Result<()> {
-    let state = Arc::new(HttpState { trigger_tx, health, stats_db_path });
+    let state = Arc::new(HttpState {
+        trigger_tx,
+        health,
+        stats_db_path,
+        teams_message_buffer,
+        teams_client,
+        jira_webhook_state,
+    });
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
@@ -205,6 +300,9 @@ mod tests {
             trigger_tx: tx,
             health,
             stats_db_path: db_path,
+            teams_message_buffer: None,
+            teams_client: None,
+            jira_webhook_state: None,
         });
         (state, rx, tmp)
     }
@@ -363,5 +461,45 @@ mod tests {
         assert_eq!(resp["messages_today"], 0);
         assert_eq!(resp["total_tokens_in"], 0);
         assert_eq!(resp["total_tokens_out"], 0);
+    }
+
+    #[tokio::test]
+    async fn teams_webhook_validation_returns_token() {
+        let (state, _rx, _tmp) = setup();
+        let app = build_router(state);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/webhooks/teams?validationToken=test-validation-token-123")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::str::from_utf8(&body).unwrap(),
+            "test-validation-token-123"
+        );
+    }
+
+    #[tokio::test]
+    async fn teams_webhook_no_buffer_returns_ok() {
+        // When Teams is not configured, webhook should still return 200
+        let (state, _rx, _tmp) = setup();
+        let app = build_router(state);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/webhooks/teams")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"value": []}"#))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }

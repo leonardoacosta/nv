@@ -25,12 +25,28 @@ fn default_elevenlabs_model() -> String {
     "eleven_multilingual_v2".to_string()
 }
 
+fn default_imessage_poll_interval() -> u64 {
+    10
+}
+
+fn default_email_poll_interval() -> u64 {
+    60
+}
+
+fn default_email_folder_ids() -> Vec<String> {
+    vec!["Inbox".to_string()]
+}
+
 // ── Config structs ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub agent: AgentConfig,
     pub telegram: Option<TelegramConfig>,
+    pub discord: Option<DiscordConfig>,
+    pub teams: Option<TeamsConfig>,
+    pub email: Option<EmailConfig>,
+    pub imessage: Option<IMessageConfig>,
     pub jira: Option<JiraConfig>,
     pub nexus: Option<NexusConfig>,
     pub daemon: Option<DaemonConfig>,
@@ -51,9 +67,67 @@ pub struct TelegramConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct DiscordConfig {
+    /// Guild (server) IDs to watch for messages.
+    #[serde(default)]
+    pub server_ids: Vec<u64>,
+    /// Channel IDs to watch — messages from other channels are ignored.
+    #[serde(default)]
+    pub channel_ids: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TeamsConfig {
+    /// Azure AD tenant ID.
+    pub tenant_id: String,
+    /// Team IDs to watch for messages.
+    #[serde(default)]
+    pub team_ids: Vec<String>,
+    /// Channel IDs to watch — messages from other channels are ignored.
+    #[serde(default)]
+    pub channel_ids: Vec<String>,
+    /// Public webhook URL for MS Graph subscription notifications.
+    /// Must be HTTPS. For local dev, use Tailscale Funnel or ngrok.
+    pub webhook_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct IMessageConfig {
+    /// Whether the iMessage channel is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// BlueBubbles server URL (e.g. "http://mac.tailnet:1234").
+    pub bluebubbles_url: String,
+    /// Polling interval in seconds (default: 10).
+    #[serde(default = "default_imessage_poll_interval")]
+    pub poll_interval_secs: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EmailConfig {
+    /// Whether the email channel is enabled.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Polling interval in seconds (default: 60).
+    #[serde(default = "default_email_poll_interval")]
+    pub poll_interval_secs: u64,
+    /// Mail folder IDs or well-known names to poll (default: ["Inbox"]).
+    #[serde(default = "default_email_folder_ids")]
+    pub folder_ids: Vec<String>,
+    /// Sender filter — list of email addresses or domains to include (empty = all).
+    #[serde(default)]
+    pub sender_filter: Vec<String>,
+    /// Subject filter — list of subject substrings to include (empty = all).
+    #[serde(default)]
+    pub subject_filter: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct JiraConfig {
     pub instance: String,
     pub default_project: String,
+    /// Shared secret for validating inbound Jira webhooks.
+    pub webhook_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -115,6 +189,10 @@ pub struct Secrets {
     /// Optional — only needed if using direct API calls instead of Claude CLI.
     pub anthropic_api_key: Option<String>,
     pub telegram_bot_token: Option<String>,
+    pub discord_bot_token: Option<String>,
+    pub bluebubbles_password: Option<String>,
+    pub ms_graph_client_id: Option<String>,
+    pub ms_graph_client_secret: Option<String>,
     pub jira_api_token: Option<String>,
     pub jira_username: Option<String>,
     pub elevenlabs_api_key: Option<String>,
@@ -129,6 +207,10 @@ impl Secrets {
         Ok(Self {
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
             telegram_bot_token: std::env::var("TELEGRAM_BOT_TOKEN").ok(),
+            discord_bot_token: std::env::var("DISCORD_BOT_TOKEN").ok(),
+            bluebubbles_password: std::env::var("BLUEBUBBLES_PASSWORD").ok(),
+            ms_graph_client_id: std::env::var("MS_GRAPH_CLIENT_ID").ok(),
+            ms_graph_client_secret: std::env::var("MS_GRAPH_CLIENT_SECRET").ok(),
             jira_api_token: std::env::var("JIRA_API_TOKEN").ok(),
             jira_username: std::env::var("JIRA_USERNAME").ok(),
             elevenlabs_api_key: std::env::var("ELEVENLABS_API_KEY").ok(),
@@ -154,9 +236,32 @@ digest_interval_minutes = 30
 [telegram]
 chat_id = 123456789
 
+[discord]
+server_ids = [111222333, 444555666]
+channel_ids = [123456789, 987654321]
+
+[teams]
+tenant_id = "aaaabbbb-cccc-dddd-eeee-ffffffffffff"
+team_ids = ["team-1", "team-2"]
+channel_ids = ["ch-1", "ch-2"]
+webhook_url = "https://nv.example.com/webhooks/teams"
+
+[email]
+enabled = true
+poll_interval_secs = 30
+folder_ids = ["Inbox", "Important"]
+sender_filter = ["@company.com", "boss@external.com"]
+subject_filter = ["urgent", "action required"]
+
+[imessage]
+enabled = true
+bluebubbles_url = "http://mac.tailnet:1234"
+poll_interval_secs = 5
+
 [jira]
 instance = "myteam.atlassian.net"
 default_project = "PROJ"
+webhook_secret = "super-secret-webhook-token-32chars!"
 
 [nexus]
 [[nexus.agents]]
@@ -180,9 +285,44 @@ elevenlabs_model = "eleven_turbo_v2_5"
         let tg = config.telegram.unwrap();
         assert_eq!(tg.chat_id, 123_456_789);
 
+        let discord = config.discord.unwrap();
+        assert_eq!(discord.server_ids, vec![111_222_333, 444_555_666]);
+        assert_eq!(discord.channel_ids, vec![123_456_789, 987_654_321]);
+
+        let teams = config.teams.unwrap();
+        assert_eq!(teams.tenant_id, "aaaabbbb-cccc-dddd-eeee-ffffffffffff");
+        assert_eq!(teams.team_ids, vec!["team-1", "team-2"]);
+        assert_eq!(teams.channel_ids, vec!["ch-1", "ch-2"]);
+        assert_eq!(
+            teams.webhook_url.as_deref(),
+            Some("https://nv.example.com/webhooks/teams")
+        );
+
+        let email = config.email.unwrap();
+        assert!(email.enabled);
+        assert_eq!(email.poll_interval_secs, 30);
+        assert_eq!(email.folder_ids, vec!["Inbox", "Important"]);
+        assert_eq!(
+            email.sender_filter,
+            vec!["@company.com", "boss@external.com"]
+        );
+        assert_eq!(
+            email.subject_filter,
+            vec!["urgent", "action required"]
+        );
+
+        let imessage = config.imessage.unwrap();
+        assert!(imessage.enabled);
+        assert_eq!(imessage.bluebubbles_url, "http://mac.tailnet:1234");
+        assert_eq!(imessage.poll_interval_secs, 5);
+
         let jira = config.jira.unwrap();
         assert_eq!(jira.instance, "myteam.atlassian.net");
         assert_eq!(jira.default_project, "PROJ");
+        assert_eq!(
+            jira.webhook_secret.as_deref(),
+            Some("super-secret-webhook-token-32chars!")
+        );
 
         let nexus = config.nexus.unwrap();
         assert_eq!(nexus.agents.len(), 1);

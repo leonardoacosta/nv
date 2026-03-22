@@ -2,7 +2,10 @@ mod agent;
 mod claude;
 mod diary;
 mod digest;
+mod discord;
+mod email;
 mod health;
+mod imessage;
 mod http;
 mod jira;
 mod memory;
@@ -13,6 +16,7 @@ mod scheduler;
 mod shutdown;
 #[allow(dead_code)]
 mod state;
+mod teams;
 mod telegram;
 mod tools;
 mod tts;
@@ -267,6 +271,273 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Telegram channel started");
     }
 
+    // Start Discord channel if configured
+    if let (Some(discord_config), Some(bot_token)) =
+        (&config.discord, &secrets.discord_bot_token)
+    {
+        let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
+
+        let mut discord_channel =
+            discord::DiscordChannel::new(bot_token, discord_config.clone(), poll_tx);
+
+        // Connect to Discord gateway
+        use nv_core::channel::Channel as _;
+        discord_channel.connect().await?;
+
+        health_state
+            .update_channel("discord", ChannelStatus::Connected)
+            .await;
+
+        // Create an Arc-wrapped channel for the registry (for sending outbound messages)
+        let discord_for_registry = Arc::new(discord::DiscordChannel::new(
+            bot_token,
+            discord_config.clone(),
+            // Dummy sender — not used for outbound, only the REST client matters
+            mpsc::channel::<Trigger>(1).0,
+        ));
+        channels.insert("discord".into(), discord_for_registry);
+
+        // Forward triggers from poll channel to the unbounded agent channel
+        let agent_tx = trigger_tx.clone();
+        tokio::spawn(async move {
+            while let Some(trigger) = poll_rx.recv().await {
+                if agent_tx.send(trigger).is_err() {
+                    tracing::error!("agent trigger channel closed");
+                    break;
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            discord::run_poll_loop(discord_channel).await;
+        });
+        tracing::info!("Discord channel started");
+    }
+
+    // Start iMessage channel if configured
+    if let (Some(imessage_config), Some(bb_password)) =
+        (&config.imessage, &secrets.bluebubbles_password)
+    {
+        if imessage_config.enabled {
+            let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
+
+            let mut imessage_channel =
+                imessage::IMessageChannel::new(imessage_config.clone(), bb_password, poll_tx);
+
+            // Validate connectivity at startup
+            use nv_core::channel::Channel as _;
+            imessage_channel.connect().await?;
+
+            health_state
+                .update_channel("imessage", ChannelStatus::Connected)
+                .await;
+
+            // Create an Arc-wrapped channel for the registry (for sending outbound messages)
+            let imessage_for_registry = Arc::new(imessage::IMessageChannel::new(
+                imessage_config.clone(),
+                bb_password,
+                // Dummy sender — not used for outbound, only the BB client matters
+                mpsc::channel::<Trigger>(1).0,
+            ));
+            channels.insert("imessage".into(), imessage_for_registry);
+
+            // Forward triggers from poll channel to the unbounded agent channel
+            let agent_tx = trigger_tx.clone();
+            tokio::spawn(async move {
+                while let Some(trigger) = poll_rx.recv().await {
+                    if agent_tx.send(trigger).is_err() {
+                        tracing::error!("agent trigger channel closed");
+                        break;
+                    }
+                }
+            });
+
+            tokio::spawn(async move {
+                imessage::run_poll_loop(imessage_channel).await;
+            });
+            tracing::info!(
+                url = %imessage_config.bluebubbles_url,
+                poll_secs = imessage_config.poll_interval_secs,
+                "iMessage channel started"
+            );
+        }
+    }
+
+    // Start Teams channel if configured
+    let mut teams_message_buffer: Option<
+        std::sync::Arc<tokio::sync::Mutex<std::collections::VecDeque<teams::types::ChatMessage>>>,
+    > = None;
+    let mut teams_client_for_http: Option<std::sync::Arc<teams::client::TeamsClient>> = None;
+
+    if let (Some(teams_config), Some(client_id), Some(client_secret)) = (
+        &config.teams,
+        &secrets.ms_graph_client_id,
+        &secrets.ms_graph_client_secret,
+    ) {
+        let webhook_url = teams_config
+            .webhook_url
+            .clone()
+            .unwrap_or_else(|| {
+                let port = config
+                    .daemon
+                    .as_ref()
+                    .map(|d| d.health_port)
+                    .unwrap_or(8400);
+                format!("http://127.0.0.1:{port}/webhooks/teams")
+            });
+
+        let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
+
+        let mut teams_channel = teams::TeamsChannel::new(
+            &teams_config.tenant_id,
+            client_id,
+            client_secret,
+            teams_config.clone(),
+            poll_tx,
+            webhook_url,
+        );
+
+        // Connect to MS Graph (OAuth + subscription registration)
+        use nv_core::channel::Channel as _;
+        teams_channel.connect().await?;
+
+        health_state
+            .update_channel("teams", ChannelStatus::Connected)
+            .await;
+
+        // Share the message buffer with the HTTP server for webhook delivery
+        let buffer = std::sync::Arc::clone(&teams_channel.message_buffer);
+        teams_message_buffer = Some(buffer);
+
+        // Create an Arc-wrapped TeamsClient for the HTTP webhook handler
+        let auth_for_http =
+            std::sync::Arc::new(teams::oauth::MsGraphAuth::new(
+                &teams_config.tenant_id,
+                client_id,
+                client_secret,
+            ));
+        teams_client_for_http = Some(std::sync::Arc::new(teams::client::TeamsClient::new(
+            auth_for_http,
+        )));
+
+        // Create an Arc-wrapped channel for the registry (for sending outbound messages)
+        let teams_for_registry = Arc::new(teams::TeamsChannel::new(
+            &teams_config.tenant_id,
+            client_id,
+            client_secret,
+            teams_config.clone(),
+            // Dummy sender — not used for outbound, only the REST client matters
+            mpsc::channel::<Trigger>(1).0,
+            String::new(),
+        ));
+        channels.insert("teams".into(), teams_for_registry);
+
+        // Forward triggers from poll channel to the unbounded agent channel
+        let agent_tx = trigger_tx.clone();
+        tokio::spawn(async move {
+            while let Some(trigger) = poll_rx.recv().await {
+                if agent_tx.send(trigger).is_err() {
+                    tracing::error!("agent trigger channel closed");
+                    break;
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            teams::run_poll_loop(teams_channel).await;
+        });
+        tracing::info!("Teams channel started");
+    }
+
+    // Start Email channel if configured
+    // Email reuses MS Graph OAuth — shares auth with Teams if both are configured.
+    if let Some(email_config) = &config.email {
+        if email_config.enabled {
+            let (client_id, client_secret) = match (
+                &secrets.ms_graph_client_id,
+                &secrets.ms_graph_client_secret,
+            ) {
+                (Some(id), Some(secret)) => (id.clone(), secret.clone()),
+                _ => {
+                    tracing::warn!(
+                        "Email enabled but MS_GRAPH_CLIENT_ID or MS_GRAPH_CLIENT_SECRET missing — email disabled"
+                    );
+                    // Skip email setup but don't fail
+                    (String::new(), String::new())
+                }
+            };
+
+            if !client_id.is_empty() {
+                // Resolve tenant_id: reuse from teams config if available, else from env
+                let tenant_id = config
+                    .teams
+                    .as_ref()
+                    .map(|t| t.tenant_id.clone())
+                    .or_else(|| std::env::var("MS_GRAPH_TENANT_ID").ok())
+                    .unwrap_or_else(|| {
+                        tracing::warn!("No tenant_id for email — using 'common'");
+                        "common".to_string()
+                    });
+
+                let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
+
+                let email_auth = Arc::new(teams::oauth::MsGraphAuth::new(
+                    &tenant_id,
+                    &client_id,
+                    &client_secret,
+                ));
+                let email_client = email::client::EmailClient::new(Arc::clone(&email_auth));
+
+                let mut email_channel =
+                    email::EmailChannel::new(email_client, email_config.clone(), poll_tx);
+
+                // Connect (authenticate + initialize last_seen)
+                use nv_core::channel::Channel as _;
+                email_channel.connect().await?;
+
+                health_state
+                    .update_channel("email", ChannelStatus::Connected)
+                    .await;
+
+                // Create an Arc-wrapped channel for the registry (for sending outbound messages)
+                let email_for_registry_auth = Arc::new(teams::oauth::MsGraphAuth::new(
+                    &tenant_id,
+                    &client_id,
+                    &client_secret,
+                ));
+                let email_for_registry_client =
+                    email::client::EmailClient::new(email_for_registry_auth);
+                let email_for_registry = Arc::new(email::EmailChannel::new(
+                    email_for_registry_client,
+                    email_config.clone(),
+                    // Dummy sender — not used for outbound, only the REST client matters
+                    mpsc::channel::<Trigger>(1).0,
+                ));
+                channels.insert("email".into(), email_for_registry);
+
+                // Forward triggers from poll channel to the unbounded agent channel
+                let agent_tx = trigger_tx.clone();
+                tokio::spawn(async move {
+                    while let Some(trigger) = poll_rx.recv().await {
+                        if agent_tx.send(trigger).is_err() {
+                            tracing::error!("agent trigger channel closed");
+                            break;
+                        }
+                    }
+                });
+
+                tokio::spawn(async move {
+                    email::run_poll_loop(email_channel).await;
+                });
+                tracing::info!(
+                    folders = ?email_config.folder_ids,
+                    poll_secs = email_config.poll_interval_secs,
+                    "Email channel started"
+                );
+            }
+        }
+    }
+
     // Create Jira client if configured
     let jira_client = if let (Some(jira_config), Some(username), Some(token)) = (
         &config.jira,
@@ -327,6 +598,25 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("bootstrap not complete — digest scheduler deferred");
     }
 
+    // Build Jira webhook state if configured
+    let jira_webhook_state = config.jira.as_ref().map(|jira_config| {
+        let secret = jira_config.webhook_secret.clone();
+        if secret.is_none() {
+            tracing::info!("Jira configured but no webhook_secret — Jira webhooks will accept all requests");
+        }
+        let state = jira::JiraWebhookState {
+            trigger_tx: trigger_tx.clone(),
+            webhook_secret: secret,
+            memory_base_path: nv_base.join("memory"),
+        };
+        tracing::info!(
+            instance = %jira_config.instance,
+            has_secret = state.webhook_secret.is_some(),
+            "Jira webhook endpoint configured"
+        );
+        Arc::new(state)
+    });
+
     // Spawn the HTTP server for CLI triggers (POST /digest, GET /health, GET /stats, etc.)
     let health_port = config
         .daemon
@@ -337,7 +627,17 @@ async fn main() -> anyhow::Result<()> {
     let http_health = Arc::clone(&health_state);
     let stats_db_path = nv_base.join("messages.db");
     tokio::spawn(async move {
-        if let Err(e) = http::run_http_server(health_port, http_tx, http_health, stats_db_path).await {
+        if let Err(e) = http::run_http_server(
+            health_port,
+            http_tx,
+            http_health,
+            stats_db_path,
+            teams_message_buffer,
+            teams_client_for_http,
+            jira_webhook_state,
+        )
+        .await
+        {
             tracing::error!(error = %e, "HTTP server failed");
         }
     });

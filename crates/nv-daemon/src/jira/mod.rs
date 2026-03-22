@@ -3,6 +3,7 @@ pub mod client;
 pub mod tools;
 #[allow(dead_code)]
 pub mod types;
+pub mod webhooks;
 
 pub use client::JiraClient;
 pub use tools::{
@@ -10,3 +11,4 @@ pub use tools::{
     jira_tool_definitions,
 };
 pub use types::*;
+pub use webhooks::JiraWebhookState;

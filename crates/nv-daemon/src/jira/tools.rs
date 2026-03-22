@@ -44,7 +44,7 @@ pub fn jira_tool_definitions() -> Vec<ToolDefinition> {
                 "properties": {
                     "project": {
                         "type": "string",
-                        "description": "Project key, e.g. OO"
+                        "description": "Jira project KEY (uppercase, 2-4 chars). Examples: 'OO', 'TC', 'CT', 'TL', 'MV'. NOT the full project name."
                     },
                     "issue_type": {
                         "type": "string",

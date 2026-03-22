@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -54,6 +55,10 @@ pub struct Config {
     pub jira: Option<JiraConfig>,
     pub nexus: Option<NexusConfig>,
     pub daemon: Option<DaemonConfig>,
+    /// Project code to filesystem path mapping (e.g. "oo" -> "~/dev/oo").
+    /// Paths are resolved and validated on load.
+    #[serde(default)]
+    pub projects: HashMap<String, PathBuf>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -174,9 +179,39 @@ impl Config {
     pub fn load_from(path: PathBuf) -> anyhow::Result<Self> {
         let contents = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read config from {}", path.display()))?;
-        let config: Config = toml::from_str(&contents)
+        let mut config: Config = toml::from_str(&contents)
             .with_context(|| format!("Failed to parse config from {}", path.display()))?;
+
+        // Resolve ~ in project paths and validate each one exists.
+        config.projects = config
+            .projects
+            .into_iter()
+            .filter_map(|(code, raw_path)| {
+                let resolved = Self::resolve_home(&raw_path);
+                if resolved.is_dir() {
+                    Some((code, resolved))
+                } else {
+                    tracing::warn!(
+                        project = %code,
+                        path = %resolved.display(),
+                        "project path does not exist or is not a directory — skipping",
+                    );
+                    None
+                }
+            })
+            .collect();
+
         Ok(config)
+    }
+
+    /// Expand `~` prefix to the current user's home directory.
+    fn resolve_home(path: &std::path::Path) -> PathBuf {
+        if let Ok(stripped) = path.strip_prefix("~") {
+            if let Ok(home) = std::env::var("HOME") {
+                return PathBuf::from(home).join(stripped);
+            }
+        }
+        path.to_path_buf()
     }
 
     /// Resolve the default config file path: `$HOME/.nv/nv.toml`.

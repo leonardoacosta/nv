@@ -661,11 +661,73 @@ impl ClaudeClient {
             tracing::debug!(stderr = %stderr, "claude CLI stderr");
         }
 
-        // Parse CLI JSON response
-        let cli_response: CliJsonResponse = serde_json::from_str(&stdout).map_err(|e| {
-            tracing::error!(stdout = %stdout, error = %e, "failed to parse CLI response");
-            ApiError::Deserialize(format!("CLI JSON parse error: {e}"))
-        })?;
+        // Parse CLI JSON response with retry on empty/truncated output
+        let cli_response: CliJsonResponse = match serde_json::from_str(&stdout) {
+            Ok(resp) => resp,
+            Err(first_err) => {
+                tracing::warn!(
+                    stdout_len = stdout.len(),
+                    error = %first_err,
+                    "CLI JSON parse failed, retrying once after 1s"
+                );
+
+                // Retry: spawn a fresh subprocess
+                tokio::time::sleep(Duration::from_secs(1)).await;
+
+                let mut retry_child = Command::new("claude")
+                    .args([
+                        "--dangerously-skip-permissions",
+                        "-p",
+                        "--output-format",
+                        "json",
+                        "--model",
+                        &self.model,
+                        "--no-session-persistence",
+                        "--tools",
+                        "Read,Glob,Grep,Bash(git:*)",
+                        "--system-prompt",
+                        system,
+                        "--strict-mcp-config",
+                    ])
+                    .env("HOME", &self.spawn_config.sandbox_home)
+                    .env(
+                        "PATH",
+                        format!(
+                            "{}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+                            self.spawn_config.real_home
+                        ),
+                    )
+                    .current_dir(format!("{}/dev", self.spawn_config.real_home))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map_err(|e| ApiError::CliError {
+                        message: format!("Failed to spawn claude CLI (retry): {e}"),
+                    })?;
+
+                if let Some(mut stdin) = retry_child.stdin.take() {
+                    stdin.write_all(prompt.as_bytes()).await?;
+                    drop(stdin);
+                }
+
+                let retry_output = retry_child.wait_with_output().await?;
+                let retry_stdout =
+                    String::from_utf8_lossy(&retry_output.stdout).to_string();
+
+                serde_json::from_str(&retry_stdout).map_err(|retry_err| {
+                    tracing::error!(
+                        retry_stdout_len = retry_stdout.len(),
+                        first_error = %first_err,
+                        retry_error = %retry_err,
+                        "CLI JSON parse failed on retry — returning error"
+                    );
+                    ApiError::Deserialize(format!(
+                        "CLI JSON parse failed after retry: {retry_err} (first attempt: {first_err})"
+                    ))
+                })?
+            }
+        };
 
         // Check for auth errors
         if cli_response.is_error

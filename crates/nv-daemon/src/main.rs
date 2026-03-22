@@ -1,4 +1,5 @@
 mod agent;
+mod bash;
 mod callbacks;
 mod claude;
 mod diary;
@@ -662,6 +663,10 @@ async fn main() -> anyhow::Result<()> {
     // Spawn the watchdog task for systemd health monitoring
     spawn_watchdog(Arc::clone(&health_state));
 
+    // Create worker event channel for progress tracking
+    let (worker_event_tx, worker_event_rx) =
+        mpsc::unbounded_channel::<worker::WorkerEvent>();
+
     // Build shared dependencies for workers
     let shared_deps = Arc::new(worker::SharedDeps {
         memory: memory::Memory::new(&nv_base),
@@ -675,6 +680,8 @@ async fn main() -> anyhow::Result<()> {
         voice_enabled: voice_enabled.clone(),
         tts_client,
         voice_max_chars,
+        project_registry: config.projects.clone(),
+        event_tx: worker_event_tx,
     });
 
     // Extract Telegram client and chat_id for reactions
@@ -708,6 +715,7 @@ async fn main() -> anyhow::Result<()> {
         shared_deps,
         tg_reaction_client,
         tg_reaction_chat_id,
+        worker_event_rx,
     );
 
     tracing::info!("starting orchestrator");

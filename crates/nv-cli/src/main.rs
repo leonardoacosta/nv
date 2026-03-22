@@ -164,6 +164,32 @@ struct StatsResponse {
     total_tokens_in: i64,
     total_tokens_out: i64,
     daily_counts: Vec<(String, i64)>,
+    #[serde(default)]
+    tool_usage: Option<ToolUsageStats>,
+}
+
+/// Tool usage stats section from the daemon /stats response.
+#[derive(Debug, Deserialize)]
+struct ToolUsageStats {
+    total_invocations: i64,
+    invocations_today: i64,
+    per_tool: Vec<ToolBreakdownEntry>,
+    slowest: Vec<SlowestEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ToolBreakdownEntry {
+    name: String,
+    count: i64,
+    success_count: i64,
+    avg_duration_ms: Option<f64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SlowestEntry {
+    tool_name: String,
+    duration_ms: i64,
+    timestamp: String,
 }
 
 /// Fetch and display message statistics from the daemon.
@@ -254,6 +280,61 @@ fn display_stats(stats: &StatsResponse) {
             let bar_len = (*count as f64 / max_count as f64 * 20.0) as usize;
             let bar: String = "\u{2588}".repeat(bar_len);
             println!("  {display_date}: {bar:<20} {count}");
+        }
+    }
+
+    // Tool usage section
+    if let Some(tu) = &stats.tool_usage {
+        println!();
+        println!("Tool Usage");
+        println!("\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}");
+        println!(
+            "Total calls:       {}",
+            format_number(tu.total_invocations)
+        );
+        println!(
+            "Today:             {}",
+            format_number(tu.invocations_today)
+        );
+
+        if !tu.per_tool.is_empty() {
+            println!();
+            println!(
+                "  {:<24} {:>6} {:>9} {:>8}",
+                "Tool", "Calls", "Success%", "Avg ms"
+            );
+            println!("  {}", "\u{2500}".repeat(51));
+            for entry in &tu.per_tool {
+                let success_pct = if entry.count > 0 {
+                    (entry.success_count as f64 / entry.count as f64 * 100.0) as i64
+                } else {
+                    0
+                };
+                let avg_ms = entry
+                    .avg_duration_ms
+                    .map(|ms| format!("{:.0}", ms))
+                    .unwrap_or_else(|| "n/a".into());
+                println!(
+                    "  {:<24} {:>6} {:>8}% {:>8}",
+                    entry.name, entry.count, success_pct, avg_ms
+                );
+            }
+        }
+
+        if !tu.slowest.is_empty() {
+            println!();
+            println!("  Top 5 slowest:");
+            for entry in &tu.slowest {
+                let ts = if entry.timestamp.len() >= 16 {
+                    &entry.timestamp[..16]
+                } else {
+                    &entry.timestamp
+                };
+                println!(
+                    "    {}ms  {:<20} {}",
+                    entry.duration_ms, entry.tool_name, ts
+                );
+            }
         }
     }
 }

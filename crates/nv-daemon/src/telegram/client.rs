@@ -12,9 +12,85 @@ const TELEGRAM_MAX_MESSAGE_LEN: usize = 4096;
 /// Convert common Markdown patterns from Claude's output to Telegram HTML.
 fn markdown_to_html(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
 
-    for line in text.lines() {
-        let trimmed = line.trim_start();
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+
+        // Detect markdown table: a line with | delimiters followed by a separator row
+        if is_table_row(trimmed) && i + 1 < lines.len() && is_table_separator(lines[i + 1].trim_start()) {
+            // Collect all contiguous table rows
+            let mut table_rows: Vec<Vec<String>> = Vec::new();
+
+            // Header row
+            table_rows.push(parse_table_row(trimmed));
+            i += 1; // move past header
+
+            // Skip separator row
+            if i < lines.len() && is_table_separator(lines[i].trim_start()) {
+                i += 1;
+            }
+
+            // Data rows
+            while i < lines.len() && is_table_row(lines[i].trim_start()) {
+                let row_trimmed = lines[i].trim_start();
+                if is_table_separator(row_trimmed) {
+                    i += 1;
+                    continue;
+                }
+                table_rows.push(parse_table_row(row_trimmed));
+                i += 1;
+            }
+
+            // Calculate column widths for alignment
+            let col_count = table_rows.iter().map(|r| r.len()).max().unwrap_or(0);
+            let mut col_widths = vec![0usize; col_count];
+            for row in &table_rows {
+                for (j, cell) in row.iter().enumerate() {
+                    if j < col_count {
+                        col_widths[j] = col_widths[j].max(cell.len());
+                    }
+                }
+            }
+
+            // Render as <pre> block with aligned columns
+            result.push_str("<pre>");
+            for (row_idx, row) in table_rows.iter().enumerate() {
+                for (j, cell) in row.iter().enumerate() {
+                    if j > 0 {
+                        result.push_str("  ");
+                    }
+                    let width = col_widths.get(j).copied().unwrap_or(cell.len());
+                    result.push_str(&escape_html(cell));
+                    // Pad with spaces for alignment (except last column)
+                    if j < col_count.saturating_sub(1) {
+                        let padding = width.saturating_sub(cell.len());
+                        for _ in 0..padding {
+                            result.push(' ');
+                        }
+                    }
+                }
+                // Add underline after header row
+                if row_idx == 0 && table_rows.len() > 1 {
+                    result.push('\n');
+                    for (j, &w) in col_widths.iter().enumerate() {
+                        if j > 0 {
+                            result.push_str("  ");
+                        }
+                        for _ in 0..w {
+                            result.push('-');
+                        }
+                    }
+                }
+                if row_idx < table_rows.len() - 1 {
+                    result.push('\n');
+                }
+            }
+            result.push_str("</pre>");
+            result.push('\n');
+            continue;
+        }
 
         // Headers → bold
         if let Some(h) = trimmed.strip_prefix("### ") {
@@ -27,15 +103,48 @@ fn markdown_to_html(text: &str) -> String {
             result.push_str("—————");
         } else {
             // Inline formatting within the line
-            let escaped = escape_html(line);
+            let escaped = escape_html(lines[i]);
             let converted = convert_inline_markdown(&escaped);
             result.push_str(&converted);
         }
         result.push('\n');
+        i += 1;
     }
 
     // Trim trailing newline
     result.trim_end_matches('\n').to_string()
+}
+
+/// Check if a line looks like a markdown table row (contains | delimiters).
+fn is_table_row(line: &str) -> bool {
+    let trimmed = line.trim();
+    // Must contain at least one | and have content besides just pipes/whitespace
+    trimmed.contains('|')
+        && trimmed
+            .chars()
+            .any(|c| c != '|' && c != '-' && !c.is_whitespace())
+}
+
+/// Check if a line is a table separator row (e.g., |------|------|).
+fn is_table_separator(line: &str) -> bool {
+    let trimmed = line.trim();
+    if !trimmed.contains('|') || !trimmed.contains('-') {
+        return false;
+    }
+    // All characters should be |, -, :, or whitespace
+    trimmed.chars().all(|c| c == '|' || c == '-' || c == ':' || c.is_whitespace())
+}
+
+/// Parse a markdown table row into cells, trimming whitespace.
+fn parse_table_row(line: &str) -> Vec<String> {
+    let trimmed = line.trim();
+    // Strip leading/trailing pipes
+    let inner = trimmed.strip_prefix('|').unwrap_or(trimmed);
+    let inner = inner.strip_suffix('|').unwrap_or(inner);
+    inner
+        .split('|')
+        .map(|cell| cell.trim().to_string())
+        .collect()
 }
 
 /// Escape HTML special characters.
@@ -488,5 +597,65 @@ mod tests {
         let chunks = chunk_message("", 4096);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0], "");
+    }
+
+    // ── markdown_to_html table tests ────────────────────────────────
+
+    #[test]
+    fn markdown_to_html_converts_table_to_pre_block() {
+        let input = "| Name | Age | City |\n|------|-----|------|\n| Leo | 30 | NYC |\n| Ana | 25 | LA |";
+        let html = markdown_to_html(input);
+        assert!(html.contains("<pre>"), "should contain <pre> tag");
+        assert!(html.contains("</pre>"), "should contain </pre> tag");
+        assert!(html.contains("Name"), "should contain header Name");
+        assert!(html.contains("Leo"), "should contain data Leo");
+        assert!(html.contains("Ana"), "should contain data Ana");
+    }
+
+    #[test]
+    fn markdown_to_html_strips_separator_row() {
+        let input = "| A | B |\n|---|---|\n| 1 | 2 |";
+        let html = markdown_to_html(input);
+        // Separator row raw pipes should not appear in output
+        assert!(!html.contains("|---|"), "should not contain raw separator pipes");
+        assert!(!html.contains("|"), "should not contain pipe characters in pre block");
+    }
+
+    #[test]
+    fn markdown_to_html_aligns_columns() {
+        let input = "| Name | Score |\n|------|-------|\n| A | 100 |\n| Bob | 5 |";
+        let html = markdown_to_html(input);
+        assert!(html.contains("<pre>"));
+        // Both rows should have consistent column alignment
+        // "Name " and "A   " should be padded to same width
+        assert!(html.contains("Name"), "should contain Name");
+        assert!(html.contains("Bob"), "should contain Bob");
+    }
+
+    #[test]
+    fn markdown_to_html_preserves_non_table_content() {
+        let input = "Hello\n| A | B |\n|---|---|\n| 1 | 2 |\nGoodbye";
+        let html = markdown_to_html(input);
+        assert!(html.contains("Hello"));
+        assert!(html.contains("<pre>"));
+        assert!(html.contains("Goodbye"));
+    }
+
+    #[test]
+    fn markdown_to_html_no_table_unchanged() {
+        let input = "Just some text with a | pipe in it";
+        let html = markdown_to_html(input);
+        assert!(!html.contains("<pre>"));
+    }
+
+    // ── is_table_separator tests ────────────────────────────────────
+
+    #[test]
+    fn table_separator_detection() {
+        assert!(is_table_separator("|------|------|"));
+        assert!(is_table_separator("| --- | --- |"));
+        assert!(is_table_separator("|:---:|:---:|"));
+        assert!(!is_table_separator("| data | here |"));
+        assert!(!is_table_separator("no pipes here"));
     }
 }

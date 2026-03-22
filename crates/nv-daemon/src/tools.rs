@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use anyhow::{anyhow, Result};
 
+use crate::bash;
 use crate::claude::ToolDefinition;
 use crate::jira;
 use crate::memory::Memory;
@@ -123,7 +127,140 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add all Jira tool definitions
     tools.extend(jira::jira_tool_definitions());
 
+    // Add scoped bash toolkit definitions
+    tools.extend(bash_tool_definitions());
+
     tools
+}
+
+/// Tool definitions for the scoped bash toolkit.
+fn bash_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "git_status".into(),
+            description: "Get the short git status for a project (staged, modified, untracked files).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+        ToolDefinition {
+            name: "git_log".into(),
+            description: "Get recent git commits for a project (one line per commit).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of commits to show (default: 10, max: 20)"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+        ToolDefinition {
+            name: "git_branch".into(),
+            description: "Get the current git branch name for a project.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+        ToolDefinition {
+            name: "git_diff_stat".into(),
+            description: "Get the git diff --stat summary for a project (files changed, insertions, deletions).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+        ToolDefinition {
+            name: "ls_project".into(),
+            description: "List directory contents within a project. Lists the project root if no subdir is given.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    },
+                    "subdir": {
+                        "type": "string",
+                        "description": "Optional subdirectory within the project (e.g. 'src', 'packages/db')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+        ToolDefinition {
+            name: "cat_config".into(),
+            description: "Read a config/doc file from a project. Only .json, .toml, .yaml, .yml, .md extensions allowed.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "File path relative to project root (e.g. 'package.json', 'docs/README.md')"
+                    }
+                },
+                "required": ["project", "file"]
+            }),
+        },
+        ToolDefinition {
+            name: "bd_ready".into(),
+            description: "Get the beads ready queue for a project (issues ready for work).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+        ToolDefinition {
+            name: "bd_stats".into(),
+            description: "Get beads statistics for a project (issue counts, status breakdown).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+    ]
 }
 
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
@@ -201,6 +338,7 @@ pub async fn execute_tool_send(
     memory: &Memory,
     jira_client: Option<&jira::JiraClient>,
     nexus_client: Option<&nexus::client::NexusClient>,
+    project_registry: &HashMap<String, PathBuf>,
 ) -> Result<ToolResult> {
     match name {
         "read_memory" => {
@@ -266,6 +404,13 @@ pub async fn execute_tool_send(
             let output = nexus::tools::format_query_session(client, session_id).await?;
             Ok(ToolResult::Immediate(output))
         }
+
+        // ── Scoped Bash Toolkit ──────────────────────────────────
+        "git_status" | "git_log" | "git_branch" | "git_diff_stat"
+        | "ls_project" | "cat_config" | "bd_ready" | "bd_stats" => {
+            execute_bash_tool(name, input, project_registry).await
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -285,6 +430,7 @@ pub async fn execute_tool(
     jira_client: Option<&jira::JiraClient>,
     nexus_client: Option<&nexus::client::NexusClient>,
     message_store: Option<&MessageStore>,
+    project_registry: &HashMap<String, PathBuf>,
 ) -> Result<ToolResult> {
     match name {
         // ── Memory Tools ────────────────────────────────────────
@@ -454,8 +600,54 @@ pub async fn execute_tool(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Scoped Bash Toolkit ──────────────────────────────────
+        "git_status" | "git_log" | "git_branch" | "git_diff_stat"
+        | "ls_project" | "cat_config" | "bd_ready" | "bd_stats" => {
+            execute_bash_tool(name, input, project_registry).await
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
+}
+
+/// Execute a scoped bash tool by parsing input and delegating to `bash::execute_command`.
+async fn execute_bash_tool(
+    name: &str,
+    input: &serde_json::Value,
+    project_registry: &HashMap<String, PathBuf>,
+) -> Result<ToolResult> {
+    let project = input["project"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+    let project_root = bash::validate_project(project, project_registry)?;
+
+    let cmd = match name {
+        "git_status" => bash::AllowedCommand::GitStatus,
+        "git_log" => {
+            let count = input["count"].as_u64().unwrap_or(10);
+            bash::AllowedCommand::GitLog { count }
+        }
+        "git_branch" => bash::AllowedCommand::GitBranch,
+        "git_diff_stat" => bash::AllowedCommand::GitDiffStat,
+        "ls_project" => {
+            let subdir = input["subdir"].as_str().map(String::from);
+            bash::AllowedCommand::LsDir { subdir }
+        }
+        "cat_config" => {
+            let file = input["file"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'file' parameter"))?;
+            bash::AllowedCommand::CatConfig {
+                file: file.to_string(),
+            }
+        }
+        "bd_ready" => bash::AllowedCommand::BdReady,
+        "bd_stats" => bash::AllowedCommand::BdStats,
+        _ => unreachable!(),
+    };
+
+    let output = bash::execute_command(&cmd, project_root).await?;
+    Ok(ToolResult::Immediate(output))
 }
 
 /// Execute a confirmed Jira pending action against the real JiraClient.
@@ -527,11 +719,15 @@ mod tests {
         (dir, memory)
     }
 
+    fn empty_registry() -> HashMap<String, PathBuf> {
+        HashMap::new()
+    }
+
     #[test]
-    fn register_tools_returns_fourteen() {
+    fn register_tools_returns_twentytwo() {
         let tools = register_tools();
-        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira = 14
-        assert_eq!(tools.len(), 14);
+        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash = 22
+        assert_eq!(tools.len(), 22);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -548,6 +744,15 @@ mod tests {
         assert!(names.contains(&"jira_transition"));
         assert!(names.contains(&"jira_assign"));
         assert!(names.contains(&"jira_comment"));
+        // Bash toolkit tools
+        assert!(names.contains(&"git_status"));
+        assert!(names.contains(&"git_log"));
+        assert!(names.contains(&"git_branch"));
+        assert!(names.contains(&"git_diff_stat"));
+        assert!(names.contains(&"ls_project"));
+        assert!(names.contains(&"cat_config"));
+        assert!(names.contains(&"bd_ready"));
+        assert!(names.contains(&"bd_stats"));
     }
 
     #[test]
@@ -597,6 +802,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -616,6 +822,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -637,6 +844,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -659,6 +867,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -678,6 +887,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -697,6 +907,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -716,6 +927,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await;
         assert!(result.is_err());
@@ -742,6 +954,7 @@ mod tests {
             Some(&client),
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -779,6 +992,7 @@ mod tests {
             Some(&client),
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -817,6 +1031,7 @@ mod tests {
             Some(&client),
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -839,7 +1054,7 @@ mod tests {
     #[tokio::test]
     async fn execute_query_nexus_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None)
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
@@ -853,7 +1068,7 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 7400,
         }]);
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None)
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry())
             .await
             .unwrap();
         match result {
@@ -874,6 +1089,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await;
         assert!(result.is_err());
@@ -891,6 +1107,7 @@ mod tests {
             None,
             Some(&client),
             None,
+            &empty_registry(),
         )
         .await;
         assert!(result.is_err());
@@ -900,7 +1117,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None).await;
+        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -910,7 +1127,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None).await;
+        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -925,6 +1142,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await;
         assert!(result.is_err());
@@ -947,6 +1165,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -982,6 +1201,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -1009,6 +1229,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await;
         assert!(result.is_err());
@@ -1060,6 +1281,7 @@ mod tests {
             None,
             None,
             Some(&store),
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -1085,6 +1307,7 @@ mod tests {
             None,
             None,
             Some(&store),
+            &empty_registry(),
         )
         .await
         .unwrap();
@@ -1107,6 +1330,7 @@ mod tests {
             None,
             None,
             None,
+            &empty_registry(),
         )
         .await;
         assert!(result.is_err());

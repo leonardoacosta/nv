@@ -9,7 +9,7 @@ use std::collections::BinaryHeap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use nv_core::types::{InlineKeyboard, OutboundMessage, Trigger};
@@ -29,6 +29,32 @@ use crate::state::State;
 use crate::telegram::client::TelegramClient;
 use crate::tools;
 use crate::tts;
+use tokio::sync::mpsc;
+
+// ── Worker Events ──────────────────────────────────────────────────
+
+/// Structured progress events emitted by workers to the orchestrator.
+///
+/// Workers send these via `mpsc::UnboundedSender<WorkerEvent>` at each
+/// stage boundary. The orchestrator uses them for logging, status updates,
+/// and long-task UX.
+#[derive(Debug, Clone)]
+pub enum WorkerEvent {
+    /// A processing stage has started (e.g., "context_build", "tool_loop").
+    StageStarted { worker_id: Uuid, stage: String },
+    /// A tool is about to be executed.
+    ToolCalled { worker_id: Uuid, tool: String },
+    /// A processing stage has completed.
+    StageComplete {
+        worker_id: Uuid,
+        stage: String,
+        duration_ms: u64,
+    },
+    /// Worker finished successfully.
+    Complete { worker_id: Uuid, response_len: usize },
+    /// Worker encountered an error.
+    Error { worker_id: Uuid, error: String },
+}
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -40,6 +66,23 @@ const MAX_HISTORY_CHARS: usize = 50_000;
 
 /// Maximum tool use loop iterations per worker cycle (safety limit).
 const MAX_TOOL_LOOP_ITERATIONS: usize = 10;
+
+/// Default timeout for read-type tool calls (seconds).
+pub const TOOL_TIMEOUT_READ: u64 = 30;
+
+/// Default timeout for write-type tool calls (seconds).
+pub const TOOL_TIMEOUT_WRITE: u64 = 60;
+
+/// Tool names classified as write operations (use longer timeout).
+pub const WRITE_TOOLS: &[&str] = &[
+    "jira_create",
+    "jira_transition",
+    "jira_assign",
+    "jira_comment",
+    "write_memory",
+    "update_soul",
+    "complete_bootstrap",
+];
 
 // ── Priority ────────────────────────────────────────────────────────
 
@@ -115,6 +158,9 @@ pub struct SharedDeps {
     pub voice_enabled: Arc<std::sync::atomic::AtomicBool>,
     pub tts_client: Option<Arc<tts::TtsClient>>,
     pub voice_max_chars: u32,
+    pub project_registry: std::collections::HashMap<String, PathBuf>,
+    /// Channel for workers to emit progress events to the orchestrator.
+    pub event_tx: mpsc::UnboundedSender<WorkerEvent>,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -267,6 +313,14 @@ impl Worker {
         let task_id = task.id;
         let tg_chat_id = task.telegram_chat_id.or(default_chat_id);
         let tg_msg_id = task.telegram_message_id;
+        let event_tx = &deps.event_tx;
+
+        // Emit StageStarted for context build
+        let context_build_start = Instant::now();
+        let _ = event_tx.send(WorkerEvent::StageStarted {
+            worker_id: task_id,
+            stage: "context_build".into(),
+        });
 
         // Build system context and tool definitions
         let system_prompt = build_system_context();
@@ -366,6 +420,13 @@ impl Worker {
 
         let mut conversation_history = vec![Message::user(&user_message)];
 
+        // Emit StageComplete for context build
+        let _ = event_tx.send(WorkerEvent::StageComplete {
+            worker_id: task_id,
+            stage: "context_build".into(),
+            duration_ms: context_build_start.elapsed().as_millis() as u64,
+        });
+
         // Call Claude
         let call_start = Instant::now();
         let response = match client
@@ -374,6 +435,11 @@ impl Worker {
         {
             Ok(r) => r,
             Err(e) => {
+                // Emit Error event
+                let _ = event_tx.send(WorkerEvent::Error {
+                    worker_id: task_id,
+                    error: format!("Claude API failure: {e}"),
+                });
                 // React with error
                 if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, tg_chat_id, tg_msg_id) {
                     let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await; // red X
@@ -402,6 +468,12 @@ impl Worker {
         let tokens_out = response.usage.output_tokens as i64;
 
         // Run tool loop
+        let tool_loop_start = Instant::now();
+        let _ = event_tx.send(WorkerEvent::StageStarted {
+            worker_id: task_id,
+            stage: "tool_loop".into(),
+        });
+
         let (final_content, tool_names) = Self::run_tool_loop(
             response,
             &mut conversation_history,
@@ -409,10 +481,23 @@ impl Worker {
             &tool_definitions,
             &client,
             &deps,
+            task_id,
         )
         .await?;
 
+        let _ = event_tx.send(WorkerEvent::StageComplete {
+            worker_id: task_id,
+            stage: "tool_loop".into(),
+            duration_ms: tool_loop_start.elapsed().as_millis() as u64,
+        });
+
         let response_text = extract_text(&final_content);
+
+        // Emit Complete event
+        let _ = event_tx.send(WorkerEvent::Complete {
+            worker_id: task_id,
+            response_len: response_text.len(),
+        });
 
         // Send response to CLI channels
         for tx in task.cli_response_txs {
@@ -555,6 +640,7 @@ impl Worker {
         tool_definitions: &[ToolDefinition],
         client: &ClaudeClient,
         deps: &SharedDeps,
+        worker_id: Uuid,
     ) -> Result<(Vec<ContentBlock>, Vec<String>)> {
         let mut response = initial_response;
         let mut all_text_content = Vec::new();
@@ -589,8 +675,15 @@ impl Worker {
 
             let mut tool_results = Vec::new();
             for (id, name, input) in &tool_uses {
+                // Emit ToolCalled event before each tool execution
+                let _ = deps.event_tx.send(WorkerEvent::ToolCalled {
+                    worker_id,
+                    tool: name.clone(),
+                });
+
                 // Handle get_recent_messages synchronously to avoid holding
                 // MutexGuard across an await point (MessageStore is !Send).
+                let tool_start = Instant::now();
                 let result = if name == "get_recent_messages" {
                     let store = deps.message_store.lock().unwrap();
                     let count = input["count"].as_u64().unwrap_or(20).min(100) as usize;
@@ -614,16 +707,73 @@ impl Worker {
                         Err(e) => Err(e),
                     }
                 } else {
-                    // Use Send-safe variant that doesn't reference MessageStore type.
-                    tools::execute_tool_send(
-                        name,
-                        input,
-                        &deps.memory,
-                        deps.jira_client.as_ref(),
-                        deps.nexus_client.as_ref(),
+                    // Determine timeout based on tool category
+                    let timeout_secs = if WRITE_TOOLS.contains(&name.as_str()) {
+                        TOOL_TIMEOUT_WRITE
+                    } else {
+                        TOOL_TIMEOUT_READ
+                    };
+                    let timeout_dur = Duration::from_secs(timeout_secs);
+
+                    // Wrap tool execution in a timeout
+                    match tokio::time::timeout(
+                        timeout_dur,
+                        tools::execute_tool_send(
+                            name,
+                            input,
+                            &deps.memory,
+                            deps.jira_client.as_ref(),
+                            deps.nexus_client.as_ref(),
+                            &deps.project_registry,
+                        ),
                     )
                     .await
+                    {
+                        Ok(result) => result,
+                        Err(_elapsed) => {
+                            tracing::warn!(
+                                tool = %name,
+                                timeout_secs,
+                                "tool execution timed out"
+                            );
+                            let _ = deps.event_tx.send(WorkerEvent::Error {
+                                worker_id,
+                                error: format!("Tool {name} timed out after {timeout_secs}s"),
+                            });
+                            Err(anyhow::anyhow!(
+                                "Tool timed out after {timeout_secs}s"
+                            ))
+                        }
+                    }
                 };
+                let tool_duration_ms = tool_start.elapsed().as_millis() as i64;
+
+                // Log tool usage to audit table
+                {
+                    let input_summary = input.to_string();
+                    let (result_summary, success) = match &result {
+                        Ok(tools::ToolResult::Immediate(output)) => {
+                            (output.clone(), true)
+                        }
+                        Ok(tools::ToolResult::PendingAction { description, .. }) => {
+                            (description.clone(), true)
+                        }
+                        Err(e) => (e.to_string(), false),
+                    };
+                    let store = deps.message_store.lock().unwrap();
+                    if let Err(e) = store.log_tool_usage(
+                        name,
+                        &input_summary,
+                        &result_summary,
+                        success,
+                        tool_duration_ms,
+                        Some(&worker_id.to_string()),
+                        None,
+                        None,
+                    ) {
+                        tracing::warn!(error = %e, tool = %name, "failed to log tool usage");
+                    }
+                }
 
                 let (content, is_error) = match result {
                     Ok(tools::ToolResult::Immediate(output)) => (output, false),
@@ -747,16 +897,126 @@ impl Worker {
 
 // ── Helper Functions ────────────────────────────────────────────────
 
-/// Extract text content from content blocks.
+/// Extract text content from content blocks, stripping any tool call artifacts.
 fn extract_text(content: &[ContentBlock]) -> String {
-    content
+    let raw = content
         .iter()
         .filter_map(|b| match b {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    strip_tool_call_artifacts(&raw)
+}
+
+/// Remove ```tool_call...``` / ```tool_use...``` / ```json...``` blocks and
+/// the preamble text that often precedes them ("Let me check that.", etc.)
+/// from Claude's response text. Only the final conversational response
+/// should reach the user.
+pub fn strip_tool_call_artifacts(text: &str) -> String {
+    let mut result = text.to_string();
+
+    // Repeatedly strip fenced code blocks tagged as tool_call, tool_use, or
+    // json (when containing tool invocation patterns like "tool":).
+    loop {
+        let stripped = strip_one_tool_block(&result);
+        if stripped == result {
+            break;
+        }
+        result = stripped;
+    }
+
+    result.trim().to_string()
+}
+
+/// Strip one fenced tool block (```tool_call, ```tool_use, or ```json with
+/// tool pattern) and its preamble text. Returns the input unchanged if no
+/// block is found.
+fn strip_one_tool_block(text: &str) -> String {
+    // Match ```tool_call or ```tool_use blocks
+    for marker in &["```tool_call", "```tool_use"] {
+        if let Some(block_start) = text.find(marker) {
+            let after = &text[block_start + marker.len()..];
+            if let Some(end_offset) = after.find("```") {
+                let after_block = &after[end_offset + 3..];
+                // Strip everything before + including the block
+                let before = text[..block_start].trim();
+                let remaining = after_block.trim();
+
+                // If the preamble is a short transitional sentence, strip it too
+                let cleaned_before = strip_preamble(before);
+
+                return if cleaned_before.is_empty() {
+                    remaining.to_string()
+                } else if remaining.is_empty() {
+                    cleaned_before
+                } else {
+                    format!("{cleaned_before}\n{remaining}")
+                };
+            }
+        }
+    }
+
+    // Match ```json blocks that contain tool invocation patterns
+    let json_marker = "```json";
+    if let Some(block_start) = text.find(json_marker) {
+        let after = &text[block_start + json_marker.len()..];
+        if let Some(end_offset) = after.find("```") {
+            let json_content = &after[..end_offset];
+            // Only strip if it looks like a tool call
+            if json_content.contains("\"tool\"") || json_content.contains("\"tool_name\"") {
+                let after_block = &after[end_offset + 3..];
+                let before = text[..block_start].trim();
+                let remaining = after_block.trim();
+                let cleaned_before = strip_preamble(before);
+
+                return if cleaned_before.is_empty() {
+                    remaining.to_string()
+                } else if remaining.is_empty() {
+                    cleaned_before
+                } else {
+                    format!("{cleaned_before}\n{remaining}")
+                };
+            }
+        }
+    }
+
+    text.to_string()
+}
+
+/// Strip short preamble lines that precede tool call blocks. These are
+/// transitional phrases like "Let me check that." or "I'll search for that."
+fn strip_preamble(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+
+    // If the text is very short (< 100 chars) and looks like a single
+    // transitional sentence, strip it entirely
+    let trimmed = text.trim();
+    if trimmed.len() < 100 {
+        let lower = trimmed.to_lowercase();
+        let preamble_patterns = [
+            "let me",
+            "i'll ",
+            "i will ",
+            "let me check",
+            "let me search",
+            "let me look",
+            "let me find",
+            "checking",
+            "searching",
+            "looking",
+        ];
+        for pattern in &preamble_patterns {
+            if lower.starts_with(pattern) {
+                return String::new();
+            }
+        }
+    }
+
+    trimmed.to_string()
 }
 
 /// Truncate conversation history to stay within context budget.
@@ -917,5 +1177,144 @@ mod tests {
         let s = summarize_sources(&names);
         assert!(s.contains("jira: 2 calls"));
         assert!(s.contains("memory: 1 calls"));
+    }
+
+    // ── strip_tool_call_artifacts tests ──────────────────────────────
+
+    #[test]
+    fn strip_tool_call_removes_tool_call_block() {
+        let input = "Let me check that.\n```tool_call\n{\"tool\": \"read_memory\", \"input\": {\"topic\": \"tasks\"}}\n```";
+        let result = strip_tool_call_artifacts(input);
+        assert!(!result.contains("tool_call"));
+        assert!(!result.contains("read_memory"));
+        // Preamble "Let me check that." should also be stripped
+        assert!(!result.contains("Let me check"));
+    }
+
+    #[test]
+    fn strip_tool_call_removes_tool_use_block() {
+        let input = "I'll search for that.\n```tool_use\n{\"name\": \"search\"}\n```";
+        let result = strip_tool_call_artifacts(input);
+        assert!(!result.contains("tool_use"));
+        assert!(!result.contains("search"));
+    }
+
+    #[test]
+    fn strip_tool_call_preserves_normal_text() {
+        let input = "Here is your answer: The meeting is at 3pm.";
+        let result = strip_tool_call_artifacts(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn strip_tool_call_preserves_non_tool_code_blocks() {
+        let input = "Here is some code:\n```rust\nfn main() {}\n```";
+        let result = strip_tool_call_artifacts(input);
+        assert!(result.contains("```rust"));
+        assert!(result.contains("fn main()"));
+    }
+
+    #[test]
+    fn strip_tool_call_handles_multiple_blocks() {
+        let input = "Let me check.\n```tool_call\n{\"tool\": \"a\"}\n```\nNow another.\n```tool_call\n{\"tool\": \"b\"}\n```\nFinal answer here.";
+        let result = strip_tool_call_artifacts(input);
+        assert!(!result.contains("tool_call"));
+        assert!(result.contains("Final answer here."));
+    }
+
+    #[test]
+    fn strip_tool_call_json_block_with_tool_pattern() {
+        let input = "Checking...\n```json\n{\"tool\": \"read_memory\", \"input\": {}}\n```";
+        let result = strip_tool_call_artifacts(input);
+        assert!(!result.contains("read_memory"));
+    }
+
+    #[test]
+    fn strip_tool_call_json_block_without_tool_pattern_preserved() {
+        let input = "Here is JSON:\n```json\n{\"name\": \"Leo\", \"age\": 30}\n```";
+        let result = strip_tool_call_artifacts(input);
+        assert!(result.contains("```json"));
+        assert!(result.contains("Leo"));
+    }
+
+    // ── WorkerEvent Tests ───────────────────────────────────────────
+
+    #[test]
+    fn worker_event_all_variants_construct() {
+        let id = Uuid::new_v4();
+
+        // StageStarted
+        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() };
+        assert!(matches!(&e, WorkerEvent::StageStarted { worker_id, stage } if *worker_id == id && stage == "context_build"));
+
+        // ToolCalled
+        let e = WorkerEvent::ToolCalled { worker_id: id, tool: "jira_search".into() };
+        assert!(matches!(&e, WorkerEvent::ToolCalled { worker_id, tool } if *worker_id == id && tool == "jira_search"));
+
+        // StageComplete
+        let e = WorkerEvent::StageComplete { worker_id: id, stage: "tool_loop".into(), duration_ms: 1234 };
+        assert!(matches!(&e, WorkerEvent::StageComplete { worker_id, stage, duration_ms } if *worker_id == id && stage == "tool_loop" && *duration_ms == 1234));
+
+        // Complete
+        let e = WorkerEvent::Complete { worker_id: id, response_len: 512 };
+        assert!(matches!(&e, WorkerEvent::Complete { worker_id, response_len } if *worker_id == id && *response_len == 512));
+
+        // Error
+        let e = WorkerEvent::Error { worker_id: id, error: "timeout".into() };
+        assert!(matches!(&e, WorkerEvent::Error { worker_id, error } if *worker_id == id && error == "timeout"));
+    }
+
+    #[test]
+    fn worker_event_clone_preserves_data() {
+        let id = Uuid::new_v4();
+        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into() };
+        let cloned = event.clone();
+        assert!(matches!(&cloned, WorkerEvent::StageStarted { worker_id, stage } if *worker_id == id && stage == "test"));
+    }
+
+    #[test]
+    fn worker_event_channel_normal_flow_sequence() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
+        let id = Uuid::new_v4();
+
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
+        tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "context_build".into(), duration_ms: 10 }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into() }).unwrap();
+        tx.send(WorkerEvent::ToolCalled { worker_id: id, tool: "jira_search".into() }).unwrap();
+        tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "tool_loop".into(), duration_ms: 500 }).unwrap();
+        tx.send(WorkerEvent::Complete { worker_id: id, response_len: 256 }).unwrap();
+        drop(tx);
+
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        assert_eq!(events.len(), 6);
+        assert!(matches!(&events[0], WorkerEvent::StageStarted { stage, .. } if stage == "context_build"));
+        assert!(matches!(&events[1], WorkerEvent::StageComplete { stage, .. } if stage == "context_build"));
+        assert!(matches!(&events[2], WorkerEvent::StageStarted { stage, .. } if stage == "tool_loop"));
+        assert!(matches!(&events[3], WorkerEvent::ToolCalled { tool, .. } if tool == "jira_search"));
+        assert!(matches!(&events[4], WorkerEvent::StageComplete { stage, .. } if stage == "tool_loop"));
+        assert!(matches!(&events[5], WorkerEvent::Complete { response_len: 256, .. }));
+    }
+
+    #[test]
+    fn worker_event_channel_error_flow() {
+        let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
+        let id = Uuid::new_v4();
+
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
+        tx.send(WorkerEvent::Error { worker_id: id, error: "Claude API failure: rate limited".into() }).unwrap();
+        drop(tx);
+
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+
+        assert_eq!(events.len(), 2);
+        assert!(matches!(&events[0], WorkerEvent::StageStarted { .. }));
+        assert!(matches!(&events[1], WorkerEvent::Error { error, .. } if error.contains("rate limited")));
     }
 }

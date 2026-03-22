@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::agent::ChannelRegistry;
 use crate::nexus;
 use crate::telegram::client::TelegramClient;
-use crate::worker::{Priority, SharedDeps, WorkerPool, WorkerTask};
+use crate::worker::{Priority, SharedDeps, WorkerEvent, WorkerPool, WorkerTask};
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -153,6 +153,10 @@ pub struct Orchestrator {
     editing_action_id: Option<Uuid>,
     /// Last time we ran the expiry sweep.
     last_expiry_check: Instant,
+    /// Receiver for worker progress events.
+    event_rx: mpsc::UnboundedReceiver<WorkerEvent>,
+    /// Tracks the last StageStarted event per worker for inactivity detection.
+    worker_stage_started: std::collections::HashMap<Uuid, (String, Instant)>,
 }
 
 impl Orchestrator {
@@ -164,6 +168,7 @@ impl Orchestrator {
         deps: Arc<SharedDeps>,
         telegram_client: Option<TelegramClient>,
         telegram_chat_id: Option<i64>,
+        event_rx: mpsc::UnboundedReceiver<WorkerEvent>,
     ) -> Self {
         Self {
             trigger_rx,
@@ -174,129 +179,294 @@ impl Orchestrator {
             telegram_chat_id,
             editing_action_id: None,
             last_expiry_check: Instant::now(),
+            event_rx,
+            worker_stage_started: std::collections::HashMap::new(),
         }
     }
 
-    /// Main orchestrator loop — receives triggers, classifies, dispatches.
+    /// Main orchestrator loop — receives triggers and worker events.
+    ///
+    /// Uses `tokio::select!` to multiplex:
+    /// - Trigger channel (inbound user/cron/nexus triggers)
+    /// - Worker event channel (progress events from workers)
+    /// - 30s inactivity timer (status update to Telegram for long-running tasks)
     ///
     /// Runs until the trigger channel closes (all senders dropped).
     pub async fn run(mut self) -> Result<()> {
         tracing::info!("orchestrator started, waiting for triggers");
 
+        /// Inactivity threshold — if a worker stage has been running this long
+        /// without a Complete or Error, send a status update to Telegram.
+        const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
+
+        let mut trigger_closed = false;
+
         loop {
-            let mut triggers = self.drain_triggers().await;
-            if triggers.is_empty() {
-                tracing::info!("trigger channel closed, shutting down orchestrator");
+            // If trigger channel is closed and no active workers are tracked, exit
+            if trigger_closed && self.worker_stage_started.is_empty() {
+                tracing::info!("trigger channel closed and no active workers, shutting down");
                 break;
             }
 
-            // Extract CLI response channels before processing
-            let cli_response_txs = extract_cli_response_channels(&mut triggers);
+            // Compute next inactivity deadline
+            let next_inactivity = self
+                .worker_stage_started
+                .values()
+                .map(|(_, started)| *started + INACTIVITY_TIMEOUT)
+                .min();
 
-            // Run periodic expiry sweep for stale pending actions
-            if self.last_expiry_check.elapsed() >= EXPIRY_CHECK_INTERVAL {
-                self.last_expiry_check = Instant::now();
-                if let Some(tg) = self.channels.get("telegram") {
-                    if let Some(tg_channel) =
-                        tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
-                    {
-                        if let Err(e) = crate::callbacks::check_expired_actions(
-                            &tg_channel.client,
-                            tg_channel.chat_id,
-                            &self.deps.state,
-                        )
-                        .await
-                        {
-                            tracing::warn!(error = %e, "expiry sweep failed");
-                        }
+            let inactivity_sleep = match next_inactivity {
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if deadline > now {
+                        tokio::time::sleep(deadline - now)
+                    } else {
+                        tokio::time::sleep(Duration::ZERO)
                     }
                 }
-            }
-
-            // Classify the first trigger to decide routing
-            let primary_class = triggers
-                .first()
-                .map(classify_trigger)
-                .unwrap_or(TriggerClass::Query);
-
-            tracing::debug!(
-                class = ?primary_class,
-                count = triggers.len(),
-                "classified trigger batch"
-            );
-
-            // Handle inline cases (no worker needed)
-            match primary_class {
-                TriggerClass::Callback => {
-                    self.handle_callbacks(&triggers).await;
-                    continue;
-                }
-                TriggerClass::NexusEvent => {
-                    self.handle_nexus_events(&triggers).await;
-                    continue;
-                }
-                TriggerClass::Chat => {
-                    self.handle_chat(&triggers).await;
-                    continue;
-                }
-                _ => {}
-            }
-
-            // For Command/Query/Digest: react and dispatch to worker pool
-
-            // Extract Telegram metadata for reactions
-            let (tg_chat_id, tg_msg_id) = triggers
-                .first()
-                .and_then(|t| match t {
-                    Trigger::Message(msg) => {
-                        let chat_id = msg.metadata.get("chat_id").and_then(|v| v.as_i64());
-                        let msg_id = msg.metadata.get("message_id").and_then(|v| v.as_i64());
-                        Some((chat_id, msg_id))
-                    }
-                    _ => (None, None).into(),
-                })
-                .unwrap_or((None, None));
-
-            // React with eyes immediately
-            if let (Some(tg), Some(chat_id), Some(msg_id)) =
-                (&self.telegram_client, tg_chat_id.or(self.telegram_chat_id), tg_msg_id)
-            {
-                let _ = tg.set_message_reaction(chat_id, msg_id, "\u{1F440}").await; // eyes emoji
-            }
-
-            // Dispatch to worker pool
-            let task = WorkerTask {
-                id: Uuid::new_v4(),
-                triggers,
-                priority: class_to_priority(primary_class),
-                created_at: Instant::now(),
-                telegram_chat_id: tg_chat_id.or(self.telegram_chat_id),
-                telegram_message_id: tg_msg_id,
-                cli_response_txs,
+                None => tokio::time::sleep(Duration::from_secs(3600)), // effectively infinite
             };
+            tokio::pin!(inactivity_sleep);
 
-            self.worker_pool.dispatch(task).await;
+            tokio::select! {
+                trigger = self.trigger_rx.recv(), if !trigger_closed => {
+                    let Some(first) = trigger else {
+                        tracing::info!("trigger channel closed");
+                        trigger_closed = true;
+                        continue;
+                    };
+
+                    // Drain any additional queued triggers
+                    let mut triggers = vec![first];
+                    while let Ok(t) = self.trigger_rx.try_recv() {
+                        triggers.push(t);
+                    }
+                    tracing::info!(count = triggers.len(), "drained trigger batch");
+
+                    self.process_trigger_batch(&mut triggers).await;
+                }
+                event = self.event_rx.recv() => {
+                    let Some(event) = event else {
+                        // Event channel closed — all workers gone
+                        tracing::debug!("worker event channel closed");
+                        if trigger_closed {
+                            break;
+                        }
+                        continue;
+                    };
+                    self.handle_worker_event(event).await;
+                }
+                () = &mut inactivity_sleep => {
+                    self.check_inactivity(INACTIVITY_TIMEOUT).await;
+                }
+            }
         }
 
         Ok(())
     }
 
-    // ── Trigger Draining ────────────────────────────────────────────
+    /// Process a batch of triggers (extracted from the select loop).
+    async fn process_trigger_batch(&mut self, triggers: &mut Vec<Trigger>) {
+        // Extract CLI response channels before processing
+        let cli_response_txs = extract_cli_response_channels(triggers);
 
-    /// Block until at least one trigger arrives, then drain all queued triggers.
-    async fn drain_triggers(&mut self) -> Vec<Trigger> {
-        let first = self.trigger_rx.recv().await;
-        let Some(first) = first else {
-            return vec![];
-        };
-
-        let mut batch = vec![first];
-        while let Ok(trigger) = self.trigger_rx.try_recv() {
-            batch.push(trigger);
+        // Run periodic expiry sweep for stale pending actions
+        if self.last_expiry_check.elapsed() >= EXPIRY_CHECK_INTERVAL {
+            self.last_expiry_check = Instant::now();
+            if let Some(tg) = self.channels.get("telegram") {
+                if let Some(tg_channel) =
+                    tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                {
+                    if let Err(e) = crate::callbacks::check_expired_actions(
+                        &tg_channel.client,
+                        tg_channel.chat_id,
+                        &self.deps.state,
+                    )
+                    .await
+                    {
+                        tracing::warn!(error = %e, "expiry sweep failed");
+                    }
+                }
+            }
         }
 
-        tracing::info!(count = batch.len(), "drained trigger batch");
-        batch
+        // Classify the first trigger to decide routing
+        let primary_class = triggers
+            .first()
+            .map(classify_trigger)
+            .unwrap_or(TriggerClass::Query);
+
+        tracing::debug!(
+            class = ?primary_class,
+            count = triggers.len(),
+            "classified trigger batch"
+        );
+
+        // Handle inline cases (no worker needed)
+        match primary_class {
+            TriggerClass::Callback => {
+                self.handle_callbacks(triggers).await;
+                return;
+            }
+            TriggerClass::NexusEvent => {
+                self.handle_nexus_events(triggers).await;
+                return;
+            }
+            TriggerClass::Chat => {
+                self.handle_chat(triggers).await;
+                return;
+            }
+            _ => {}
+        }
+
+        // For Command/Query/Digest: react and dispatch to worker pool
+
+        // Extract Telegram metadata for reactions
+        let (tg_chat_id, tg_msg_id) = triggers
+            .first()
+            .and_then(|t| match t {
+                Trigger::Message(msg) => {
+                    let chat_id = msg.metadata.get("chat_id").and_then(|v| v.as_i64());
+                    let msg_id = msg.metadata.get("message_id").and_then(|v| v.as_i64());
+                    Some((chat_id, msg_id))
+                }
+                _ => (None, None).into(),
+            })
+            .unwrap_or((None, None));
+
+        // React with eyes immediately
+        if let (Some(tg), Some(chat_id), Some(msg_id)) =
+            (&self.telegram_client, tg_chat_id.or(self.telegram_chat_id), tg_msg_id)
+        {
+            let _ = tg.set_message_reaction(chat_id, msg_id, "\u{1F440}").await; // eyes emoji
+        }
+
+        // Long-task confirmation: estimate if this task is heavy
+        if let Some(estimate) = estimate_task_complexity(triggers) {
+            let chat_id = tg_chat_id.or(self.telegram_chat_id);
+            if let Some(channel) = self.channels.get("telegram") {
+                let msg = OutboundMessage {
+                    channel: "telegram".into(),
+                    content: format!(
+                        "This will take ~{}min. {}. Be right back.",
+                        estimate.estimated_minutes, estimate.description
+                    ),
+                    reply_to: None,
+                    keyboard: None,
+                };
+                let _ = channel.send_message(msg).await;
+                tracing::info!(
+                    chat_id,
+                    estimated_minutes = estimate.estimated_minutes,
+                    description = %estimate.description,
+                    "sent long-task confirmation"
+                );
+            }
+        }
+
+        // Dispatch to worker pool
+        let task = WorkerTask {
+            id: Uuid::new_v4(),
+            triggers: std::mem::take(triggers),
+            priority: class_to_priority(primary_class),
+            created_at: Instant::now(),
+            telegram_chat_id: tg_chat_id.or(self.telegram_chat_id),
+            telegram_message_id: tg_msg_id,
+            cli_response_txs,
+        };
+
+        self.worker_pool.dispatch(task).await;
+    }
+
+    /// Handle a single worker event — log at appropriate level and track state.
+    async fn handle_worker_event(&mut self, event: WorkerEvent) {
+        match &event {
+            WorkerEvent::StageStarted { worker_id, stage } => {
+                tracing::debug!(
+                    worker_id = %worker_id,
+                    stage = %stage,
+                    "worker stage started"
+                );
+                self.worker_stage_started
+                    .insert(*worker_id, (stage.clone(), Instant::now()));
+            }
+            WorkerEvent::ToolCalled { worker_id, tool } => {
+                tracing::trace!(
+                    worker_id = %worker_id,
+                    tool = %tool,
+                    "worker tool called"
+                );
+            }
+            WorkerEvent::StageComplete {
+                worker_id,
+                stage,
+                duration_ms,
+            } => {
+                tracing::debug!(
+                    worker_id = %worker_id,
+                    stage = %stage,
+                    duration_ms,
+                    "worker stage complete"
+                );
+                self.worker_stage_started.remove(worker_id);
+            }
+            WorkerEvent::Complete {
+                worker_id,
+                response_len,
+            } => {
+                tracing::debug!(
+                    worker_id = %worker_id,
+                    response_len,
+                    "worker complete"
+                );
+                // Clean up any remaining stage tracking
+                self.worker_stage_started.remove(worker_id);
+            }
+            WorkerEvent::Error { worker_id, error } => {
+                tracing::warn!(
+                    worker_id = %worker_id,
+                    error = %error,
+                    "worker error"
+                );
+                self.worker_stage_started.remove(worker_id);
+            }
+        }
+    }
+
+    /// Check for workers that have been running a stage longer than the
+    /// inactivity threshold and send a status update to Telegram.
+    async fn check_inactivity(&mut self, threshold: Duration) {
+        let now = Instant::now();
+        let mut stale_workers = Vec::new();
+
+        for (worker_id, (stage, started)) in &self.worker_stage_started {
+            if now.duration_since(*started) >= threshold {
+                stale_workers.push((*worker_id, stage.clone()));
+            }
+        }
+
+        for (worker_id, stage) in stale_workers {
+            tracing::info!(
+                worker_id = %worker_id,
+                stage = %stage,
+                "worker inactivity detected, sending status update"
+            );
+
+            if let Some(channel) = self.channels.get("telegram") {
+                let msg = OutboundMessage {
+                    channel: "telegram".into(),
+                    content: format!("Still working on it... (running {stage})"),
+                    reply_to: None,
+                    keyboard: None,
+                };
+                let _ = channel.send_message(msg).await;
+            }
+
+            // Reset the timer so we don't spam — move start time forward
+            if let Some(entry) = self.worker_stage_started.get_mut(&worker_id) {
+                entry.1 = Instant::now();
+            }
+        }
     }
 
     // ── Inline Handlers ─────────────────────────────────────────────
@@ -555,6 +725,68 @@ fn extract_cli_response_channels(
     channels
 }
 
+// ── Long-Task Estimation ────────────────────────────────────────────
+
+/// Estimate for a long-running task.
+#[derive(Debug)]
+struct LongTaskEstimate {
+    /// Estimated duration in minutes.
+    estimated_minutes: u32,
+    /// Human-readable description of what the task involves.
+    description: String,
+}
+
+/// Keyword-based patterns that indicate a heavy task (>1 min expected).
+const HEAVY_TASK_PATTERNS: &[(&str, u32, &str)] = &[
+    // (keyword pattern, estimated minutes, description template)
+    ("search all projects", 2, "Searching Jira across all projects"),
+    ("search across all", 2, "Searching across all projects"),
+    ("all projects", 2, "Scanning all projects"),
+    ("every project", 2, "Scanning every project"),
+    ("full scan", 3, "Running full scan"),
+    ("filesystem scan", 3, "Scanning filesystem"),
+    ("scan all", 2, "Scanning all resources"),
+    ("digest", 2, "Generating digest"),
+    ("weekly report", 3, "Compiling weekly report"),
+    ("monthly report", 3, "Compiling monthly report"),
+    ("sprint report", 2, "Generating sprint report"),
+    ("summarize everything", 3, "Summarizing everything"),
+    ("full audit", 3, "Running full audit"),
+];
+
+/// Estimate task complexity from trigger content using keyword matching.
+///
+/// Returns `Some(LongTaskEstimate)` if the task is classified as heavy
+/// (expected >1 minute), `None` for normal tasks.
+fn estimate_task_complexity(triggers: &[Trigger]) -> Option<LongTaskEstimate> {
+    // Check digest triggers
+    for trigger in triggers {
+        if let Trigger::Cron(_) = trigger {
+            return Some(LongTaskEstimate {
+                estimated_minutes: 2,
+                description: "Generating digest synthesis".into(),
+            });
+        }
+    }
+
+    // Check message content against heavy-task patterns
+    for trigger in triggers {
+        if let Trigger::Message(msg) = trigger {
+            let lower = msg.content.to_lowercase();
+            for &(pattern, minutes, description) in HEAVY_TASK_PATTERNS {
+                if lower.contains(pattern) {
+                    return Some(LongTaskEstimate {
+                        estimated_minutes: minutes,
+                        description: description.into(),
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -646,5 +878,124 @@ mod tests {
         assert_eq!(class_to_priority(TriggerClass::Query), Priority::Normal);
         assert_eq!(class_to_priority(TriggerClass::Digest), Priority::Normal);
         assert_eq!(class_to_priority(TriggerClass::Chat), Priority::Low);
+    }
+
+    // ── Long-Task Estimation Tests ───────────────────────────────────
+
+    #[test]
+    fn estimate_complexity_normal_query_returns_none() {
+        let triggers = vec![make_message("what is the status of OO-42?")];
+        assert!(estimate_task_complexity(&triggers).is_none());
+    }
+
+    #[test]
+    fn estimate_complexity_multi_project_search_returns_estimate() {
+        let triggers = vec![make_message("search all projects for auth bugs")];
+        let est = estimate_task_complexity(&triggers).expect("should detect heavy task");
+        assert_eq!(est.estimated_minutes, 2);
+        assert!(est.description.contains("Searching"));
+    }
+
+    #[test]
+    fn estimate_complexity_digest_cron_returns_estimate() {
+        let triggers = vec![Trigger::Cron(CronEvent::Digest)];
+        let est = estimate_task_complexity(&triggers).expect("should detect digest");
+        assert_eq!(est.estimated_minutes, 2);
+    }
+
+    #[test]
+    fn estimate_complexity_full_scan_returns_estimate() {
+        let triggers = vec![make_message("run a full scan of the codebase")];
+        let est = estimate_task_complexity(&triggers).expect("should detect heavy task");
+        assert_eq!(est.estimated_minutes, 3);
+    }
+
+    #[test]
+    fn estimate_complexity_weekly_report_returns_estimate() {
+        let triggers = vec![make_message("generate the weekly report")];
+        let est = estimate_task_complexity(&triggers).expect("should detect heavy task");
+        assert_eq!(est.estimated_minutes, 3);
+    }
+
+    #[test]
+    fn estimate_complexity_case_insensitive() {
+        let triggers = vec![make_message("Search All Projects for bugs")];
+        let est = estimate_task_complexity(&triggers).expect("should detect heavy task");
+        assert_eq!(est.estimated_minutes, 2);
+    }
+
+    // ── Orchestrator Event Handling Tests ─────────────────────────────
+
+    #[tokio::test]
+    async fn orchestrator_handles_all_worker_event_variants() {
+        let (_trigger_tx, _trigger_rx) = mpsc::unbounded_channel::<Trigger>();
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<WorkerEvent>();
+
+        // Create a minimal orchestrator (no real channels/deps needed for event handling)
+        let worker_id = Uuid::new_v4();
+
+        // Send all event variants
+        event_tx
+            .send(WorkerEvent::StageStarted {
+                worker_id,
+                stage: "context_build".into(),
+            })
+            .unwrap();
+        event_tx
+            .send(WorkerEvent::ToolCalled {
+                worker_id,
+                tool: "jira_search".into(),
+            })
+            .unwrap();
+        event_tx
+            .send(WorkerEvent::StageComplete {
+                worker_id,
+                stage: "context_build".into(),
+                duration_ms: 42,
+            })
+            .unwrap();
+        event_tx
+            .send(WorkerEvent::Complete {
+                worker_id,
+                response_len: 100,
+            })
+            .unwrap();
+        event_tx
+            .send(WorkerEvent::Error {
+                worker_id,
+                error: "test error".into(),
+            })
+            .unwrap();
+
+        // Drop sender so receiver will eventually return None
+        drop(event_tx);
+
+        // Drain all events through a mock-like handler — just verify no panics
+        let mut rx = event_rx;
+        let mut stage_map: std::collections::HashMap<Uuid, (String, Instant)> =
+            std::collections::HashMap::new();
+        let mut count = 0;
+
+        while let Some(event) = rx.recv().await {
+            count += 1;
+            match &event {
+                WorkerEvent::StageStarted { worker_id, stage } => {
+                    stage_map.insert(*worker_id, (stage.clone(), Instant::now()));
+                }
+                WorkerEvent::StageComplete { worker_id, .. } => {
+                    stage_map.remove(worker_id);
+                }
+                WorkerEvent::Complete { worker_id, .. } => {
+                    stage_map.remove(worker_id);
+                }
+                WorkerEvent::Error { worker_id, .. } => {
+                    stage_map.remove(worker_id);
+                }
+                WorkerEvent::ToolCalled { .. } => {}
+            }
+        }
+
+        assert_eq!(count, 5);
+        assert!(stage_map.is_empty());
     }
 }

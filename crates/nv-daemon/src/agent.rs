@@ -173,6 +173,7 @@ pub struct AgentLoop {
     voice_enabled: Arc<AtomicBool>,
     tts_client: Option<Arc<tts::TtsClient>>,
     voice_max_chars: u32,
+    project_registry: std::collections::HashMap<String, PathBuf>,
     /// UUID of the pending action currently being edited (set by edit callback).
     editing_action_id: Option<uuid::Uuid>,
     /// Last time we ran the expiry sweep for pending actions.
@@ -237,6 +238,7 @@ impl AgentLoop {
             voice_enabled,
             tts_client,
             voice_max_chars,
+            project_registry: std::collections::HashMap::new(),
             editing_action_id: None,
             last_expiry_check: Instant::now(),
         }
@@ -792,15 +794,68 @@ impl AgentLoop {
             // Execute each tool and collect results
             let mut tool_results = Vec::new();
             for (id, name, input) in &tool_uses {
-                let result = tools::execute_tool(
-                    name,
-                    input,
-                    &self.memory,
-                    self.jira_client.as_ref(),
-                    self.nexus_client.as_ref(),
-                    Some(&self.message_store),
+                // Determine timeout based on tool category
+                let timeout_secs = if crate::worker::WRITE_TOOLS.contains(&name.as_str()) {
+                    crate::worker::TOOL_TIMEOUT_WRITE
+                } else {
+                    crate::worker::TOOL_TIMEOUT_READ
+                };
+                let timeout_dur = std::time::Duration::from_secs(timeout_secs);
+
+                let tool_start = Instant::now();
+                let result = match tokio::time::timeout(
+                    timeout_dur,
+                    tools::execute_tool(
+                        name,
+                        input,
+                        &self.memory,
+                        self.jira_client.as_ref(),
+                        self.nexus_client.as_ref(),
+                        Some(&self.message_store),
+                        &self.project_registry,
+                    ),
                 )
-                .await;
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            tool = %name,
+                            timeout_secs,
+                            "tool execution timed out"
+                        );
+                        Err(anyhow::anyhow!(
+                            "Tool timed out after {timeout_secs}s"
+                        ))
+                    }
+                };
+                let tool_duration_ms = tool_start.elapsed().as_millis() as i64;
+
+                // Log tool usage to audit table
+                {
+                    let input_summary = input.to_string();
+                    let (result_summary, success) = match &result {
+                        Ok(tools::ToolResult::Immediate(output)) => {
+                            (output.clone(), true)
+                        }
+                        Ok(tools::ToolResult::PendingAction { description, .. }) => {
+                            (description.clone(), true)
+                        }
+                        Err(e) => (e.to_string(), false),
+                    };
+                    if let Err(e) = self.message_store.log_tool_usage(
+                        name,
+                        &input_summary,
+                        &result_summary,
+                        success,
+                        tool_duration_ms,
+                        None, // agent loop has no worker_id
+                        None,
+                        None,
+                    ) {
+                        tracing::warn!(error = %e, tool = %name, "failed to log tool usage");
+                    }
+                }
 
                 let (content, is_error) = match result {
                     Ok(tools::ToolResult::Immediate(output)) => (output, false),
@@ -1210,16 +1265,18 @@ fn extract_cli_response_channels(
     channels
 }
 
-/// Extract text content from a list of content blocks.
+/// Extract text content from a list of content blocks, stripping tool call artifacts.
 fn extract_text(content: &[ContentBlock]) -> String {
-    content
+    let raw = content
         .iter()
         .filter_map(|b| match b {
             ContentBlock::Text { text } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    // Reuse the worker's strip function
+    crate::worker::strip_tool_call_artifacts(&raw)
 }
 
 // ── Diary Helpers ───────────────────────────────────────────────────

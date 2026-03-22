@@ -34,6 +34,34 @@ pub struct StatsReport {
     pub daily_counts: Vec<(String, i64)>,
 }
 
+// ── Tool Stats Report ─────────────────────────────────────────────
+
+/// Per-tool breakdown entry.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolBreakdown {
+    pub name: String,
+    pub count: i64,
+    pub success_count: i64,
+    pub avg_duration_ms: Option<f64>,
+}
+
+/// One of the top-N slowest tool invocations.
+#[derive(Debug, Clone, Serialize)]
+pub struct SlowestInvocation {
+    pub tool_name: String,
+    pub duration_ms: i64,
+    pub timestamp: String,
+}
+
+/// Aggregated tool usage stats.
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolStatsReport {
+    pub total_invocations: i64,
+    pub invocations_today: i64,
+    pub per_tool: Vec<ToolBreakdown>,
+    pub slowest: Vec<SlowestInvocation>,
+}
+
 // ── Message Store ──────────────────────────────────────────────────
 
 /// Persistent SQLite message store at `~/.nv/messages.db`.
@@ -61,7 +89,22 @@ impl MessageStore {
                 tokens_out INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_messages_direction ON messages(direction);",
+            CREATE INDEX IF NOT EXISTS idx_messages_direction ON messages(direction);
+
+            CREATE TABLE IF NOT EXISTS tool_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                worker_id TEXT,
+                tool_name TEXT NOT NULL,
+                input_summary TEXT,
+                result_summary TEXT,
+                success INTEGER NOT NULL DEFAULT 1,
+                duration_ms INTEGER,
+                tokens_in INTEGER,
+                tokens_out INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_tool_usage_name ON tool_usage(tool_name);
+            CREATE INDEX IF NOT EXISTS idx_tool_usage_timestamp ON tool_usage(timestamp);",
         )?;
 
         Ok(Self { conn })
@@ -224,6 +267,118 @@ impl MessageStore {
             total_tokens_out,
             daily_counts,
         })
+    }
+
+    // ── Tool Usage Logging ─────────────────────────────────────────
+
+    /// Log a single tool invocation to the `tool_usage` table.
+    ///
+    /// `input_summary` and `result_summary` are truncated to 500 chars.
+    #[allow(clippy::too_many_arguments)]
+    pub fn log_tool_usage(
+        &self,
+        tool_name: &str,
+        input_summary: &str,
+        result_summary: &str,
+        success: bool,
+        duration_ms: i64,
+        worker_id: Option<&str>,
+        tokens_in: Option<i64>,
+        tokens_out: Option<i64>,
+    ) -> Result<()> {
+        let input_trunc = truncate_str(input_summary, 500);
+        let result_trunc = truncate_str(result_summary, 500);
+
+        self.conn.execute(
+            "INSERT INTO tool_usage (timestamp, worker_id, tool_name, input_summary, result_summary, success, duration_ms, tokens_in, tokens_out)
+             VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                worker_id,
+                tool_name,
+                input_trunc,
+                result_trunc,
+                success as i32,
+                duration_ms,
+                tokens_in,
+                tokens_out,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Query aggregated tool usage statistics.
+    pub fn tool_stats(&self) -> Result<ToolStatsReport> {
+        let total_invocations: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM tool_usage", [], |row| row.get(0))?;
+
+        let invocations_today: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM tool_usage WHERE date(timestamp) = date('now')",
+            [],
+            |row| row.get(0),
+        )?;
+
+        // Per-tool breakdown
+        let mut stmt = self.conn.prepare(
+            "SELECT tool_name,
+                    COUNT(*) as cnt,
+                    SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as success_cnt,
+                    AVG(duration_ms) as avg_dur
+             FROM tool_usage
+             GROUP BY tool_name
+             ORDER BY cnt DESC",
+        )?;
+
+        let per_tool = stmt
+            .query_map([], |row| {
+                Ok(ToolBreakdown {
+                    name: row.get(0)?,
+                    count: row.get(1)?,
+                    success_count: row.get(2)?,
+                    avg_duration_ms: row.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        // Top 5 slowest invocations
+        let mut stmt = self.conn.prepare(
+            "SELECT tool_name, duration_ms, timestamp
+             FROM tool_usage
+             WHERE duration_ms IS NOT NULL
+             ORDER BY duration_ms DESC
+             LIMIT 5",
+        )?;
+
+        let slowest = stmt
+            .query_map([], |row| {
+                Ok(SlowestInvocation {
+                    tool_name: row.get(0)?,
+                    duration_ms: row.get(1)?,
+                    timestamp: row.get(2)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(ToolStatsReport {
+            total_invocations,
+            invocations_today,
+            per_tool,
+            slowest,
+        })
+    }
+}
+
+/// Truncate a string to at most `max_len` characters.
+fn truncate_str(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        s
+    } else {
+        // Find a valid char boundary at or before max_len
+        let mut end = max_len;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        &s[..end]
     }
 }
 
@@ -427,5 +582,142 @@ mod tests {
         assert!(!report.daily_counts.is_empty());
         let today_count: i64 = report.daily_counts.iter().map(|(_, c)| c).sum();
         assert_eq!(today_count, 2);
+    }
+
+    // ── Tool Usage Tests ────────────────────────────────────────────
+
+    #[test]
+    fn tool_usage_table_created_on_init() {
+        let (_dir, store) = setup();
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM tool_usage", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn log_tool_usage_inserts_and_tool_stats_retrieves() {
+        let (_dir, store) = setup();
+        store
+            .log_tool_usage(
+                "read_memory",
+                r#"{"topic":"tasks"}"#,
+                "Tasks: ...",
+                true,
+                42,
+                Some("w-1"),
+                None,
+                None,
+            )
+            .unwrap();
+
+        let report = store.tool_stats().unwrap();
+        assert_eq!(report.total_invocations, 1);
+        assert_eq!(report.invocations_today, 1);
+        assert_eq!(report.per_tool.len(), 1);
+        assert_eq!(report.per_tool[0].name, "read_memory");
+        assert_eq!(report.per_tool[0].count, 1);
+        assert_eq!(report.per_tool[0].success_count, 1);
+    }
+
+    #[test]
+    fn tool_stats_per_tool_breakdown_multiple_tools() {
+        let (_dir, store) = setup();
+        // 3 read_memory calls (2 success, 1 fail)
+        store
+            .log_tool_usage("read_memory", "{}", "ok", true, 10, None, None, None)
+            .unwrap();
+        store
+            .log_tool_usage("read_memory", "{}", "ok", true, 30, None, None, None)
+            .unwrap();
+        store
+            .log_tool_usage("read_memory", "{}", "err", false, 50, None, None, None)
+            .unwrap();
+        // 1 jira_search call
+        store
+            .log_tool_usage("jira_search", "{}", "ok", true, 200, None, None, None)
+            .unwrap();
+
+        let report = store.tool_stats().unwrap();
+        assert_eq!(report.total_invocations, 4);
+        assert_eq!(report.per_tool.len(), 2);
+
+        // read_memory should be first (most calls)
+        let rm = &report.per_tool[0];
+        assert_eq!(rm.name, "read_memory");
+        assert_eq!(rm.count, 3);
+        assert_eq!(rm.success_count, 2);
+        let avg = rm.avg_duration_ms.unwrap();
+        assert!((avg - 30.0).abs() < 0.1); // (10+30+50)/3 = 30
+
+        let js = &report.per_tool[1];
+        assert_eq!(js.name, "jira_search");
+        assert_eq!(js.count, 1);
+    }
+
+    #[test]
+    fn tool_stats_truncates_input_and_result_to_500() {
+        let (_dir, store) = setup();
+        let long_input = "x".repeat(700);
+        let long_result = "y".repeat(700);
+        store
+            .log_tool_usage(
+                "write_memory",
+                &long_input,
+                &long_result,
+                true,
+                5,
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+
+        // Verify truncation by reading back
+        let input_summary: String = store
+            .conn
+            .query_row(
+                "SELECT input_summary FROM tool_usage WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let result_summary: String = store
+            .conn
+            .query_row(
+                "SELECT result_summary FROM tool_usage WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(input_summary.len(), 500);
+        assert_eq!(result_summary.len(), 500);
+    }
+
+    #[test]
+    fn tool_stats_top5_slowest_ordered_correctly() {
+        let (_dir, store) = setup();
+        for ms in [100, 500, 200, 800, 50, 300, 1000] {
+            store
+                .log_tool_usage("tool_a", "{}", "ok", true, ms, None, None, None)
+                .unwrap();
+        }
+
+        let report = store.tool_stats().unwrap();
+        assert_eq!(report.slowest.len(), 5);
+        // Should be 1000, 800, 500, 300, 200 (descending)
+        let durations: Vec<i64> = report.slowest.iter().map(|s| s.duration_ms).collect();
+        assert_eq!(durations, vec![1000, 800, 500, 300, 200]);
+    }
+
+    #[test]
+    fn tool_stats_empty_db() {
+        let (_dir, store) = setup();
+        let report = store.tool_stats().unwrap();
+        assert_eq!(report.total_invocations, 0);
+        assert_eq!(report.invocations_today, 0);
+        assert!(report.per_tool.is_empty());
+        assert!(report.slowest.is_empty());
     }
 }

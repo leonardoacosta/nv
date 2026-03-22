@@ -226,21 +226,38 @@ async fn digest_handler(
 /// GET /stats — returns message store statistics as JSON.
 ///
 /// Opens a read-only connection to the message store database
-/// and returns aggregate stats (total messages, daily counts, etc.).
+/// and returns aggregate stats (total messages, daily counts, tool usage, etc.).
 async fn stats_handler(
     State(state): State<Arc<HttpState>>,
 ) -> impl IntoResponse {
     match MessageStore::init(&state.stats_db_path) {
-        Ok(store) => match store.stats() {
-            Ok(report) => (StatusCode::OK, Json(serde_json::to_value(report).unwrap())).into_response(),
-            Err(e) => {
-                tracing::error!(error = %e, "failed to query message stats");
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({"error": format!("Failed to query stats: {e}")})),
-                ).into_response()
-            }
-        },
+        Ok(store) => {
+            let msg_stats = match store.stats() {
+                Ok(r) => serde_json::to_value(r).unwrap(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to query message stats");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to query stats: {e}")})),
+                    ).into_response();
+                }
+            };
+            let tool_stats = match store.tool_stats() {
+                Ok(r) => serde_json::to_value(r).unwrap(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to query tool stats");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to query tool stats: {e}")})),
+                    ).into_response();
+                }
+            };
+
+            // Merge message stats + tool_usage section
+            let mut combined = msg_stats.as_object().cloned().unwrap_or_default();
+            combined.insert("tool_usage".into(), tool_stats);
+            (StatusCode::OK, Json(serde_json::Value::Object(combined))).into_response()
+        }
         Err(e) => {
             tracing::error!(error = %e, "failed to open message store for stats");
             (

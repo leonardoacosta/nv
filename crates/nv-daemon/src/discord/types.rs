@@ -326,6 +326,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::useless_vec)]
     fn message_filtering_by_channel_and_guild() {
         let watched_channels: Vec<u64> = vec![100, 200];
         let watched_servers: Vec<u64> = vec![1000];

@@ -306,6 +306,23 @@ impl AgentLoop {
             // Truncate history if needed
             truncate_history(&mut self.conversation_history);
 
+            // Send "thinking" indicator to Telegram (will be edited with real response)
+            let thinking_msg_id = if let Some(tg) = self.channels.get("telegram") {
+                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                    match tg_channel.client.send_thinking(tg_channel.chat_id).await {
+                        Ok(id) => Some(id),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "failed to send thinking indicator");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // Call Claude API
             match self
                 .client
@@ -331,8 +348,22 @@ impl AgentLoop {
                                 let _ = tx.send(response_text.clone());
                             }
 
-                            // Route response to appropriate channel (Telegram, etc.)
-                            if let Err(e) = self.route_response(&final_content, &triggers).await {
+                            // Route response — edit thinking message if we sent one, otherwise send new
+                            if let Some(msg_id) = thinking_msg_id {
+                                if let Some(tg) = self.channels.get("telegram") {
+                                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                        let text = extract_text(&final_content);
+                                        if let Err(e) = tg_channel.client.edit_message(
+                                            tg_channel.chat_id, msg_id, &text, None,
+                                        ).await {
+                                            tracing::warn!(error = %e, "failed to edit thinking message, sending new");
+                                            if let Err(e) = self.route_response(&final_content, &triggers).await {
+                                                tracing::error!(error = %e, "failed to route response");
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if let Err(e) = self.route_response(&final_content, &triggers).await {
                                 tracing::error!(error = %e, "failed to route response");
                             }
                         }

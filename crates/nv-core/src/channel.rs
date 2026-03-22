@@ -24,4 +24,7 @@ pub trait Channel: Send + Sync {
 
     /// Gracefully disconnect from the channel service.
     async fn disconnect(&mut self) -> anyhow::Result<()>;
+
+    /// Downcast support for channel-specific operations (e.g., Telegram message editing).
+    fn as_any(&self) -> &dyn std::any::Any;
 }

@@ -18,8 +18,8 @@ use self::client::TelegramClient;
 /// sends messages via `sendMessage` with inline keyboard support, and
 /// handles `callback_query` for action confirmations.
 pub struct TelegramChannel {
-    client: TelegramClient,
-    chat_id: i64,
+    pub client: TelegramClient,
+    pub chat_id: i64,
     trigger_tx: mpsc::Sender<Trigger>,
     offset: Arc<AtomicI64>,
 }
@@ -87,12 +87,17 @@ impl Channel for TelegramChannel {
     async fn send_message(&self, msg: OutboundMessage) -> anyhow::Result<()> {
         self.client
             .send_message(self.chat_id, &msg.content, msg.reply_to, msg.keyboard.as_ref())
-            .await
+            .await?;
+        Ok(())
     }
 
     async fn disconnect(&mut self) -> anyhow::Result<()> {
         tracing::info!("Telegram channel disconnecting");
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

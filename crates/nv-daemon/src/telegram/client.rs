@@ -72,6 +72,7 @@ impl TelegramClient {
 
     /// Send a message to a chat. Handles message chunking for long content.
     ///
+    /// Returns the message ID of the last sent chunk (for later editing).
     /// The inline keyboard (if any) is only attached to the last chunk.
     pub async fn send_message(
         &self,
@@ -79,9 +80,10 @@ impl TelegramClient {
         text: &str,
         reply_to: Option<String>,
         keyboard: Option<&nv_core::InlineKeyboard>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<i64> {
         let chunks = chunk_message(text, TELEGRAM_MAX_MESSAGE_LEN);
         let last_idx = chunks.len().saturating_sub(1);
+        let mut last_msg_id: i64 = 0;
 
         for (i, chunk) in chunks.iter().enumerate() {
             let mut body = serde_json::json!({
@@ -122,9 +124,61 @@ impl TelegramClient {
                     resp.description.unwrap_or_default()
                 );
             }
+
+            // Extract message_id from response
+            if let Some(result) = &resp.result {
+                if let Some(id) = result.get("message_id").and_then(|v| v.as_i64()) {
+                    last_msg_id = id;
+                }
+            }
+        }
+
+        Ok(last_msg_id)
+    }
+
+    /// Edit an existing message's text.
+    pub async fn edit_message(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        text: &str,
+        keyboard: Option<&nv_core::InlineKeyboard>,
+    ) -> anyhow::Result<()> {
+        let url = format!("{}/editMessageText", self.base_url);
+        let mut body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": &text[..text.len().min(TELEGRAM_MAX_MESSAGE_LEN)],
+            "parse_mode": "Markdown",
+        });
+
+        if let Some(kb) = keyboard {
+            body["reply_markup"] = serde_json::json!({
+                "inline_keyboard": kb.rows.iter().map(|row| {
+                    row.iter().map(|btn| serde_json::json!({
+                        "text": btn.text,
+                        "callback_data": btn.callback_data,
+                    })).collect::<Vec<_>>()
+                }).collect::<Vec<_>>()
+            });
+        }
+
+        let resp: TelegramResponse<serde_json::Value> =
+            self.http.post(&url).json(&body).send().await?.json().await?;
+        if !resp.ok {
+            // "message is not modified" is not a real error
+            let desc = resp.description.unwrap_or_default();
+            if !desc.contains("message is not modified") {
+                bail!("Telegram editMessageText failed: {}", desc);
+            }
         }
 
         Ok(())
+    }
+
+    /// Send a "thinking" indicator, returns the message ID for later editing.
+    pub async fn send_thinking(&self, chat_id: i64) -> anyhow::Result<i64> {
+        self.send_message(chat_id, "...", None, None).await
     }
 
     /// Acknowledge a callback query (dismisses the loading spinner on the

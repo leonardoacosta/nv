@@ -171,15 +171,28 @@ This means:
     allowlist from actual usage data.
 
 15. **Mature Nexus integration** — expand beyond read-only session queries:
-    - **Read open proposals**: list `openspec/changes/` across all projects via Nexus filesystem
-      access or scoped bash toolkit. "What specs are ready to apply on OO?"
-    - **Read beads status**: `bd ready`, `bd stats` per project via Nexus. "What's ready to
-      work on across all projects?"
-    - **Trigger commands** (with confirmation): `StartSession` RPC to launch CC sessions,
-      `SendCommand` RPC to run `/apply`, `/feature`, `/ci:gh` on remote projects.
-      "Apply the auth spec on TC" → Nova dispatches via Nexus gRPC → confirms via Telegram.
+    - **Project-scoped queries**: always accept a project code. "What's ready on OO?" not
+      "scan everything." All-projects scan is only for digests/dashboard, not ad-hoc queries.
+    - **Read open proposals**: list `openspec/changes/` for a given project. "What specs
+      exist on TC?" "Is there an auth spec ready to apply on OO?"
+    - **Read beads status**: `bd ready`, `bd stats` scoped to a project. "What's the backlog
+      on MV?"
+    - **Trigger commands** (with confirmation): `StartSession` + `SendCommand` RPCs to run
+      any command on any project. "Apply the auth spec on TC" → confirm → dispatch.
     - **Stop sessions**: `StopSession` RPC for runaway or stale sessions.
-    - Makes Nova a **remote control for Claude Code** — manage all projects from Telegram.
+
+16. **Telegram command surface** — expose the full CC command namespace through Telegram in
+    a mobile-friendly format:
+    - All `/plan:*` commands (discover, scope, strategy, roadmap, advance)
+    - All `/project:*` commands (init, onboard, standup, infra)
+    - All `/workflow:*` commands (check, evolve, housekeep)
+    - `/feature`, `/apply`, `/apply:all`, `/ci:gh`, `/review:local`
+    - Transform CLI output into Telegram-native formatting: inline keyboards for choices,
+      collapsible sections for long output, status dots for health, progress bars for
+      multi-step operations.
+    - NOT raw terminal output pasted into chat — purpose-formatted for mobile reading.
+    - Register commands in BotFather for autocomplete: `/status`, `/digest`, `/health`,
+      `/apply`, `/projects`.
 
 ## Discovery Metadata
 

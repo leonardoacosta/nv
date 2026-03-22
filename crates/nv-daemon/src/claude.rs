@@ -222,6 +222,7 @@ impl ClaudeClient {
                 "--strict-mcp-config",
             ])
             .env("HOME", &sandbox_home)
+            .env("PATH", format!("{}/.local/bin:/usr/local/bin:/usr/bin:/bin", real_home))
             .current_dir(&sandbox_home)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

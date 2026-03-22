@@ -39,6 +39,7 @@ mod telegram;
 mod tools;
 mod tts;
 mod vercel_tools;
+mod voice_input;
 mod worker;
 
 use std::collections::HashMap;
@@ -723,6 +724,25 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!(max_workers, "worker pool created");
 
+    // Parse quiet hours from config
+    let (quiet_start, quiet_end) = config
+        .daemon
+        .as_ref()
+        .map(|d| {
+            let start = d.quiet_start.as_deref().and_then(|s| {
+                chrono::NaiveTime::parse_from_str(s, "%H:%M")
+                    .map_err(|e| tracing::warn!(error = %e, value = s, "invalid quiet_start"))
+                    .ok()
+            });
+            let end = d.quiet_end.as_deref().and_then(|s| {
+                chrono::NaiveTime::parse_from_str(s, "%H:%M")
+                    .map_err(|e| tracing::warn!(error = %e, value = s, "invalid quiet_end"))
+                    .ok()
+            });
+            (start, end)
+        })
+        .unwrap_or((None, None));
+
     // Create and run the orchestrator
     let orchestrator = orchestrator::Orchestrator::new(
         trigger_rx,
@@ -732,6 +752,8 @@ async fn main() -> anyhow::Result<()> {
         tg_reaction_client,
         tg_reaction_chat_id,
         worker_event_rx,
+        quiet_start,
+        quiet_end,
     );
 
     tracing::info!("starting orchestrator");

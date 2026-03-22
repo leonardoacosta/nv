@@ -40,6 +40,45 @@ pub enum TriggerClass {
     Callback,
     /// Nexus event — forward notification, no worker needed.
     NexusEvent,
+    /// BotFather-style /command — handled directly, no worker needed.
+    BotCommand,
+}
+
+/// A parsed bot command with its arguments.
+#[derive(Debug, Clone)]
+pub struct ParsedBotCommand {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+/// Parse a `/command arg1 arg2` message into a `ParsedBotCommand`.
+///
+/// Returns `None` if the message doesn't start with `/`.
+pub fn parse_bot_command(text: &str) -> Option<ParsedBotCommand> {
+    let trimmed = text.trim();
+    if !trimmed.starts_with('/') {
+        return None;
+    }
+
+    let mut parts = trimmed.split_whitespace();
+    let raw_command = parts.next()?;
+
+    // Strip the leading `/` and any @bot_name suffix (e.g., /status@MyBot)
+    let command = raw_command
+        .strip_prefix('/')
+        .unwrap_or(raw_command)
+        .split('@')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+
+    if command.is_empty() {
+        return None;
+    }
+
+    let args: Vec<String> = parts.map(String::from).collect();
+
+    Some(ParsedBotCommand { command, args })
 }
 
 /// Classify a trigger for routing.
@@ -54,6 +93,11 @@ pub fn classify_trigger(trigger: &Trigger) -> TriggerClass {
             // Check for callback
             if msg.content.starts_with("[callback] ") {
                 return TriggerClass::Callback;
+            }
+
+            // Check for bot commands (/status, /digest, /health, etc.)
+            if parse_bot_command(&msg.content).is_some() {
+                return TriggerClass::BotCommand;
             }
 
             let lower = msg.content.to_lowercase();
@@ -114,6 +158,7 @@ fn class_to_priority(class: TriggerClass) -> Priority {
         TriggerClass::Chat => Priority::Low,
         TriggerClass::Callback => Priority::High,
         TriggerClass::NexusEvent => Priority::Normal,
+        TriggerClass::BotCommand => Priority::High,
     }
 }
 
@@ -157,10 +202,15 @@ pub struct Orchestrator {
     event_rx: mpsc::UnboundedReceiver<WorkerEvent>,
     /// Tracks the last StageStarted event per worker for inactivity detection.
     worker_stage_started: std::collections::HashMap<Uuid, (String, Instant)>,
+    /// Quiet hours start (parsed from config). None = no quiet window.
+    quiet_start: Option<chrono::NaiveTime>,
+    /// Quiet hours end (parsed from config). None = no quiet window.
+    quiet_end: Option<chrono::NaiveTime>,
 }
 
 impl Orchestrator {
     /// Create a new orchestrator.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         trigger_rx: mpsc::UnboundedReceiver<Trigger>,
         worker_pool: WorkerPool,
@@ -169,7 +219,16 @@ impl Orchestrator {
         telegram_client: Option<TelegramClient>,
         telegram_chat_id: Option<i64>,
         event_rx: mpsc::UnboundedReceiver<WorkerEvent>,
+        quiet_start: Option<chrono::NaiveTime>,
+        quiet_end: Option<chrono::NaiveTime>,
     ) -> Self {
+        if quiet_start.is_some() && quiet_end.is_some() {
+            tracing::info!(
+                quiet_start = ?quiet_start,
+                quiet_end = ?quiet_end,
+                "quiet hours configured"
+            );
+        }
         Self {
             trigger_rx,
             worker_pool,
@@ -181,6 +240,8 @@ impl Orchestrator {
             last_expiry_check: Instant::now(),
             event_rx,
             worker_stage_started: std::collections::HashMap::new(),
+            quiet_start,
+            quiet_end,
         }
     }
 
@@ -309,6 +370,11 @@ impl Orchestrator {
                 return;
             }
             TriggerClass::NexusEvent => {
+                // Suppress nexus event notifications during quiet hours
+                if is_quiet_hours(self.quiet_start, self.quiet_end) {
+                    tracing::debug!("suppressing nexus event during quiet hours");
+                    return;
+                }
                 self.handle_nexus_events(triggers).await;
                 return;
             }
@@ -316,7 +382,21 @@ impl Orchestrator {
                 self.handle_chat(triggers).await;
                 return;
             }
+            TriggerClass::BotCommand => {
+                self.handle_bot_commands(triggers).await;
+                return;
+            }
             _ => {}
+        }
+
+        // Quiet hours gate: suppress non-P0 (non-High priority) dispatch
+        let priority = class_to_priority(primary_class);
+        if priority != Priority::High && is_quiet_hours(self.quiet_start, self.quiet_end) {
+            tracing::info!(
+                class = ?primary_class,
+                "suppressing non-P0 trigger during quiet hours"
+            );
+            return;
         }
 
         // For Command/Query/Digest: react and dispatch to worker pool
@@ -351,7 +431,7 @@ impl Orchestrator {
                         "This will take ~{}min. {}. Be right back.",
                         estimate.estimated_minutes, estimate.description
                     ),
-                    reply_to: None,
+                    reply_to: tg_msg_id.map(|id| id.to_string()),
                     keyboard: None,
                 };
                 let _ = channel.send_message(msg).await;
@@ -481,7 +561,7 @@ impl Orchestrator {
                     let tg_chat_id = msg.metadata.get("chat_id")
                         .and_then(|v| v.as_i64());
 
-                    // Nexus error callbacks
+                    // Nexus error callbacks (legacy)
                     if let Some(rest) = data.strip_prefix("nexus_err:") {
                         if let Some(session_id) = rest.strip_prefix("view:") {
                             self.handle_nexus_view_error(session_id).await;
@@ -491,22 +571,34 @@ impl Orchestrator {
                         continue;
                     }
 
-                    // Jira action callbacks
+                    // Session error retry callback (stub — routing via nexus_err:)
+                    if let Some(_event_id) = data.strip_prefix("retry:") {
+                        tracing::debug!("retry callback (not yet implemented)");
+                        continue;
+                    }
+
+                    // Session error create-bug callback (stub — routing via nexus_err:bug:)
+                    if let Some(_event_id) = data.strip_prefix("bug:") {
+                        tracing::debug!("bug callback (not yet implemented)");
+                        continue;
+                    }
+
+                    // Action callbacks (Jira, Nexus, HA, etc.)
                     if let Some(uuid_str) = data.strip_prefix("approve:") {
-                        if let Some(jira_client) = &self.deps.jira_client {
-                            if let Some(tg) = self.channels.get("telegram") {
-                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
-                                    let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
-                                    if let Err(e) = crate::callbacks::handle_approve(
-                                        uuid_str,
-                                        jira_client,
-                                        &tg_channel.client,
-                                        chat_id,
-                                        original_msg_id,
-                                        &self.deps.state,
-                                    ).await {
-                                        tracing::error!(error = %e, "approve callback failed");
-                                    }
+                        if let Some(tg) = self.channels.get("telegram") {
+                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                                if let Err(e) = crate::callbacks::handle_approve(
+                                    uuid_str,
+                                    self.deps.jira_client.as_ref(),
+                                    self.deps.nexus_client.as_ref(),
+                                    &self.deps.project_registry,
+                                    &tg_channel.client,
+                                    chat_id,
+                                    original_msg_id,
+                                    &self.deps.state,
+                                ).await {
+                                    tracing::error!(error = %e, "approve callback failed");
                                 }
                             }
                         }
@@ -552,10 +644,41 @@ impl Orchestrator {
     }
 
     /// Handle Nexus events inline (send notification, no Claude needed).
+    ///
+    /// For failed events, stores error metadata and attaches retry/create-bug
+    /// inline keyboard buttons.
     async fn handle_nexus_events(&self, triggers: &[Trigger]) {
         for trigger in triggers {
             if let Trigger::NexusEvent(event) = trigger {
-                if let Some(msg) = nexus::notify::format_nexus_notification(event) {
+                // For failed events, store error metadata for retry/bug callbacks
+                let event_id = if matches!(
+                    event.event_type,
+                    nv_core::types::SessionEventType::Failed
+                ) {
+                    let eid = Uuid::new_v4().to_string();
+                    let meta = crate::state::SessionErrorMeta {
+                        project: event.agent_name.clone(),
+                        cwd: String::new(),
+                        command: event.details.clone(),
+                        error_message: event
+                            .details
+                            .as_deref()
+                            .unwrap_or("unknown error")
+                            .to_string(),
+                        session_id: event.session_id.clone(),
+                        agent_name: event.agent_name.clone(),
+                        timestamp: chrono::Utc::now(),
+                    };
+                    self.deps.state.store_session_error(&eid, meta);
+                    Some(eid)
+                } else {
+                    None
+                };
+
+                if let Some(msg) = nexus::notify::format_nexus_notification(
+                    event,
+                    event_id.as_deref(),
+                ) {
                     if let Some(channel) = self.channels.get("telegram") {
                         if let Err(e) = channel.send_message(msg).await {
                             tracing::error!(error = %e, "failed to send Nexus notification");
@@ -596,6 +719,250 @@ impl Orchestrator {
                 }
             }
         }
+    }
+
+    // ── Bot Command Handlers ────────────────────────────────────────
+
+    /// Handle BotFather-style /commands inline — no Claude worker needed.
+    ///
+    /// Commands are executed directly against tools and services.
+    /// Response time is ~100ms (tool execution) instead of ~5s (Claude round-trip).
+    async fn handle_bot_commands(&self, triggers: &[Trigger]) {
+        for trigger in triggers {
+            if let Trigger::Message(msg) = trigger {
+                let Some(parsed) = parse_bot_command(&msg.content) else {
+                    continue;
+                };
+
+                let reply_to = Some(msg.id.clone());
+                let channel_name = msg.channel.clone();
+
+                let response = match parsed.command.as_str() {
+                    "status" => self.cmd_status(&parsed.args).await,
+                    "digest" => self.cmd_digest().await,
+                    "health" => self.cmd_health().await,
+                    "projects" => self.cmd_projects().await,
+                    "apply" => self.cmd_apply(&parsed.args, msg).await,
+                    _ => self.cmd_unknown(&parsed.command),
+                };
+
+                if let Some(channel) = self.channels.get(&channel_name) {
+                    let _ = channel
+                        .send_message(OutboundMessage {
+                            channel: channel_name,
+                            content: response,
+                            reply_to,
+                            keyboard: None,
+                        })
+                        .await;
+                }
+            }
+        }
+    }
+
+    /// /status — project health dashboard for all projects (or a specific one).
+    async fn cmd_status(&self, args: &[String]) -> String {
+        let codes: Vec<&str> = if args.is_empty() {
+            self.deps.project_registry.keys().map(|s| s.as_str()).collect()
+        } else {
+            args.iter().map(|s| s.as_str()).collect()
+        };
+
+        let mut lines = Vec::new();
+        for code in &codes {
+            let result = crate::aggregation::project_health(
+                code,
+                self.deps.jira_client.as_ref(),
+                self.deps.nexus_client.as_ref(),
+            )
+            .await;
+
+            match result {
+                Ok(output) => {
+                    lines.push(format_status_dots(code, &output));
+                }
+                Err(e) => {
+                    lines.push(format!("\u{1F534} {} -- error: {e}", code));
+                }
+            }
+        }
+
+        if lines.is_empty() {
+            "No projects registered.".to_string()
+        } else {
+            lines.sort();
+            format!("\u{1F4CA} Project Status\n\n{}", lines.join("\n"))
+        }
+    }
+
+    /// /digest — trigger an immediate digest.
+    async fn cmd_digest(&self) -> String {
+        // We can't inject into the trigger channel directly since we don't
+        // hold a sender. Instead, use the deps' channels to route a message
+        // that the orchestrator will pick up as a digest.
+        // For now, send a direct HTTP request to the local health endpoint.
+        let port = 8400; // default health port
+        let client = reqwest::Client::new();
+        match client
+            .post(format!("http://127.0.0.1:{port}/digest"))
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(_) => "\u{2705} Digest triggered.".to_string(),
+            Err(e) => format!("\u{274C} Failed to trigger digest: {e}"),
+        }
+    }
+
+    /// /health — homelab infrastructure status.
+    async fn cmd_health(&self) -> String {
+        match crate::aggregation::homelab_status().await {
+            Ok(output) => {
+                format!(
+                    "\u{1F3E0} Homelab Health\n\n{}",
+                    format_for_telegram(&output)
+                )
+            }
+            Err(e) => format!("\u{274C} Health check failed: {e}"),
+        }
+    }
+
+    /// /projects — list all registered projects with latest status dot.
+    async fn cmd_projects(&self) -> String {
+        let mut codes: Vec<&String> = self.deps.project_registry.keys().collect();
+        codes.sort();
+
+        if codes.is_empty() {
+            return "No projects registered.".to_string();
+        }
+
+        let mut lines = Vec::with_capacity(codes.len());
+        for code in &codes {
+            let dot = if let Ok(output) = crate::aggregation::project_health(
+                code,
+                self.deps.jira_client.as_ref(),
+                self.deps.nexus_client.as_ref(),
+            )
+            .await
+            {
+                if output.contains("unavailable") || output.contains("error") {
+                    "\u{1F7E1}" // yellow
+                } else {
+                    "\u{1F7E2}" // green
+                }
+            } else {
+                "\u{1F534}" // red
+            };
+            lines.push(format!("{dot} {code}"));
+        }
+
+        format!("\u{1F4CB} Projects\n\n{}", lines.join("\n"))
+    }
+
+    /// /apply <project> <spec> — start a CC session via Nexus (with confirmation).
+    async fn cmd_apply(
+        &self,
+        args: &[String],
+        msg: &nv_core::types::InboundMessage,
+    ) -> String {
+        if args.len() < 2 {
+            return "\u{2139}\u{FE0F} Usage: /apply <project> <spec>\n\nExample: /apply oo fix-chat-bugs".to_string();
+        }
+
+        let project = &args[0];
+        let spec = &args[1];
+
+        // Verify project exists in registry
+        if !self.deps.project_registry.contains_key(project.as_str()) {
+            let known: Vec<&String> = self.deps.project_registry.keys().collect();
+            return format!(
+                "\u{274C} Unknown project: {project}\n\nKnown projects: {}",
+                known.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+            );
+        }
+
+        // Check Nexus connectivity
+        let Some(nexus_client) = &self.deps.nexus_client else {
+            return "\u{274C} Nexus not configured. Cannot start remote sessions.".to_string();
+        };
+
+        if !nexus_client.is_connected().await {
+            return "\u{274C} No Nexus agents connected. Cannot start remote sessions.".to_string();
+        }
+
+        // Create PendingAction with confirmation keyboard
+        let action_id = Uuid::new_v4();
+        let command = format!("/apply {spec}");
+        let description = format!(
+            "Start CC session on {}: `{command}`",
+            project.to_uppercase()
+        );
+
+        let keyboard = InlineKeyboard::confirm_action(&action_id.to_string());
+        let payload = serde_json::json!({
+            "project": project,
+            "command": command,
+            "_action_type": "NexusStartSession",
+        });
+
+        let tg_chat_id = msg.metadata.get("chat_id").and_then(|v| v.as_i64());
+        let mut tg_msg_id: Option<i64> = None;
+
+        // Send confirmation keyboard via Telegram
+        if let Some(tg) = self.channels.get("telegram") {
+            if let Some(tg_channel) =
+                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+            {
+                let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                match tg_channel
+                    .client
+                    .send_message(
+                        chat_id,
+                        &format!("\u{1F680} {description}\n\nApprove?"),
+                        None,
+                        Some(&keyboard),
+                    )
+                    .await
+                {
+                    Ok(mid) => tg_msg_id = Some(mid),
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to send apply confirmation");
+                        return format!("\u{274C} Failed to send confirmation: {e}");
+                    }
+                }
+            }
+        }
+
+        // Save pending action
+        if let Err(e) = self.deps.state.save_pending_action(
+            &crate::state::PendingAction {
+                id: action_id,
+                description: description.clone(),
+                payload,
+                status: crate::state::PendingStatus::AwaitingConfirmation,
+                created_at: chrono::Utc::now(),
+                telegram_message_id: tg_msg_id,
+                telegram_chat_id: tg_chat_id,
+            },
+        ) {
+            tracing::error!(error = %e, "failed to save pending action");
+        }
+
+        // Return empty -- we already sent the confirmation keyboard
+        String::new()
+    }
+
+    /// Unknown command — show help with available commands.
+    fn cmd_unknown(&self, command: &str) -> String {
+        format!(
+            "\u{2753} Unknown command: /{command}\n\n\
+             Available commands:\n\
+             /status -- Project health dashboard\n\
+             /digest -- Trigger immediate digest\n\
+             /health -- Homelab status\n\
+             /projects -- List all projects\n\
+             /apply <project> <spec> -- Apply a spec"
+        )
     }
 
     // ── Nexus Error Handlers ────────────────────────────────────────
@@ -708,6 +1075,76 @@ impl Orchestrator {
     }
 }
 
+// ── Telegram Formatting Helpers ──────────────────────────────────────
+
+/// Convert raw tool output to mobile-friendly Telegram format.
+///
+/// - Strips ANSI escape codes
+/// - Replaces textual status indicators with emoji dots
+/// - Converts markdown tables to condensed key-value format
+pub fn format_for_telegram(output: &str) -> String {
+    let mut result = strip_ansi_codes(output);
+
+    // Replace common status words with dots
+    result = result.replace("healthy", "\u{1F7E2} healthy");
+    result = result.replace("degraded", "\u{1F7E1} degraded");
+    result = result.replace("down", "\u{1F534} down");
+    result = result.replace("running", "\u{1F7E2} running");
+    result = result.replace("stopped", "\u{1F534} stopped");
+    result = result.replace("unavailable", "\u{1F7E1} unavailable");
+
+    result
+}
+
+/// Format a project health output into a single-line status with dots.
+fn format_status_dots(code: &str, output: &str) -> String {
+    let has_error = output.contains("unavailable") || output.contains("error") || output.contains("Error");
+    let has_warn = output.contains("degraded") || output.contains("timeout");
+
+    let dot = if has_error {
+        "\u{1F534}" // red
+    } else if has_warn {
+        "\u{1F7E1}" // yellow
+    } else {
+        "\u{1F7E2}" // green
+    };
+
+    // Build a compact one-liner
+    let parts: Vec<&str> = output.lines().take(3).collect();
+    let summary = if parts.is_empty() {
+        "no data"
+    } else {
+        parts[0].trim()
+    };
+
+    format!("{dot} {code} -- {summary}")
+}
+
+/// Strip ANSI escape codes from a string.
+fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Skip until we find a letter (end of ANSI sequence)
+            if chars.peek() == Some(&'[') {
+                chars.next(); // skip [
+                while let Some(&next) = chars.peek() {
+                    chars.next();
+                    if next.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
 // ── CLI Response Channel Extraction ─────────────────────────────────
 
 /// Extract oneshot response senders from CLI triggers.
@@ -785,6 +1222,29 @@ fn estimate_task_complexity(triggers: &[Trigger]) -> Option<LongTaskEstimate> {
     }
 
     None
+}
+
+// ── Quiet Hours ────────────────────────────────────────────────────
+
+/// Check if the current local time falls within the quiet window.
+///
+/// Handles overnight windows (e.g., 23:00 → 07:00) correctly.
+/// Returns `false` if either bound is `None` (no quiet window configured).
+pub fn is_quiet_hours(
+    quiet_start: Option<chrono::NaiveTime>,
+    quiet_end: Option<chrono::NaiveTime>,
+) -> bool {
+    let (Some(start), Some(end)) = (quiet_start, quiet_end) else {
+        return false;
+    };
+    let now = chrono::Local::now().time();
+    if start <= end {
+        // Same-day window (e.g., 01:00 → 05:00)
+        now >= start && now < end
+    } else {
+        // Overnight window (e.g., 23:00 → 07:00)
+        now >= start || now < end
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -997,5 +1457,133 @@ mod tests {
 
         assert_eq!(count, 5);
         assert!(stage_map.is_empty());
+    }
+
+    // ── Quiet Hours Tests ───────────────────────────────────────────────
+
+    #[test]
+    fn quiet_hours_none_returns_false() {
+        assert!(!is_quiet_hours(None, None));
+        assert!(!is_quiet_hours(
+            Some(chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap()),
+            None,
+        ));
+        assert!(!is_quiet_hours(
+            None,
+            Some(chrono::NaiveTime::from_hms_opt(7, 0, 0).unwrap()),
+        ));
+    }
+
+    #[test]
+    fn quiet_hours_overnight_window() {
+        // 23:00 → 07:00 overnight window
+        let start = Some(chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap());
+        let end = Some(chrono::NaiveTime::from_hms_opt(7, 0, 0).unwrap());
+
+        // We can't control chrono::Local::now() in tests, but we can
+        // verify the function doesn't panic and returns a bool.
+        let _ = is_quiet_hours(start, end);
+    }
+
+    #[test]
+    fn quiet_hours_same_day_window() {
+        // 01:00 → 05:00 same-day window
+        let start = Some(chrono::NaiveTime::from_hms_opt(1, 0, 0).unwrap());
+        let end = Some(chrono::NaiveTime::from_hms_opt(5, 0, 0).unwrap());
+
+        let _ = is_quiet_hours(start, end);
+    }
+
+    // ── Bot Command Parsing Tests ───────────────────────────────────
+
+    #[test]
+    fn parse_bot_command_basic() {
+        let cmd = parse_bot_command("/status").unwrap();
+        assert_eq!(cmd.command, "status");
+        assert!(cmd.args.is_empty());
+    }
+
+    #[test]
+    fn parse_bot_command_with_args() {
+        let cmd = parse_bot_command("/apply oo fix-chat-bugs").unwrap();
+        assert_eq!(cmd.command, "apply");
+        assert_eq!(cmd.args, vec!["oo", "fix-chat-bugs"]);
+    }
+
+    #[test]
+    fn parse_bot_command_with_bot_suffix() {
+        let cmd = parse_bot_command("/status@NovaBot").unwrap();
+        assert_eq!(cmd.command, "status");
+        assert!(cmd.args.is_empty());
+    }
+
+    #[test]
+    fn parse_bot_command_case_insensitive() {
+        let cmd = parse_bot_command("/STATUS").unwrap();
+        assert_eq!(cmd.command, "status");
+    }
+
+    #[test]
+    fn parse_bot_command_not_a_command() {
+        assert!(parse_bot_command("hello world").is_none());
+        assert!(parse_bot_command("").is_none());
+    }
+
+    #[test]
+    fn parse_bot_command_slash_only() {
+        assert!(parse_bot_command("/").is_none());
+    }
+
+    #[test]
+    fn classify_bot_command_triggers() {
+        assert_eq!(classify_trigger(&make_message("/status")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/digest")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/health")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/apply oo fix-chat")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/projects")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/unknown")), TriggerClass::BotCommand);
+    }
+
+    #[test]
+    fn bot_command_priority_is_high() {
+        assert_eq!(class_to_priority(TriggerClass::BotCommand), Priority::High);
+    }
+
+    // ── Format Helpers Tests ────────────────────────────────────────
+
+    #[test]
+    fn format_for_telegram_strips_ansi() {
+        let input = "\x1b[32mhealthy\x1b[0m";
+        let result = format_for_telegram(input);
+        assert!(!result.contains("\x1b"));
+        assert!(result.contains("healthy"));
+    }
+
+    #[test]
+    fn format_for_telegram_adds_status_dots() {
+        let result = format_for_telegram("Status: running");
+        assert!(result.contains("\u{1F7E2}"));
+    }
+
+    #[test]
+    fn strip_ansi_codes_basic() {
+        assert_eq!(strip_ansi_codes("hello"), "hello");
+        assert_eq!(strip_ansi_codes("\x1b[31mred\x1b[0m"), "red");
+        assert_eq!(strip_ansi_codes("\x1b[1;32mbold green\x1b[0m"), "bold green");
+    }
+
+    #[test]
+    fn format_status_dots_healthy() {
+        let output = "Deploy: ok\nSentry: 0 issues";
+        let result = format_status_dots("oo", output);
+        assert!(result.contains("\u{1F7E2}")); // green dot
+        assert!(result.contains("oo"));
+    }
+
+    #[test]
+    fn format_status_dots_degraded() {
+        let output = "Deploy: ok\nSentry: unavailable";
+        let result = format_status_dots("oo", output);
+        assert!(result.contains("\u{1F534}")); // red dot
     }
 }

@@ -59,6 +59,24 @@ impl InlineKeyboard {
         }
     }
 
+    /// Session error keyboard with Retry and Create Bug buttons.
+    ///
+    /// Layout: `[🔄 Retry] [🐛 Create Bug]`
+    pub fn session_error(event_id: &str) -> Self {
+        Self {
+            rows: vec![vec![
+                InlineButton {
+                    text: "\u{1F504} Retry".to_string(),
+                    callback_data: format!("retry:{event_id}"),
+                },
+                InlineButton {
+                    text: "\u{1F41B} Create Bug".to_string(),
+                    callback_data: format!("bug:{event_id}"),
+                },
+            ]],
+        }
+    }
+
     /// Build a keyboard from pending actions -- one button per action.
     pub fn from_actions(actions: &[PendingAction]) -> Self {
         Self {
@@ -186,6 +204,8 @@ pub enum ActionType {
     JiraComment,
     ChannelReply,
     HaServiceCall,
+    NexusStartSession,
+    NexusStopSession,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -319,5 +339,18 @@ mod tests {
         assert_eq!(restored.id, action.id);
         assert_eq!(restored.status, ActionStatus::Pending);
         assert_eq!(restored.description, "Create JIRA ticket");
+    }
+
+    #[test]
+    fn session_error_keyboard_layout() {
+        let kb = InlineKeyboard::session_error("evt-abc123");
+        assert_eq!(kb.rows.len(), 1);
+        assert_eq!(kb.rows[0].len(), 2);
+
+        assert!(kb.rows[0][0].text.contains("Retry"));
+        assert_eq!(kb.rows[0][0].callback_data, "retry:evt-abc123");
+
+        assert!(kb.rows[0][1].text.contains("Create Bug"));
+        assert_eq!(kb.rows[0][1].callback_data, "bug:evt-abc123");
     }
 }

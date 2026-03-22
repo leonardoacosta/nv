@@ -264,7 +264,7 @@ impl AgentLoop {
             // (bypasses Claude — these are informational)
             for trigger in &triggers {
                 if let Trigger::NexusEvent(event) = trigger {
-                    if let Some(msg) = nexus::notify::format_nexus_notification(event) {
+                    if let Some(msg) = nexus::notify::format_nexus_notification(event, None) {
                         if let Some(channel) = self.channels.get("telegram") {
                             if let Err(e) = channel.send_message(msg).await {
                                 tracing::error!(error = %e, "failed to send Nexus notification");
@@ -308,20 +308,20 @@ impl AgentLoop {
 
                         if let Some(uuid_str) = data.strip_prefix("approve:") {
                             handled_jira_callbacks = true;
-                            if let Some(jira_client) = &self.jira_client {
-                                if let Some(tg) = self.channels.get("telegram") {
-                                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
-                                        let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
-                                        if let Err(e) = crate::callbacks::handle_approve(
-                                            uuid_str,
-                                            jira_client,
-                                            &tg_channel.client,
-                                            chat_id,
-                                            original_msg_id,
-                                            &self.state,
-                                        ).await {
-                                            tracing::error!(error = %e, "approve callback failed");
-                                        }
+                            if let Some(tg) = self.channels.get("telegram") {
+                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                    let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                                    if let Err(e) = crate::callbacks::handle_approve(
+                                        uuid_str,
+                                        self.jira_client.as_ref(),
+                                        self.nexus_client.as_ref(),
+                                        &self.project_registry,
+                                        &tg_channel.client,
+                                        chat_id,
+                                        original_msg_id,
+                                        &self.state,
+                                    ).await {
+                                        tracing::error!(error = %e, "approve callback failed");
                                     }
                                 }
                             }

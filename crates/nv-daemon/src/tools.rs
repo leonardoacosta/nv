@@ -136,6 +136,24 @@ pub fn register_tools() -> Vec<ToolDefinition> {
                 "required": []
             }),
         },
+        ToolDefinition {
+            name: "search_messages".into(),
+            description: "Search past conversations using full-text search. Returns messages matching the query ranked by relevance.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (supports FTS5 syntax: AND, OR, NOT, phrases)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results to return (default 10, max 50)"
+                    }
+                },
+                "required": ["query"]
+            }),
+        },
     ];
 
     // Add all Jira tool definitions
@@ -185,6 +203,9 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add aggregation composite tools
     tools.extend(aggregation::aggregation_tool_definitions());
+
+    // Add Nexus project-scoped and session lifecycle tools
+    tools.extend(nexus_tool_definitions());
 
     tools
 }
@@ -424,6 +445,90 @@ fn posthog_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Tool definitions for Nexus project-scoped queries and session lifecycle.
+fn nexus_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "nexus_project_ready".into(),
+            description: "Get the beads ready queue for a project via Nexus. Returns issues ready for work, scoped to the project.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project_code": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl', 'nv')"
+                    }
+                },
+                "required": ["project_code"]
+            }),
+        },
+        ToolDefinition {
+            name: "nexus_project_proposals".into(),
+            description: "List open proposals in openspec/changes/ for a project. Returns proposal names and statuses (ready, proposal only, incomplete).".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project_code": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl', 'nv')"
+                    }
+                },
+                "required": ["project_code"]
+            }),
+        },
+        ToolDefinition {
+            name: "start_session".into(),
+            description: "Start a new Claude Code session on a project via Nexus. Requires confirmation before execution. Example: start_session('oo', '/apply fix-chat-bugs')".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Command to run in the session (e.g. '/apply fix-chat-bugs', '/feature')"
+                    }
+                },
+                "required": ["project", "command"]
+            }),
+        },
+        ToolDefinition {
+            name: "send_command".into(),
+            description: "Send a command to a running Nexus session. Use for remote /apply, /feature, /ci:gh execution.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "The session ID to send the command to"
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "The command text to send"
+                    }
+                },
+                "required": ["session_id", "text"]
+            }),
+        },
+        ToolDefinition {
+            name: "stop_session".into(),
+            description: "Stop a running Nexus session. Requires confirmation before execution. Use to kill runaway sessions.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "The session ID to stop"
+                    }
+                },
+                "required": ["session_id"]
+            }),
+        },
+    ]
+}
+
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
 /// Used during first-run to prevent Claude from searching Jira/Nexus/memory
 /// instead of focusing on the onboarding conversation.
@@ -564,6 +669,66 @@ pub async fn execute_tool_send(
             let session_id = input["session_id"].as_str().ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
             let output = nexus::tools::format_query_session(client, session_id).await?;
             Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Nexus Project-Scoped Queries ─────────────────────────
+        "nexus_project_ready" => {
+            let project_code = input["project_code"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project_code' parameter"))?;
+            let output = nexus::tools::format_project_ready(project_code, project_registry).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "nexus_project_proposals" => {
+            let project_code = input["project_code"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project_code' parameter"))?;
+            let output = nexus::tools::format_project_proposals(project_code, project_registry).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Nexus Session Lifecycle ──────────────────────────────
+        "start_session" => {
+            let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let command = input["command"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'command' parameter"))?;
+            let description = format!(
+                "Start CC session on {}: `{}`",
+                project.to_uppercase(),
+                command
+            );
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::NexusStartSession,
+                payload: input.clone(),
+            })
+        }
+        "send_command" => {
+            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let session_id = input["session_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
+            let text = input["text"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'text' parameter"))?;
+            let output = client.send_command(session_id, text).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "stop_session" => {
+            let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let session_id = input["session_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
+            let description = format!("Stop session {session_id}");
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::NexusStopSession,
+                payload: input.clone(),
+            })
         }
 
         // ── Aggregation Tools ────────────────────────────────────
@@ -1345,17 +1510,19 @@ mod tests {
     #[test]
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
-        // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
+        // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
         // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
         // + 1 neon + 2 stripe + 2 resend + 2 upstash
-        // + 3 ha + 2 ado + 2 plaid + 3 aggregation = 52
-        assert_eq!(tools.len(), 52);
+        // + 3 ha + 2 ado + 2 plaid + 3 aggregation
+        // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session) = 58
+        assert_eq!(tools.len(), 58);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
         assert!(names.contains(&"search_memory"));
         assert!(names.contains(&"write_memory"));
         assert!(names.contains(&"get_recent_messages"));
+        assert!(names.contains(&"search_messages"));
         assert!(names.contains(&"complete_bootstrap"));
         assert!(names.contains(&"update_soul"));
         assert!(names.contains(&"query_nexus"));
@@ -1408,6 +1575,12 @@ mod tests {
         assert!(names.contains(&"project_health"));
         assert!(names.contains(&"homelab_status"));
         assert!(names.contains(&"financial_summary"));
+        // Nexus lifecycle tools
+        assert!(names.contains(&"nexus_project_ready"));
+        assert!(names.contains(&"nexus_project_proposals"));
+        assert!(names.contains(&"start_session"));
+        assert!(names.contains(&"send_command"));
+        assert!(names.contains(&"stop_session"));
     }
 
     #[test]

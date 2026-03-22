@@ -18,6 +18,27 @@ pub struct Update {
     pub callback_query: Option<CallbackQuery>,
 }
 
+/// A Telegram voice message.
+#[derive(Debug, Deserialize)]
+pub struct Voice {
+    pub file_id: String,
+    #[allow(dead_code)]
+    pub file_unique_id: String,
+    pub duration: i64,
+    pub mime_type: Option<String>,
+    #[allow(dead_code)]
+    pub file_size: Option<i64>,
+}
+
+/// Telegram getFile response.
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+pub struct TgFile {
+    #[allow(dead_code)]
+    pub file_id: String,
+    pub file_path: Option<String>,
+}
+
 /// A Telegram message (subset of fields NV needs).
 #[derive(Debug, Deserialize)]
 pub struct TgMessage {
@@ -25,6 +46,7 @@ pub struct TgMessage {
     pub from: Option<TgUser>,
     pub chat: TgChat,
     pub text: Option<String>,
+    pub voice: Option<Voice>,
     pub date: i64,
 }
 
@@ -65,8 +87,26 @@ impl Update {
     /// Convert a Telegram Update to the unified InboundMessage format.
     ///
     /// Returns `None` if the update contains neither a message nor a callback query.
+    /// Voice messages include `"voice": true` in metadata with `file_id` and `duration_secs`.
     pub fn to_inbound_message(&self) -> Option<InboundMessage> {
         if let Some(msg) = &self.message {
+            // Build metadata — include voice info if present
+            let metadata = if let Some(voice) = &msg.voice {
+                serde_json::json!({
+                    "message_id": msg.message_id,
+                    "chat_id": msg.chat.id,
+                    "voice": true,
+                    "file_id": voice.file_id,
+                    "duration_secs": voice.duration,
+                    "mime_type": voice.mime_type.as_deref().unwrap_or("audio/ogg"),
+                })
+            } else {
+                serde_json::json!({
+                    "message_id": msg.message_id,
+                    "chat_id": msg.chat.id,
+                })
+            };
+
             Some(InboundMessage {
                 id: msg.message_id.to_string(),
                 channel: "telegram".to_string(),
@@ -78,10 +118,7 @@ impl Update {
                 content: msg.text.clone().unwrap_or_default(),
                 timestamp: DateTime::from_timestamp(msg.date, 0).unwrap_or_else(Utc::now),
                 thread_id: None,
-                metadata: serde_json::json!({
-                    "message_id": msg.message_id,
-                    "chat_id": msg.chat.id,
-                }),
+                metadata,
             })
         } else {
             self.callback_query.as_ref().map(|cb| InboundMessage {
@@ -134,6 +171,7 @@ mod tests {
                 }),
                 chat: TgChat { id: chat_id },
                 text: Some("hello world".to_string()),
+                voice: None,
                 date: 1700000000,
             }),
             callback_query: None,
@@ -156,6 +194,7 @@ mod tests {
                     from: None,
                     chat: TgChat { id: chat_id },
                     text: Some("Original message".to_string()),
+                    voice: None,
                     date: 1700000000,
                 }),
                 data: Some("approve:action-1".to_string()),
@@ -248,6 +287,7 @@ mod tests {
                 }),
                 chat: TgChat { id: 123 },
                 text: Some("hi".to_string()),
+                voice: None,
                 date: 1700000000,
             }),
             callback_query: None,
@@ -265,11 +305,55 @@ mod tests {
                 from: None,
                 chat: TgChat { id: 123 },
                 text: Some("anonymous".to_string()),
+                voice: None,
                 date: 1700000000,
             }),
             callback_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
         assert_eq!(msg.sender, "");
+    }
+
+    #[test]
+    fn voice_message_includes_metadata() {
+        let update = Update {
+            update_id: 105,
+            message: Some(TgMessage {
+                message_id: 60,
+                from: Some(TgUser {
+                    id: 1,
+                    first_name: "Leo".to_string(),
+                    username: Some("leonyaptor".to_string()),
+                }),
+                chat: TgChat { id: 123 },
+                text: None,
+                voice: Some(Voice {
+                    file_id: "voice-file-abc".to_string(),
+                    file_unique_id: "unique-abc".to_string(),
+                    duration: 5,
+                    mime_type: Some("audio/ogg".to_string()),
+                    file_size: Some(12345),
+                }),
+                date: 1700000000,
+            }),
+            callback_query: None,
+        };
+        let msg = update.to_inbound_message().unwrap();
+
+        assert_eq!(msg.metadata["voice"], true);
+        assert_eq!(msg.metadata["file_id"], "voice-file-abc");
+        assert_eq!(msg.metadata["duration_secs"], 5);
+        assert_eq!(msg.metadata["mime_type"], "audio/ogg");
+        // Content should be empty (voice messages have no text)
+        assert_eq!(msg.content, "");
+    }
+
+    #[test]
+    fn non_voice_message_has_no_voice_metadata() {
+        let update = make_message_update(123);
+        let msg = update.to_inbound_message().unwrap();
+
+        assert!(msg.metadata.get("voice").is_none());
+        assert_eq!(msg.content, "hello world");
     }
 }

@@ -31,7 +31,11 @@ pub fn format_session_completed(event: &SessionEvent) -> OutboundMessage {
 }
 
 /// Format a session error event into a Telegram alert with action buttons.
-pub fn format_session_error(event: &SessionEvent) -> OutboundMessage {
+///
+/// The `event_id` is used to key error metadata for retry/create-bug callbacks.
+/// When `event_id` is provided, uses the new `[Retry] [Create Bug]` keyboard.
+/// Falls back to `[View Error] [Create Bug]` using session_id otherwise.
+pub fn format_session_error(event: &SessionEvent, event_id: Option<&str>) -> OutboundMessage {
     let details = event
         .details
         .as_deref()
@@ -44,17 +48,21 @@ pub fn format_session_error(event: &SessionEvent) -> OutboundMessage {
         event.agent_name, event.session_id, details
     );
 
-    let keyboard = InlineKeyboard {
-        rows: vec![vec![
-            InlineButton {
-                text: "View Error".into(),
-                callback_data: format!("nexus_err:view:{}", event.session_id),
-            },
-            InlineButton {
-                text: "Create Bug".into(),
-                callback_data: format!("nexus_err:bug:{}", event.session_id),
-            },
-        ]],
+    let keyboard = if let Some(eid) = event_id {
+        InlineKeyboard::session_error(eid)
+    } else {
+        InlineKeyboard {
+            rows: vec![vec![
+                InlineButton {
+                    text: "View Error".into(),
+                    callback_data: format!("nexus_err:view:{}", event.session_id),
+                },
+                InlineButton {
+                    text: "Create Bug".into(),
+                    callback_data: format!("nexus_err:bug:{}", event.session_id),
+                },
+            ]],
+        }
     };
 
     OutboundMessage {
@@ -66,10 +74,15 @@ pub fn format_session_error(event: &SessionEvent) -> OutboundMessage {
 }
 
 /// Route a Nexus session event to the appropriate notification format.
-pub fn format_nexus_notification(event: &SessionEvent) -> Option<OutboundMessage> {
+///
+/// For failed events, pass `event_id` to enable retry/create-bug callbacks.
+pub fn format_nexus_notification(
+    event: &SessionEvent,
+    event_id: Option<&str>,
+) -> Option<OutboundMessage> {
     match event.event_type {
         SessionEventType::Completed => Some(format_session_completed(event)),
-        SessionEventType::Failed => Some(format_session_error(event)),
+        SessionEventType::Failed => Some(format_session_error(event, event_id)),
         // Started and Progress are informational — no notification
         SessionEventType::Started | SessionEventType::Progress => None,
     }
@@ -204,9 +217,9 @@ mod tests {
     }
 
     #[test]
-    fn error_notification_has_buttons() {
+    fn error_notification_has_buttons_legacy() {
         let event = make_event(SessionEventType::Failed, Some("OOM killed".into()));
-        let msg = format_session_error(&event);
+        let msg = format_session_error(&event, None);
 
         assert!(msg.content.contains("error"));
         assert!(msg.content.contains("OOM killed"));
@@ -222,16 +235,30 @@ mod tests {
     }
 
     #[test]
+    fn error_notification_with_event_id_has_retry_buttons() {
+        let event = make_event(SessionEventType::Failed, Some("OOM killed".into()));
+        let msg = format_session_error(&event, Some("evt-123"));
+
+        let kb = msg.keyboard.unwrap();
+        assert_eq!(kb.rows.len(), 1);
+        assert_eq!(kb.rows[0].len(), 2);
+        assert!(kb.rows[0][0].text.contains("Retry"));
+        assert_eq!(kb.rows[0][0].callback_data, "retry:evt-123");
+        assert!(kb.rows[0][1].text.contains("Create Bug"));
+        assert_eq!(kb.rows[0][1].callback_data, "bug:evt-123");
+    }
+
+    #[test]
     fn format_nexus_notification_completed() {
         let event = make_event(SessionEventType::Completed, None);
-        let msg = format_nexus_notification(&event);
+        let msg = format_nexus_notification(&event, None);
         assert!(msg.is_some());
     }
 
     #[test]
     fn format_nexus_notification_failed() {
         let event = make_event(SessionEventType::Failed, None);
-        let msg = format_nexus_notification(&event);
+        let msg = format_nexus_notification(&event, None);
         assert!(msg.is_some());
         assert!(msg.unwrap().keyboard.is_some());
     }
@@ -239,13 +266,13 @@ mod tests {
     #[test]
     fn format_nexus_notification_started_none() {
         let event = make_event(SessionEventType::Started, None);
-        assert!(format_nexus_notification(&event).is_none());
+        assert!(format_nexus_notification(&event, None).is_none());
     }
 
     #[test]
     fn format_nexus_notification_progress_none() {
         let event = make_event(SessionEventType::Progress, None);
-        assert!(format_nexus_notification(&event).is_none());
+        assert!(format_nexus_notification(&event, None).is_none());
     }
 
     fn make_session_detail() -> SessionDetail {

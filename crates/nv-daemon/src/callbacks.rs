@@ -8,19 +8,26 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::jira;
+use crate::nexus;
 use crate::state::{PendingStatus, State};
 use crate::telegram::client::TelegramClient;
 use crate::tools;
+
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 // ── Approve Handler ─────────────────────────────────────────────────
 
 /// Execute a confirmed pending action.
 ///
-/// Loads the action from state, executes it via the Jira client,
-/// updates the Telegram message with the result, and marks it as executed.
+/// Loads the action from state, detects the action type, and routes to
+/// the appropriate executor (Jira, Nexus, Home Assistant, etc.).
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_approve(
     uuid_str: &str,
-    jira_client: &jira::JiraClient,
+    jira_client: Option<&jira::JiraClient>,
+    nexus_client: Option<&nexus::client::NexusClient>,
+    project_registry: &HashMap<String, PathBuf>,
     telegram: &TelegramClient,
     chat_id: i64,
     original_message_id: Option<i64>,
@@ -39,7 +46,27 @@ pub async fn handle_approve(
     // Map daemon state action to core action type for execution
     let action_type = detect_action_type(&action.payload);
 
-    let result = tools::execute_jira_action(jira_client, &action_type, &action.payload).await;
+    let result = match action_type {
+        nv_core::types::ActionType::NexusStartSession => {
+            execute_nexus_start_session(
+                &action.payload,
+                nexus_client,
+                project_registry,
+            )
+            .await
+        }
+        nv_core::types::ActionType::NexusStopSession => {
+            execute_nexus_stop_session(&action.payload, nexus_client).await
+        }
+        _ => {
+            // Jira and other action types
+            if let Some(jira) = jira_client {
+                tools::execute_jira_action(jira, &action_type, &action.payload).await
+            } else {
+                Err(anyhow::anyhow!("Jira not configured"))
+            }
+        }
+    };
 
     match result {
         Ok(result_text) => {
@@ -62,6 +89,53 @@ pub async fn handle_approve(
     }
 
     Ok(())
+}
+
+/// Execute a confirmed NexusStartSession action.
+async fn execute_nexus_start_session(
+    payload: &serde_json::Value,
+    nexus_client: Option<&nexus::client::NexusClient>,
+    project_registry: &HashMap<String, PathBuf>,
+) -> Result<String> {
+    let client = nexus_client.ok_or_else(|| anyhow::anyhow!("Nexus not configured"))?;
+    let project = payload["project"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'project' in payload"))?;
+    let command = payload["command"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'command' in payload"))?;
+
+    // Resolve project path from registry
+    let cwd = project_registry
+        .get(project)
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|| format!("/home/nyaptor/dev/{project}"));
+
+    let args: Vec<String> = command
+        .split_whitespace()
+        .map(String::from)
+        .collect();
+
+    let (session_id, tmux_session) = client
+        .start_session(project, &cwd, &args)
+        .await?;
+
+    Ok(format!(
+        "Session started: {session_id} (tmux: {tmux_session})"
+    ))
+}
+
+/// Execute a confirmed NexusStopSession action.
+async fn execute_nexus_stop_session(
+    payload: &serde_json::Value,
+    nexus_client: Option<&nexus::client::NexusClient>,
+) -> Result<String> {
+    let client = nexus_client.ok_or_else(|| anyhow::anyhow!("Nexus not configured"))?;
+    let session_id = payload["session_id"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'session_id' in payload"))?;
+
+    client.stop_session(session_id).await
 }
 
 // ── Edit Handler ────────────────────────────────────────────────────
@@ -199,11 +273,27 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
             "JiraTransition" => nv_core::types::ActionType::JiraTransition,
             "JiraAssign" => nv_core::types::ActionType::JiraAssign,
             "JiraComment" => nv_core::types::ActionType::JiraComment,
+            "NexusStartSession" => nv_core::types::ActionType::NexusStartSession,
+            "NexusStopSession" => nv_core::types::ActionType::NexusStopSession,
             _ => nv_core::types::ActionType::JiraCreate,
         };
     }
 
-    // Infer from payload fields
+    // Infer from payload fields — Nexus actions
+    if payload.get("command").is_some()
+        && payload.get("project").is_some()
+        && payload.get("issue_key").is_none()
+    {
+        return nv_core::types::ActionType::NexusStartSession;
+    }
+    if payload.get("session_id").is_some()
+        && payload.get("text").is_none()
+        && payload.get("issue_key").is_none()
+    {
+        return nv_core::types::ActionType::NexusStopSession;
+    }
+
+    // Infer from payload fields — Jira actions
     if payload.get("transition_name").is_some() {
         nv_core::types::ActionType::JiraTransition
     } else if payload.get("assignee_account_id").is_some() || payload.get("assignee").is_some() {
@@ -254,5 +344,48 @@ mod tests {
     fn detect_action_type_infers_create() {
         let payload = serde_json::json!({"project": "OO", "title": "Bug", "issue_type": "Bug"});
         assert!(matches!(detect_action_type(&payload), nv_core::types::ActionType::JiraCreate));
+    }
+
+    #[test]
+    fn detect_action_type_explicit_nexus_start() {
+        let payload = serde_json::json!({
+            "_action_type": "NexusStartSession",
+            "project": "oo",
+            "command": "/apply fix-chat"
+        });
+        assert!(matches!(
+            detect_action_type(&payload),
+            nv_core::types::ActionType::NexusStartSession
+        ));
+    }
+
+    #[test]
+    fn detect_action_type_explicit_nexus_stop() {
+        let payload = serde_json::json!({
+            "_action_type": "NexusStopSession",
+            "session_id": "s-123"
+        });
+        assert!(matches!(
+            detect_action_type(&payload),
+            nv_core::types::ActionType::NexusStopSession
+        ));
+    }
+
+    #[test]
+    fn detect_action_type_infers_nexus_start() {
+        let payload = serde_json::json!({"project": "oo", "command": "/apply fix-chat"});
+        assert!(matches!(
+            detect_action_type(&payload),
+            nv_core::types::ActionType::NexusStartSession
+        ));
+    }
+
+    #[test]
+    fn detect_action_type_infers_nexus_stop() {
+        let payload = serde_json::json!({"session_id": "s-123"});
+        assert!(matches!(
+            detect_action_type(&payload),
+            nv_core::types::ActionType::NexusStopSession
+        ));
     }
 }

@@ -204,6 +204,204 @@ impl NexusClient {
         Ok(None)
     }
 
+    /// Start a new session on the agent managing the given project.
+    ///
+    /// Tries each connected agent until one succeeds or all fail.
+    pub async fn start_session(
+        &self,
+        project: &str,
+        cwd: &str,
+        args: &[String],
+    ) -> Result<(String, String)> {
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                continue;
+            };
+
+            match client
+                .start_session(proto::StartSessionRequest {
+                    project: project.to_string(),
+                    cwd: cwd.to_string(),
+                    args: args.to_vec(),
+                })
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let resp = response.into_inner();
+                    return Ok((resp.session_id, resp.tmux_session));
+                }
+                Err(e) => {
+                    if e.code() == tonic::Code::Unimplemented {
+                        tracing::warn!(
+                            agent = %agent_name,
+                            "StartSession RPC not implemented by agent"
+                        );
+                        continue;
+                    }
+                    tracing::warn!(
+                        agent = %agent_name,
+                        error = %e,
+                        "StartSession RPC failed"
+                    );
+                    conn.mark_disconnected();
+                }
+            }
+        }
+
+        anyhow::bail!("No Nexus agent could start a session for project '{project}'")
+    }
+
+    /// Send a command to a running session by ID.
+    ///
+    /// Returns the collected text output from the command stream.
+    pub async fn send_command(&self, session_id: &str, prompt: &str) -> Result<String> {
+        use futures_util::StreamExt;
+
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                continue;
+            };
+
+            match client
+                .send_command(proto::CommandRequest {
+                    session_id: session_id.to_string(),
+                    prompt: prompt.to_string(),
+                })
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let mut stream = response.into_inner();
+                    let mut output = String::new();
+
+                    while let Some(item) = stream.next().await {
+                        match item {
+                            Ok(cmd_output) => {
+                                if let Some(content) = cmd_output.content {
+                                    match content {
+                                        proto::command_output::Content::Text(chunk) => {
+                                            output.push_str(&chunk.text);
+                                        }
+                                        proto::command_output::Content::Error(err) => {
+                                            return Err(anyhow::anyhow!(
+                                                "Command error (exit {}): {}",
+                                                err.exit_code,
+                                                err.message
+                                            ));
+                                        }
+                                        proto::command_output::Content::Done(done) => {
+                                            tracing::debug!(
+                                                session_id,
+                                                duration_ms = done.duration_ms,
+                                                tool_calls = done.tool_calls,
+                                                "SendCommand completed"
+                                            );
+                                        }
+                                        _ => {} // ToolUse, ToolResult — skip
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                if e.code() == tonic::Code::NotFound {
+                                    // Try next agent
+                                    break;
+                                }
+                                return Err(anyhow::anyhow!("SendCommand stream error: {e}"));
+                            }
+                        }
+                    }
+
+                    if !output.is_empty() {
+                        return Ok(output);
+                    }
+                    // If we got here with empty output but no error, the session
+                    // might be on another agent — continue.
+                }
+                Err(e) => {
+                    if e.code() == tonic::Code::NotFound {
+                        continue;
+                    }
+                    if e.code() == tonic::Code::Unimplemented {
+                        tracing::warn!(
+                            agent = %agent_name,
+                            "SendCommand RPC not implemented by agent"
+                        );
+                        continue;
+                    }
+                    tracing::warn!(
+                        agent = %agent_name,
+                        session_id,
+                        error = %e,
+                        "SendCommand RPC failed"
+                    );
+                    conn.mark_disconnected();
+                }
+            }
+        }
+
+        anyhow::bail!("Session '{session_id}' not found on any connected agent")
+    }
+
+    /// Stop a running session by ID.
+    pub async fn stop_session(&self, session_id: &str) -> Result<String> {
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                continue;
+            };
+
+            match client
+                .stop_session(proto::SessionId {
+                    id: session_id.to_string(),
+                })
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let result = response.into_inner();
+                    let msg = result
+                        .message
+                        .unwrap_or_else(|| "Session stopped".to_string());
+                    if result.success {
+                        return Ok(msg);
+                    } else {
+                        anyhow::bail!("StopSession failed: {msg}");
+                    }
+                }
+                Err(e) => {
+                    if e.code() == tonic::Code::NotFound {
+                        continue;
+                    }
+                    if e.code() == tonic::Code::Unimplemented {
+                        tracing::warn!(
+                            agent = %agent_name,
+                            "StopSession RPC not implemented by agent"
+                        );
+                        continue;
+                    }
+                    tracing::warn!(
+                        agent = %agent_name,
+                        session_id,
+                        error = %e,
+                        "StopSession RPC failed"
+                    );
+                    conn.mark_disconnected();
+                }
+            }
+        }
+
+        anyhow::bail!("Session '{session_id}' not found on any connected agent")
+    }
+
     /// Get connection status summary for all agents.
     pub async fn status_summary(&self) -> Vec<(String, ConnectionStatus)> {
         let mut result = Vec::new();

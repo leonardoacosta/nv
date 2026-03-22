@@ -315,6 +315,17 @@ impl Worker {
         let tg_msg_id = task.telegram_message_id;
         let event_tx = &deps.event_tx;
 
+        // Extract reply_to message ID from the first trigger (for threading)
+        let reply_to_id: Option<String> = task.triggers.first().and_then(|t| match t {
+            Trigger::Message(msg) => Some(msg.id.clone()),
+            _ => None,
+        });
+
+        // Send typing indicator immediately (fire-and-forget)
+        if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
+            tg.send_chat_action(chat_id, "typing").await;
+        }
+
         // Emit StageStarted for context build
         let context_build_start = Instant::now();
         let _ = event_tx.send(WorkerEvent::StageStarted {
@@ -444,12 +455,12 @@ impl Worker {
                 if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, tg_chat_id, tg_msg_id) {
                     let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await; // red X
                 }
-                // Send error to Telegram
+                // Send error to Telegram (threaded to original message)
                 if let Some(channel) = deps.channels.get("telegram") {
                     let msg = OutboundMessage {
                         channel: "telegram".into(),
                         content: format!("\u{26A0} Worker error: {e}"),
-                        reply_to: None,
+                        reply_to: reply_to_id.clone(),
                         keyboard: None,
                     };
                     let _ = channel.send_message(msg).await;
@@ -513,18 +524,13 @@ impl Worker {
             })
             .unwrap_or("telegram");
 
-        let reply_to = task.triggers.first().and_then(|t| match t {
-            Trigger::Message(msg) => Some(msg.id.clone()),
-            _ => None,
-        });
-
         if !response_text.is_empty() {
             if let Some(channel) = deps.channels.get(reply_channel) {
                 if let Err(e) = channel
                     .send_message(OutboundMessage {
                         channel: reply_channel.to_string(),
                         content: response_text.clone(),
-                        reply_to,
+                        reply_to: reply_to_id.clone(),
                         keyboard: None,
                     })
                     .await
@@ -705,6 +711,39 @@ impl Worker {
                             Ok(tools::ToolResult::Immediate(lines.join("\n")))
                         }
                         Err(e) => Err(e),
+                    }
+                } else if name == "search_messages" {
+                    let store = deps.message_store.lock().unwrap();
+                    let query = input["query"].as_str().unwrap_or("");
+                    let limit = input["limit"].as_u64().unwrap_or(10).min(50) as usize;
+                    match store.search(query, limit) {
+                        Ok(messages) if messages.is_empty() => {
+                            Ok(tools::ToolResult::Immediate("No messages found matching the query.".into()))
+                        }
+                        Ok(messages) => {
+                            let mut lines = Vec::with_capacity(messages.len());
+                            for msg in &messages {
+                                let time_part = if msg.timestamp.len() >= 16 {
+                                    &msg.timestamp[11..16]
+                                } else {
+                                    &msg.timestamp
+                                };
+                                let date_part = if msg.timestamp.len() >= 10 {
+                                    &msg.timestamp[..10]
+                                } else {
+                                    &msg.timestamp
+                                };
+                                let sender = if msg.direction == "outbound" { "Nova" } else { &msg.sender };
+                                lines.push(format!("[{date_part} {time_part}] {sender}: {}", msg.content));
+                            }
+                            Ok(tools::ToolResult::Immediate(lines.join("\n")))
+                        }
+                        Err(e) => {
+                            // FTS5 query syntax errors are user-facing
+                            Ok(tools::ToolResult::Immediate(
+                                format!("Invalid search query: {e}")
+                            ))
+                        }
                     }
                 } else {
                     // Determine timeout based on tool category

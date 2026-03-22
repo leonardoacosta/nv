@@ -104,7 +104,36 @@ impl MessageStore {
                 tokens_out INTEGER
             );
             CREATE INDEX IF NOT EXISTS idx_tool_usage_name ON tool_usage(tool_name);
-            CREATE INDEX IF NOT EXISTS idx_tool_usage_timestamp ON tool_usage(timestamp);",
+            CREATE INDEX IF NOT EXISTS idx_tool_usage_timestamp ON tool_usage(timestamp);
+
+            -- FTS5 virtual table for full-text search over messages
+            CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                content,
+                content=messages,
+                content_rowid=id
+            );
+
+            -- Sync triggers to keep FTS index current
+            CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+                INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+            END;",
+        )?;
+
+        // One-time backfill: populate FTS index with any messages that exist
+        // but are not yet indexed (idempotent — skips already-indexed rows).
+        conn.execute_batch(
+            "INSERT OR IGNORE INTO messages_fts(rowid, content)
+             SELECT id, content FROM messages
+             WHERE id NOT IN (SELECT rowid FROM messages_fts);",
         )?;
 
         Ok(Self { conn })
@@ -142,6 +171,42 @@ impl MessageStore {
             params![channel, content, telegram_message_id, response_time_ms, tokens_in, tokens_out],
         )?;
         Ok(())
+    }
+
+    /// Search messages using FTS5 full-text search.
+    ///
+    /// Returns messages matching the query ranked by relevance.
+    /// Default limit: 10, max: 50.
+    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<StoredMessage>> {
+        let limit = limit.min(50);
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.timestamp, m.direction, m.channel,
+                    COALESCE(m.sender, ''), m.content,
+                    m.response_time_ms, m.tokens_in, m.tokens_out
+             FROM messages m
+             JOIN messages_fts f ON m.id = f.rowid
+             WHERE messages_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt
+            .query_map(params![query, limit as i64], |row| {
+                Ok(StoredMessage {
+                    id: row.get(0)?,
+                    timestamp: row.get(1)?,
+                    direction: row.get(2)?,
+                    channel: row.get(3)?,
+                    sender: row.get(4)?,
+                    content: row.get(5)?,
+                    response_time_ms: row.get(6)?,
+                    tokens_in: row.get(7)?,
+                    tokens_out: row.get(8)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(rows)
     }
 
     /// Return the last `count` messages, newest last.
@@ -719,5 +784,110 @@ mod tests {
         assert_eq!(report.invocations_today, 0);
         assert!(report.per_tool.is_empty());
         assert!(report.slowest.is_empty());
+    }
+
+    // ── FTS5 Search Tests ────────────────────────────────────────────
+
+    #[test]
+    fn fts5_table_created_on_init() {
+        let (_dir, store) = setup();
+        // FTS table should exist — querying it should not fail
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM messages_fts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn search_with_matches() {
+        let (_dir, store) = setup();
+        store
+            .log_inbound("telegram", "leo", "discuss Stripe fee structure", "message")
+            .unwrap();
+        store
+            .log_inbound("telegram", "leo", "deploy the new API endpoint", "message")
+            .unwrap();
+        store
+            .log_outbound("telegram", "Stripe fees are 2.9% + 30c per transaction", None, None, None, None)
+            .unwrap();
+
+        let results = store.search("Stripe", 10).unwrap();
+        assert_eq!(results.len(), 2);
+        // Both messages mentioning "Stripe" should be returned
+        assert!(results.iter().all(|m| m.content.contains("Stripe") || m.content.contains("stripe")));
+    }
+
+    #[test]
+    fn search_with_no_matches() {
+        let (_dir, store) = setup();
+        store
+            .log_inbound("telegram", "leo", "hello world", "message")
+            .unwrap();
+
+        let results = store.search("nonexistent", 10).unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn search_with_invalid_query() {
+        let (_dir, store) = setup();
+        store
+            .log_inbound("telegram", "leo", "hello world", "message")
+            .unwrap();
+
+        // Invalid FTS5 syntax should return an error
+        let result = store.search("AND OR NOT", 10);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn search_respects_limit() {
+        let (_dir, store) = setup();
+        for i in 0..20 {
+            store
+                .log_inbound("telegram", "leo", &format!("message about topic {i}"), "message")
+                .unwrap();
+        }
+
+        let results = store.search("topic", 5).unwrap();
+        assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn search_limit_capped_at_50() {
+        let (_dir, store) = setup();
+        store
+            .log_inbound("telegram", "leo", "test message", "message")
+            .unwrap();
+
+        // Requesting 100 should be capped to 50 internally
+        let results = store.search("test", 100).unwrap();
+        assert_eq!(results.len(), 1); // Only 1 message exists
+    }
+
+    #[test]
+    fn backfill_idempotency() {
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("messages.db");
+
+        // First init — insert messages before FTS exists won't matter
+        // because init creates FTS + backfills atomically.
+        let store1 = MessageStore::init(&db_path).unwrap();
+        store1
+            .log_inbound("telegram", "leo", "backfill test message", "message")
+            .unwrap();
+        drop(store1);
+
+        // Second init — should not duplicate FTS entries
+        let store2 = MessageStore::init(&db_path).unwrap();
+        let results = store2.search("backfill", 10).unwrap();
+        assert_eq!(results.len(), 1);
+
+        // Third init — still idempotent
+        drop(store2);
+        let store3 = MessageStore::init(&db_path).unwrap();
+        let results = store3.search("backfill", 10).unwrap();
+        assert_eq!(results.len(), 1);
     }
 }

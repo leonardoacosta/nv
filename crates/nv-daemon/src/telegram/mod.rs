@@ -137,6 +137,29 @@ pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBo
                         continue;
                     }
 
+                    // Handle voice messages — transcribe before dispatch
+                    let msg = if msg.metadata.get("voice").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        match transcribe_voice_message(&channel, &msg).await {
+                            Ok(transcribed) => transcribed,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "voice transcription failed");
+                                // Send error reply but don't dispatch the message
+                                let chat_id = msg.metadata.get("chat_id")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(channel.chat_id);
+                                let _ = channel.client.send_message(
+                                    chat_id,
+                                    "Could not transcribe voice message. Please try again or type your message.",
+                                    Some(msg.id.clone()),
+                                    None,
+                                ).await;
+                                continue;
+                            }
+                        }
+                    } else {
+                        msg
+                    };
+
                     if let Err(e) = channel.trigger_tx.send(Trigger::Message(msg)).await {
                         tracing::error!("Failed to send trigger: {e}");
                         return; // Receiver dropped, daemon shutting down
@@ -150,6 +173,100 @@ pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBo
             }
         }
     }
+}
+
+// ── Voice Transcription ─────────────────────────────────────────────
+
+/// Transcribe a voice message by downloading from Telegram and calling Deepgram.
+///
+/// Returns a modified `InboundMessage` with the transcribed text as content.
+/// The original voice metadata is preserved.
+async fn transcribe_voice_message(
+    channel: &TelegramChannel,
+    msg: &InboundMessage,
+) -> anyhow::Result<InboundMessage> {
+    let file_id = msg
+        .metadata
+        .get("file_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("voice message missing file_id"))?;
+
+    let mime_type = msg
+        .metadata
+        .get("mime_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("audio/ogg");
+
+    let chat_id = msg
+        .metadata
+        .get("chat_id")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(channel.chat_id);
+
+    // Check for DEEPGRAM_API_KEY
+    let api_key = match std::env::var("DEEPGRAM_API_KEY") {
+        Ok(key) if !key.is_empty() => key,
+        _ => {
+            let _ = channel
+                .client
+                .send_message(
+                    chat_id,
+                    "Voice transcription not configured.",
+                    Some(msg.id.clone()),
+                    None,
+                )
+                .await;
+            anyhow::bail!("DEEPGRAM_API_KEY not set");
+        }
+    };
+
+    // Send typing indicator while transcribing
+    channel.client.send_chat_action(chat_id, "typing").await;
+
+    // Download the voice file from Telegram
+    let file_path = channel.client.get_file(file_id).await?;
+    let audio_bytes = channel.client.download_file(&file_path).await?;
+
+    tracing::info!(
+        file_id,
+        bytes = audio_bytes.len(),
+        mime_type,
+        "downloaded voice message for transcription"
+    );
+
+    // Transcribe via Deepgram
+    let model = std::env::var("DEEPGRAM_MODEL").unwrap_or_else(|_| "nova-2".to_string());
+    let transcript =
+        crate::voice_input::transcribe_voice(&audio_bytes, mime_type, &api_key, &model).await?;
+
+    if transcript.is_empty() {
+        let _ = channel
+            .client
+            .send_message(
+                chat_id,
+                "No speech detected in voice message.",
+                Some(msg.id.clone()),
+                None,
+            )
+            .await;
+        anyhow::bail!("empty transcript from Deepgram");
+    }
+
+    tracing::info!(
+        transcript_len = transcript.len(),
+        "voice message transcribed"
+    );
+
+    // Return a new InboundMessage with the transcribed text
+    Ok(InboundMessage {
+        id: msg.id.clone(),
+        channel: msg.channel.clone(),
+        sender: msg.sender.clone(),
+        content: transcript,
+        timestamp: msg.timestamp,
+        thread_id: msg.thread_id.clone(),
+        metadata: msg.metadata.clone(),
+    })
 }
 
 // ── Inline Keyboard Builders ───────────────────────────────────────

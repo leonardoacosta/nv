@@ -61,9 +61,26 @@ pub struct ChannelState {
 
 // ── State System ────────────────────────────────────────────────────
 
+// ── Session Error Metadata ─────────────────────────────────────────
+
+/// Metadata stored when a Nexus session errors out.
+/// Used by retry and create-bug callback handlers.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionErrorMeta {
+    pub project: String,
+    pub cwd: String,
+    pub command: Option<String>,
+    pub error_message: String,
+    pub session_id: String,
+    pub agent_name: String,
+    pub timestamp: DateTime<Utc>,
+}
+
 /// Daemon state persistence backed by JSON files in `~/.nv/state/`.
 pub struct State {
     base_path: PathBuf,
+    /// In-memory storage for session error metadata (keyed by event_id).
+    session_errors: std::sync::Mutex<HashMap<String, SessionErrorMeta>>,
 }
 
 impl State {
@@ -71,6 +88,7 @@ impl State {
     pub fn new(base_path: &Path) -> Self {
         Self {
             base_path: base_path.join("state"),
+            session_errors: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -181,6 +199,39 @@ impl State {
     /// Get the state directory path (for external callers that need it).
     pub fn base_path(&self) -> &std::path::Path {
         &self.base_path
+    }
+
+    // ── Session Error Metadata ───────────────────────────────────────
+
+    /// Store session error metadata keyed by event_id.
+    pub fn store_session_error(&self, event_id: &str, meta: SessionErrorMeta) {
+        let mut map = self.session_errors.lock().unwrap();
+        map.insert(event_id.to_string(), meta);
+    }
+
+    /// Retrieve session error metadata by event_id, with 24h expiry.
+    ///
+    /// Returns `None` if the event_id is not found or has expired.
+    pub fn get_session_error(&self, event_id: &str) -> Option<SessionErrorMeta> {
+        let map = self.session_errors.lock().unwrap();
+        let meta = map.get(event_id)?;
+        let age = Utc::now().signed_duration_since(meta.timestamp);
+        if age > chrono::Duration::hours(24) {
+            return None;
+        }
+        Some(meta.clone())
+    }
+
+    /// Remove expired session error entries (older than 24 hours).
+    pub fn prune_expired_errors(&self) -> usize {
+        let mut map = self.session_errors.lock().unwrap();
+        let now = Utc::now();
+        let before = map.len();
+        map.retain(|_, meta| {
+            let age = now.signed_duration_since(meta.timestamp);
+            age <= chrono::Duration::hours(24)
+        });
+        before - map.len()
     }
 
     fn write_pending_actions(&self, actions: &[PendingAction]) -> Result<()> {
@@ -448,5 +499,86 @@ mod tests {
 
         assert_eq!(tg_loaded.last_update_id, Some(100));
         assert_eq!(dc_loaded.last_update_id, Some(200));
+    }
+
+    // ── Session Error Metadata Tests ─────────────────────────────────
+
+    #[test]
+    fn session_error_store_and_get() {
+        let (_dir, state) = setup();
+        let meta = SessionErrorMeta {
+            project: "oo".into(),
+            cwd: "/home/user/dev/oo".into(),
+            command: Some("/apply fix-bugs".into()),
+            error_message: "Worker timeout".into(),
+            session_id: "s-123".into(),
+            agent_name: "homelab".into(),
+            timestamp: Utc::now(),
+        };
+
+        state.store_session_error("evt-1", meta.clone());
+        let loaded = state.get_session_error("evt-1").unwrap();
+        assert_eq!(loaded.session_id, "s-123");
+        assert_eq!(loaded.project, "oo");
+        assert_eq!(loaded.agent_name, "homelab");
+    }
+
+    #[test]
+    fn session_error_not_found() {
+        let (_dir, state) = setup();
+        assert!(state.get_session_error("nonexistent").is_none());
+    }
+
+    #[test]
+    fn session_error_expiry() {
+        let (_dir, state) = setup();
+        let expired_meta = SessionErrorMeta {
+            project: "oo".into(),
+            cwd: String::new(),
+            command: None,
+            error_message: "old error".into(),
+            session_id: "s-old".into(),
+            agent_name: "old-agent".into(),
+            timestamp: Utc::now() - chrono::Duration::hours(25),
+        };
+
+        state.store_session_error("evt-old", expired_meta);
+        // Should not return expired metadata
+        assert!(state.get_session_error("evt-old").is_none());
+    }
+
+    #[test]
+    fn session_error_prune() {
+        let (_dir, state) = setup();
+
+        // Store an expired entry
+        let expired = SessionErrorMeta {
+            project: "oo".into(),
+            cwd: String::new(),
+            command: None,
+            error_message: "old".into(),
+            session_id: "s-1".into(),
+            agent_name: "agent".into(),
+            timestamp: Utc::now() - chrono::Duration::hours(25),
+        };
+        state.store_session_error("evt-1", expired);
+
+        // Store a fresh entry
+        let fresh = SessionErrorMeta {
+            project: "tc".into(),
+            cwd: String::new(),
+            command: None,
+            error_message: "new".into(),
+            session_id: "s-2".into(),
+            agent_name: "agent".into(),
+            timestamp: Utc::now(),
+        };
+        state.store_session_error("evt-2", fresh);
+
+        let pruned = state.prune_expired_errors();
+        assert_eq!(pruned, 1);
+
+        // Fresh entry should still be there
+        assert!(state.get_session_error("evt-2").is_some());
     }
 }

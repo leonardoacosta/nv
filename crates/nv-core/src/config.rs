@@ -30,6 +30,10 @@ fn default_elevenlabs_model() -> String {
     "eleven_multilingual_v2".to_string()
 }
 
+fn default_deepgram_model() -> String {
+    "nova-2".to_string()
+}
+
 fn default_imessage_poll_interval() -> u64 {
     10
 }
@@ -70,6 +74,9 @@ pub struct AgentConfig {
     pub digest_interval_minutes: u64,
     #[serde(default = "default_max_workers")]
     pub max_workers: usize,
+    /// Deepgram model for voice-to-text transcription (default: "nova-2").
+    #[serde(default = "default_deepgram_model")]
+    pub deepgram_model: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -165,6 +172,11 @@ pub struct DaemonConfig {
     pub elevenlabs_voice_id: Option<String>,
     #[serde(default = "default_elevenlabs_model")]
     pub elevenlabs_model: String,
+    /// Quiet hours start time (e.g. "23:00"). During quiet hours, non-P0
+    /// outbound messages are suppressed. Optional — if unset, no quiet window.
+    pub quiet_start: Option<String>,
+    /// Quiet hours end time (e.g. "07:00"). Optional — if unset, no quiet window.
+    pub quiet_end: Option<String>,
 }
 
 // ── Config loading ──────────────────────────────────────────────────
@@ -317,6 +329,8 @@ voice_enabled = true
 voice_max_chars = 300
 elevenlabs_voice_id = "pNInz6obpgDQGcFmaJgB"
 elevenlabs_model = "eleven_turbo_v2_5"
+quiet_start = "23:00"
+quiet_end = "07:00"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert_eq!(config.agent.model, "claude-sonnet-4-20250514");
@@ -380,6 +394,8 @@ elevenlabs_model = "eleven_turbo_v2_5"
             Some("pNInz6obpgDQGcFmaJgB")
         );
         assert_eq!(daemon.elevenlabs_model, "eleven_turbo_v2_5");
+        assert_eq!(daemon.quiet_start.as_deref(), Some("23:00"));
+        assert_eq!(daemon.quiet_end.as_deref(), Some("07:00"));
     }
 
     #[test]
@@ -454,6 +470,8 @@ tts_url = "http://localhost:5500/tts"
         assert_eq!(daemon.voice_max_chars, 500);
         assert!(daemon.elevenlabs_voice_id.is_none());
         assert_eq!(daemon.elevenlabs_model, "eleven_multilingual_v2");
+        assert!(daemon.quiet_start.is_none());
+        assert!(daemon.quiet_end.is_none());
     }
 
     #[test]

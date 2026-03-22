@@ -479,6 +479,68 @@ impl TelegramClient {
         Ok(())
     }
 
+    /// Send a chat action (e.g. "typing") to a chat.
+    ///
+    /// Fire-and-forget: logs errors at warn level but does not propagate them.
+    /// Uses the Telegram Bot API `sendChatAction` endpoint.
+    pub async fn send_chat_action(&self, chat_id: i64, action: &str) {
+        let url = format!("{}/sendChatAction", self.base_url);
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "action": action,
+        });
+        match self.http.post(&url).json(&body).send().await {
+            Ok(resp) => {
+                if let Ok(tg_resp) = resp.json::<TelegramResponse<bool>>().await {
+                    if !tg_resp.ok {
+                        tracing::warn!(
+                            error = %tg_resp.description.unwrap_or_default(),
+                            "sendChatAction failed"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "sendChatAction request failed");
+            }
+        }
+    }
+
+    /// Call Telegram getFile API to get the file path for a given file_id.
+    #[allow(dead_code)]
+    pub async fn get_file(&self, file_id: &str) -> anyhow::Result<String> {
+        let url = format!("{}/getFile", self.base_url);
+        let body = serde_json::json!({ "file_id": file_id });
+        let resp: super::types::TelegramResponse<super::types::TgFile> =
+            self.http.post(&url).json(&body).send().await?.json().await?;
+        if !resp.ok {
+            bail!(
+                "Telegram getFile failed: {}",
+                resp.description.unwrap_or_default()
+            );
+        }
+        let file = resp
+            .result
+            .ok_or_else(|| anyhow::anyhow!("getFile returned ok but no result"))?;
+        file.file_path
+            .ok_or_else(|| anyhow::anyhow!("getFile returned no file_path"))
+    }
+
+    /// Download a file from Telegram's file server.
+    ///
+    /// Returns the raw bytes. The `file_path` is obtained from `get_file()`.
+    #[allow(dead_code)]
+    pub async fn download_file(&self, file_path: &str) -> anyhow::Result<Vec<u8>> {
+        // Extract the bot token from the base_url (format: https://api.telegram.org/bot{token})
+        let token = self
+            .base_url
+            .strip_prefix("https://api.telegram.org/bot")
+            .unwrap_or("");
+        let url = format!("https://api.telegram.org/file/bot{token}/{file_path}");
+        let bytes = self.http.get(&url).send().await?.bytes().await?;
+        Ok(bytes.to_vec())
+    }
+
     /// Acknowledge a callback query (dismisses the loading spinner on the
     /// inline button).
     pub async fn answer_callback_query(

@@ -255,6 +255,17 @@ impl TelegramClient {
         self.send_message(chat_id, "...", None, None).await
     }
 
+    /// Delete a message.
+    pub async fn delete_message(&self, chat_id: i64, message_id: i64) -> anyhow::Result<()> {
+        let url = format!("{}/deleteMessage", self.base_url);
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+        });
+        let _ = self.http.post(&url).json(&body).send().await?;
+        Ok(())
+    }
+
     /// Acknowledge a callback query (dismisses the loading spinner on the
     /// inline button).
     pub async fn answer_callback_query(

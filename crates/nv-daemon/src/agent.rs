@@ -384,19 +384,27 @@ impl AgentLoop {
                                 let _ = tx.send(response_text.clone());
                             }
 
-                            // Route response — edit thinking message if we sent one, otherwise send new
+                            // Route response — edit thinking message, or send new if edit fails
                             if let Some(msg_id) = thinking_msg_id {
+                                let mut sent = false;
                                 if let Some(tg) = self.channels.get("telegram") {
                                     if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
                                         let text = extract_text(&final_content);
-                                        if let Err(e) = tg_channel.client.edit_message(
+                                        if tg_channel.client.edit_message(
                                             tg_channel.chat_id, msg_id, &text, None,
-                                        ).await {
-                                            tracing::warn!(error = %e, "failed to edit thinking message, sending new");
-                                            if let Err(e) = self.route_response(&final_content, &triggers).await {
-                                                tracing::error!(error = %e, "failed to route response");
-                                            }
+                                        ).await.is_ok() {
+                                            sent = true;
+                                        } else {
+                                            // Edit failed — delete the "..." and send fresh
+                                            let _ = tg_channel.client.delete_message(
+                                                tg_channel.chat_id, msg_id,
+                                            ).await;
                                         }
+                                    }
+                                }
+                                if !sent {
+                                    if let Err(e) = self.route_response(&final_content, &triggers).await {
+                                        tracing::error!(error = %e, "failed to route response");
                                     }
                                 }
                             } else if let Err(e) = self.route_response(&final_content, &triggers).await {

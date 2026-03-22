@@ -12,6 +12,7 @@ mod jira;
 mod memory;
 mod messages;
 mod nexus;
+mod orchestrator;
 mod query;
 mod scheduler;
 mod shutdown;
@@ -21,6 +22,7 @@ mod teams;
 mod telegram;
 mod tools;
 mod tts;
+mod worker;
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -33,7 +35,6 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
-use agent::AgentLoop;
 use claude::ClaudeClient;
 use health::{ChannelStatus, HealthState};
 use telegram::{run_poll_loop, TelegramChannel};
@@ -661,37 +662,69 @@ async fn main() -> anyhow::Result<()> {
     // Spawn the watchdog task for systemd health monitoring
     spawn_watchdog(Arc::clone(&health_state));
 
-    // Create and run the agent loop
-    let agent = AgentLoop::new(
-        config.agent.clone(),
-        client,
-        trigger_rx,
-        channels,
-        nv_base,
+    // Build shared dependencies for workers
+    let shared_deps = Arc::new(worker::SharedDeps {
+        memory: memory::Memory::new(&nv_base),
+        state: state::State::new(&nv_base),
+        message_store: Arc::new(std::sync::Mutex::new(message_store)),
+        diary: Arc::new(std::sync::Mutex::new(diary_writer)),
         jira_client,
         nexus_client,
-        message_store,
-        diary_writer,
-        voice_enabled.clone(),
+        channels: channels.clone(),
+        nv_base_path: nv_base,
+        voice_enabled: voice_enabled.clone(),
         tts_client,
         voice_max_chars,
+    });
+
+    // Extract Telegram client and chat_id for reactions
+    let (tg_reaction_client, tg_reaction_chat_id) = if let Some(tg) = channels.get("telegram") {
+        if let Some(tg_channel) = tg.as_any().downcast_ref::<TelegramChannel>() {
+            (Some(tg_channel.client.clone()), Some(tg_channel.chat_id))
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
+    // Create worker pool
+    let max_workers = config.agent.max_workers;
+    let worker_pool = worker::WorkerPool::new(
+        max_workers,
+        Arc::clone(&shared_deps),
+        client,
+        tg_reaction_client.clone(),
+        tg_reaction_chat_id,
     );
 
-    tracing::info!("starting agent loop");
+    tracing::info!(max_workers, "worker pool created");
 
-    // Run the agent loop alongside the shutdown signal listener.
-    // The agent loop exits when its trigger channel closes (all senders dropped).
-    // On shutdown signal, we log the event -- the agent loop will naturally
+    // Create and run the orchestrator
+    let orchestrator = orchestrator::Orchestrator::new(
+        trigger_rx,
+        worker_pool,
+        channels,
+        shared_deps,
+        tg_reaction_client,
+        tg_reaction_chat_id,
+    );
+
+    tracing::info!("starting orchestrator");
+
+    // Run the orchestrator alongside the shutdown signal listener.
+    // The orchestrator exits when its trigger channel closes (all senders dropped).
+    // On shutdown signal, we log the event -- the orchestrator will naturally
     // drain and stop since we already dropped the original trigger_tx.
     tokio::select! {
-        result = agent.run() => {
+        result = orchestrator.run() => {
             if let Err(e) = result {
-                tracing::error!(error = %e, "agent loop failed");
+                tracing::error!(error = %e, "orchestrator failed");
             }
         }
         () = shutdown::wait_for_shutdown_signal() => {
             tracing::info!("shutdown signal received, draining...");
-            // The agent loop will stop once all trigger senders are dropped
+            // The orchestrator will stop once all trigger senders are dropped
             // and the channel is drained. Give it a moment to finish.
         }
     }

@@ -13,6 +13,10 @@ fn default_digest_interval() -> u64 {
     60
 }
 
+fn default_max_workers() -> usize {
+    3
+}
+
 fn default_health_port() -> u16 {
     8400
 }
@@ -59,6 +63,8 @@ pub struct AgentConfig {
     pub think: bool,
     #[serde(default = "default_digest_interval")]
     pub digest_interval_minutes: u64,
+    #[serde(default = "default_max_workers")]
+    pub max_workers: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]

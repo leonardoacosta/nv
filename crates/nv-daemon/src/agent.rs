@@ -27,22 +27,18 @@ use crate::query;
 use crate::state::State;
 use crate::tools;
 
-// ── Constants ───────────────────────────────────────────────────────
+// ── Constants (used by worker.rs) ────────────────────────────────────
 
-/// Maximum number of conversation turns to keep in history.
+#[allow(dead_code)]
 const MAX_HISTORY_TURNS: usize = 20;
-
-/// Maximum total characters across conversation history.
+#[allow(dead_code)]
 const MAX_HISTORY_CHARS: usize = 50_000;
-
-/// Clear conversation history after this much inactivity.
-const SESSION_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
-
-/// Maximum tool use loop iterations per agent cycle (safety limit).
+#[allow(dead_code)]
+const SESSION_TIMEOUT: Duration = Duration::from_secs(600);
+#[allow(dead_code)]
 const MAX_TOOL_LOOP_ITERATIONS: usize = 10;
-
-/// How often to check for expired pending actions.
-const EXPIRY_CHECK_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
+#[allow(dead_code)]
+const EXPIRY_CHECK_INTERVAL: Duration = Duration::from_secs(300);
 
 // ── System Prompt ───────────────────────────────────────────────────
 
@@ -156,6 +152,7 @@ pub type ChannelRegistry = HashMap<String, Arc<dyn Channel>>;
 
 // ── Agent Loop ──────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub struct AgentLoop {
     #[allow(dead_code)]
     config: AgentConfig,
@@ -182,6 +179,7 @@ pub struct AgentLoop {
     last_expiry_check: Instant,
 }
 
+#[allow(dead_code)]
 impl AgentLoop {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -1129,7 +1127,7 @@ impl AgentLoop {
 // ── Trigger Formatting ──────────────────────────────────────────────
 
 /// Format a batch of triggers into a structured text message for Claude.
-fn format_trigger_batch(triggers: &[Trigger]) -> String {
+pub fn format_trigger_batch(triggers: &[Trigger]) -> String {
     let mut parts = Vec::new();
     for trigger in triggers {
         match trigger {

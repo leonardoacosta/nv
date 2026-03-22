@@ -318,6 +318,58 @@ impl TelegramClient {
         Ok(msg_id)
     }
 
+    /// Set a reaction emoji on a message.
+    ///
+    /// Uses the Telegram Bot API `setMessageReaction` endpoint (Bot API 7.3+).
+    /// Pass a single emoji string (e.g. "\u{1F440}" for eyes, "\u{2705}" for check mark).
+    pub async fn set_message_reaction(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        emoji: &str,
+    ) -> anyhow::Result<()> {
+        let url = format!("{}/setMessageReaction", self.base_url);
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reaction": [{"type": "emoji", "emoji": emoji}],
+        });
+        let resp: TelegramResponse<bool> =
+            self.http.post(&url).json(&body).send().await?.json().await?;
+        if !resp.ok {
+            let desc = resp.description.unwrap_or_default();
+            // Don't fail on "reaction not changed" — it's harmless
+            if !desc.contains("REACTION_INVALID") {
+                tracing::debug!(error = %desc, "setMessageReaction failed (non-fatal)");
+            }
+        }
+        Ok(())
+    }
+
+    /// Remove all reactions from a message.
+    ///
+    /// Sends an empty reaction array to clear any previously set reaction.
+    #[allow(dead_code)]
+    pub async fn remove_message_reaction(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+    ) -> anyhow::Result<()> {
+        let url = format!("{}/setMessageReaction", self.base_url);
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "reaction": [],
+        });
+        let resp: TelegramResponse<bool> =
+            self.http.post(&url).json(&body).send().await?.json().await?;
+        if !resp.ok {
+            let desc = resp.description.unwrap_or_default();
+            tracing::debug!(error = %desc, "removeMessageReaction failed (non-fatal)");
+        }
+        Ok(())
+    }
+
     /// Acknowledge a callback query (dismisses the loading spinner on the
     /// inline button).
     pub async fn answer_callback_query(

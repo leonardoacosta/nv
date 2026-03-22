@@ -189,10 +189,95 @@ pub enum ToolResult {
     },
 }
 
+/// Execute a tool without access to `MessageStore` (Send-safe).
+///
+/// This variant avoids referencing `MessageStore` (which wraps
+/// `rusqlite::Connection`, a `!Send` type) so the resulting future
+/// can be used with `tokio::spawn`. The `get_recent_messages` tool
+/// must be handled by the caller before delegating to this function.
+pub async fn execute_tool_send(
+    name: &str,
+    input: &serde_json::Value,
+    memory: &Memory,
+    jira_client: Option<&jira::JiraClient>,
+    nexus_client: Option<&nexus::client::NexusClient>,
+) -> Result<ToolResult> {
+    match name {
+        "read_memory" => {
+            let topic = input["topic"].as_str().ok_or_else(|| anyhow!("missing 'topic' parameter"))?;
+            memory.read(topic).map(ToolResult::Immediate)
+        }
+        "search_memory" => {
+            let query = input["query"].as_str().ok_or_else(|| anyhow!("missing 'query' parameter"))?;
+            memory.search(query).map(ToolResult::Immediate)
+        }
+        "write_memory" => {
+            let topic = input["topic"].as_str().ok_or_else(|| anyhow!("missing 'topic' parameter"))?;
+            let content = input["content"].as_str().ok_or_else(|| anyhow!("missing 'content' parameter"))?;
+            memory.write(topic, content).map(ToolResult::Immediate)
+        }
+        "jira_search" => {
+            let jql = input["jql"].as_str().ok_or_else(|| anyhow!("missing 'jql' parameter"))?;
+            let client = jira_client.ok_or_else(|| anyhow!("Jira not configured"))?;
+            let issues = client.search(jql).await?;
+            Ok(ToolResult::Immediate(jira::format_issues_for_claude(&issues)))
+        }
+        "jira_get" => {
+            let key = input["issue_key"].as_str().ok_or_else(|| anyhow!("missing 'issue_key' parameter"))?;
+            let client = jira_client.ok_or_else(|| anyhow!("Jira not configured"))?;
+            let issue = client.get_issue(key).await?;
+            Ok(ToolResult::Immediate(jira::format_issue_for_claude(&issue)))
+        }
+        "jira_create" | "jira_transition" | "jira_assign" | "jira_comment" => {
+            if jira_client.is_none() { anyhow::bail!("Jira not configured"); }
+            let description = jira::describe_pending_action(name, input);
+            let action_type = match name {
+                "jira_create" => nv_core::types::ActionType::JiraCreate,
+                "jira_transition" => nv_core::types::ActionType::JiraTransition,
+                "jira_assign" => nv_core::types::ActionType::JiraAssign,
+                "jira_comment" => nv_core::types::ActionType::JiraComment,
+                _ => unreachable!(),
+            };
+            Ok(ToolResult::PendingAction { description, action_type, payload: input.clone() })
+        }
+        "complete_bootstrap" => {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let path = std::path::Path::new(&home).join(".nv").join("bootstrap-state.json");
+            let state = serde_json::json!({ "completed_at": chrono::Utc::now().to_rfc3339() });
+            std::fs::write(&path, serde_json::to_string_pretty(&state)?).map_err(|e| anyhow!("failed to write bootstrap state: {e}"))?;
+            Ok(ToolResult::Immediate("Bootstrap completed. Nova is ready.".into()))
+        }
+        "update_soul" => {
+            let content = input["content"].as_str().ok_or_else(|| anyhow!("missing 'content' parameter"))?;
+            let home = std::env::var("HOME").unwrap_or_default();
+            let path = std::path::Path::new(&home).join(".nv").join("soul.md");
+            std::fs::write(&path, content).map_err(|e| anyhow!("failed to write soul.md: {e}"))?;
+            Ok(ToolResult::Immediate("Soul updated. Notification sent to Leo.".into()))
+        }
+        "get_recent_messages" => Err(anyhow!("get_recent_messages must be handled by the worker directly")),
+        "query_nexus" => {
+            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_sessions(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "query_session" => {
+            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let session_id = input["session_id"].as_str().ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
+            let output = nexus::tools::format_query_session(client, session_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        _ => Err(anyhow!("unknown tool: {name}")),
+    }
+}
+
 /// Execute a tool by name with the given input parameters.
 ///
 /// Memory tools are synchronous. Jira read tools are async. Jira write
 /// tools return a PendingAction instead of executing immediately.
+///
+/// NOTE: This function takes `Option<&MessageStore>`, making the resulting
+/// future `!Send`. For use in `tokio::spawn`, use `execute_tool_send` instead.
+#[allow(dead_code)]
 pub async fn execute_tool(
     name: &str,
     input: &serde_json::Value,

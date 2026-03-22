@@ -148,6 +148,23 @@ Complete deferred tasks from telegram-channel (2) + nexus-integration (1).
 
 ---
 
+## Wave 6: Architecture — Orchestrator (After Hardening)
+
+### Spec 11: `refactor-orchestrator-pattern`
+
+**Type:** refactor | **Effort:** L | **Deps:** all channels + hardening complete
+
+Replace blocking agent loop with non-blocking orchestrator + worker pool.
+- Telegram reactions as read receipts (👀→⏳→✅)
+- Worker pool (max 3 concurrent Claude sessions)
+- Priority queue (High/Normal/Low)
+- Status updates for long-running workers
+- Remove thinking message pattern
+
+**Gate:** Send 3 messages rapidly → all get 👀 → responses arrive independently.
+
+---
+
 ## Spec Dependency Graph
 
 ```
@@ -164,6 +181,8 @@ spec-8 (jira webhooks) ── independent
 
 spec-9 (harden jira) ── independent
 spec-10 (harden telegram+nexus) ── independent
+
+spec-10 ──→ spec-11 (orchestrator) — depends on all channels + hardening
 ```
 
 ## Wave Execution Plan
@@ -175,6 +194,7 @@ spec-10 (harden telegram+nexus) ── independent
 | 3 | Wed-Thu | discord, teams, imessage, email, jira-webhooks | Parallel (5 specs) | Each channel receives + responds |
 | 4 | Fri | harden-jira-integration | Sequential | cargo test + manual e2e |
 | 5 | Sat | harden-telegram-nexus | Sequential | cargo test + manual e2e |
+| 6 | Next | refactor-orchestrator-pattern | Sequential | 3 parallel messages get independent responses |
 
 ## Conflict Map
 

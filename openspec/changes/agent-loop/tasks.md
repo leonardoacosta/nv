@@ -70,11 +70,11 @@
 - [x] Handle empty response (no text blocks) — log warning, no send
 
 ## PendingAction Flow
-- [ ] Implement `parse_pending_action()` — detect action drafts in Claude's response
-- [ ] Create `PendingAction` with UUID, description, payload, status
-- [ ] Write pending action to `~/.nv/state/pending-actions.json`
-- [ ] Send Telegram message with inline keyboard (Confirm / Edit / Cancel)
-- [ ] Format callback data as `action:{verb}:{action_id}`
+- [x] Implement `parse_pending_action()` — detect action drafts in Claude's response
+- [x] Create `PendingAction` with UUID, description, payload, status
+- [x] Write pending action to `~/.nv/state/pending-actions.json`
+- [x] Send Telegram message with inline keyboard (Confirm / Edit / Cancel)
+- [x] Format callback data as `action:{verb}:{action_id}`
 
 ## Context Window Management
 - [x] Implement `truncate_history()` — enforce MAX_HISTORY_TURNS (20) and MAX_HISTORY_CHARS (50000)
@@ -96,7 +96,7 @@
 
 ## Main Loop Integration
 - [x] Implement `AgentLoop::run()` as the top-level loop: drain → build → call → route
-- [ ] Inject memory context into messages before each Claude call
+- [x] Inject memory context into messages before each Claude call
 - [x] Call `maybe_reset_session()` before each cycle to check inactivity timeout
 - [x] Wire into daemon `main.rs`: spawn agent loop as tokio task after Telegram listener
 - [x] Implement graceful shutdown: agent loop exits when trigger channel closes (all senders dropped)

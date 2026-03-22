@@ -658,6 +658,32 @@ impl AgentLoop {
                     "tool execution complete"
                 );
 
+                // After a successful write_memory, check if summarization is needed
+                // and spawn a background task if so. Does NOT block the agent response.
+                if name == "write_memory" && !is_error {
+                    if let Some(topic) = input["topic"].as_str() {
+                        let should_summarize = self
+                            .memory
+                            .needs_summarization(topic)
+                            .unwrap_or(false);
+                        if should_summarize {
+                            let topic_owned = topic.to_string();
+                            let summarize_client = self.client.clone();
+                            let base_path = self.memory.base_path.clone();
+                            tokio::spawn(async move {
+                                let mem = crate::memory::Memory::from_base_path(base_path);
+                                if let Err(e) = mem.summarize(&topic_owned, &summarize_client).await {
+                                    tracing::warn!(
+                                        topic = %topic_owned,
+                                        error = %e,
+                                        "background summarization failed"
+                                    );
+                                }
+                            });
+                        }
+                    }
+                }
+
                 tool_results.push(ToolResultBlock {
                     tool_use_id: id.clone(),
                     content,

@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use chrono::Utc;
 
+use crate::claude::{ClaudeClient, ContentBlock, Message};
+
 // ── Constants ───────────────────────────────────────────────────────
 
 /// Maximum characters returned from a single memory read.
@@ -17,6 +19,12 @@ const SEARCH_CONTEXT_LINES: usize = 2;
 
 /// Maximum characters for the context summary.
 const MAX_CONTEXT_CHARS: usize = 4000;
+
+/// Number of H2 entries that triggers background summarization.
+const SUMMARIZE_THRESHOLD: usize = 20;
+
+/// System prompt sent to Claude when summarizing a memory topic file.
+const SUMMARIZE_PROMPT: &str = "Summarize this memory file. Preserve all key facts, decisions, and actionable context. Keep the last 5 entries verbatim (they are the most recent). Remove redundancy and consolidate older entries into a concise summary section. Output the result as markdown, starting with the H1 header.";
 
 /// Common English stop words filtered out during keyword extraction.
 const STOP_WORDS: &[&str] = &[
@@ -59,7 +67,7 @@ const DEFAULT_TOPICS: &[(&str, &str)] = &[
 
 /// Markdown-native memory system backed by files in `~/.nv/memory/`.
 pub struct Memory {
-    base_path: PathBuf,
+    pub base_path: PathBuf,
 }
 
 impl Memory {
@@ -68,6 +76,13 @@ impl Memory {
         Self {
             base_path: base_path.join("memory"),
         }
+    }
+
+    /// Create a Memory instance from an already-resolved base path (no `memory/` suffix appended).
+    ///
+    /// Used when cloning the memory path into a background task that already has the resolved path.
+    pub fn from_base_path(base_path: PathBuf) -> Self {
+        Self { base_path }
     }
 
     /// Initialize the memory directory structure.
@@ -429,9 +444,132 @@ impl Memory {
 
         Ok(())
     }
+
+    /// Check whether a topic file has accumulated enough entries to warrant summarization.
+    ///
+    /// Returns `true` if the topic file exists and contains >= `SUMMARIZE_THRESHOLD` H2 sections.
+    pub fn needs_summarization(&self, topic: &str) -> Result<bool> {
+        let filename = sanitize_topic(topic);
+        let path = self.base_path.join(format!("{filename}.md"));
+
+        if !path.exists() {
+            return Ok(false);
+        }
+
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read memory file: {}", path.display()))?;
+
+        Ok(count_entries(&content) >= SUMMARIZE_THRESHOLD)
+    }
+
+    /// Summarize a memory topic file using Claude.
+    ///
+    /// Reads the topic file, sends it to Claude with `SUMMARIZE_PROMPT` as the system
+    /// prompt, then writes the summarized content back with updated frontmatter.
+    ///
+    /// On any error, logs at warn level and returns `Ok(())` so the caller's original
+    /// file is never corrupted by a failed summarization attempt.
+    pub async fn summarize(&self, topic: &str, client: &ClaudeClient) -> Result<()> {
+        let filename = sanitize_topic(topic);
+        let path = self.base_path.join(format!("{filename}.md"));
+
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(topic, error = %e, "summarize: failed to read memory file");
+                return Ok(());
+            }
+        };
+
+        tracing::info!(topic, entries = count_entries(&content), "starting memory summarization");
+
+        let messages = vec![Message::user(&content)];
+        let response = match client.send_messages(SUMMARIZE_PROMPT, &messages, &[]).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(topic, error = %e, "summarize: Claude call failed");
+                return Ok(());
+            }
+        };
+
+        // Extract text from content blocks
+        let summarized_text: String = response
+            .content
+            .iter()
+            .filter_map(|block| {
+                if let ContentBlock::Text { text } = block {
+                    Some(text.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if summarized_text.trim().is_empty() {
+            tracing::warn!(topic, "summarize: Claude returned empty response");
+            return Ok(());
+        }
+
+        // Rebuild frontmatter with updated entries count and summarized_at timestamp
+        let now = Utc::now();
+        let timestamp = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let new_entry_count = count_entries(&summarized_text);
+
+        // Extract existing frontmatter fields (topic, created) from the original content
+        let (existing_topic, existing_created) = extract_frontmatter_fields(&content, topic, &timestamp);
+
+        let new_content = format!(
+            "---\ntopic: {existing_topic}\ncreated: {existing_created}\nupdated: {timestamp}\nentries: {new_entry_count}\nsummarized_at: {timestamp}\n---\n\n{summarized_text}\n"
+        );
+
+        if let Err(e) = atomic_write(&path, &new_content) {
+            tracing::warn!(topic, error = %e, "summarize: failed to write summarized content");
+            return Ok(());
+        }
+
+        tracing::info!(topic, new_entries = new_entry_count, "memory summarization complete");
+        Ok(())
+    }
 }
 
 // ── Helper Functions ────────────────────────────────────────────────
+
+/// Count the number of H2 (`## `) sections in a memory file's content.
+///
+/// Each H2 section corresponds to one memory entry.
+pub fn count_entries(content: &str) -> usize {
+    content.lines().filter(|l| l.starts_with("## ")).count()
+}
+
+/// Extract `topic` and `created` values from YAML frontmatter in a memory file.
+///
+/// Falls back to the provided `topic` and `timestamp` defaults when frontmatter
+/// is absent or the fields are missing.
+fn extract_frontmatter_fields<'a>(
+    content: &'a str,
+    default_topic: &'a str,
+    default_timestamp: &'a str,
+) -> (String, String) {
+    let mut topic = default_topic.to_string();
+    let mut created = default_timestamp.to_string();
+
+    if content.starts_with("---\n") {
+        if let Some(close_offset) = content[4..].find("\n---\n") {
+            let fm_end = 4 + close_offset;
+            let frontmatter = &content[4..fm_end];
+            for line in frontmatter.lines() {
+                if let Some(v) = line.strip_prefix("topic: ") {
+                    topic = v.to_string();
+                } else if let Some(v) = line.strip_prefix("created: ") {
+                    created = v.to_string();
+                }
+            }
+        }
+    }
+
+    (topic, created)
+}
 
 /// Extract meaningful keywords from `text` for topic relevance scoring.
 ///
@@ -1033,5 +1171,64 @@ mod tests {
             .get_context_summary_for("topic content")
             .unwrap();
         assert!(summary.len() <= MAX_CONTEXT_CHARS + 500);
+    }
+
+    // ── count_entries tests ─────────────────────────────────────────
+
+    #[test]
+    fn count_entries_zero_for_no_h2() {
+        let content = "# Title\n\nSome body text.\n";
+        assert_eq!(count_entries(content), 0);
+    }
+
+    #[test]
+    fn count_entries_counts_h2_sections() {
+        let content = "# Title\n\n## Entry 1\n\nContent 1.\n\n## Entry 2\n\nContent 2.\n";
+        assert_eq!(count_entries(content), 2);
+    }
+
+    #[test]
+    fn count_entries_ignores_inline_hashes() {
+        // A line like "### subheading" or "text ## foo" should not be counted
+        let content = "# Title\n\n### Subheading\n\ntext ## not an h2\n\n## Real Entry\n";
+        assert_eq!(count_entries(content), 1);
+    }
+
+    #[test]
+    fn count_entries_with_frontmatter() {
+        let content = "---\ntopic: test\nentries: 2\n---\n\n# Test\n\n## 2024-01-01 -- Entry\n\nFirst.\n\n## 2024-01-02 -- Entry\n\nSecond.\n";
+        assert_eq!(count_entries(content), 2);
+    }
+
+    // ── needs_summarization tests ───────────────────────────────────
+
+    #[test]
+    fn needs_summarization_false_for_new_topic() {
+        let (_dir, memory) = setup();
+        // Topic doesn't exist yet
+        assert!(!memory.needs_summarization("nonexistent-topic").unwrap());
+    }
+
+    #[test]
+    fn needs_summarization_false_below_threshold() {
+        let (_dir, memory) = setup();
+        for i in 0..5 {
+            memory
+                .write("summarize-test", &format!("Entry {i}"))
+                .unwrap();
+        }
+        assert!(!memory.needs_summarization("summarize-test").unwrap());
+    }
+
+    #[test]
+    fn needs_summarization_true_at_threshold() {
+        let (_dir, memory) = setup();
+        // Write exactly SUMMARIZE_THRESHOLD entries
+        for i in 0..SUMMARIZE_THRESHOLD {
+            memory
+                .write("threshold-test", &format!("Entry {i}"))
+                .unwrap();
+        }
+        assert!(memory.needs_summarization("threshold-test").unwrap());
     }
 }

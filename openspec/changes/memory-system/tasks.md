@@ -43,7 +43,7 @@
 - [x] Implement `update_frontmatter()` — parse and rewrite YAML frontmatter in-place
 - [x] Call `update_index()` to keep MEMORY.md current
 - [x] Wire into agent loop `execute_tool()` dispatch, replacing spec-4 stub
-- [ ] After write, check entry count and trigger summarization if over threshold
+- [x] After write, check entry count and trigger summarization if over threshold
 
 ## State File Operations
 - [x] Implement `save_pending_action(action)` — read pending-actions.json, append action, write back
@@ -65,12 +65,12 @@
 - [x] Wire into agent loop: call before building Claude API request, inject as first part of user message
 
 ## Summarization
-- [ ] Define SUMMARIZE_THRESHOLD constant (default 20 entries)
-- [ ] Implement `count_entries(content)` — count H2 sections in a memory file
-- [ ] Implement `maybe_summarize(topic)` — check entry count, trigger if over threshold
-- [ ] Build summarization prompt: "Summarize, preserve key facts and decisions, keep last 5 entries verbatim"
-- [ ] Call Claude API with summarization prompt (no tools, just text completion)
-- [ ] Replace file content with summarized output, preserve frontmatter
-- [ ] Update frontmatter: reset entries count, add `summarized_at` timestamp
-- [ ] Run summarization asynchronously (tokio::spawn) — do not block main agent response
-- [ ] Handle summarization failure gracefully: log error, keep original file intact
+- [x] Define SUMMARIZE_THRESHOLD constant (default 20 entries)
+- [x] Implement `count_entries(content)` — count H2 sections in a memory file
+- [x] Implement `maybe_summarize(topic)` — check entry count, trigger if over threshold
+- [x] Build summarization prompt: "Summarize, preserve key facts and decisions, keep last 5 entries verbatim"
+- [x] Call Claude API with summarization prompt (no tools, just text completion)
+- [x] Replace file content with summarized output, preserve frontmatter
+- [x] Update frontmatter: reset entries count, add `summarized_at` timestamp
+- [x] Run summarization asynchronously (tokio::spawn) — do not block main agent response
+- [x] Handle summarization failure gracefully: log error, keep original file intact

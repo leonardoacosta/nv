@@ -169,6 +169,7 @@ struct CliUsage {
 
 // ── Claude CLI Client ───────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct ClaudeClient {
     model: String,
     #[allow(dead_code)]

@@ -156,6 +156,20 @@ This means:
 13. **Voice-to-text (inbound)** — transcribe Leo's Telegram voice messages to text using Deepgram
     or Whisper API. Completes bidirectional voice (outbound TTS already built).
 
+14. **Scoped bash toolkit** — Nova's own programmatic tools for basic project chores, executed
+    directly in Rust via `Command::new()` (no Claude subprocess needed, instant ~10ms).
+    Scoped to an allowlist of safe read-only commands per project:
+    - Git: status, log, branch, diff --stat, remote status, stash list
+    - Build: check if build passes (read-only gate check)
+    - Files: ls, cat specific config files, grep patterns
+    - No write operations (push, commit, reset) without PendingAction confirmation
+
+    Each project in the registry (`~/.nv/memory/projects.md`) gets its path mapped, so
+    Nova can run `git -C ~/dev/oo status` without Claude needing filesystem access.
+
+    Discovery: audit CC session history for common git patterns Leo runs, build the
+    allowlist from actual usage data.
+
 ## Discovery Metadata
 
 - **Project**: nv (Nova)

@@ -34,6 +34,14 @@ fn default_deepgram_model() -> String {
     "nova-2".to_string()
 }
 
+fn default_weekly_budget_usd() -> f64 {
+    50.0
+}
+
+fn default_alert_threshold_pct() -> u8 {
+    90
+}
+
 fn default_imessage_poll_interval() -> u64 {
     10
 }
@@ -77,6 +85,12 @@ pub struct AgentConfig {
     /// Deepgram model for voice-to-text transcription (default: "nova-2").
     #[serde(default = "default_deepgram_model")]
     pub deepgram_model: String,
+    /// Weekly budget in USD for Claude API usage (default: 50.0).
+    #[serde(default = "default_weekly_budget_usd")]
+    pub weekly_budget_usd: f64,
+    /// Alert threshold as a percentage of the weekly budget (default: 90).
+    #[serde(default = "default_alert_threshold_pct")]
+    pub alert_threshold_pct: u8,
 }
 
 #[derive(Debug, Clone, Deserialize)]

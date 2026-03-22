@@ -88,6 +88,14 @@ pub async fn synthesize_digest(
     })
 }
 
+/// Append a budget warning line to the digest content if applicable.
+///
+/// Called after synthesis — injects a warning when cost exceeds 80% of budget.
+pub fn inject_budget_warning(result: &mut DigestResult, budget_line: &str) {
+    result.content.push_str("\n\n");
+    result.content.push_str(budget_line);
+}
+
 /// Build a digest locally without calling Claude (fallback for when Claude is unavailable).
 ///
 /// Produces a simpler, template-based digest from the raw context.

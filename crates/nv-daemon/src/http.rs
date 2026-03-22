@@ -28,6 +28,8 @@ pub struct HttpState {
     pub teams_client: Option<Arc<crate::teams::client::TeamsClient>>,
     /// Jira webhook shared state. None if Jira webhooks are not configured.
     pub jira_webhook_state: Option<Arc<JiraWebhookState>>,
+    /// Weekly budget in USD for Claude API usage stats.
+    pub weekly_budget_usd: f64,
 }
 
 /// Request body for POST /ask.
@@ -253,9 +255,33 @@ async fn stats_handler(
                 }
             };
 
-            // Merge message stats + tool_usage section
+            let usage_stats = match store.usage_stats() {
+                Ok(r) => serde_json::to_value(r).unwrap(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to query usage stats");
+                    serde_json::json!(null)
+                }
+            };
+            let budget_status = match store.usage_budget_status(state.weekly_budget_usd) {
+                Ok(r) => serde_json::to_value(r).unwrap_or_default(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to query budget status");
+                    serde_json::json!(null)
+                }
+            };
+
+            // Load cached account info (non-blocking — reads a local JSON file)
+            let account_info = crate::account::load_cached()
+                .map(|info| serde_json::to_value(info).unwrap_or_default());
+
+            // Merge message stats + tool_usage + claude_usage + account sections
             let mut combined = msg_stats.as_object().cloned().unwrap_or_default();
             combined.insert("tool_usage".into(), tool_stats);
+            combined.insert("claude_usage".into(), usage_stats);
+            combined.insert("budget".into(), budget_status);
+            if let Some(acct) = account_info {
+                combined.insert("account".into(), acct);
+            }
             (StatusCode::OK, Json(serde_json::Value::Object(combined))).into_response()
         }
         Err(e) => {
@@ -271,6 +297,7 @@ async fn stats_handler(
 /// Start the HTTP server on the given port.
 ///
 /// Runs until the listener is dropped or the runtime shuts down.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_http_server(
     port: u16,
     trigger_tx: mpsc::UnboundedSender<Trigger>,
@@ -279,6 +306,7 @@ pub async fn run_http_server(
     teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
     teams_client: Option<Arc<crate::teams::client::TeamsClient>>,
     jira_webhook_state: Option<Arc<JiraWebhookState>>,
+    weekly_budget_usd: f64,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -287,6 +315,7 @@ pub async fn run_http_server(
         teams_message_buffer,
         teams_client,
         jira_webhook_state,
+        weekly_budget_usd,
     });
     let app = build_router(state);
 
@@ -320,6 +349,7 @@ mod tests {
             teams_message_buffer: None,
             teams_client: None,
             jira_webhook_state: None,
+            weekly_budget_usd: 50.0,
         });
         (state, rx, tmp)
     }

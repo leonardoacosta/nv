@@ -166,6 +166,28 @@ struct StatsResponse {
     daily_counts: Vec<(String, i64)>,
     #[serde(default)]
     tool_usage: Option<ToolUsageStats>,
+    #[serde(default)]
+    claude_usage: Option<ClaudeUsageStats>,
+    #[serde(default)]
+    budget: Option<BudgetStatusEntry>,
+    #[serde(default)]
+    account: Option<AccountInfoEntry>,
+}
+
+/// Account info from the daemon /stats response.
+#[derive(Debug, Deserialize)]
+struct AccountInfoEntry {
+    plan: String,
+    username: String,
+    auth_method: String,
+}
+
+/// Budget status from the daemon /stats response.
+#[derive(Debug, Deserialize)]
+struct BudgetStatusEntry {
+    rolling_7d_cost: f64,
+    weekly_budget: f64,
+    pct_used: f64,
 }
 
 /// Tool usage stats section from the daemon /stats response.
@@ -190,6 +212,30 @@ struct SlowestEntry {
     tool_name: String,
     duration_ms: i64,
     timestamp: String,
+}
+
+/// Claude API usage stats from the daemon /stats response.
+#[derive(Debug, Deserialize)]
+struct ClaudeUsageStats {
+    today_cost: f64,
+    today_calls: i64,
+    today_tokens_in: i64,
+    today_tokens_out: i64,
+    week_cost: f64,
+    month_cost: f64,
+    #[serde(default)]
+    daily_breakdown: Vec<DailyUsageEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DailyUsageEntry {
+    date: String,
+    cost: f64,
+    calls: i64,
+    #[allow(dead_code)]
+    tokens_in: i64,
+    #[allow(dead_code)]
+    tokens_out: i64,
 }
 
 /// Fetch and display message statistics from the daemon.
@@ -243,6 +289,13 @@ fn display_stats(stats: &StatsResponse) {
 
     println!("Nova Stats");
     println!("\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}");
+
+    if let Some(acct) = &stats.account {
+        println!(
+            "Account:           {} / {} / {}",
+            acct.plan, acct.username, acct.auth_method
+        );
+    }
     println!(
         "Total messages:    {}",
         format_number(stats.total_messages)
@@ -333,6 +386,48 @@ fn display_stats(stats: &StatsResponse) {
                 println!(
                     "    {}ms  {:<20} {}",
                     entry.duration_ms, entry.tool_name, ts
+                );
+            }
+        }
+    }
+
+    // Claude Usage section
+    if let Some(cu) = &stats.claude_usage {
+        println!();
+        println!("Claude Usage");
+        println!("\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}");
+
+        let today_tokens_total = cu.today_tokens_in + cu.today_tokens_out;
+        let tokens_display = format_number(today_tokens_total);
+        println!(
+            "Today:             ${:.2} / {} calls / {} tokens",
+            cu.today_cost, cu.today_calls, tokens_display
+        );
+        println!("This week:         ${:.2}", cu.week_cost);
+        println!("This month:        ${:.2}", cu.month_cost);
+
+        if let Some(budget) = &stats.budget {
+            println!(
+                "Budget:            ${:.2} / ${:.2} ({:.0}%)",
+                budget.rolling_7d_cost, budget.weekly_budget, budget.pct_used
+            );
+        }
+
+        if !cu.daily_breakdown.is_empty() {
+            println!();
+            println!("  {:<12} {:>10} {:>8}", "Date", "Cost", "Calls");
+            println!("  {}", "\u{2500}".repeat(32));
+            for day in &cu.daily_breakdown {
+                let display_date = if day.date.len() >= 10 {
+                    &day.date[5..10]
+                } else {
+                    &day.date
+                };
+                println!(
+                    "  {:<12} {:>9} {:>8}",
+                    display_date,
+                    format!("${:.2}", day.cost),
+                    day.calls
                 );
             }
         }

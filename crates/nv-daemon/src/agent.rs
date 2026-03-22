@@ -537,9 +537,23 @@ impl AgentLoop {
                     let response_time_ms = call_start.elapsed().as_millis() as i64;
                     let tokens_in = response.usage.input_tokens as i64;
                     let tokens_out = response.usage.output_tokens as i64;
+                    let cost_usd = response.usage.total_cost_usd;
+                    let api_session_id = response.id.clone();
                     // Stop the thinking ticker
                     cancel_token.cancel();
                     if let Some(h) = ticker_handle { h.abort(); }
+
+                    // Log API usage
+                    if let Err(e) = self.message_store.log_api_usage(
+                        "agent-loop",
+                        cost_usd,
+                        tokens_in,
+                        tokens_out,
+                        self.client.model(),
+                        &api_session_id,
+                    ) {
+                        tracing::warn!(error = %e, "failed to log API usage");
+                    }
 
                     if response.stop_reason == StopReason::MaxTokens {
                         tracing::warn!("Claude response hit max_tokens — response may be partial");

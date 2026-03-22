@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use nv_core::types::{InlineKeyboard, OutboundMessage, Trigger};
+use nv_core::types::{CronEvent, InlineKeyboard, OutboundMessage, Trigger};
 use uuid::Uuid;
 
 use crate::agent::{
@@ -157,6 +157,10 @@ pub struct SharedDeps {
     pub project_registry: std::collections::HashMap<String, PathBuf>,
     /// Channel for workers to emit progress events to the orchestrator.
     pub event_tx: mpsc::UnboundedSender<WorkerEvent>,
+    /// Weekly budget in USD for Claude API usage.
+    pub weekly_budget_usd: f64,
+    /// Alert threshold as a percentage of the weekly budget.
+    pub alert_threshold_pct: u8,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -425,6 +429,22 @@ impl Worker {
 
         user_message.push_str(&trigger_text);
 
+        // Inject budget context for digest triggers (>80% of weekly budget)
+        let is_digest_trigger = task.triggers.iter().any(|t| {
+            matches!(t, Trigger::Cron(CronEvent::Digest))
+        });
+        if is_digest_trigger {
+            let store = deps.message_store.lock().unwrap();
+            if let Ok(budget) = store.usage_budget_status(deps.weekly_budget_usd) {
+                if budget.pct_used > 80.0 {
+                    user_message.push_str(&format!(
+                        "\n\n<budget_warning>\nBudget: ${:.2} / ${:.2} ({:.0}%)\n</budget_warning>",
+                        budget.rolling_7d_cost, budget.weekly_budget, budget.pct_used
+                    ));
+                }
+            }
+        }
+
         // Load prior conversation turns from the shared store
         let prior_turns = {
             let mut store = deps.conversation_store.lock().unwrap();
@@ -480,6 +500,53 @@ impl Worker {
         let response_time_ms = call_start.elapsed().as_millis() as i64;
         let tokens_in = response.usage.input_tokens as i64;
         let tokens_out = response.usage.output_tokens as i64;
+        let cost_usd = response.usage.total_cost_usd;
+        let session_id = response.id.clone();
+
+        // Log API usage
+        {
+            let store = deps.message_store.lock().unwrap();
+            if let Err(e) = store.log_api_usage(
+                &task_id.to_string(),
+                cost_usd,
+                tokens_in,
+                tokens_out,
+                client.model(),
+                &session_id,
+            ) {
+                tracing::warn!(error = %e, "failed to log API usage");
+            }
+
+            // Check budget threshold for immediate Telegram alert (6h debounce)
+            if let Ok(budget) = store.usage_budget_status(deps.weekly_budget_usd) {
+                if budget.pct_used >= deps.alert_threshold_pct as f64 {
+                    if let Ok(false) = store.budget_alert_sent_within(6) {
+                        let alert_msg = format!(
+                            "Budget alert: {:.0}% used (${:.2} / ${:.2})",
+                            budget.pct_used, budget.rolling_7d_cost, budget.weekly_budget
+                        );
+                        if let Err(e) = store.record_budget_alert() {
+                            tracing::warn!(error = %e, "failed to record budget alert timestamp");
+                        }
+                        // Send alert via Telegram (fire-and-forget)
+                        if let Some(channel) = deps.channels.get("telegram") {
+                            let msg = OutboundMessage {
+                                channel: "telegram".into(),
+                                content: alert_msg,
+                                reply_to: None,
+                                keyboard: None,
+                            };
+                            let channel = channel.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = channel.send_message(msg).await {
+                                    tracing::warn!(error = %e, "failed to send budget alert");
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
 
         // Run tool loop
         let tool_loop_start = Instant::now();

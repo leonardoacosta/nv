@@ -134,6 +134,8 @@ pub enum StopReason {
 pub struct Usage {
     pub input_tokens: u32,
     pub output_tokens: u32,
+    #[serde(default)]
+    pub total_cost_usd: Option<f64>,
 }
 
 /// Tool definition in the Anthropic API format.
@@ -168,6 +170,8 @@ struct CliUsage {
     input_tokens: u32,
     #[serde(default)]
     output_tokens: u32,
+    #[serde(default)]
+    total_cost_usd: Option<f64>,
 }
 
 // ── Stream-JSON Types ───────────────────────────────────────────────
@@ -214,6 +218,8 @@ struct StreamJsonUsage {
     input_tokens: u32,
     #[serde(default)]
     output_tokens: u32,
+    #[serde(default)]
+    total_cost_usd: Option<f64>,
 }
 
 // ── Persistent Process ──────────────────────────────────────────────
@@ -571,6 +577,11 @@ impl Clone for ClaudeClient {
 }
 
 impl ClaudeClient {
+    /// Return the configured model name.
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
     /// Create a new client. The `_api_key` parameter is ignored — the CLI uses
     /// its own OAuth session. Kept for backward-compatible constructor signature.
     pub fn new(_api_key: String, model: String, max_tokens: u32) -> Self {
@@ -763,6 +774,7 @@ impl ClaudeClient {
             usage: Usage {
                 input_tokens: cli_response.usage.input_tokens,
                 output_tokens: cli_response.usage.output_tokens,
+                total_cost_usd: cli_response.usage.total_cost_usd,
             },
         })
     }
@@ -920,6 +932,7 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
     let mut usage = Usage {
         input_tokens: 0,
         output_tokens: 0,
+        total_cost_usd: None,
     };
     let mut stop_reason = StopReason::EndTurn;
     let mut line = String::new();
@@ -999,6 +1012,7 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
                             usage = Usage {
                                 input_tokens: u.input_tokens,
                                 output_tokens: u.output_tokens,
+                                total_cost_usd: u.total_cost_usd,
                             };
                         }
 

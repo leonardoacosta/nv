@@ -4,6 +4,8 @@
 model = "claude-sonnet-4-6"
 think = true
 digest_interval_minutes = 60
+# weekly_budget_usd = 50.0
+# alert_threshold_pct = 90
 
 [telegram]
 chat_id = 7380462766

@@ -125,7 +125,25 @@ impl MessageStore {
             CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
                 INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
                 INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
-            END;",
+            END;
+
+            CREATE TABLE IF NOT EXISTS api_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                worker_id TEXT NOT NULL,
+                cost_usd REAL,
+                tokens_in INTEGER NOT NULL,
+                tokens_out INTEGER NOT NULL,
+                model TEXT NOT NULL,
+                session_id TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_api_usage_worker ON api_usage(worker_id);
+
+            CREATE TABLE IF NOT EXISTS budget_alert_sent (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
         )?;
 
         // One-time backfill: populate FTS index with any messages that exist
@@ -462,6 +480,171 @@ impl MessageStore {
             slowest,
         })
     }
+
+    // ── API Usage Logging ────────────────────────────────────────────
+
+    /// Log a single Claude API call to the `api_usage` table.
+    pub fn log_api_usage(
+        &self,
+        worker_id: &str,
+        cost_usd: Option<f64>,
+        tokens_in: i64,
+        tokens_out: i64,
+        model: &str,
+        session_id: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO api_usage (timestamp, worker_id, cost_usd, tokens_in, tokens_out, model, session_id)
+             VALUES (datetime('now'), ?1, ?2, ?3, ?4, ?5, ?6)",
+            params![worker_id, cost_usd, tokens_in, tokens_out, model, session_id],
+        )?;
+        Ok(())
+    }
+
+    /// Query aggregated Claude API usage statistics.
+    pub fn usage_stats(&self) -> Result<UsageStatsReport> {
+        // Today
+        let (today_cost, today_calls, today_tokens_in, today_tokens_out): (f64, i64, i64, i64) =
+            self.conn.query_row(
+                "SELECT COALESCE(SUM(cost_usd), 0.0),
+                        COUNT(*),
+                        COALESCE(SUM(tokens_in), 0),
+                        COALESCE(SUM(tokens_out), 0)
+                 FROM api_usage
+                 WHERE date(timestamp) = date('now')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+
+        // Rolling 7-day
+        let week_cost: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0)
+             FROM api_usage
+             WHERE timestamp >= datetime('now', '-7 days')",
+            [],
+            |row| row.get(0),
+        )?;
+
+        // Rolling 30-day
+        let month_cost: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0)
+             FROM api_usage
+             WHERE timestamp >= datetime('now', '-30 days')",
+            [],
+            |row| row.get(0),
+        )?;
+
+        // Daily breakdown (last 7 days)
+        let mut stmt = self.conn.prepare(
+            "SELECT date(timestamp) as d,
+                    COALESCE(SUM(cost_usd), 0.0),
+                    COUNT(*),
+                    COALESCE(SUM(tokens_in), 0),
+                    COALESCE(SUM(tokens_out), 0)
+             FROM api_usage
+             WHERE timestamp >= datetime('now', '-7 days')
+             GROUP BY d
+             ORDER BY d DESC",
+        )?;
+
+        let daily_breakdown = stmt
+            .query_map([], |row| {
+                Ok(DailyUsage {
+                    date: row.get(0)?,
+                    cost: row.get(1)?,
+                    calls: row.get(2)?,
+                    tokens_in: row.get(3)?,
+                    tokens_out: row.get(4)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(UsageStatsReport {
+            today_cost,
+            today_calls,
+            today_tokens_in,
+            today_tokens_out,
+            week_cost,
+            month_cost,
+            daily_breakdown,
+        })
+    }
+
+    /// Calculate budget status against a weekly budget.
+    pub fn usage_budget_status(&self, weekly_budget: f64) -> Result<BudgetStatus> {
+        let rolling_7d_cost: f64 = self.conn.query_row(
+            "SELECT COALESCE(SUM(cost_usd), 0.0)
+             FROM api_usage
+             WHERE timestamp >= datetime('now', '-7 days')",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let pct_used = if weekly_budget > 0.0 {
+            (rolling_7d_cost / weekly_budget) * 100.0
+        } else {
+            0.0
+        };
+
+        Ok(BudgetStatus {
+            rolling_7d_cost,
+            weekly_budget,
+            pct_used,
+        })
+    }
+
+    /// Check whether a budget alert was sent within the last `hours` hours.
+    pub fn budget_alert_sent_within(&self, hours: u32) -> Result<bool> {
+        let count: i64 = self.conn.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM budget_alert_sent WHERE timestamp >= datetime('now', '-{hours} hours')"
+            ),
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    /// Record that a budget alert was sent now.
+    pub fn record_budget_alert(&self) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO budget_alert_sent (timestamp) VALUES (datetime('now'))",
+            [],
+        )?;
+        Ok(())
+    }
+}
+
+// ── Usage Stats ──────────────────────────────────────────────────
+
+/// Daily usage breakdown entry.
+#[derive(Debug, Clone, Serialize)]
+pub struct DailyUsage {
+    pub date: String,
+    pub cost: f64,
+    pub calls: i64,
+    pub tokens_in: i64,
+    pub tokens_out: i64,
+}
+
+/// Aggregated Claude API usage stats.
+#[derive(Debug, Clone, Serialize)]
+pub struct UsageStatsReport {
+    pub today_cost: f64,
+    pub today_calls: i64,
+    pub today_tokens_in: i64,
+    pub today_tokens_out: i64,
+    pub week_cost: f64,
+    pub month_cost: f64,
+    pub daily_breakdown: Vec<DailyUsage>,
+}
+
+/// Budget status against a weekly budget.
+#[derive(Debug, Clone, Serialize)]
+pub struct BudgetStatus {
+    pub rolling_7d_cost: f64,
+    pub weekly_budget: f64,
+    pub pct_used: f64,
 }
 
 /// Truncate a string to at most `max_len` characters.
@@ -957,5 +1140,134 @@ mod tests {
         let store3 = MessageStore::init(&db_path).unwrap();
         let results = store3.search("backfill", 10).unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    // ── API Usage Tests ──────────────────────────────────────────────
+
+    #[test]
+    fn api_usage_table_created_on_init() {
+        let (_dir, store) = setup();
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM api_usage", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn log_api_usage_inserts_row() {
+        let (_dir, store) = setup();
+        store
+            .log_api_usage("w-1", Some(0.05), 1000, 200, "claude-sonnet", "sess-1")
+            .unwrap();
+
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM api_usage", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let (cost, model): (Option<f64>, String) = store
+            .conn
+            .query_row(
+                "SELECT cost_usd, model FROM api_usage WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!((cost.unwrap() - 0.05).abs() < 0.001);
+        assert_eq!(model, "claude-sonnet");
+    }
+
+    #[test]
+    fn log_api_usage_null_cost() {
+        let (_dir, store) = setup();
+        store
+            .log_api_usage("w-1", None, 500, 100, "claude-opus", "sess-2")
+            .unwrap();
+
+        let cost: Option<f64> = store
+            .conn
+            .query_row("SELECT cost_usd FROM api_usage WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert!(cost.is_none());
+    }
+
+    #[test]
+    fn usage_stats_empty_db() {
+        let (_dir, store) = setup();
+        let report = store.usage_stats().unwrap();
+        assert_eq!(report.today_cost, 0.0);
+        assert_eq!(report.today_calls, 0);
+        assert_eq!(report.today_tokens_in, 0);
+        assert_eq!(report.today_tokens_out, 0);
+        assert_eq!(report.week_cost, 0.0);
+        assert_eq!(report.month_cost, 0.0);
+        assert!(report.daily_breakdown.is_empty());
+    }
+
+    #[test]
+    fn usage_stats_with_data() {
+        let (_dir, store) = setup();
+        store
+            .log_api_usage("w-1", Some(1.50), 1000, 200, "claude-sonnet", "s1")
+            .unwrap();
+        store
+            .log_api_usage("w-2", Some(2.00), 2000, 400, "claude-sonnet", "s2")
+            .unwrap();
+
+        let report = store.usage_stats().unwrap();
+        assert!((report.today_cost - 3.50).abs() < 0.01);
+        assert_eq!(report.today_calls, 2);
+        assert_eq!(report.today_tokens_in, 3000);
+        assert_eq!(report.today_tokens_out, 600);
+        assert!((report.week_cost - 3.50).abs() < 0.01);
+        assert!((report.month_cost - 3.50).abs() < 0.01);
+        assert_eq!(report.daily_breakdown.len(), 1);
+    }
+
+    #[test]
+    fn budget_status_calculation() {
+        let (_dir, store) = setup();
+        store
+            .log_api_usage("w-1", Some(40.0), 1000, 200, "claude-sonnet", "s1")
+            .unwrap();
+
+        let status = store.usage_budget_status(50.0).unwrap();
+        assert!((status.rolling_7d_cost - 40.0).abs() < 0.01);
+        assert_eq!(status.weekly_budget, 50.0);
+        assert!((status.pct_used - 80.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn budget_status_zero_budget() {
+        let (_dir, store) = setup();
+        let status = store.usage_budget_status(0.0).unwrap();
+        assert_eq!(status.pct_used, 0.0);
+    }
+
+    #[test]
+    fn budget_alert_debounce() {
+        let (_dir, store) = setup();
+        // No alerts sent yet
+        assert!(!store.budget_alert_sent_within(6).unwrap());
+
+        // Record an alert
+        store.record_budget_alert().unwrap();
+        assert!(store.budget_alert_sent_within(6).unwrap());
+    }
+
+    #[test]
+    fn budget_alert_sent_table_created() {
+        let (_dir, store) = setup();
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM budget_alert_sent", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }

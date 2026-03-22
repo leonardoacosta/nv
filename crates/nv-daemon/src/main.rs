@@ -1,3 +1,4 @@
+mod account;
 mod agent;
 mod aggregation;
 mod bash;
@@ -195,6 +196,18 @@ async fn main() -> anyhow::Result<()> {
     // Initialize message store
     let message_store = messages::MessageStore::init(&nv_base.join("messages.db"))?;
     tracing::info!("message store initialized");
+
+    // Background: refresh account info cache (non-blocking)
+    tokio::spawn(async {
+        match account::query_account_info().await {
+            Ok(info) => {
+                tracing::info!(plan = %info.plan, username = %info.username, "account info refreshed");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to query account info (will use cache or unknown)");
+            }
+        }
+    });
 
     // Initialize voice/TTS support
     let voice_config_enabled = config
@@ -647,6 +660,7 @@ async fn main() -> anyhow::Result<()> {
     let http_tx = trigger_tx.clone();
     let http_health = Arc::clone(&health_state);
     let stats_db_path = nv_base.join("messages.db");
+    let http_weekly_budget = config.agent.weekly_budget_usd;
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -656,6 +670,7 @@ async fn main() -> anyhow::Result<()> {
             teams_message_buffer,
             teams_client_for_http,
             jira_webhook_state,
+            http_weekly_budget,
         )
         .await
         {
@@ -705,6 +720,8 @@ async fn main() -> anyhow::Result<()> {
         voice_max_chars,
         project_registry: config.projects.clone(),
         event_tx: worker_event_tx,
+        weekly_budget_usd: config.agent.weekly_budget_usd,
+        alert_threshold_pct: config.agent.alert_threshold_pct,
     });
 
     // Extract Telegram client and chat_id for reactions

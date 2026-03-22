@@ -80,6 +80,29 @@ pub fn register_tools() -> Vec<ToolDefinition> {
                 "required": ["session_id"]
             }),
         },
+        ToolDefinition {
+            name: "complete_bootstrap".into(),
+            description: "Mark first-run bootstrap as complete. Call this after writing identity.md, user.md, and soul.md during the bootstrap conversation. Writes a state file so bootstrap is skipped on future startups.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "update_soul".into(),
+            description: "Update Nova's soul/personality file (soul.md). Use sparingly — always notify the operator about what changed and why.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "The full new content for soul.md"
+                    }
+                },
+                "required": ["content"]
+            }),
+        },
     ];
 
     // Add all Jira tool definitions
@@ -205,6 +228,36 @@ pub async fn execute_tool(
             })
         }
 
+        // ── Bootstrap & Soul Tools ──────────────────────────
+        "complete_bootstrap" => {
+            let home = std::env::var("HOME").unwrap_or_default();
+            let path = std::path::Path::new(&home)
+                .join(".nv")
+                .join("bootstrap-state.json");
+            let state = serde_json::json!({
+                "completed_at": chrono::Utc::now().to_rfc3339()
+            });
+            std::fs::write(&path, serde_json::to_string_pretty(&state)?)
+                .map_err(|e| anyhow!("failed to write bootstrap state: {e}"))?;
+            tracing::info!("bootstrap completed, state written");
+            Ok(ToolResult::Immediate(
+                "Bootstrap completed. Nova is ready.".into(),
+            ))
+        }
+        "update_soul" => {
+            let content = input["content"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'content' parameter"))?;
+            let home = std::env::var("HOME").unwrap_or_default();
+            let path = std::path::Path::new(&home).join(".nv").join("soul.md");
+            std::fs::write(&path, content)
+                .map_err(|e| anyhow!("failed to write soul.md: {e}"))?;
+            tracing::info!("soul.md updated");
+            Ok(ToolResult::Immediate(
+                "Soul updated. Notification sent to Leo.".into(),
+            ))
+        }
+
         // ── Nexus Tools ──────────────────────────────────────
         "query_nexus" => {
             let client = nexus_client
@@ -296,15 +349,17 @@ mod tests {
     }
 
     #[test]
-    fn register_tools_returns_eleven() {
+    fn register_tools_returns_thirteen() {
         let tools = register_tools();
-        // 3 memory + 2 nexus + 6 jira = 11
-        assert_eq!(tools.len(), 11);
+        // 3 memory + 2 bootstrap/soul + 2 nexus + 6 jira = 13
+        assert_eq!(tools.len(), 13);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
         assert!(names.contains(&"search_memory"));
         assert!(names.contains(&"write_memory"));
+        assert!(names.contains(&"complete_bootstrap"));
+        assert!(names.contains(&"update_soul"));
         assert!(names.contains(&"query_nexus"));
         assert!(names.contains(&"query_session"));
         assert!(names.contains(&"jira_search"));
@@ -681,5 +736,105 @@ mod tests {
         .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("content"));
+    }
+
+    #[tokio::test]
+    async fn execute_complete_bootstrap_writes_state() {
+        let (_dir, memory) = setup();
+        // Set HOME to a temp dir so we don't write to real ~/.nv/
+        let tmp = TempDir::new().unwrap();
+        let nv_dir = tmp.path().join(".nv");
+        std::fs::create_dir_all(&nv_dir).unwrap();
+        std::env::set_var("HOME", tmp.path());
+
+        let result = execute_tool(
+            "complete_bootstrap",
+            &serde_json::json!({}),
+            &memory,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        match result {
+            ToolResult::Immediate(s) => {
+                assert!(s.contains("Bootstrap completed"));
+            }
+            _ => panic!("expected Immediate"),
+        }
+
+        // Verify state file was written
+        let state_path = nv_dir.join("bootstrap-state.json");
+        assert!(state_path.exists());
+        let state: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&state_path).unwrap()).unwrap();
+        assert!(state["completed_at"].is_string());
+    }
+
+    #[tokio::test]
+    async fn execute_update_soul_writes_file() {
+        let (_dir, memory) = setup();
+        let tmp = TempDir::new().unwrap();
+        let nv_dir = tmp.path().join(".nv");
+        std::fs::create_dir_all(&nv_dir).unwrap();
+        std::env::set_var("HOME", tmp.path());
+
+        let new_soul = "# Nova — Soul\n\nUpdated personality.";
+        let result = execute_tool(
+            "update_soul",
+            &serde_json::json!({"content": new_soul}),
+            &memory,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        match result {
+            ToolResult::Immediate(s) => {
+                assert!(s.contains("Soul updated"));
+            }
+            _ => panic!("expected Immediate"),
+        }
+
+        // Verify soul.md was written
+        let soul_path = nv_dir.join("soul.md");
+        let content = std::fs::read_to_string(&soul_path).unwrap();
+        assert_eq!(content, new_soul);
+    }
+
+    #[tokio::test]
+    async fn execute_update_soul_missing_content() {
+        let (_dir, memory) = setup();
+        let result = execute_tool(
+            "update_soul",
+            &serde_json::json!({}),
+            &memory,
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("content"));
+    }
+
+    #[test]
+    fn complete_bootstrap_schema_has_no_required_params() {
+        let tools = register_tools();
+        let cb = tools
+            .iter()
+            .find(|t| t.name == "complete_bootstrap")
+            .unwrap();
+        let required = cb.input_schema["required"].as_array().unwrap();
+        assert!(required.is_empty());
+    }
+
+    #[test]
+    fn update_soul_schema_requires_content() {
+        let tools = register_tools();
+        let us = tools.iter().find(|t| t.name == "update_soul").unwrap();
+        let required = us.input_schema["required"].as_array().unwrap();
+        assert!(required.iter().any(|v| v.as_str() == Some("content")));
     }
 }

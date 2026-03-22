@@ -43,6 +43,19 @@ if [ ! -f "$NV_DIR/nv.toml" ] && [ -f "$PROJECT_DIR/config/nv.example.toml" ]; t
     echo "    Copied nv.example.toml to $NV_DIR/nv.toml -- edit with your values"
 fi
 
+# Symlink config files (soul, identity, user are editable at runtime via symlink)
+echo "==> Linking config files..."
+ln -sf "$PROJECT_DIR/config/system-prompt.md" "$NV_DIR/system-prompt.md"
+ln -sf "$PROJECT_DIR/config/soul.md" "$NV_DIR/soul.md"
+ln -sf "$PROJECT_DIR/config/identity.md" "$NV_DIR/identity.md"
+ln -sf "$PROJECT_DIR/config/user.md" "$NV_DIR/user.md"
+
+# Bootstrap is copied (not symlinked) — it's a template consumed once
+if [ ! -f "$NV_DIR/bootstrap-state.json" ]; then
+    cp "$PROJECT_DIR/config/bootstrap.md" "$NV_DIR/bootstrap.md"
+    echo "    Copied bootstrap.md (first-run template)"
+fi
+
 echo "==> Installing systemd user service..."
 mkdir -p "$SERVICE_DIR"
 cp "$SCRIPT_DIR/nv.service" "$SERVICE_DIR/nv.service"

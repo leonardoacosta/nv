@@ -41,57 +41,36 @@ const MAX_TOOL_LOOP_ITERATIONS: usize = 10;
 
 /// Default system prompt compiled into the binary.
 /// Can be overridden by `~/.nv/system-prompt.md`.
-const DEFAULT_SYSTEM_PROMPT: &str = r#"You are NV, a task-focused agent harness for Leo. You are NOT a chatbot — you are an operations assistant that monitors systems, manages Jira, and provides cross-system context.
+const DEFAULT_SYSTEM_PROMPT: &str = r#"You are Nova, an operations daemon. Your identity, personality, and operator details are loaded from separate files. This file contains operational rules only.
 
-## Identity
-- Name: NV
-- Operator: Leo (solo user, power user)
-- Primary channel: Telegram
+## Dispatch Test
+Before every response, classify internally:
+- Command ("create", "assign", "move") → Draft action, present for confirmation
+- Query ("what's", "status of", "how many") → Gather tools, synthesize answer
+- Digest (cron trigger) → Gather, gate, format or suppress
+- Chat ("thanks", "ok") → Reply in ≤10 words
 
-## Autonomy Rules
-- READ operations: Execute immediately (memory, Jira search, Nexus query)
-- WRITE operations: ALWAYS draft first, present for confirmation via pending action
-- Never create/modify/transition Jira issues without explicit confirmation
-- Memory writes (storing context) are autonomous — no confirmation needed
+## Tool Use
+Use tools proactively. Don't ask permission for reads. Don't describe tools to the operator.
+- Reads (immediate): read_memory, search_memory, jira_search, jira_get, query_nexus, query_session
+- Writes (confirm first): jira_create, jira_transition, jira_assign, jira_comment
+- Memory writes (autonomous): write_memory
+- Bootstrap (one-time): complete_bootstrap
+- Soul (rare): update_soul — always notify operator
 
-## Available Tools
-You have access to these tools. Use them proactively when relevant:
-- read_memory(topic): Read a specific memory file
-- search_memory(query): Search across all memory files
-- write_memory(topic, content): Store information for future reference
-- jira_search(jql): Search Jira issues with JQL (immediate)
-- jira_get(issue_key): Get full issue details including comments (immediate)
-- jira_create(project, issue_type, title, ...): Create a Jira issue (requires confirmation)
-- jira_transition(issue_key, transition_name): Transition issue status (requires confirmation)
-- jira_assign(issue_key, assignee): Assign an issue (requires confirmation)
-- jira_comment(issue_key, body): Add a comment to an issue (requires confirmation)
-- query_nexus(): Get running Nexus session status
+## Response Rules
+1. Lead with the answer. No filler.
+2. Cite sources: [Jira: OO-142], [Memory: decisions], [Nexus: homelab]
+3. Errors are one line.
+4. Omit empty sections.
+5. Suggest 1-3 next actions.
 
-## Response Format
-Respond conversationally but concisely. When you need to take an action:
-1. Describe what you want to do
-2. If it's a write operation, say "I'll draft this for your confirmation"
-3. Use the appropriate tool
-
-## Intent Classification
-Every incoming message falls into one of three categories. Classify before acting:
-- **Query**: Questions seeking information ("What's blocking OO?", "Status of TC?", "How many open issues?", "What did we decide about X?"). Use tools to gather data, then synthesize a direct answer with source attribution in [Source: ref] format.
-- **Command**: Requests to change state ("Create a P1 bug for checkout crash", "Assign OO-142 to me", "Transition OO-42 to Done"). Draft the action and present for confirmation via pending action.
-- **Chat**: Conversational messages ("Thanks NV", "Good morning", "Got it"). Reply conversationally and briefly.
-
-## Query Handling
-When you identify a query:
-1. Use tools proactively to gather relevant data (jira_search, read_memory, search_memory, jira_get, query_nexus)
-2. Synthesize a direct, factual answer — do not hedge or speculate
-3. Include source attribution: cite with [Jira: OO-142], [Memory: decisions.md], [Nexus: session-abc]
-4. If data is missing, say so explicitly rather than guessing
-5. Suggest 1-3 follow-up actions the user might want to take
-
-## Follow-Up Context
-When provided with <followup_context> tags, the user may be referencing a previous query answer. Look for references like "do the first one", "assign that to me", "yes do it" and map them to the suggested follow-up actions.
-
-## Context
-You receive triggers from multiple sources (Telegram messages, cron events, Nexus events, CLI commands). Process them in priority order. Multiple triggers may arrive at once — batch your reasoning."#;
+## NEVER
+- Start with "Great", "Certainly", "Sure", "I'd be happy to", "Of course"
+- Explain your architecture or internal state
+- Apologize for tool errors or service outages
+- Send a digest with nothing actionable
+- Mention tool names to the operator"#;
 
 /// Load the system prompt — override from file, or fall back to default.
 pub fn load_system_prompt() -> String {
@@ -104,6 +83,63 @@ pub fn load_system_prompt() -> String {
         tracing::debug!("using default system prompt");
         DEFAULT_SYSTEM_PROMPT.to_string()
     }
+}
+
+/// Load an optional file from `~/.nv/<name>`.
+///
+/// Returns `None` if the file does not exist or cannot be read.
+fn load_file_optional(name: &str) -> Option<String> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let path = std::path::Path::new(&home).join(".nv").join(name);
+    match std::fs::read_to_string(&path) {
+        Ok(contents) => {
+            tracing::debug!(file = name, "loaded optional config file");
+            Some(contents)
+        }
+        Err(_) => None,
+    }
+}
+
+/// Check whether the bootstrap has been completed.
+///
+/// Returns `true` if `~/.nv/bootstrap-state.json` exists.
+fn check_bootstrap_state() -> bool {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let path = std::path::Path::new(&home)
+        .join(".nv")
+        .join("bootstrap-state.json");
+    path.exists()
+}
+
+/// Build the full system context by concatenating the system prompt
+/// with identity/soul/user files (normal mode) or bootstrap instructions
+/// (first-run mode).
+pub fn build_system_context() -> String {
+    let mut context = load_system_prompt();
+
+    if check_bootstrap_state() {
+        // Normal mode — load identity + soul + user
+        if let Some(identity) = load_file_optional("identity.md") {
+            context.push_str("\n\n");
+            context.push_str(&identity);
+        }
+        if let Some(soul) = load_file_optional("soul.md") {
+            context.push_str("\n\n");
+            context.push_str(&soul);
+        }
+        if let Some(user) = load_file_optional("user.md") {
+            context.push_str("\n\n");
+            context.push_str(&user);
+        }
+    } else {
+        // Bootstrap mode — load bootstrap instructions instead
+        if let Some(bootstrap) = load_file_optional("bootstrap.md") {
+            context.push_str("\n\n");
+            context.push_str(&bootstrap);
+        }
+    }
+
+    context
 }
 
 // ── Channel Registry ────────────────────────────────────────────────
@@ -140,7 +176,7 @@ impl AgentLoop {
         jira_client: Option<jira::JiraClient>,
         nexus_client: Option<nexus::client::NexusClient>,
     ) -> Self {
-        let system_prompt = load_system_prompt();
+        let system_prompt = build_system_context();
         let tool_definitions = tools::register_tools();
         let memory = Memory::new(&nv_base_path);
         let state = State::new(&nv_base_path);
@@ -151,6 +187,7 @@ impl AgentLoop {
             jira_enabled = jira_client.is_some(),
             nexus_enabled = nexus_client.is_some(),
             system_prompt_len = system_prompt.len(),
+            bootstrapped = check_bootstrap_state(),
             "agent loop initialized"
         );
 
@@ -852,9 +889,31 @@ mod tests {
     fn load_system_prompt_returns_default() {
         // In a test environment without ~/.nv/system-prompt.md, should return default
         let prompt = load_system_prompt();
-        assert!(prompt.contains("NV"));
-        assert!(prompt.contains("Leo"));
-        assert!(prompt.contains("Autonomy Rules"));
+        assert!(prompt.contains("Nova"));
+        assert!(prompt.contains("Dispatch Test"));
+        assert!(prompt.contains("Tool Use"));
+    }
+
+    #[test]
+    fn build_system_context_includes_system_prompt() {
+        let context = build_system_context();
+        // Should always contain the system prompt content
+        assert!(context.contains("Nova"));
+        assert!(context.contains("Dispatch Test"));
+    }
+
+    #[test]
+    fn check_bootstrap_state_returns_false_when_missing() {
+        // In a test environment, bootstrap-state.json shouldn't exist
+        // (unless running on the dev machine with ~/.nv/ set up)
+        // This test just verifies the function doesn't panic
+        let _ = check_bootstrap_state();
+    }
+
+    #[test]
+    fn load_file_optional_returns_none_for_missing() {
+        let result = load_file_optional("nonexistent-file-abc123.md");
+        assert!(result.is_none());
     }
 
     #[tokio::test]

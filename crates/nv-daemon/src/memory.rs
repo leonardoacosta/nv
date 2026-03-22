@@ -368,7 +368,11 @@ impl Memory {
                 // Score keyword hits in first 500 chars of content
                 let path = self.base_path.join(format!("{topic}.md"));
                 if let Ok(content) = fs::read_to_string(&path) {
-                    let preview = &content[..content.len().min(500)];
+                    let mut end = content.len().min(500);
+                    while end > 0 && !content.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    let preview = &content[..end];
                     let preview_lower = preview.to_lowercase();
                     for kw in &keywords {
                         // Count all occurrences in the preview

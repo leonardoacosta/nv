@@ -10,10 +10,14 @@ use crate::github;
 use crate::jira;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
+use crate::neon_tools;
 use crate::nexus;
 use crate::posthog_tools;
+use crate::resend_tools;
 use crate::sentry_tools;
+use crate::stripe_tools;
 use crate::tailscale;
+use crate::upstash_tools;
 use crate::vercel_tools;
 
 /// Register all available tool definitions for the Anthropic API.
@@ -153,6 +157,18 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Sentry error tracking tools
     tools.extend(sentry_tools::sentry_tool_definitions());
+
+    // Add Neon PostgreSQL query tools
+    tools.extend(neon_tools::neon_tool_definitions());
+
+    // Add Stripe payment data tools
+    tools.extend(stripe_tools::stripe_tool_definitions());
+
+    // Add Resend email delivery tools
+    tools.extend(resend_tools::resend_tool_definitions());
+
+    // Add Upstash Redis tools
+    tools.extend(upstash_tools::upstash_tool_definitions());
 
     tools
 }
@@ -638,6 +654,58 @@ pub async fn execute_tool_send(
             let output = sentry_tools::sentry_issue(id).await?;
             Ok(ToolResult::Immediate(output))
         }
+
+        // ── Neon Tools ──────────────────────────────────────────────
+        "neon_query" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let sql = input["sql"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'sql' parameter"))?;
+            let output = neon_tools::neon_query(project, sql).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Stripe Tools ────────────────────────────────────────────
+        "stripe_customers" => {
+            let query = input["query"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
+            let output = stripe_tools::stripe_customers(query).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "stripe_invoices" => {
+            let status = input["status"]
+                .as_str()
+                .unwrap_or("open");
+            let output = stripe_tools::stripe_invoices(status).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Resend Tools ────────────────────────────────────────────
+        "resend_emails" => {
+            let status = input["status"].as_str();
+            let output = resend_tools::resend_emails(status).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "resend_bounces" => {
+            let output = resend_tools::resend_bounces().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Upstash Tools ───────────────────────────────────────────
+        "upstash_info" => {
+            let output = upstash_tools::upstash_info().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "upstash_keys" => {
+            let pattern = input["pattern"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'pattern' parameter"))?;
+            let output = upstash_tools::upstash_keys(pattern).await?;
+            Ok(ToolResult::Immediate(output))
+        }
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -937,6 +1005,58 @@ pub async fn execute_tool(
             let output = sentry_tools::sentry_issue(id).await?;
             Ok(ToolResult::Immediate(output))
         }
+
+        // ── Neon Tools ──────────────────────────────────────────────
+        "neon_query" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let sql = input["sql"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'sql' parameter"))?;
+            let output = neon_tools::neon_query(project, sql).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Resend Tools ────────────────────────────────────────────
+        "resend_emails" => {
+            let status = input["status"].as_str();
+            let output = resend_tools::resend_emails(status).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "resend_bounces" => {
+            let output = resend_tools::resend_bounces().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Upstash Tools ───────────────────────────────────────────
+        "upstash_info" => {
+            let output = upstash_tools::upstash_info().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "upstash_keys" => {
+            let pattern = input["pattern"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'pattern' parameter"))?;
+            let output = upstash_tools::upstash_keys(pattern).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Stripe Tools ────────────────────────────────────────────
+        "stripe_customers" => {
+            let query = input["query"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
+            let output = stripe_tools::stripe_customers(query).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "stripe_invoices" => {
+            let status = input["status"]
+                .as_str()
+                .unwrap_or("open");
+            let output = stripe_tools::stripe_invoices(status).await?;
+            Ok(ToolResult::Immediate(output))
+        }
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -1058,8 +1178,9 @@ mod tests {
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
         // 3 memory + 1 messages + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
-        // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel = 35
-        assert_eq!(tools.len(), 35);
+        // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
+        // + 1 neon + 2 stripe + 2 resend + 2 upstash = 42
+        assert_eq!(tools.len(), 42);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));

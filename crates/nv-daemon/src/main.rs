@@ -15,13 +15,17 @@ mod http;
 mod jira;
 mod memory;
 mod messages;
+mod neon_tools;
 mod nexus;
 mod orchestrator;
 mod posthog_tools;
 mod query;
+mod resend_tools;
 mod scheduler;
 mod sentry_tools;
 mod shutdown;
+mod stripe_tools;
+mod upstash_tools;
 #[allow(dead_code)]
 mod state;
 #[allow(dead_code)]

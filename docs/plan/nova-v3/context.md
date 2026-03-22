@@ -129,6 +129,33 @@ This means:
    must exist BEFORE wiring new data sources. Enables: usage analytics, cost tracking,
    debugging ("why did Nova query Jira 47 times today?"), and rate limit awareness.
 
+## Additional Features (from idea audit)
+
+### From session review + Telegram chat log
+
+7. **Long-task confirmation** — if Nova estimates a task will take >1 minute, send a
+   confirmation first: "This will take ~2 min — I'll search Jira across all projects and
+   check Vercel deploys. Be right back." Then proceed. Better than silent 👀 for heavy queries.
+
+8. **Reply threading** — respond as reply-to the original message (Telegram `reply_to_message_id`).
+   Critical for orchestrator pattern — when 3 workers respond in parallel, user needs to know
+   which response maps to which question.
+
+9. **Telegram typing indicator** — `sendChatAction(typing)` while worker is processing. Standard
+   bot UX, shows "Nova is typing..." in chat header. Lighter than reactions for quick responses.
+
+10. **Quiet hours** — configurable time window where Nova suppresses all notifications except P0.
+    Leo's sleep schedule is irregular — needs explicit quiet window, not assumption-based.
+
+11. **Full-text search on message store** — SQLite FTS5 on the messages table. Schema supports it,
+    tool not built. Easy win — "search my conversations for when we discussed Stripe fees."
+
+12. **Nexus session retry button** — inline keyboard button on session error alerts to restart
+    the failed CC session. Callback infrastructure exists from hardening specs.
+
+13. **Voice-to-text (inbound)** — transcribe Leo's Telegram voice messages to text using Deepgram
+    or Whisper API. Completes bidirectional voice (outbound TTS already built).
+
 ## Discovery Metadata
 
 - **Project**: nv (Nova)

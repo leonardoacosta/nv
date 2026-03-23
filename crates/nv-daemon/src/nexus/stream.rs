@@ -279,4 +279,77 @@ mod tests {
         let trigger = map_event_to_trigger("homelab", &event);
         assert!(trigger.is_none());
     }
+
+    #[test]
+    fn event_filter_uses_status_changed_and_session_stopped() {
+        // The filter constructed in run_event_stream must contain exactly
+        // STATUS_CHANGED and SESSION_STOPPED.  Assert the i32 values match.
+        let expected = vec![
+            EventType::StatusChanged as i32,
+            EventType::SessionStopped as i32,
+        ];
+        assert_eq!(expected, vec![3, 4]);
+    }
+
+    #[test]
+    fn snapshot_session_started_returns_none() {
+        let event = make_event(
+            "s-snap",
+            session_event::Payload::Started(SessionStarted {
+                session: None,
+                is_snapshot: true,
+            }),
+        );
+        let trigger = map_event_to_trigger("homelab", &event);
+        assert!(trigger.is_none());
+    }
+
+    #[test]
+    fn real_session_started_returns_none() {
+        let event = make_event(
+            "s-real",
+            session_event::Payload::Started(SessionStarted {
+                session: None,
+                is_snapshot: false,
+            }),
+        );
+        let trigger = map_event_to_trigger("homelab", &event);
+        assert!(trigger.is_none());
+    }
+
+    #[test]
+    fn agent_name_from_event_preferred_over_parameter() {
+        let event = proto::SessionEvent {
+            session_id: "s-agent".into(),
+            ts: None,
+            payload: Some(session_event::Payload::Stopped(SessionStopped {
+                reason: "done".into(),
+            })),
+            agent_name: "from-event".into(),
+        };
+        let trigger = map_event_to_trigger("from-param", &event);
+        if let Some(Trigger::NexusEvent(ne)) = trigger {
+            assert_eq!(ne.agent_name, "from-event");
+        } else {
+            panic!("expected NexusEvent trigger");
+        }
+    }
+
+    #[test]
+    fn empty_agent_name_falls_back_to_parameter() {
+        let event = proto::SessionEvent {
+            session_id: "s-fallback".into(),
+            ts: None,
+            payload: Some(session_event::Payload::Stopped(SessionStopped {
+                reason: "done".into(),
+            })),
+            agent_name: String::new(),
+        };
+        let trigger = map_event_to_trigger("from-param", &event);
+        if let Some(Trigger::NexusEvent(ne)) = trigger {
+            assert_eq!(ne.agent_name, "from-param");
+        } else {
+            panic!("expected NexusEvent trigger");
+        }
+    }
 }

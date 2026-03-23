@@ -26,6 +26,7 @@ use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::nexus;
 use crate::query;
+use crate::reminders::ReminderStore;
 use crate::schedule_tools::ScheduleStore;
 use crate::state::State;
 use crate::telegram::client::TelegramClient;
@@ -178,6 +179,14 @@ pub struct SharedDeps {
     pub worker_timeout_secs: u64,
     /// User-defined schedule store (SQLite). None if the DB failed to open.
     pub schedule_store: Option<Arc<std::sync::Mutex<ScheduleStore>>>,
+    /// Reminder store (SQLite). None if the DB failed to open.
+    pub reminder_store: Option<Arc<std::sync::Mutex<ReminderStore>>>,
+    /// Google Calendar credentials (base64-encoded service account JSON).
+    pub calendar_credentials: Option<String>,
+    /// Google Calendar ID to query (default: "primary").
+    pub calendar_id: String,
+    /// User timezone (IANA name, e.g. "America/Chicago") for display and time parsing.
+    pub timezone: String,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -395,6 +404,14 @@ impl Worker {
             Trigger::Message(msg) => Some(msg.id.clone()),
             _ => None,
         });
+
+        // Extract the originating channel name for reminder delivery defaults
+        let trigger_channel: String = task.triggers.first()
+            .and_then(|t| match t {
+                Trigger::Message(msg) => Some(msg.channel.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| "telegram".to_string());
 
         // Send typing indicator immediately (fire-and-forget)
         if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
@@ -683,6 +700,7 @@ impl Worker {
             &client,
             &deps,
             task_id,
+            &trigger_channel,
         )
         .await?;
 
@@ -853,6 +871,7 @@ impl Worker {
     }
 
     /// Execute the tool use loop for a worker.
+    #[allow(clippy::too_many_arguments)]
     async fn run_tool_loop(
         initial_response: crate::claude::ApiResponse,
         conversation_history: &mut Vec<Message>,
@@ -861,6 +880,7 @@ impl Worker {
         client: &ClaudeClient,
         deps: &SharedDeps,
         worker_id: Uuid,
+        trigger_channel: &str,
     ) -> Result<(Vec<ContentBlock>, Vec<String>)> {
         let mut response = initial_response;
         let mut all_text_content = Vec::new();
@@ -978,6 +998,25 @@ impl Worker {
                             Err(e)
                         }
                     }
+                } else if let Some(rem_result) = deps
+                    .reminder_store
+                    .as_ref()
+                    .and_then(|s| {
+                        let guard = s.lock().unwrap();
+                        tools::execute_reminder_tool(name, input, &guard, trigger_channel, &deps.timezone)
+                    })
+                {
+                    // Reminder tools are synchronous
+                    match rem_result {
+                        Ok(r) => Ok(r),
+                        Err(e) => {
+                            let _ = deps.event_tx.send(WorkerEvent::Error {
+                                worker_id,
+                                error: format!("Tool {name} error: {e}"),
+                            });
+                            Err(e)
+                        }
+                    }
                 } else {
                     // Determine timeout based on tool category
                     let timeout_secs = if WRITE_TOOLS.contains(&name.as_str()) {
@@ -998,6 +1037,8 @@ impl Worker {
                             deps.nexus_client.as_ref(),
                             &deps.project_registry,
                             &deps.channels,
+                            deps.calendar_credentials.as_deref(),
+                            &deps.calendar_id,
                         ),
                     )
                     .await

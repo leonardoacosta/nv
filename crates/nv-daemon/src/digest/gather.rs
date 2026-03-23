@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 
+use crate::calendar_tools;
 use crate::jira;
 use crate::memory::Memory;
 use crate::nexus;
@@ -14,7 +15,18 @@ pub struct DigestContext {
     pub jira_issues: Vec<JiraDigestIssue>,
     pub nexus_sessions: Vec<SessionSummary>,
     pub memory_entries: Vec<MemoryEntry>,
+    pub calendar_events: Vec<CalendarDigestEvent>,
     pub errors: Vec<String>,
+}
+
+/// Lightweight event summary for the digest prompt.
+#[derive(Debug, Clone)]
+pub struct CalendarDigestEvent {
+    pub title: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub attendees_count: usize,
+    pub has_meeting_link: bool,
 }
 
 /// Simplified Jira issue for digest display.
@@ -52,15 +64,19 @@ const GATHER_TIMEOUT: Duration = Duration::from_secs(30);
 ///
 /// Each source has an independent 30-second timeout. Partial results are
 /// accepted -- if Jira is down, the digest still includes memory + nexus.
+/// Calendar failure logs a warning and produces an empty calendar section.
 pub async fn gather_context(
     jira_client: Option<&jira::JiraClient>,
     memory: &Memory,
     nexus_client: Option<&nexus::client::NexusClient>,
+    calendar_credentials: Option<&str>,
+    calendar_id: &str,
 ) -> DigestContext {
-    let (jira_result, memory_result, nexus_result) = tokio::join!(
+    let (jira_result, memory_result, nexus_result, calendar_result) = tokio::join!(
         gather_jira(jira_client),
         gather_memory(memory),
         gather_nexus(nexus_client),
+        gather_calendar(calendar_credentials, calendar_id),
     );
 
     let mut errors = Vec::new();
@@ -92,10 +108,20 @@ pub async fn gather_context(
         }
     };
 
+    let calendar_events = match calendar_result {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::warn!(error = %e, "digest: calendar gather failed");
+            errors.push(format!("Calendar unavailable: {e}"));
+            Vec::new()
+        }
+    };
+
     DigestContext {
         jira_issues,
         nexus_sessions,
         memory_entries,
+        calendar_events,
         errors,
     }
 }
@@ -182,6 +208,37 @@ async fn gather_nexus(
         .collect())
 }
 
+/// Fetch today's calendar events for the digest.
+///
+/// Returns empty vec (not an error) when calendar is not configured.
+async fn gather_calendar(
+    credentials_b64: Option<&str>,
+    calendar_id: &str,
+) -> Result<Vec<CalendarDigestEvent>> {
+    if credentials_b64.is_none() {
+        return Ok(Vec::new());
+    }
+
+    let events = tokio::time::timeout(
+        GATHER_TIMEOUT,
+        calendar_tools::gather_today_for_digest(credentials_b64, calendar_id),
+    )
+    .await
+    .map_err(|_| anyhow::anyhow!("Calendar gather timed out after 30s"))??;
+
+    // Map from calendar_tools types to digest types
+    Ok(events
+        .into_iter()
+        .map(|e| CalendarDigestEvent {
+            title: e.title,
+            start_time: e.start_time,
+            end_time: e.end_time,
+            attendees_count: e.attendees_count,
+            has_meeting_link: e.has_meeting_link,
+        })
+        .collect())
+}
+
 // ── Format for Claude ───────────────────────────────────────────────
 
 /// Format gathered context into a text block for the Claude digest prompt.
@@ -236,6 +293,28 @@ pub fn format_context_for_prompt(ctx: &DigestContext) -> String {
         parts.push(mem_section);
     }
 
+    // Calendar section
+    if !ctx.calendar_events.is_empty() {
+        let mut cal_section = format!(
+            "[Calendar] {} event{} today:\n",
+            ctx.calendar_events.len(),
+            if ctx.calendar_events.len() == 1 { "" } else { "s" }
+        );
+        for evt in &ctx.calendar_events {
+            let link_indicator = if evt.has_meeting_link { " [meeting link]" } else { "" };
+            let attendees = if evt.attendees_count > 0 {
+                format!(" ({} attendee{})", evt.attendees_count, if evt.attendees_count == 1 { "" } else { "s" })
+            } else {
+                String::new()
+            };
+            cal_section.push_str(&format!(
+                "- {}-{}  {}{}{}\n",
+                evt.start_time, evt.end_time, evt.title, attendees, link_indicator
+            ));
+        }
+        parts.push(cal_section);
+    }
+
     // Errors section
     if !ctx.errors.is_empty() {
         let mut err_section = "[Errors]\n".to_string();
@@ -260,6 +339,7 @@ mod tests {
             jira_issues: vec![],
             nexus_sessions: vec![],
             memory_entries: vec![],
+            calendar_events: vec![],
             errors: vec![],
         };
         let text = format_context_for_prompt(&ctx);
@@ -294,6 +374,7 @@ mod tests {
                 topic: "decisions".into(),
                 excerpt: "Decided to use Stripe for payments".into(),
             }],
+            calendar_events: vec![],
             errors: vec![],
         };
         let text = format_context_for_prompt(&ctx);
@@ -311,6 +392,7 @@ mod tests {
             jira_issues: vec![],
             nexus_sessions: vec![],
             memory_entries: vec![],
+            calendar_events: vec![],
             errors: vec!["Jira unavailable: timeout".into()],
         };
         let text = format_context_for_prompt(&ctx);
@@ -325,7 +407,7 @@ mod tests {
         let memory = Memory::new(dir.path());
         memory.init().unwrap();
 
-        let ctx = gather_context(None, &memory, None).await;
+        let ctx = gather_context(None, &memory, None, None, "primary").await;
         assert!(ctx.jira_issues.is_empty());
         assert!(ctx.nexus_sessions.is_empty());
         // Memory should have default topics

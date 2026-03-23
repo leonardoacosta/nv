@@ -9,6 +9,7 @@ use nv_core::types::OutboundMessage;
 use crate::ado_tools;
 use crate::aggregation;
 use crate::bash;
+use crate::calendar_tools;
 use crate::claude::ToolDefinition;
 use crate::docker_tools;
 use crate::github;
@@ -20,6 +21,7 @@ use crate::neon_tools;
 use crate::nexus;
 use crate::plaid_tools;
 use crate::posthog_tools;
+use crate::reminders::{self, ReminderStore};
 use crate::resend_tools;
 use crate::schedule_tools;
 use crate::sentry_tools;
@@ -213,6 +215,12 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add schedule management tools
     tools.extend(schedule_tool_definitions());
+
+    // Add Google Calendar read-only tools
+    tools.extend(calendar_tool_definitions());
+
+    // Add reminder tools (set, list, cancel)
+    tools.extend(reminder_tool_definitions());
 
     // Add cross-channel routing tools
     tools.extend(vec![
@@ -807,6 +815,95 @@ fn schedule_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Tool definitions for Google Calendar read-only queries.
+fn calendar_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "calendar_today".into(),
+            description: "Get today's calendar events. Returns a formatted schedule for the current day.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "calendar_upcoming".into(),
+            description: "Get calendar events for the next N days (default 7, max 30). Returns events grouped by day.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days to look ahead (default: 7, max: 30)"
+                    }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "calendar_next".into(),
+            description: "Get the single next upcoming calendar event. Quick check for what's on deck.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+    ]
+}
+
+/// Tool definitions for the reminders system.
+fn reminder_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "set_reminder".into(),
+            description: "Set a reminder that will fire as a message at the specified time. Use for 'remind me to...' requests.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "What to remind about (e.g. 'check the CT deploy')"
+                    },
+                    "due_at": {
+                        "type": "string",
+                        "description": "When to fire — ISO 8601 datetime OR relative like '2h', '30m', 'tomorrow 9am', 'next Monday'"
+                    },
+                    "channel": {
+                        "type": "string",
+                        "description": "Channel to send reminder to (default: channel the request came from)"
+                    }
+                },
+                "required": ["message", "due_at"]
+            }),
+        },
+        ToolDefinition {
+            name: "list_reminders".into(),
+            description: "List all active (unfired, uncancelled) reminders with their IDs and due times.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "cancel_reminder".into(),
+            description: "Cancel an active reminder by its ID. Returns whether the cancellation succeeded.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "The reminder ID to cancel (from list_reminders)"
+                    }
+                },
+                "required": ["id"]
+            }),
+        },
+    ]
+}
+
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
 /// Used during first-run to prevent Claude from searching Jira/Nexus/memory
 /// instead of focusing on the onboarding conversation.
@@ -870,12 +967,78 @@ pub enum ToolResult {
     },
 }
 
-/// Execute a tool without access to `MessageStore` or `ScheduleStore` (Send-safe).
+/// Execute a reminder tool synchronously (same pattern as schedule tools).
 ///
-/// This variant avoids referencing `MessageStore` and `ScheduleStore` (which
-/// wrap `rusqlite::Connection`, a `!Send` type) so the resulting future can be
-/// used with `tokio::spawn`. The `get_recent_messages`, `search_messages`, and
-/// all schedule tools must be handled by the caller before delegating here.
+/// Handles `set_reminder`, `list_reminders`, `cancel_reminder`.
+/// Returns `None` if `name` is not a reminder tool (caller falls through to
+/// `execute_tool_send`).
+pub fn execute_reminder_tool(
+    name: &str,
+    input: &serde_json::Value,
+    store: &ReminderStore,
+    trigger_channel: &str,
+    timezone: &str,
+) -> Option<Result<ToolResult>> {
+    match name {
+        "set_reminder" => Some(set_reminder_impl(store, input, trigger_channel, timezone)),
+        "list_reminders" => Some(list_reminders_impl(store, timezone)),
+        "cancel_reminder" => Some(cancel_reminder_impl(store, input)),
+        _ => None,
+    }
+}
+
+fn set_reminder_impl(
+    store: &ReminderStore,
+    input: &serde_json::Value,
+    trigger_channel: &str,
+    timezone: &str,
+) -> Result<ToolResult> {
+    let message = input["message"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'message' parameter"))?;
+    let due_at_str = input["due_at"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'due_at' parameter"))?;
+    let channel = input["channel"]
+        .as_str()
+        .unwrap_or(trigger_channel);
+
+    let due_at = reminders::parse_relative_time(due_at_str, timezone)?;
+    let id = store.create_reminder(message, &due_at, channel)?;
+
+    let due_display = due_at.format("%Y-%m-%d %H:%M UTC").to_string();
+    Ok(ToolResult::Immediate(format!(
+        "Reminder set (ID: {id}). I'll remind you to '{message}' at {due_display} via {channel}."
+    )))
+}
+
+fn list_reminders_impl(store: &ReminderStore, timezone: &str) -> Result<ToolResult> {
+    let reminders = store.list_active_reminders()?;
+    Ok(ToolResult::Immediate(reminders::format_reminders_list(&reminders, timezone)))
+}
+
+fn cancel_reminder_impl(store: &ReminderStore, input: &serde_json::Value) -> Result<ToolResult> {
+    let id = input["id"]
+        .as_i64()
+        .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
+    let found = store.cancel_reminder(id)?;
+    if found {
+        Ok(ToolResult::Immediate(format!("Reminder {id} cancelled.")))
+    } else {
+        Ok(ToolResult::Immediate(format!(
+            "Reminder {id} not found or already delivered/cancelled."
+        )))
+    }
+}
+
+/// Execute a tool without access to `MessageStore`, `ScheduleStore`, or `ReminderStore`
+/// (Send-safe).
+///
+/// This variant avoids referencing stores that wrap `rusqlite::Connection` (a `!Send` type)
+/// so the resulting future can be used with `tokio::spawn`. The `get_recent_messages`,
+/// `search_messages`, schedule tools, and reminder tools must be handled by the caller
+/// before delegating here.
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_tool_send(
     name: &str,
     input: &serde_json::Value,
@@ -884,6 +1047,8 @@ pub async fn execute_tool_send(
     nexus_client: Option<&nexus::client::NexusClient>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
+    calendar_credentials: Option<&str>,
+    calendar_id: &str,
 ) -> Result<ToolResult> {
     match name {
         "read_memory" => {
@@ -1317,6 +1482,27 @@ pub async fn execute_tool_send(
             })
         }
 
+        // ── Calendar Tools ────────────────────────────────────────────
+        "calendar_today" => {
+            let client = calendar_tools::build_client(calendar_credentials, calendar_id)
+                .map_err(|e| anyhow!("{e}"))?;
+            let output = calendar_tools::calendar_today(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "calendar_upcoming" => {
+            let client = calendar_tools::build_client(calendar_credentials, calendar_id)
+                .map_err(|e| anyhow!("{e}"))?;
+            let days = input["days"].as_u64().map(|d| d as u32);
+            let output = calendar_tools::calendar_upcoming(&client, days).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "calendar_next" => {
+            let client = calendar_tools::build_client(calendar_credentials, calendar_id)
+                .map_err(|e| anyhow!("{e}"))?;
+            let output = calendar_tools::calendar_next(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -1338,6 +1524,8 @@ pub async fn execute_tool(
     message_store: Option<&MessageStore>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
+    calendar_credentials: Option<&str>,
+    calendar_id: &str,
 ) -> Result<ToolResult> {
     match name {
         // ── Memory Tools ────────────────────────────────────────
@@ -1806,6 +1994,27 @@ pub async fn execute_tool(
             })
         }
 
+        // ── Calendar Tools ────────────────────────────────────────────
+        "calendar_today" => {
+            let client = calendar_tools::build_client(calendar_credentials, calendar_id)
+                .map_err(|e| anyhow!("{e}"))?;
+            let output = calendar_tools::calendar_today(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "calendar_upcoming" => {
+            let client = calendar_tools::build_client(calendar_credentials, calendar_id)
+                .map_err(|e| anyhow!("{e}"))?;
+            let days = input["days"].as_u64().map(|d| d as u32);
+            let output = calendar_tools::calendar_upcoming(&client, days).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "calendar_next" => {
+            let client = calendar_tools::build_client(calendar_credentials, calendar_id)
+                .map_err(|e| anyhow!("{e}"))?;
+            let output = calendar_tools::calendar_next(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -2017,8 +2226,10 @@ mod tests {
         // + 1 neon + 2 stripe + 2 resend + 2 upstash
         // + 3 ha + 2 ado + 2 plaid + 3 aggregation
         // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session)
-        // + 2 cross-channel (list_channels, send_to_channel) = 60
-        assert_eq!(tools.len(), 60);
+        // + 2 cross-channel (list_channels, send_to_channel)
+        // + 3 calendar (calendar_today, calendar_upcoming, calendar_next)
+        // + 3 reminders (set_reminder, list_reminders, cancel_reminder) = 70
+        assert_eq!(tools.len(), 70);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2138,6 +2349,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2159,6 +2372,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2182,6 +2397,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2206,6 +2423,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2227,6 +2446,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2248,6 +2469,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2269,6 +2492,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await;
         assert!(result.is_err());
@@ -2295,6 +2520,7 @@ mod tests {
             elevenlabs_api_key: None,
             jira_api_tokens: HashMap::new(),
             jira_usernames: HashMap::new(),
+            google_calendar_credentials: None,
         };
         jira::JiraRegistry::new(&cfg, &secrets).unwrap().unwrap()
     }
@@ -2316,6 +2542,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2351,6 +2579,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2387,6 +2617,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2438,7 +2670,7 @@ mod tests {
     #[tokio::test]
     async fn execute_query_nexus_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels())
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary")
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
@@ -2452,7 +2684,7 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 7400,
         }]);
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry(), &empty_channels())
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry(), &empty_channels(), None, "primary")
             .await
             .unwrap();
         match result {
@@ -2475,6 +2707,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await;
         assert!(result.is_err());
@@ -2494,6 +2728,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await;
         assert!(result.is_err());
@@ -2503,7 +2739,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels()).await;
+        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary").await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -2513,7 +2749,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels()).await;
+        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -2530,6 +2766,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await;
         assert!(result.is_err());
@@ -2554,6 +2792,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2591,6 +2831,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2620,6 +2862,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await;
         assert!(result.is_err());
@@ -2673,6 +2917,8 @@ mod tests {
             Some(&store),
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2700,6 +2946,8 @@ mod tests {
             Some(&store),
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await
         .unwrap();
@@ -2724,6 +2972,8 @@ mod tests {
             None,
             &empty_registry(),
             &empty_channels(),
+            None,
+            "primary",
         )
         .await;
         assert!(result.is_err());

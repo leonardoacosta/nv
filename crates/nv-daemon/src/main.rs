@@ -1,5 +1,6 @@
 mod account;
 mod agent;
+mod calendar_tools;
 mod aggregation;
 mod bash;
 mod callbacks;
@@ -26,6 +27,7 @@ mod nexus;
 mod orchestrator;
 mod posthog_tools;
 mod query;
+mod reminders;
 mod resend_tools;
 mod schedule_tools;
 mod scheduler;
@@ -631,6 +633,18 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Initialize reminder store (shares messages.db path)
+    let reminder_store = match reminders::ReminderStore::new(&nv_base.join("messages.db")) {
+        Ok(store) => {
+            tracing::info!("reminder store initialized");
+            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to initialize reminder store — reminder tools disabled");
+            None
+        }
+    };
+
     // Spawn the cron scheduler for periodic digests (skip during bootstrap)
     if agent::check_bootstrap_state() {
         let _scheduler_handle = scheduler::spawn_scheduler(
@@ -645,6 +659,12 @@ async fn main() -> anyhow::Result<()> {
         );
     } else {
         tracing::info!("bootstrap not complete — digest scheduler deferred");
+    }
+
+    // Spawn reminder scheduler (polls SQLite every 30s for due reminders)
+    if let Some(ref store) = reminder_store {
+        reminders::spawn_reminder_scheduler(store.clone(), channels.clone());
+        tracing::info!("reminder scheduler started");
     }
 
     // Build Jira webhook state if configured
@@ -743,6 +763,18 @@ async fn main() -> anyhow::Result<()> {
             .map(|d| d.worker_timeout_secs)
             .unwrap_or(300),
         schedule_store,
+        reminder_store,
+        calendar_credentials: secrets.google_calendar_credentials.clone(),
+        calendar_id: config
+            .calendar
+            .as_ref()
+            .map(|c| c.calendar_id.clone())
+            .unwrap_or_else(|| "primary".to_string()),
+        timezone: config
+            .daemon
+            .as_ref()
+            .map(|d| d.timezone.clone())
+            .unwrap_or_else(|| "America/Chicago".to_string()),
     });
 
     // Extract Telegram client and chat_id for reactions

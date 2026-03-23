@@ -58,6 +58,14 @@ fn default_worker_timeout_secs() -> u64 {
     300
 }
 
+fn default_calendar_id() -> String {
+    "primary".to_string()
+}
+
+fn default_timezone() -> String {
+    "America/Chicago".to_string()
+}
+
 // ── Config structs ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
@@ -71,6 +79,8 @@ pub struct Config {
     pub jira: Option<JiraConfig>,
     pub nexus: Option<NexusConfig>,
     pub daemon: Option<DaemonConfig>,
+    /// Optional Google Calendar integration config.
+    pub calendar: Option<CalendarConfig>,
     /// Project code to filesystem path mapping (e.g. "oo" -> "~/dev/oo").
     /// Paths are resolved and validated on load.
     #[serde(default)]
@@ -293,6 +303,14 @@ pub struct NexusConfig {
     pub agents: Vec<NexusAgent>,
 }
 
+/// Configuration for the optional Google Calendar integration.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CalendarConfig {
+    /// Google Calendar ID to query (default: "primary" — the user's main calendar).
+    #[serde(default = "default_calendar_id")]
+    pub calendar_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct DaemonConfig {
     pub tts_url: Option<String>,
@@ -318,6 +336,10 @@ pub struct DaemonConfig {
     /// unchanged — this is a hard ceiling above them.
     #[serde(default = "default_worker_timeout_secs")]
     pub worker_timeout_secs: u64,
+    /// IANA timezone name for time-aware features (reminders, calendar display).
+    /// Default: "America/Chicago".
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
 }
 
 // ── Config loading ──────────────────────────────────────────────────
@@ -397,6 +419,9 @@ pub struct Secrets {
     pub jira_api_tokens: HashMap<String, String>,
     /// Instance-qualified Jira usernames: `JIRA_USERNAME_{INSTANCE_UPPER}`.
     pub jira_usernames: HashMap<String, String>,
+    /// Base64-encoded service account JSON key for Google Calendar API.
+    /// Sourced from `GOOGLE_CALENDAR_CREDENTIALS` env var.
+    pub google_calendar_credentials: Option<String>,
 }
 
 impl Secrets {
@@ -436,6 +461,7 @@ impl Secrets {
             elevenlabs_api_key: std::env::var("ELEVENLABS_API_KEY").ok(),
             jira_api_tokens,
             jira_usernames,
+            google_calendar_credentials: std::env::var("GOOGLE_CALENDAR_CREDENTIALS").ok(),
         })
     }
 

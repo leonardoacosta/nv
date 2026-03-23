@@ -264,6 +264,7 @@ mod tests {
             nexus_sessions: vec![],
             memory_entries: vec![],
             errors: vec![],
+            calendar_events: vec![],
         };
         let result = synthesize_digest_fallback(&ctx);
         assert!(result.content.contains("-- Jira --"));
@@ -299,6 +300,7 @@ mod tests {
             nexus_sessions: vec![],
             memory_entries: vec![],
             errors: vec![],
+            calendar_events: vec![],
         };
         let result = synthesize_digest_fallback(&ctx);
         assert!(result.content.contains("(!) OO-42"));
@@ -313,6 +315,7 @@ mod tests {
             nexus_sessions: vec![],
             memory_entries: vec![],
             errors: vec!["Jira unavailable: timeout".into()],
+            calendar_events: vec![],
         };
         let result = synthesize_digest_fallback(&ctx);
         assert!(result.content.contains("-- Errors --"));
@@ -364,6 +367,7 @@ OO-42 Fix login [In Progress]
             }],
             memory_entries: vec![],
             errors: vec![],
+            calendar_events: vec![],
         };
         let result = synthesize_digest_fallback(&ctx);
         assert!(result.content.contains("builder"));
@@ -381,6 +385,7 @@ OO-42 Fix login [In Progress]
                 excerpt: "Use Stripe for payments".into(),
             }],
             errors: vec![],
+            calendar_events: vec![],
         };
         let result = synthesize_digest_fallback(&ctx);
         assert!(result.content.contains("decisions: Use Stripe"));

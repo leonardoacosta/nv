@@ -825,6 +825,8 @@ impl AgentLoop {
                         Some(&self.message_store),
                         &self.project_registry,
                         &self.channels,
+                        None,
+                        "primary",
                     ),
                 )
                 .await

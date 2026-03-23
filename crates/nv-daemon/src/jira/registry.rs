@@ -170,6 +170,7 @@ mod tests {
             elevenlabs_api_key: None,
             jira_api_tokens: HashMap::new(),
             jira_usernames: HashMap::new(),
+            google_calendar_credentials: None,
         }
     }
 
@@ -199,6 +200,7 @@ mod tests {
             elevenlabs_api_key: None,
             jira_api_tokens,
             jira_usernames,
+            google_calendar_credentials: None,
         }
     }
 
@@ -236,6 +238,7 @@ mod tests {
             elevenlabs_api_key: None,
             jira_api_tokens: HashMap::new(),
             jira_usernames: HashMap::new(),
+            google_calendar_credentials: None,
         };
         let registry = JiraRegistry::new(&cfg, &secrets).unwrap();
         assert!(registry.is_none());

@@ -143,14 +143,16 @@ pub fn format_emails(emails: &[ResendEmail]) -> String {
         return "No emails found.".to_string();
     }
 
-    let mut lines = vec![format!("{} email(s):", emails.len())];
+    let mut lines = Vec::with_capacity(emails.len());
     for email in emails {
         let to = email.to.join(", ");
         let subject = email.subject.as_deref().unwrap_or("(no subject)");
         let status = email.status.as_deref().unwrap_or("unknown");
         let icon = status_icon(status);
         let ts = short_timestamp(&email.created_at);
-        lines.push(format!("{icon} {to} — {subject} [{status}] ({ts})"));
+        lines.push(format!(
+            "📧 {icon} **{subject}** [{status}] — {to}\n   {ts}"
+        ));
     }
     lines.join("\n")
 }
@@ -161,12 +163,14 @@ pub fn format_bounces(emails: &[ResendEmail]) -> String {
         return "No bounces found.".to_string();
     }
 
-    let mut lines = vec![format!("{} bounce(s):", emails.len())];
+    let mut lines = Vec::with_capacity(emails.len());
     for email in emails {
         let to = email.to.join(", ");
         let subject = email.subject.as_deref().unwrap_or("(no subject)");
         let ts = short_timestamp(&email.created_at);
-        lines.push(format!("\u{274c} {to} — {subject} ({ts})"));
+        lines.push(format!(
+            "📧 ❌ **{subject}** [bounced] — {to}\n   {ts}"
+        ));
     }
     lines.join("\n")
 }
@@ -324,9 +328,9 @@ mod tests {
             },
         ];
         let output = format_emails(&emails);
-        assert!(output.contains("2 email(s):"));
+        assert!(output.contains("📧"));
         assert!(output.contains("user@example.com"));
-        assert!(output.contains("Hello"));
+        assert!(output.contains("**Hello**"));
         assert!(output.contains("[delivered]"));
         assert!(output.contains("\u{2705}")); // delivered icon
         assert!(output.contains("\u{274c}")); // bounced icon
@@ -348,9 +352,10 @@ mod tests {
             created_at: "2026-03-22T12:00:00Z".into(),
         }];
         let output = format_bounces(&emails);
-        assert!(output.contains("1 bounce(s):"));
+        assert!(output.contains("📧"));
         assert!(output.contains("bounce@example.com"));
-        assert!(output.contains("Oops"));
+        assert!(output.contains("**Oops**"));
+        assert!(output.contains("[bounced]"));
         assert!(output.contains("\u{274c}"));
     }
 

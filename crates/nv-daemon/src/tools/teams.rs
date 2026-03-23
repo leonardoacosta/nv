@@ -85,14 +85,19 @@ pub async fn teams_channels(client: &TeamsClient, team_id: &str) -> Result<Strin
         return Ok(format!("No channels found in team `{team_id}`."));
     }
 
-    let mut lines = vec![format!("Channels in team `{team_id}`:")];
+    let mut lines = vec![format!(
+        "💬 **{}** — {} channel{}",
+        team_id,
+        channels.len(),
+        if channels.len() == 1 { "" } else { "s" }
+    )];
     for ch in &channels {
         let desc = ch
             .description
             .as_deref()
             .map(|d| format!(" — {d}"))
             .unwrap_or_default();
-        lines.push(format!("• {} ({}){}", ch.display_name, ch.id, desc));
+        lines.push(format!("   • {} ({}){}", ch.display_name, ch.id, desc));
     }
 
     Ok(lines.join("\n"))
@@ -118,7 +123,9 @@ pub async fn teams_messages(
     }
 
     let mut lines = vec![format!(
-        "Recent messages in channel `{channel_id}` (team `{team_id}`):"
+        "💬 **{channel_id}** — {} message{}",
+        messages.len(),
+        if messages.len() == 1 { "" } else { "s" }
     )];
 
     for msg in &messages {
@@ -145,7 +152,7 @@ pub async fn teams_messages(
         };
 
         let preview = truncate_to_chars(&raw_content, 200);
-        lines.push(format!("[{timestamp}] {sender}: {preview}"));
+        lines.push(format!("   [{timestamp}] {sender}: {preview}"));
     }
 
     Ok(lines.join("\n"))

@@ -207,9 +207,7 @@ pub fn format_balances(rows: &[SafeRow]) -> String {
         return "(no accounts found)".to_string();
     }
 
-    let mut lines = vec![format!("Account Balances ({} accounts):", rows.len())];
-    lines.push(String::new());
-
+    let mut lines = Vec::with_capacity(rows.len());
     for row in rows {
         let name = row.account_name.as_deref().unwrap_or("Unknown");
         let acct_type = row.account_type.as_deref().unwrap_or("?");
@@ -218,7 +216,7 @@ pub fn format_balances(rows: &[SafeRow]) -> String {
         let updated = row.last_updated.as_deref().unwrap_or("unknown");
 
         lines.push(format!(
-            "  {name} ({acct_type}): current={current}, available={available} (synced: {updated})"
+            "💰 **{name}** — {acct_type}\n   current: {current} · available: {available} · synced: {updated}"
         ));
     }
 
@@ -231,9 +229,7 @@ pub fn format_bills(rows: &[SafeRow]) -> String {
         return "(no bills/credit accounts found)".to_string();
     }
 
-    let mut lines = vec![format!("Bills & Credit Accounts ({}):", rows.len())];
-    lines.push(String::new());
-
+    let mut lines = Vec::with_capacity(rows.len());
     for row in rows {
         let name = row.account_name.as_deref().unwrap_or("Unknown");
         let acct_type = row.account_type.as_deref().unwrap_or("?");
@@ -241,7 +237,7 @@ pub fn format_bills(rows: &[SafeRow]) -> String {
         let updated = row.last_updated.as_deref().unwrap_or("unknown");
 
         lines.push(format!(
-            "  {name} ({acct_type}): owed={balance} (synced: {updated})"
+            "💰 **{name}** — {acct_type}\n   owed: {balance} · synced: {updated}"
         ));
     }
 
@@ -385,10 +381,11 @@ mod tests {
             last_updated: Some("2026-03-22T10:00:00Z".into()),
         }];
         let output = format_balances(&rows);
-        assert!(output.contains("Account Balances (1 accounts)"));
-        assert!(output.contains("Checking (depository)"));
-        assert!(output.contains("current=1234.56"));
-        assert!(output.contains("available=1200.00"));
+        assert!(output.contains("💰"));
+        assert!(output.contains("**Checking**"));
+        assert!(output.contains("depository"));
+        assert!(output.contains("1234.56"));
+        assert!(output.contains("1200.00"));
     }
 
     #[test]
@@ -406,9 +403,10 @@ mod tests {
             last_updated: Some("2026-03-22T10:00:00Z".into()),
         }];
         let output = format_bills(&rows);
-        assert!(output.contains("Bills & Credit Accounts (1)"));
-        assert!(output.contains("Visa Card (credit)"));
-        assert!(output.contains("owed=500.00"));
+        assert!(output.contains("💰"));
+        assert!(output.contains("**Visa Card**"));
+        assert!(output.contains("credit"));
+        assert!(output.contains("500.00"));
     }
 
     #[test]

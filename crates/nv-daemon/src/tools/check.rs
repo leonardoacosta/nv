@@ -276,6 +276,77 @@ fn format_entry_terminal(entry: &CheckEntry) -> String {
     }
 }
 
+// ── Telegram formatter ─────────────────────────────────────────────────
+
+/// Format a `CheckReport` for Telegram delivery — mobile-friendly compact output.
+///
+/// Uses status emoji (✅/⚠️/❌/○) and shows service name + brief detail per line.
+///
+/// Example output:
+/// ```text
+/// ✅/❌ Health — 8/10 healthy
+///    ✅ stripe · balance endpoint reachable · 67ms
+///    ❌ neon · connection refused
+///    ○ vercel · VERCEL_API_TOKEN not set
+/// ```
+pub fn format_telegram(report: &CheckReport) -> String {
+    let s = &report.summary;
+    let overall = if s.unhealthy > 0 || s.missing > 0 {
+        if s.healthy == s.total { "✅" } else { "❌" }
+    } else if s.degraded > 0 {
+        "⚠️"
+    } else {
+        "✅"
+    };
+
+    let mut out = format!(
+        "{overall} **Health** — {}/{} healthy",
+        s.healthy, s.total
+    );
+    if s.degraded > 0 {
+        out.push_str(&format!(", {} degraded", s.degraded));
+    }
+    if s.unhealthy > 0 {
+        out.push_str(&format!(", {} unhealthy", s.unhealthy));
+    }
+    if s.missing > 0 {
+        out.push_str(&format!(", {} missing", s.missing));
+    }
+    out.push('\n');
+
+    for entry in report.read_results.iter().chain(report.write_results.iter()) {
+        out.push_str(&format_entry_telegram(entry));
+    }
+
+    // Remove trailing newline
+    if out.ends_with('\n') {
+        out.pop();
+    }
+
+    out
+}
+
+fn format_entry_telegram(entry: &CheckEntry) -> String {
+    let probe_tag = match entry.probe {
+        ProbeKind::Write => " (w)",
+        ProbeKind::Read => "",
+    };
+    match &entry.result {
+        CheckResult::Healthy { latency_ms, detail } => {
+            format!("   ✅ {}{} · {detail} · {latency_ms}ms\n", entry.name, probe_tag)
+        }
+        CheckResult::Degraded { message } => {
+            format!("   ⚠️ {}{} · {message}\n", entry.name, probe_tag)
+        }
+        CheckResult::Unhealthy { error } => {
+            format!("   ❌ {}{} · {error}\n", entry.name, probe_tag)
+        }
+        CheckResult::Missing { env_var } => {
+            format!("   ○ {}{} · {env_var} not set\n", entry.name, probe_tag)
+        }
+    }
+}
+
 // ── JSON formatter ────────────────────────────────────────────────────
 
 /// Serialize the full `CheckReport` to a JSON string.
@@ -738,6 +809,101 @@ mod tests {
         let json = format_json(&report);
         let entry = &json["read_results"][0];
         assert_eq!(entry["result"]["status"].as_str().unwrap(), "healthy");
+    }
+
+    // ── format_telegram tests ─────────────────────────────────────────
+
+    #[test]
+    fn format_telegram_healthy_service() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "stripe".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Healthy {
+                    latency_ms: 42,
+                    detail: "balance endpoint reachable".to_string(),
+                },
+            }],
+            vec![],
+        );
+        let out = format_telegram(&report);
+        assert!(out.contains("✅"));
+        assert!(out.contains("stripe"));
+        assert!(out.contains("42ms"));
+        assert!(out.contains("1/1 healthy"));
+    }
+
+    #[test]
+    fn format_telegram_missing_service() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "vercel".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Missing {
+                    env_var: "VERCEL_API_TOKEN".to_string(),
+                },
+            }],
+            vec![],
+        );
+        let out = format_telegram(&report);
+        assert!(out.contains("○"));
+        assert!(out.contains("vercel"));
+        assert!(out.contains("VERCEL_API_TOKEN not set"));
+        assert!(out.contains("0/1 healthy"));
+    }
+
+    #[test]
+    fn format_telegram_mixed_services() {
+        let report = CheckReport::build(
+            vec![
+                CheckEntry {
+                    name: "stripe".to_string(),
+                    probe: ProbeKind::Read,
+                    result: CheckResult::Healthy { latency_ms: 10, detail: "ok".to_string() },
+                },
+                CheckEntry {
+                    name: "neon".to_string(),
+                    probe: ProbeKind::Read,
+                    result: CheckResult::Unhealthy { error: "connection refused".to_string() },
+                },
+            ],
+            vec![],
+        );
+        let out = format_telegram(&report);
+        assert!(out.contains("❌"));
+        assert!(out.contains("1/2 healthy"));
+        assert!(out.contains("stripe"));
+        assert!(out.contains("neon"));
+    }
+
+    #[test]
+    fn format_telegram_degraded_shows_warning() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "posthog".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Degraded { message: "quota near limit".to_string() },
+            }],
+            vec![],
+        );
+        let out = format_telegram(&report);
+        assert!(out.contains("⚠️"));
+        assert!(out.contains("posthog"));
+        assert!(out.contains("quota near limit"));
+    }
+
+    #[test]
+    fn format_telegram_write_probe_tagged() {
+        let report = CheckReport::build(
+            vec![],
+            vec![CheckEntry {
+                name: "stripe".to_string(),
+                probe: ProbeKind::Write,
+                result: CheckResult::Healthy { latency_ms: 8, detail: "write ok".to_string() },
+            }],
+        );
+        let out = format_telegram(&report);
+        assert!(out.contains("(w)"));
     }
 
     // ── [5.5] Integration test: check_all pipeline → valid JSON ──────

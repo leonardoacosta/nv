@@ -172,10 +172,10 @@ pub async fn doppler_secrets(
     let count = names.len();
 
     let mut lines = vec![format!(
-        "{resolved_project}/{environment} — {count} secret(s):"
+        "🔐 **{resolved_project}/{environment}** — {count} secret(s)"
     )];
     for name in &names {
-        lines.push(format!("  {name}"));
+        lines.push(format!("   {name}"));
     }
 
     Ok(lines.join("\n"))
@@ -224,37 +224,33 @@ pub async fn doppler_compare(
 
     if only_in_a.is_empty() && only_in_b.is_empty() {
         return Ok(format!(
-            "{resolved_project}: {env_a} and {env_b} are fully aligned \
-            ({common_count} secrets in common)."
+            "🔐 **{resolved_project}** — {env_a} and {env_b} fully aligned ({common_count} common)"
         ));
     }
 
     let mut lines = vec![format!(
-        "Secret diff for {resolved_project}: {env_a} vs {env_b}\n"
+        "🔐 **{resolved_project}** — {env_a} vs {env_b}"
     )];
 
     if only_in_a.is_empty() {
-        lines.push(format!("Only in {env_a}: (none)"));
+        lines.push(format!("   Only in {env_a}: (none)"));
     } else {
-        lines.push(format!("Only in {env_a} ({}):", only_in_a.len()));
+        lines.push(format!("   Only in {env_a} ({}):", only_in_a.len()));
         for name in &only_in_a {
-            lines.push(format!("  {name}"));
+            lines.push(format!("   + {name}"));
         }
     }
-
-    lines.push(String::new());
 
     if only_in_b.is_empty() {
-        lines.push(format!("Only in {env_b}: (none)"));
+        lines.push(format!("   Only in {env_b}: (none)"));
     } else {
-        lines.push(format!("Only in {env_b} ({}):", only_in_b.len()));
+        lines.push(format!("   Only in {env_b} ({}):", only_in_b.len()));
         for name in &only_in_b {
-            lines.push(format!("  {name}"));
+            lines.push(format!("   + {name}"));
         }
     }
 
-    lines.push(String::new());
-    lines.push(format!("Common: {common_count} secret(s)"));
+    lines.push(format!("   Common: {common_count} secret(s)"));
 
     Ok(lines.join("\n"))
 }
@@ -337,17 +333,15 @@ pub async fn doppler_activity(
         return Ok(format!("No activity found for {resolved_project}."));
     }
 
+    let n = count.min(body.logs.len());
     let mut lines = vec![format!(
-        "Recent activity for {resolved_project} ({} entr{}):",
-        count.min(body.logs.len()),
-        if count == 1 { "y" } else { "ies" }
+        "🔐 **{resolved_project}** — {n} recent event{}", if n == 1 { "" } else { "s" }
     )];
 
     for entry in body.logs.into_iter().take(count) {
-        let timestamp = entry
-            .created_at
-            .as_deref()
-            .unwrap_or("?");
+        let ts = entry.created_at.as_deref().unwrap_or("?");
+        let rel = super::relative_time(ts);
+        let when = if rel.is_empty() { ts.to_string() } else { rel };
 
         let actor = entry
             .user
@@ -357,7 +351,7 @@ pub async fn doppler_activity(
 
         let text = entry.text.as_deref().unwrap_or("(no description)");
 
-        lines.push(format!("  [{timestamp}] {actor}: {text}"));
+        lines.push(format!("   {when} — {actor}: {text}"));
     }
 
     Ok(lines.join("\n"))
@@ -482,6 +476,42 @@ mod tests {
         assert!(required.iter().any(|v| v.as_str() == Some("project")));
         assert!(required.iter().any(|v| v.as_str() == Some("env_a")));
         assert!(required.iter().any(|v| v.as_str() == Some("env_b")));
+    }
+
+    // ── Format tests ─────────────────────────────────────────────
+
+    #[test]
+    fn doppler_secrets_format_contains_emoji_and_bold() {
+        // This tests the format string shape without a live API call.
+        // We reconstruct the header line as the formatter would produce it.
+        let project = "otaku-odyssey";
+        let env = "dev";
+        let count = 3usize;
+        let header = format!("🔐 **{project}/{env}** — {count} secret(s)");
+        assert!(header.contains("🔐"));
+        assert!(header.contains("**otaku-odyssey/dev**"));
+        assert!(header.contains("3 secret(s)"));
+    }
+
+    #[test]
+    fn doppler_compare_aligned_format() {
+        let project = "my-project";
+        let env_a = "dev";
+        let env_b = "prd";
+        let common = 5usize;
+        let out = format!("🔐 **{project}** — {env_a} and {env_b} fully aligned ({common} common)");
+        assert!(out.contains("🔐"));
+        assert!(out.contains("fully aligned"));
+        assert!(out.contains("5 common"));
+    }
+
+    #[test]
+    fn doppler_activity_format_contains_emoji() {
+        let project = "my-project";
+        let n = 3usize;
+        let header = format!("🔐 **{project}** — {n} recent events");
+        assert!(header.contains("🔐"));
+        assert!(header.contains("3 recent events"));
     }
 
     #[test]

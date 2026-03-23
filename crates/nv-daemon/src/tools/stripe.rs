@@ -288,7 +288,7 @@ impl Customer {
             .to_uppercase();
         let created = format_unix_date(self.created);
         format!(
-            "\u{1f464} {name} <{email}>\n  ID: {} | Currency: {currency} | Since: {created}",
+            "💰 **{name}** — {email}\n   {} · {currency} · since {created}",
             self.id
         )
     }
@@ -313,12 +313,12 @@ impl Invoice {
         let desc_part = if desc.is_empty() {
             String::new()
         } else {
-            format!("\n  {desc}")
+            format!(" — {desc}")
         };
 
         format!(
-            "{icon} {amount} [{status}] — {email}\n  Due: {due} | {}{}",
-            self.id, desc_part
+            "💰 {icon} **{amount}** [{status}]{desc_part}\n   {email} · due {due} · {}",
+            self.id
         )
     }
 }
@@ -575,11 +575,11 @@ mod tests {
             currency: Some("usd".into()),
         };
         let formatted = c.format_for_telegram();
+        assert!(formatted.contains("💰"));
         assert!(formatted.contains("John Doe"));
         assert!(formatted.contains("john@example.com"));
         assert!(formatted.contains("cus_abc123"));
         assert!(formatted.contains("USD"));
-        assert!(formatted.contains("\u{1f464}")); // bust icon
     }
 
     #[test]
@@ -608,6 +608,7 @@ mod tests {
             description: Some("March subscription".into()),
         };
         let formatted = inv.format_for_telegram();
+        assert!(formatted.contains("💰"));
         assert!(formatted.contains("$45.00"));
         assert!(formatted.contains("[open]"));
         assert!(formatted.contains("john@example.com"));
@@ -628,6 +629,7 @@ mod tests {
             description: None,
         };
         let formatted = inv.format_for_telegram();
+        assert!(formatted.contains("💰"));
         assert!(formatted.contains("\u{2705}")); // green check for paid
         assert!(formatted.contains("$10.00"));
         assert!(formatted.contains("no due date"));

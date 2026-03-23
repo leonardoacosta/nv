@@ -182,29 +182,27 @@ fn format_trends(project: &str, event: &str, data: &TrendsResponse) -> Result<St
         .as_deref()
         .unwrap_or(event);
 
-    let mut out = format!("{label} ({project}) — 7d\n");
+    // Trend direction
+    let trend = if values.len() >= 2 {
+        let last = values[values.len() - 1];
+        let prev = values[values.len() - 2];
+        if last > prev { "↑" } else if last < prev { "↓" } else { "→" }
+    } else {
+        "→"
+    };
+
+    let mut out = format!("📊 **{label}** ({project}) — 7d · {total} total {trend}\n");
 
     for (day, val) in days.iter().zip(values.iter()) {
         // Show just the date part (YYYY-MM-DD -> MM-DD)
         let short_day = if day.len() >= 10 { &day[5..10] } else { day };
         let count = *val as i64;
-        out.push_str(&format!("  {short_day}: {count}\n"));
+        out.push_str(&format!("   {short_day}: {count}\n"));
     }
 
-    // Trend direction
-    if values.len() >= 2 {
-        let last = values[values.len() - 1];
-        let prev = values[values.len() - 2];
-        let trend = if last > prev {
-            "↑"
-        } else if last < prev {
-            "↓"
-        } else {
-            "→"
-        };
-        out.push_str(&format!("Total: {total} {trend}"));
-    } else {
-        out.push_str(&format!("Total: {total}"));
+    // Remove trailing newline
+    if out.ends_with('\n') {
+        out.pop();
     }
 
     Ok(out)
@@ -257,7 +255,7 @@ fn format_flags(project: &str, data: &FeatureFlagsResponse) -> Result<String> {
         return Ok(format!("No active feature flags in project {project}."));
     }
 
-    let mut out = format!("Feature flags ({project}) — {} active\n", active.len());
+    let mut out = format!("📊 **Feature flags** ({project}) — {} active\n", active.len());
 
     for flag in &active {
         let name = flag.name.as_deref().unwrap_or("");
@@ -267,9 +265,9 @@ fn format_flags(project: &str, data: &FeatureFlagsResponse) -> Result<String> {
             .unwrap_or_else(|| "100%".into());
 
         if name.is_empty() || name == flag.key {
-            out.push_str(&format!("  • {} [{}]\n", flag.key, rollout));
+            out.push_str(&format!("   • {} [{}]\n", flag.key, rollout));
         } else {
-            out.push_str(&format!("  • {} — {} [{}]\n", flag.key, name, rollout));
+            out.push_str(&format!("   • {} — {} [{}]\n", flag.key, name, rollout));
         }
     }
 
@@ -311,11 +309,13 @@ mod tests {
             }]),
         };
         let out = format_trends("oo", "$pageview", &data).unwrap();
-        assert!(out.contains("$pageview (oo)"));
+        assert!(out.contains("📊"));
+        assert!(out.contains("$pageview"));
+        assert!(out.contains("(oo)"));
         assert!(out.contains("03-15: 10"));
         assert!(out.contains("03-16: 15"));
         assert!(out.contains("03-17: 12"));
-        assert!(out.contains("Total: 37"));
+        assert!(out.contains("37 total"));
         // last (12) < prev (15) → downtrend
         assert!(out.contains("↓"));
     }
@@ -377,6 +377,7 @@ mod tests {
             ]),
         };
         let out = format_flags("tc", &data).unwrap();
+        assert!(out.contains("📊"));
         assert!(out.contains("2 active"));
         assert!(out.contains("new-checkout"));
         assert!(out.contains("New Checkout Flow"));

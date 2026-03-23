@@ -322,9 +322,11 @@ impl SentryIssueSummary {
             .culprit
             .as_deref()
             .unwrap_or("unknown");
+        let last = super::relative_time(&self.last_seen);
+        let when = if last.is_empty() { short_timestamp(&self.last_seen).to_string() } else { last };
         format!(
-            "{icon} #{} {} ({} events)\n  {culprit}",
-            self.id, self.title, self.count
+            "🐛 {icon} **#{}** {} — {} events\n   {} · {when}",
+            self.id, self.title, self.count, culprit
         )
     }
 }
@@ -336,14 +338,16 @@ impl SentryIssueDetail {
             .culprit
             .as_deref()
             .unwrap_or("unknown");
+        let first = super::relative_time(&self.first_seen);
+        let last = super::relative_time(&self.last_seen);
+        let first_str = if first.is_empty() { short_timestamp(&self.first_seen).to_string() } else { first };
+        let last_str = if last.is_empty() { short_timestamp(&self.last_seen).to_string() } else { last };
         let mut out = format!(
-            "{icon} #{} {} [{}]\n  {culprit}\n  Events: {} | First: {} | Last: {}",
+            "🐛 {icon} **#{}** {} [{}]\n   {culprit}\n   {} events · first: {first_str} · last: {last_str}",
             self.id,
             self.title,
             self.status,
             self.count,
-            short_timestamp(&self.first_seen),
-            short_timestamp(&self.last_seen),
         );
         if let Some(trace) = stack_trace {
             out.push_str("\n\nStack trace:\n");
@@ -643,6 +647,7 @@ mod tests {
             level: "error".into(),
         };
         let formatted = issue.format_for_telegram();
+        assert!(formatted.contains("🐛"));
         assert!(formatted.contains("#12345"));
         assert!(formatted.contains("TypeError in auth.ts"));
         assert!(formatted.contains("42 events"));
@@ -664,6 +669,7 @@ mod tests {
         };
         let trace = "TypeError: Cannot read 'x'\n  src/auth.ts:42 in handleLogin";
         let formatted = detail.format_for_telegram(Some(trace));
+        assert!(formatted.contains("🐛"));
         assert!(formatted.contains("#12345"));
         assert!(formatted.contains("TypeError"));
         assert!(formatted.contains("[unresolved]"));
@@ -684,6 +690,7 @@ mod tests {
             status: "unresolved".into(),
         };
         let formatted = detail.format_for_telegram(None);
+        assert!(formatted.contains("🐛"));
         assert!(formatted.contains("\u{26a0}")); // warning icon
         assert!(formatted.contains("unknown")); // no culprit
         assert!(!formatted.contains("Stack trace:"));

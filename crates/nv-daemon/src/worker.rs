@@ -634,6 +634,17 @@ impl Worker {
                         "Something went wrong — please try again.".to_string()
                     } else if error_str.contains("Timeout") || error_str.contains("timed out") {
                         "That took too long — try a simpler request.".to_string()
+                    } else if error_str.contains("hit your limit") || error_str.contains("rate limit") {
+                        // Extract reset time if present (e.g., "resets 4pm (America/Chicago)")
+                        let reset_info = error_str
+                            .split("resets ")
+                            .nth(1)
+                            .map(|s| s.trim_end_matches(|c: char| c == ')' || c == '.'))
+                            .map(|s| format!(" Resets at {s}."))
+                            .unwrap_or_default();
+                        format!("\u{23F8}\u{FE0F} I've hit my usage limit for now.{reset_info} I'll be back shortly — try again later.")
+                    } else if error_str.contains("Not logged in") || error_str.contains("auth") {
+                        "\u{1F511} Authentication issue — check Claude CLI credentials.".to_string()
                     } else {
                         format!("\u{26A0} {e}")
                     };

@@ -212,33 +212,40 @@ fn parse_info(info_str: &str) -> UpstashInfo {
 
 /// Format Redis INFO for Telegram output.
 pub fn format_info(info: &UpstashInfo) -> String {
-    let mut lines = vec!["Redis status:".to_string()];
+    // Build summary line components
+    let keys_str = info.total_keys.as_deref().unwrap_or("?");
+    let mem_str = info.used_memory_human.as_deref().unwrap_or("?");
 
-    if let Some(mem) = &info.used_memory_human {
-        lines.push(format!("  Memory: {mem}"));
+    let uptime_str = info.uptime_in_seconds.as_deref().map(|u| {
+        if let Ok(secs) = u.parse::<u64>() {
+            let days = secs / 86400;
+            let hours = (secs % 86400) / 3600;
+            format!("{days}d {hours}h")
+        } else {
+            format!("{u}s")
+        }
+    });
+
+    if info.used_memory_human.is_none()
+        && info.connected_clients.is_none()
+        && info.keyspace_hits.is_none()
+        && info.total_keys.is_none()
+        && info.uptime_in_seconds.is_none()
+    {
+        return "🔑 **Redis** — No info available.".to_string();
     }
+
+    let mut lines = vec![format!("🔑 **Redis** — {keys_str} keys · {mem_str}")];
+
     if let Some(clients) = &info.connected_clients {
-        lines.push(format!("  Clients: {clients}"));
+        lines.push(format!("   clients: {clients}"));
     }
     if let Some(hits) = &info.keyspace_hits {
         let misses = info.keyspace_misses.as_deref().unwrap_or("0");
-        lines.push(format!("  Keyspace: {hits} hits / {misses} misses"));
+        lines.push(format!("   keyspace: {hits} hits / {misses} misses"));
     }
-    if let Some(keys) = &info.total_keys {
-        lines.push(format!("  Keys: {keys}"));
-    }
-    if let Some(uptime) = &info.uptime_in_seconds {
-        if let Ok(secs) = uptime.parse::<u64>() {
-            let days = secs / 86400;
-            let hours = (secs % 86400) / 3600;
-            lines.push(format!("  Uptime: {days}d {hours}h"));
-        } else {
-            lines.push(format!("  Uptime: {uptime}s"));
-        }
-    }
-
-    if lines.len() == 1 {
-        lines.push("  No info available.".to_string());
+    if let Some(uptime) = uptime_str {
+        lines.push(format!("   uptime: {uptime}"));
     }
 
     lines.join("\n")
@@ -250,12 +257,15 @@ pub fn format_keys(pattern: &str, keys: &[String]) -> String {
         return format!("No keys matching '{pattern}'.");
     }
 
-    let mut lines = vec![format!("{} key(s) matching '{pattern}':", keys.len())];
+    let mut lines = vec![format!(
+        "🔑 **Redis keys** — {} matching `{pattern}`",
+        keys.len()
+    )];
     for key in keys {
-        lines.push(format!("  {key}"));
+        lines.push(format!("   {key}"));
     }
     if keys.len() >= MAX_KEYS {
-        lines.push(format!("  (capped at {MAX_KEYS} results)"));
+        lines.push(format!("   (capped at {MAX_KEYS} results)"));
     }
     lines.join("\n")
 }
@@ -372,12 +382,13 @@ db0:keys=42,expires=10,avg_ttl=0\r\n";
             total_keys: Some("42".into()),
         };
         let output = format_info(&info);
-        assert!(output.contains("Redis status:"));
-        assert!(output.contains("Memory: 1.50M"));
-        assert!(output.contains("Clients: 5"));
+        assert!(output.contains("🔑"));
+        assert!(output.contains("Redis"));
+        assert!(output.contains("1.50M"));
+        assert!(output.contains("clients: 5"));
         assert!(output.contains("1000 hits / 200 misses"));
-        assert!(output.contains("Keys: 42"));
-        assert!(output.contains("Uptime: 1d 0h"));
+        assert!(output.contains("42 keys"));
+        assert!(output.contains("1d 0h"));
     }
 
     #[test]
@@ -394,7 +405,8 @@ db0:keys=42,expires=10,avg_ttl=0\r\n";
             "session:def".to_string(),
         ];
         let output = format_keys("session:*", &keys);
-        assert!(output.contains("2 key(s) matching 'session:*':"));
+        assert!(output.contains("🔑"));
+        assert!(output.contains("2 matching"));
         assert!(output.contains("session:abc"));
         assert!(output.contains("session:def"));
     }

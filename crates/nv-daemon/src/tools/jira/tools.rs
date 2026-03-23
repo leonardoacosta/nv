@@ -138,8 +138,7 @@ pub fn format_issues_for_claude(issues: &[JiraIssue]) -> String {
         return "No issues found.".to_string();
     }
 
-    let mut lines = Vec::with_capacity(issues.len() + 1);
-    lines.push(format!("Found {} issue(s):", issues.len()));
+    let mut lines = Vec::with_capacity(issues.len());
 
     for issue in issues {
         let assignee = issue
@@ -156,7 +155,7 @@ pub fn format_issues_for_claude(issues: &[JiraIssue]) -> String {
             .unwrap_or("None");
 
         lines.push(format!(
-            "- {} | {} | Status: {} | Assignee: {} | Priority: {}",
+            "📋 **{}** — {}\n   {} · {} · {}",
             issue.key,
             issue.fields.summary,
             issue.fields.status.name,
@@ -377,7 +376,7 @@ mod tests {
         }];
 
         let result = format_issues_for_claude(&issues);
-        assert!(result.contains("Found 1 issue(s):"));
+        assert!(result.contains("📋"));
         assert!(result.contains("OO-42"));
         assert!(result.contains("Fix login flow"));
         assert!(result.contains("In Progress"));
@@ -441,7 +440,7 @@ mod tests {
         ];
 
         let result = format_issues_for_claude(&issues);
-        assert!(result.contains("Found 2 issue(s):"));
+        assert!(result.contains("📋"));
         assert!(result.contains("OO-1"));
         assert!(result.contains("OO-2"));
         assert!(result.contains("Unassigned"));

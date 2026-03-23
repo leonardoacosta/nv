@@ -414,27 +414,30 @@ fn format_attendees(attendees: &[Attendee]) -> Option<String> {
     }
 }
 
-/// Format a single event as a display string.
+/// Format a single event as a mobile-friendly display string.
 fn format_event(evt: &Event) -> String {
     let title = evt.summary.as_deref().unwrap_or("(no title)");
     let start = evt.start.as_ref().map(format_event_time).unwrap_or_default();
     let end = evt.end.as_ref().map(format_event_time).unwrap_or_default();
 
-    let mut lines = vec![format!("  {start}-{end}  {title}")];
+    let mut detail_parts: Vec<String> = vec![format!("{start}–{end}")];
 
     if let Some(link) = extract_meeting_link(evt) {
-        lines.push(format!("    Meeting: {link}"));
+        detail_parts.push(link);
     } else if let Some(ref loc) = evt.location {
         if !loc.trim().is_empty() {
-            lines.push(format!("    Location: {loc}"));
+            detail_parts.push(loc.clone());
         }
     }
 
     if let Some(names) = format_attendees(&evt.attendees) {
-        lines.push(format!("    Attendees: {names}"));
+        detail_parts.push(names);
     }
 
-    lines.join("\n")
+    format!(
+        "📅 **{title}**\n   {}",
+        detail_parts.join(" · ")
+    )
 }
 
 /// Group events by date (YYYY-MM-DD).

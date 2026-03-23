@@ -356,14 +356,14 @@ pub async fn search_web(query: &str, count: usize, search_url: Option<&str>) -> 
             Ok(format!("No results found for: {query}"))
         }
         Ok(results) => {
-            let mut lines = vec![format!("Search results for \"{query}\":\n")];
-            for (i, r) in results.into_iter().enumerate().take(count) {
-                lines.push(format!("{}. {}", i + 1, r.title));
-                lines.push(format!("   URL: {}", r.url));
-                if !r.snippet.is_empty() {
-                    lines.push(format!("   {}", r.snippet));
+            let total = results.len().min(count);
+            let mut lines = vec![format!("🔍 **{query}** — {total} result{}", if total == 1 { "" } else { "s" })];
+            for r in results.into_iter().take(count) {
+                if r.snippet.is_empty() {
+                    lines.push(format!("   🔗 **{}**\n   {}", r.title, r.url));
+                } else {
+                    lines.push(format!("   🔗 **{}**\n   {}\n   {}", r.title, r.url, r.snippet));
                 }
-                lines.push(String::new());
             }
             Ok(lines.join("\n"))
         }

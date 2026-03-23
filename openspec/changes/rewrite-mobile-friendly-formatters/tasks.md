@@ -24,29 +24,29 @@
 
 ## Batch 3: Secrets + Monitoring (Doppler + Sentry + PostHog + Check)
 
-- [ ] [3.1] [P-1] Rewrite `doppler.rs` — inline formatters for secrets list, compare, activity [owner:api-engineer]
-- [ ] [3.2] [P-1] Rewrite `sentry.rs` — IssueSummary and IssueDetail format_for_telegram methods (leave format_stack_trace unchanged) [owner:api-engineer]
-- [ ] [3.3] [P-1] Rewrite `posthog.rs` — format_trends, format_flags [owner:api-engineer]
-- [ ] [3.4] [P-1] Add `format_telegram()` to `check.rs` — new function (does not replace format_terminal or format_json) [owner:api-engineer]
-- [ ] [3.5] [P-2] Update all tests in doppler.rs, sentry.rs, posthog.rs, check.rs [owner:api-engineer]
+- [x] [3.1] [P-1] Rewrite `doppler.rs` — inline formatters for secrets list, compare, activity [owner:api-engineer]
+- [x] [3.2] [P-1] Rewrite `sentry.rs` — IssueSummary and IssueDetail format_for_telegram methods (leave format_stack_trace unchanged) [owner:api-engineer]
+- [x] [3.3] [P-1] Rewrite `posthog.rs` — format_trends, format_flags [owner:api-engineer]
+- [x] [3.4] [P-1] Add `format_telegram()` to `check.rs` — new function (does not replace format_terminal or format_json) [owner:api-engineer]
+- [x] [3.5] [P-2] Update all tests in doppler.rs, sentry.rs, posthog.rs, check.rs [owner:api-engineer]
 
 ## Batch 4: Comms + Financial (Stripe + Resend + Plaid + Teams + Jira)
 
-- [ ] [4.1] [P-1] Rewrite `stripe.rs` — Customer and Invoice format_for_telegram methods (refine, not full rewrite — already close) [owner:api-engineer]
-- [ ] [4.2] [P-1] Rewrite `resend.rs` — format_emails, format_bounces [owner:api-engineer]
-- [ ] [4.3] [P-1] Rewrite `plaid.rs` — format_balances, format_bills [owner:api-engineer]
-- [ ] [4.4] [P-1] Rewrite `teams.rs` — inline channel list and message formatters [owner:api-engineer]
-- [ ] [4.5] [P-1] Rewrite `jira/tools.rs` — format_issues_for_claude, format_issue_for_claude [owner:api-engineer]
-- [ ] [4.6] [P-2] Update `jira/webhooks.rs` — 3 inline alert format strings to use emoji prefix [owner:api-engineer]
-- [ ] [4.7] [P-2] Update all tests in stripe.rs, resend.rs, plaid.rs, teams.rs, jira/ [owner:api-engineer]
+- [x] [4.1] [P-1] Rewrite `stripe.rs` — Customer and Invoice format_for_telegram methods (refine, not full rewrite — already close) [owner:api-engineer]
+- [x] [4.2] [P-1] Rewrite `resend.rs` — format_emails, format_bounces [owner:api-engineer]
+- [x] [4.3] [P-1] Rewrite `plaid.rs` — format_balances, format_bills [owner:api-engineer]
+- [x] [4.4] [P-1] Rewrite `teams.rs` — inline channel list and message formatters [owner:api-engineer]
+- [x] [4.5] [P-1] Rewrite `jira/tools.rs` — format_issues_for_claude, format_issue_for_claude [owner:api-engineer]
+- [x] [4.6] [P-2] Update `jira/webhooks.rs` — 3 inline alert format strings to use emoji prefix [owner:api-engineer]
+- [x] [4.7] [P-2] Update all tests in stripe.rs, resend.rs, plaid.rs, teams.rs, jira/ [owner:api-engineer]
 
 ## Batch 5: Remaining (HA + Upstash + Calendar + Web)
 
-- [ ] [5.1] [P-1] Rewrite `ha.rs` — format_states, format_entity [owner:api-engineer]
-- [ ] [5.2] [P-1] Rewrite `upstash.rs` — format_info, format_keys [owner:api-engineer]
-- [ ] [5.3] [P-1] Rewrite `calendar.rs` — format_event (leave format_event_time and format_attendees helpers as-is) [owner:api-engineer]
-- [ ] [5.4] [P-1] Rewrite `web.rs` — inline search result formatter [owner:api-engineer]
-- [ ] [5.5] [P-2] Update all tests in ha.rs, upstash.rs, calendar.rs, web.rs [owner:api-engineer]
+- [x] [5.1] [P-1] Rewrite `ha.rs` — format_states, format_entity [owner:api-engineer]
+- [x] [5.2] [P-1] Rewrite `upstash.rs` — format_info, format_keys [owner:api-engineer]
+- [x] [5.3] [P-1] Rewrite `calendar.rs` — format_event (leave format_event_time and format_attendees helpers as-is) [owner:api-engineer]
+- [x] [5.4] [P-1] Rewrite `web.rs` — inline search result formatter [owner:api-engineer]
+- [x] [5.5] [P-2] Update all tests in ha.rs, upstash.rs, calendar.rs, web.rs [owner:api-engineer]
 
 ## Verify
 

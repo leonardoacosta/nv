@@ -192,7 +192,7 @@ pub fn ha_tool_definitions() -> Vec<ToolDefinition> {
 /// Format a list of entities grouped by domain with the top N recently changed.
 pub fn format_states(entities: &[HAEntity]) -> String {
     if entities.is_empty() {
-        return "(no entities found)".to_string();
+        return "No items found.".to_string();
     }
 
     // Group by domain
@@ -207,14 +207,19 @@ pub fn format_states(entities: &[HAEntity]) -> String {
         by_domain.entry(domain).or_default().push(e);
     }
 
-    // Domain counts
-    let mut lines = vec![format!("Total entities: {}", entities.len()), String::new()];
-
     let mut domains: Vec<_> = by_domain.iter().collect();
     domains.sort_by_key(|(name, _)| (*name).clone());
-    for (domain, ents) in &domains {
-        lines.push(format!("  {domain}: {} entities", ents.len()));
-    }
+
+    // Header with domain summary
+    let domain_summary: Vec<String> = domains
+        .iter()
+        .map(|(name, ents)| format!("{name}:{}", ents.len()))
+        .collect();
+    let mut lines = vec![format!(
+        "🏠 **Home Assistant** — {} entities ({})",
+        entities.len(),
+        domain_summary.join(", ")
+    )];
 
     // Top N recently changed
     let mut sorted: Vec<&HAEntity> = entities.iter().collect();
@@ -224,14 +229,18 @@ pub fn format_states(entities: &[HAEntity]) -> String {
         b_time.cmp(a_time)
     });
 
-    lines.push(String::new());
-    lines.push(format!(
-        "Recently changed (top {MAX_RECENT_ENTITIES}):"
-    ));
-
     for e in sorted.iter().take(MAX_RECENT_ENTITIES) {
-        let changed = e.last_changed.as_deref().unwrap_or("unknown");
-        lines.push(format!("  {} = {} (changed: {})", e.entity_id, e.state, changed));
+        let rel = e
+            .last_changed
+            .as_deref()
+            .map(super::relative_time)
+            .unwrap_or_default();
+        let when = if rel.is_empty() {
+            e.last_changed.as_deref().unwrap_or("unknown").to_string()
+        } else {
+            rel
+        };
+        lines.push(format!("   {} — {} ({})", e.entity_id, e.state, when));
     }
 
     lines.join("\n")
@@ -239,23 +248,25 @@ pub fn format_states(entities: &[HAEntity]) -> String {
 
 /// Format a single entity's full state and attributes.
 pub fn format_entity(entity: &HAEntity) -> String {
-    let mut lines = vec![
-        format!("Entity: {}", entity.entity_id),
-        format!("State: {}", entity.state),
-    ];
+    let rel = entity
+        .last_changed
+        .as_deref()
+        .map(super::relative_time)
+        .unwrap_or_default();
+    let when = if rel.is_empty() {
+        entity.last_changed.as_deref().unwrap_or("unknown").to_string()
+    } else {
+        rel
+    };
 
-    if let Some(changed) = &entity.last_changed {
-        lines.push(format!("Last changed: {changed}"));
-    }
-    if let Some(updated) = &entity.last_updated {
-        lines.push(format!("Last updated: {updated}"));
-    }
+    let mut lines = vec![format!(
+        "🏠 **{}** — {}\n   changed: {}",
+        entity.entity_id, entity.state, when
+    )];
 
     // Format attributes
     if let Some(attrs) = entity.attributes.as_object() {
         if !attrs.is_empty() {
-            lines.push(String::new());
-            lines.push("Attributes:".to_string());
             let mut keys: Vec<_> = attrs.keys().collect();
             keys.sort();
             for key in keys {
@@ -264,7 +275,7 @@ pub fn format_entity(entity: &HAEntity) -> String {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
-                lines.push(format!("  {key}: {display}"));
+                lines.push(format!("   {key}: {display}"));
             }
         }
     }
@@ -323,7 +334,7 @@ mod tests {
 
     #[test]
     fn test_format_states_empty() {
-        assert_eq!(format_states(&[]), "(no entities found)");
+        assert_eq!(format_states(&[]), "No items found.");
     }
 
     #[test]
@@ -353,10 +364,10 @@ mod tests {
         ];
 
         let output = format_states(&entities);
-        assert!(output.contains("Total entities: 3"));
-        assert!(output.contains("light: 2 entities"));
-        assert!(output.contains("sensor: 1 entities"));
-        assert!(output.contains("Recently changed"));
+        assert!(output.contains("🏠"));
+        assert!(output.contains("3 entities"));
+        assert!(output.contains("light:2"));
+        assert!(output.contains("sensor:1"));
         // Most recent first
         assert!(output.contains("sensor.temperature"));
     }
@@ -375,11 +386,11 @@ mod tests {
         };
 
         let output = format_entity(&entity);
-        assert!(output.contains("Entity: light.office"));
-        assert!(output.contains("State: on"));
+        assert!(output.contains("🏠"));
+        assert!(output.contains("light.office"));
+        assert!(output.contains("on"));
         assert!(output.contains("brightness: 200"));
         assert!(output.contains("friendly_name: Office Light"));
-        assert!(output.contains("Last changed: 2026-03-22T10:00:00Z"));
     }
 
     #[test]

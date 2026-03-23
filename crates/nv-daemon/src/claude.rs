@@ -258,17 +258,15 @@ fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, ApiError>
     let mut child = Command::new("claude")
         .args([
             "--dangerously-skip-permissions",
-            "-p",
+            "--verbose",
             "--input-format",
             "stream-json",
             "--output-format",
             "stream-json",
             "--model",
             &config.model,
-            "--no-session-persistence",
             "--tools",
             "Read,Glob,Grep,Bash(git:*)",
-            "--strict-mcp-config",
         ])
         .env("HOME", &config.sandbox_home)
         .env(

@@ -1,0 +1,124 @@
+/* Nova v4 Wireframe Styles — Dark, minimal, data-dense */
+:root {
+  --bg: #0a0a0a;
+  --surface: #141414;
+  --surface-hover: #1a1a1a;
+  --border: #262626;
+  --text: #e5e5e5;
+  --text-muted: #737373;
+  --accent: #3b82f6;
+  --success: #22c55e;
+  --warning: #eab308;
+  --danger: #ef4444;
+  --font: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Layout */
+.shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  flex-shrink: 0;
+}
+.main { flex: 1; padding: 24px; overflow-y: auto; }
+
+/* Sidebar */
+.sidebar-brand {
+  padding: 0 16px 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+.sidebar-brand h1 { font-size: 16px; font-weight: 600; }
+.sidebar-brand .status { font-size: 11px; color: var(--success); }
+.nav-item {
+  display: block;
+  padding: 8px 16px;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13px;
+  border-left: 3px solid transparent;
+}
+.nav-item:hover { background: var(--surface-hover); color: var(--text); }
+.nav-item.active { color: var(--accent); border-left-color: var(--accent); background: var(--surface-hover); }
+.nav-section { padding: 16px 16px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+
+/* Cards */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.card-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.card-value { font-size: 28px; font-weight: 700; }
+.card-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+/* Status indicators */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.dot-ok { background: var(--success); }
+.dot-warn { background: var(--warning); }
+.dot-err { background: var(--danger); }
+.dot-off { background: var(--text-muted); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+tr:hover { background: var(--surface-hover); }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.badge-open { background: #1e3a5f; color: var(--accent); }
+.badge-ack { background: #1a3a1a; color: var(--success); }
+.badge-overdue { background: #3f1a1a; color: var(--danger); }
+.badge-p0 { background: #3f1a1a; color: var(--danger); }
+.badge-p1 { background: #3f2a1a; color: var(--warning); }
+.badge-p2 { background: #1e3a5f; color: var(--accent); }
+
+/* Chart placeholder */
+.chart-placeholder {
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-bottom: 24px;
+}
+
+/* Section headers */
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.section-title { font-size: 16px; font-weight: 600; }
+
+/* Buttons */
+.btn { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12px; font-family: var(--font); }
+.btn:hover { background: var(--surface-hover); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+.btn-sm { padding: 3px 8px; font-size: 11px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .shell { flex-direction: column; }
+  .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); padding: 8px 0; }
+  .sidebar-brand { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; }
+  .nav-item { display: inline-block; padding: 6px 12px; border-left: none; }
+  .card-grid { grid-template-columns: 1fr; }
+  .main { padding: 16px; }
+}

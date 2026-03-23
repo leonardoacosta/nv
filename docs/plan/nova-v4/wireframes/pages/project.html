@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova — Project Health</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
+    <div class="nav-section">Overview</div>
+    <a href="../index.html" class="nav-item">Dashboard</a>
+    <a href="obligations.html" class="nav-item">Obligations (3)</a>
+    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <div class="nav-section">Projects</div>
+    <a href="project.html" class="nav-item active">Project Health</a>
+    <a href="sessions.html" class="nav-item">Nexus Sessions</a>
+    <div class="nav-section">System</div>
+    <a href="settings.html" class="nav-item">Settings</a>
+  </nav>
+
+  <main class="main">
+    <div class="section-header">
+      <h2 class="section-title">Project Health</h2>
+      <button class="btn btn-sm">Refresh All</button>
+    </div>
+
+    <table>
+      <thead><tr><th>Project</th><th>Deploy</th><th>Errors</th><th>Open PRs</th><th>Jira</th><th>Last Activity</th><th>Actions</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>OO</strong> Otaku Odyssey</td>
+          <td><span class="dot dot-err"></span>ERROR</td>
+          <td><span class="badge badge-overdue">5 new</span></td>
+          <td>2</td>
+          <td>3 in-progress</td>
+          <td>12m ago</td>
+          <td><button class="btn btn-sm btn-primary">Investigate</button></td>
+        </tr>
+        <tr>
+          <td><strong>TC</strong> Tribal Cities</td>
+          <td><span class="dot dot-warn"></span>BUILDING</td>
+          <td>0</td>
+          <td>1</td>
+          <td>5 open</td>
+          <td>1h ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+        <tr>
+          <td><strong>TL</strong> Tavern Ledger</td>
+          <td><span class="dot dot-ok"></span>READY</td>
+          <td>0</td>
+          <td>0</td>
+          <td>2 open</td>
+          <td>3h ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+        <tr>
+          <td><strong>MV</strong> Modern Visa</td>
+          <td><span class="dot dot-ok"></span>READY</td>
+          <td>0</td>
+          <td>0</td>
+          <td>1 open</td>
+          <td>6h ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+        <tr>
+          <td><strong>SS</strong> Styles Silas</td>
+          <td><span class="dot dot-ok"></span>READY</td>
+          <td>0</td>
+          <td>0</td>
+          <td>0</td>
+          <td>1d ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+        <tr>
+          <td><strong>CL</strong> Central Leo</td>
+          <td><span class="dot dot-ok"></span>OK</td>
+          <td>—</td>
+          <td>0</td>
+          <td>—</td>
+          <td>2d ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+        <tr>
+          <td><strong>CO</strong> Central Wholesale</td>
+          <td><span class="dot dot-ok"></span>OK</td>
+          <td>—</td>
+          <td>0</td>
+          <td>—</td>
+          <td>1d ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+        <tr>
+          <td><strong>CT</strong> Civalent (ADO)</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>8 open</td>
+          <td>45m ago</td>
+          <td><button class="btn btn-sm">Details</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <br>
+
+    <!-- Project detail panel (expanded OO) -->
+    <div class="card" style="border-left: 3px solid var(--danger);">
+      <div class="section-header">
+        <h2 class="section-title">OO — Otaku Odyssey</h2>
+        <div>
+          <button class="btn btn-sm btn-primary">Start Nexus Session</button>
+          <button class="btn btn-sm">Run /ci:gh --fix</button>
+        </div>
+      </div>
+
+      <div class="card-grid" style="margin-top:12px;">
+        <div class="card">
+          <div class="card-title">Vercel</div>
+          <div style="margin-top:8px;">
+            <span class="dot dot-err"></span>ERROR — 12m ago<br>
+            <span style="font-size:11px;color:var(--text-muted);">TypeError: Cannot read properties of undefined (reading 'session')<br>Branch: main · Commit: abc1234</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Sentry (24h)</div>
+          <div style="margin-top:8px;">5 new errors<br>
+            <span style="font-size:11px;color:var(--text-muted);">TypeError in auth.ts (×3)<br>NetworkError in api.ts (×2)</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Jira</div>
+          <div style="margin-top:8px;">3 in-progress<br>
+            <span style="font-size:11px;color:var(--text-muted);">OO-142: Auth migration<br>OO-145: Dashboard redesign<br>OO-147: Payment flow</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart-placeholder" style="height:150px;margin-top:16px;">[Chart.js — Error rate timeline, 7 days]</div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

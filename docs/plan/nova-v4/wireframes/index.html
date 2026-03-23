@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova — Dashboard</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <h1>✨ Nova</h1>
+      <div class="status">● online — 2m uptime</div>
+    </div>
+    <div class="nav-section">Overview</div>
+    <a href="index.html" class="nav-item active">Dashboard</a>
+    <a href="pages/obligations.html" class="nav-item">Obligations (3)</a>
+    <a href="pages/alerts.html" class="nav-item">Alerts (1)</a>
+    <div class="nav-section">Projects</div>
+    <a href="pages/project.html" class="nav-item">Project Health</a>
+    <a href="pages/sessions.html" class="nav-item">Nexus Sessions</a>
+    <div class="nav-section">System</div>
+    <a href="pages/settings.html" class="nav-item">Settings</a>
+  </nav>
+
+  <main class="main">
+    <div class="section-header">
+      <h2 class="section-title">System Overview</h2>
+      <span style="color: var(--text-muted); font-size: 12px;">Last updated: 12s ago</span>
+    </div>
+
+    <!-- Status Cards -->
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Obligations</span><span class="badge badge-open">3 open</span></div>
+        <div class="card-value">3</div>
+        <div class="card-subtitle">1 overdue · 2 new today</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Projects</span></div>
+        <div class="card-value">18<span style="font-size:14px;color:var(--success)"> / 20</span></div>
+        <div class="card-subtitle">2 degraded (OO, TC)</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Active Sessions</span></div>
+        <div class="card-value">2</div>
+        <div class="card-subtitle">homelab: 1 · macbook: 1</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Tools (24h)</span></div>
+        <div class="card-value">142</div>
+        <div class="card-subtitle">98% success · avg 340ms</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">API Cost (today)</span></div>
+        <div class="card-value">$2.14</div>
+        <div class="card-subtitle">Budget: $7.14/day ($50/wk)</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Channels</span></div>
+        <div class="card-value">
+          <span class="dot dot-ok"></span>TG
+          <span class="dot dot-ok"></span>DC
+          <span class="dot dot-warn"></span>TM
+          <span class="dot dot-off"></span>NX
+        </div>
+        <div class="card-subtitle">Nexus: DNS resolution failed</div>
+      </div>
+    </div>
+
+    <!-- Activity Chart -->
+    <div class="chart-placeholder">[Chart.js — Tool calls per hour, 24h rolling]</div>
+
+    <!-- Recent Obligations -->
+    <div class="section-header">
+      <h2 class="section-title">Recent Obligations</h2>
+      <a href="pages/obligations.html" class="btn btn-sm">View All →</a>
+    </div>
+    <table>
+      <thead><tr><th>Source</th><th>Obligation</th><th>Project</th><th>Priority</th><th>Age</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="dot dot-err"></span>Discord</td>
+          <td>Update landing page copy</td>
+          <td>OO</td>
+          <td><span class="badge badge-p1">P1</span></td>
+          <td>3h</td>
+          <td><span class="badge badge-overdue">overdue</span></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-warn"></span>Teams</td>
+          <td>Review PR for auth migration</td>
+          <td>CT</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>45m</td>
+          <td><span class="badge badge-open">open</span></td>
+        </tr>
+        <tr>
+          <td><span class="dot dot-ok"></span>Email</td>
+          <td>Client requesting invoice status</td>
+          <td>MV</td>
+          <td><span class="badge badge-p2">P2</span></td>
+          <td>20m</td>
+          <td><span class="badge badge-open">open</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <br>
+
+    <!-- Recent Alerts -->
+    <div class="section-header">
+      <h2 class="section-title">Recent Alerts</h2>
+      <a href="pages/alerts.html" class="btn btn-sm">View All →</a>
+    </div>
+    <table>
+      <thead><tr><th>Type</th><th>Description</th><th>Project</th><th>Time</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>🔴 Deploy</td>
+          <td>Vercel build failed — TypeError in auth.ts</td>
+          <td>OO</td>
+          <td>12m ago</td>
+        </tr>
+        <tr>
+          <td>⚠️ Sentry</td>
+          <td>Error rate spike: 5 new errors in 10m</td>
+          <td>OO</td>
+          <td>15m ago</td>
+        </tr>
+        <tr>
+          <td>✅ Deploy</td>
+          <td>Vercel build succeeded</td>
+          <td>TC</td>
+          <td>1h ago</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+</body>
+</html>

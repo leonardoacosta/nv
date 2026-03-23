@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova — Nexus Sessions</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
+    <div class="nav-section">Overview</div>
+    <a href="../index.html" class="nav-item">Dashboard</a>
+    <a href="obligations.html" class="nav-item">Obligations (3)</a>
+    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <div class="nav-section">Projects</div>
+    <a href="project.html" class="nav-item">Project Health</a>
+    <a href="sessions.html" class="nav-item active">Nexus Sessions</a>
+    <div class="nav-section">System</div>
+    <a href="settings.html" class="nav-item">Settings</a>
+  </nav>
+
+  <main class="main">
+    <div class="section-header">
+      <h2 class="section-title">Nexus Sessions</h2>
+      <button class="btn btn-primary">+ New Session</button>
+    </div>
+
+    <!-- Agent Status -->
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-header"><span class="card-title">homelab</span><span class="dot dot-err"></span></div>
+        <div style="font-size:12px;color:var(--text-muted);">Status: disconnected (DNS)<br>Port: 7400<br>Sessions: 0</div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">macbook</span><span class="dot dot-err"></span></div>
+        <div style="font-size:12px;color:var(--text-muted);">Status: disconnected (DNS)<br>Port: 7400<br>Sessions: 0</div>
+      </div>
+    </div>
+
+    <!-- Active Sessions -->
+    <div class="section-header" style="margin-top:24px;">
+      <h2 class="section-title">Active Sessions</h2>
+    </div>
+    <div style="color:var(--text-muted);padding:24px;text-align:center;">No active sessions — Nexus agents disconnected (DNS resolution pending Tailscale migration)</div>
+
+    <!-- Session History -->
+    <div class="section-header" style="margin-top:24px;">
+      <h2 class="section-title">Session History</h2>
+    </div>
+    <table>
+      <thead><tr><th>Session</th><th>Agent</th><th>Project</th><th>Command</th><th>Duration</th><th>Status</th><th>Started</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>s-abc123</td>
+          <td>homelab</td>
+          <td>OO</td>
+          <td>/ci:gh --fix</td>
+          <td>4m 32s</td>
+          <td><span class="badge badge-ack">completed</span></td>
+          <td>2h ago</td>
+        </tr>
+        <tr>
+          <td>s-def456</td>
+          <td>macbook</td>
+          <td>TC</td>
+          <td>/apply add-auth</td>
+          <td>12m 05s</td>
+          <td><span class="badge badge-ack">completed</span></td>
+          <td>5h ago</td>
+        </tr>
+        <tr>
+          <td>s-ghi789</td>
+          <td>homelab</td>
+          <td>MV</td>
+          <td>/feature stripe-webhooks</td>
+          <td>—</td>
+          <td><span class="badge badge-overdue">timeout</span></td>
+          <td>1d ago</td>
+        </tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+</body>
+</html>

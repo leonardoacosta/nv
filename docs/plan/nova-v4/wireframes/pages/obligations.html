@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova — Obligations</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
+    <div class="nav-section">Overview</div>
+    <a href="../index.html" class="nav-item">Dashboard</a>
+    <a href="obligations.html" class="nav-item active">Obligations (3)</a>
+    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <div class="nav-section">Projects</div>
+    <a href="project.html" class="nav-item">Project Health</a>
+    <a href="sessions.html" class="nav-item">Nexus Sessions</a>
+    <div class="nav-section">System</div>
+    <a href="settings.html" class="nav-item">Settings</a>
+  </nav>
+
+  <main class="main">
+    <div class="section-header">
+      <h2 class="section-title">Obligations</h2>
+      <div>
+        <button class="btn btn-sm">Filter: All</button>
+        <button class="btn btn-sm">Sort: Priority</button>
+      </div>
+    </div>
+
+    <!-- Kanban-style columns -->
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
+      <div class="card" style="border-top: 3px solid var(--danger);">
+        <div class="card-title" style="margin-bottom:12px;">Overdue (1)</div>
+        <div class="card" style="margin-bottom:8px;">
+          <div style="font-size:12px;color:var(--text-muted);">Discord · OO · 3h ago</div>
+          <div style="margin:4px 0;">Update landing page copy</div>
+          <div style="font-size:11px;color:var(--text-muted);">Detected from @client_name message</div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-sm">Acknowledge</button>
+            <button class="btn btn-sm">Delegate</button>
+            <button class="btn btn-sm">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="border-top: 3px solid var(--accent);">
+        <div class="card-title" style="margin-bottom:12px;">Open (2)</div>
+        <div class="card" style="margin-bottom:8px;">
+          <div style="font-size:12px;color:var(--text-muted);">Teams · CT · 45m ago</div>
+          <div style="margin:4px 0;">Review PR for auth migration</div>
+          <div style="font-size:11px;color:var(--text-muted);">Manager asked in #engineering</div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-sm">Acknowledge</button>
+            <button class="btn btn-sm">Delegate</button>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-size:12px;color:var(--text-muted);">Email · MV · 20m ago</div>
+          <div style="margin:4px 0;">Client requesting invoice status</div>
+          <div style="font-size:11px;color:var(--text-muted);">From: client@modernvisa.com</div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-sm">Acknowledge</button>
+            <button class="btn btn-sm">Reply via Nova</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="border-top: 3px solid var(--success);">
+        <div class="card-title" style="margin-bottom:12px;">Handled (5 today)</div>
+        <div style="font-size:12px;color:var(--text-muted);padding:8px 0;">
+          ✅ Deploy OO fix — 2h ago<br>
+          ✅ Responded to TC standup — 3h ago<br>
+          ✅ Reviewed SS pull request — 4h ago<br>
+          ✅ Stripe invoice sent for MV — 5h ago<br>
+          ✅ ADO pipeline approved — 6h ago
+        </div>
+      </div>
+    </div>
+
+    <!-- Obligation history table -->
+    <div class="section-header">
+      <h2 class="section-title">History (7 days)</h2>
+    </div>
+    <table>
+      <thead><tr><th>Date</th><th>Source</th><th>Obligation</th><th>Project</th><th>Resolution</th><th>Time to Handle</th></tr></thead>
+      <tbody>
+        <tr><td>Today</td><td>Discord</td><td>Update landing page copy</td><td>OO</td><td>—</td><td>3h+ (overdue)</td></tr>
+        <tr><td>Today</td><td>Teams</td><td>Deploy OO fix</td><td>OO</td><td>Delegated to Nexus</td><td>15m</td></tr>
+        <tr><td>Yesterday</td><td>Email</td><td>Quarterly report for client</td><td>MV</td><td>Acknowledged</td><td>2h</td></tr>
+        <tr><td>Yesterday</td><td>iMessage</td><td>Check HA thermostat</td><td>—</td><td>Completed via HA</td><td>5m</td></tr>
+        <tr><td>Mar 21</td><td>ADO</td><td>Pipeline review requested</td><td>CT</td><td>Approved</td><td>30m</td></tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+</body>
+</html>

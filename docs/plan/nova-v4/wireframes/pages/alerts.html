@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova — Alerts</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
+    <div class="nav-section">Overview</div>
+    <a href="../index.html" class="nav-item">Dashboard</a>
+    <a href="obligations.html" class="nav-item">Obligations (3)</a>
+    <a href="alerts.html" class="nav-item active">Alerts (1)</a>
+    <div class="nav-section">Projects</div>
+    <a href="project.html" class="nav-item">Project Health</a>
+    <a href="sessions.html" class="nav-item">Nexus Sessions</a>
+    <div class="nav-section">System</div>
+    <a href="settings.html" class="nav-item">Settings</a>
+  </nav>
+
+  <main class="main">
+    <div class="section-header">
+      <h2 class="section-title">Alerts & Events</h2>
+      <div>
+        <button class="btn btn-sm">Filter: Active</button>
+        <button class="btn btn-sm">Configure Rules</button>
+      </div>
+    </div>
+
+    <!-- Active Alerts -->
+    <div class="card" style="border-left: 3px solid var(--danger); margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-weight:600;">🔴 Deploy Failure — OO</div>
+          <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+            Vercel build ERROR · TypeError in auth.ts · 12m ago<br>
+            Sentry: 5 new errors correlated
+          </div>
+        </div>
+        <div>
+          <button class="btn btn-sm btn-primary">Investigate</button>
+          <button class="btn btn-sm">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alert Rules -->
+    <div class="section-header" style="margin-top:32px;">
+      <h2 class="section-title">Alert Rules</h2>
+      <button class="btn btn-sm">+ Add Rule</button>
+    </div>
+    <table>
+      <thead><tr><th>Rule</th><th>Trigger</th><th>Projects</th><th>Channel</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Deploy failure</td>
+          <td>Vercel status = ERROR</td>
+          <td>All Vercel projects</td>
+          <td>Telegram P0</td>
+          <td><span class="dot dot-ok"></span>Active</td>
+        </tr>
+        <tr>
+          <td>Sentry spike</td>
+          <td>Error count > 3 in 10m</td>
+          <td>All Sentry projects</td>
+          <td>Telegram P1</td>
+          <td><span class="dot dot-ok"></span>Active</td>
+        </tr>
+        <tr>
+          <td>Stale PR</td>
+          <td>PR open > 3 days, no review</td>
+          <td>All GitHub repos</td>
+          <td>Dashboard only</td>
+          <td><span class="dot dot-ok"></span>Active</td>
+        </tr>
+        <tr>
+          <td>HA anomaly</td>
+          <td>Door/garage open > 30min</td>
+          <td>—</td>
+          <td>Telegram P1</td>
+          <td><span class="dot dot-ok"></span>Active</td>
+        </tr>
+        <tr>
+          <td>Stale Jira</td>
+          <td>Ticket in-progress > 7 days</td>
+          <td>All Jira projects</td>
+          <td>Dashboard only</td>
+          <td><span class="dot dot-off"></span>Disabled</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Event Log -->
+    <div class="section-header" style="margin-top:32px;">
+      <h2 class="section-title">Event Log (24h)</h2>
+    </div>
+    <table>
+      <thead><tr><th>Time</th><th>Type</th><th>Event</th><th>Project</th><th>Action Taken</th></tr></thead>
+      <tbody>
+        <tr><td>12m</td><td>🔴 Deploy</td><td>Vercel ERROR</td><td>OO</td><td>Alert sent to Telegram</td></tr>
+        <tr><td>15m</td><td>⚠️ Sentry</td><td>5 new errors</td><td>OO</td><td>Correlated with deploy alert</td></tr>
+        <tr><td>1h</td><td>✅ Deploy</td><td>Vercel READY</td><td>TC</td><td>—</td></tr>
+        <tr><td>2h</td><td>✅ Session</td><td>Nexus session completed</td><td>OO</td><td>CI fixed, PR merged</td></tr>
+        <tr><td>3h</td><td>📋 Obligation</td><td>Discord message detected</td><td>OO</td><td>Queued for review</td></tr>
+        <tr><td>6h</td><td>🏠 HA</td><td>Garage door closed</td><td>—</td><td>Auto-dismissed (< 30min)</td></tr>
+        <tr><td>8h</td><td>📊 Digest</td><td>Morning digest sent</td><td>All</td><td>3 items surfaced</td></tr>
+      </tbody>
+    </table>
+  </main>
+</div>
+</body>
+</html>

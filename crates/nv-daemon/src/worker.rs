@@ -623,11 +623,23 @@ impl Worker {
                 if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, tg_chat_id, tg_msg_id) {
                     let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await; // red X
                 }
-                // Send error to Telegram (threaded to original message)
+                // Send user-friendly error to Telegram
                 if let Some(channel) = deps.channels.get("telegram") {
+                    let error_str = e.to_string();
+                    let user_msg = if error_str.contains("EOF while parsing")
+                        || error_str.contains("Broken pipe")
+                        || error_str.contains("closed stdout")
+                        || error_str.contains("process died")
+                    {
+                        "Something went wrong — please try again.".to_string()
+                    } else if error_str.contains("Timeout") || error_str.contains("timed out") {
+                        "That took too long — try a simpler request.".to_string()
+                    } else {
+                        format!("\u{26A0} {e}")
+                    };
                     let msg = OutboundMessage {
                         channel: "telegram".into(),
-                        content: format!("\u{26A0} Worker error: {e}"),
+                        content: user_msg,
                         reply_to: reply_to_id.clone(),
                         keyboard: None,
                     };

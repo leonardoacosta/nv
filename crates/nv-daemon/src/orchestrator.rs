@@ -1287,6 +1287,7 @@ fn humanize_tool(tool: &str) -> (String, String) {
         "neon_query" => ("\u{1F5C4}\u{FE0F}", "Querying database..."),
         "neon_projects" | "neon_branches" | "neon_compute" => ("\u{1F5C4}\u{FE0F}", "Checking Neon infrastructure..."),
         "stripe_customers" | "stripe_invoices" => ("\u{1F4B3}", "Checking Stripe..."),
+        "ado_projects" | "ado_pipelines" | "ado_builds" => ("\u{1F4CB}", "Checking Azure DevOps..."),
         "ha_states" | "ha_entity" | "ha_service_call" => ("\u{1F3E0}", "Checking Home Assistant..."),
         "project_health" => ("\u{1F4CA}", "Building project health report..."),
         "homelab_status" => ("\u{1F5A5}\u{FE0F}", "Checking homelab status..."),

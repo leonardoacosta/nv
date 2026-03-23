@@ -1,6 +1,7 @@
 //! Azure DevOps tools via REST API (dev.azure.com).
 //!
-//! Two read-only tools:
+//! Three read-only tools:
+//! * `ado_projects()` — list all projects in the configured org.
 //! * `ado_pipelines(project)` — list pipeline definitions for a project.
 //! * `ado_builds(project, pipeline_id)` — list recent builds for a pipeline.
 //!
@@ -21,6 +22,21 @@ const MAX_PIPELINES: usize = 50;
 const MAX_BUILDS: usize = 10;
 
 // ── Types ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdoProject {
+    #[allow(dead_code)]
+    pub id: String,
+    pub name: String,
+    pub state: String,
+    #[serde(rename = "lastUpdateTime")]
+    pub last_update_time: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ProjectsResponse {
+    value: Vec<AdoProject>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AdoPipeline {
@@ -103,6 +119,24 @@ impl AdoClient {
         Ok(Self { http, org_url })
     }
 
+    /// List all projects in the configured org.
+    pub async fn projects(&self) -> Result<Vec<AdoProject>> {
+        let url = format!(
+            "{}/_apis/projects?api-version=7.0",
+            self.org_url
+        );
+        let resp = self.http.get(&url).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("ADO API error ({status}): {body}");
+        }
+
+        let data: ProjectsResponse = resp.json().await?;
+        Ok(data.value)
+    }
+
     /// List pipeline definitions for a project.
     pub async fn pipelines(&self, project: &str) -> Result<Vec<AdoPipeline>> {
         let url = format!(
@@ -145,6 +179,18 @@ impl AdoClient {
 pub fn ado_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
+            name: "ado_projects".into(),
+            description: "List all Azure DevOps projects in the configured organization. \
+                Returns project name, state, and last update date. \
+                Use this to discover available projects before calling ado_pipelines or ado_builds."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
             name: "ado_pipelines".into(),
             description: "List Azure DevOps pipeline definitions for a project. \
                 Returns pipeline ID, name, and folder. Max 50 pipelines."
@@ -185,6 +231,24 @@ pub fn ado_tool_definitions() -> Vec<ToolDefinition> {
 }
 
 // ── Formatting ───────────────────────────────────────────────────────
+
+/// Format projects as a readable list.
+pub fn format_projects(projects: &[AdoProject]) -> String {
+    if projects.is_empty() {
+        return "(no projects found)".to_string();
+    }
+
+    let mut lines = vec![format!("Projects ({}):", projects.len())];
+    for p in projects {
+        let date = p
+            .last_update_time
+            .as_deref()
+            .and_then(|s| s.split('T').next())
+            .unwrap_or("unknown");
+        lines.push(format!("  {} ({}) — last updated {}", p.name, p.state, date));
+    }
+    lines.join("\n")
+}
 
 /// Format pipeline definitions as a readable list.
 pub fn format_pipelines(pipelines: &[AdoPipeline]) -> String {
@@ -233,6 +297,14 @@ pub fn format_builds(builds: &[AdoBuild]) -> String {
 
 // ── Public Entry Points ──────────────────────────────────────────────
 
+/// Execute ado_projects: list all projects in the configured org.
+pub async fn ado_projects() -> Result<String> {
+    let client = AdoClient::from_env()?;
+    let projects = client.projects().await?;
+    tracing::info!(count = projects.len(), "ado_projects completed");
+    Ok(format_projects(&projects))
+}
+
 /// Execute ado_pipelines: fetch pipeline definitions for a project.
 pub async fn ado_pipelines(project: &str) -> Result<String> {
     let client = AdoClient::from_env()?;
@@ -254,6 +326,35 @@ pub async fn ado_builds(project: &str, pipeline_id: u32) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_format_projects_empty() {
+        assert_eq!(format_projects(&[]), "(no projects found)");
+    }
+
+    #[test]
+    fn test_format_projects_list() {
+        let projects = vec![
+            AdoProject {
+                id: "abc-123".into(),
+                name: "MyProject".into(),
+                state: "wellFormed".into(),
+                last_update_time: Some("2026-03-15T10:00:00Z".into()),
+            },
+            AdoProject {
+                id: "def-456".into(),
+                name: "OtherProject".into(),
+                state: "wellFormed".into(),
+                last_update_time: None,
+            },
+        ];
+        let output = format_projects(&projects);
+        assert!(output.contains("Projects (2)"));
+        assert!(output.contains("MyProject (wellFormed)"));
+        assert!(output.contains("last updated 2026-03-15"));
+        assert!(output.contains("OtherProject (wellFormed)"));
+        assert!(output.contains("last updated unknown"));
+    }
 
     #[test]
     fn test_format_pipelines_empty() {

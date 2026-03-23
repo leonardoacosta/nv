@@ -2975,7 +2975,7 @@ mod tests {
         // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
         // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
         // + 4 neon (neon_query + neon_projects + neon_branches + neon_compute) + 2 stripe + 2 resend + 2 upstash
-        // + 3 ha + 2 ado + 2 plaid + 3 aggregation
+        // + 3 ha + 3 ado + 2 plaid + 3 aggregation
         // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session)
         // + 2 cross-channel (list_channels, send_to_channel)
         // + 3 calendar (calendar_today, calendar_upcoming, calendar_next)
@@ -2986,8 +2986,8 @@ mod tests {
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
         // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
-        // = 91
-        assert_eq!(tools.len(), 91);
+        // = 92
+        assert_eq!(tools.len(), 92);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -3047,6 +3047,7 @@ mod tests {
         assert!(names.contains(&"ha_entity"));
         assert!(names.contains(&"ha_service_call"));
         // Azure DevOps tools
+        assert!(names.contains(&"ado_projects"));
         assert!(names.contains(&"ado_pipelines"));
         assert!(names.contains(&"ado_builds"));
         // Plaid tools

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(sh -n /home/nyaptor/nv/.git/hooks/pre-push)",
+      "Bash(sh -n /home/nyaptor/nv/.git/hooks/post-merge)"
+    ]
+  }
+}

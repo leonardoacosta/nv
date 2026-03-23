@@ -40,12 +40,12 @@ CT = "llc"
 [nexus]
 [[nexus.agents]]
 name = "homelab"
-host = "homelab"
+host = "100.94.11.104"
 port = 7400
 
 [[nexus.agents]]
 name = "macbook"
-host = "macbook"
+host = "100.91.88.16"
 port = 7400
 
 [daemon]

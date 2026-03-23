@@ -1582,6 +1582,25 @@ pub async fn execute_tool_send(
             let output = neon_tools::neon_query(project, sql).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "neon_projects" => {
+            let output = neon_tools::neon_projects().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "neon_branches" => {
+            let project_id = input["project_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project_id' parameter"))?;
+            let output = neon_tools::neon_branches(project_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "neon_compute" => {
+            let project_id = input["project_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project_id' parameter"))?;
+            let branch_id = input["branch_id"].as_str();
+            let output = neon_tools::neon_compute(project_id, branch_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
         // ── Stripe Tools ────────────────────────────────────────────
         "stripe_customers" => {
@@ -2305,6 +2324,25 @@ pub async fn execute_tool(
             let output = neon_tools::neon_query(project, sql).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "neon_projects" => {
+            let output = neon_tools::neon_projects().await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "neon_branches" => {
+            let project_id = input["project_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project_id' parameter"))?;
+            let output = neon_tools::neon_branches(project_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "neon_compute" => {
+            let project_id = input["project_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project_id' parameter"))?;
+            let branch_id = input["branch_id"].as_str();
+            let output = neon_tools::neon_compute(project_id, branch_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
         // ── Resend Tools ────────────────────────────────────────────
         "resend_emails" => {
@@ -2787,7 +2825,7 @@ mod tests {
         let tools = register_tools();
         // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
         // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
-        // + 1 neon + 2 stripe + 2 resend + 2 upstash
+        // + 4 neon (neon_query + neon_projects + neon_branches + neon_compute) + 2 stripe + 2 resend + 2 upstash
         // + 3 ha + 2 ado + 2 plaid + 3 aggregation
         // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session)
         // + 2 cross-channel (list_channels, send_to_channel)
@@ -2798,8 +2836,8 @@ mod tests {
         // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status)
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
-        // + check_services tool = 84
-        assert_eq!(tools.len(), 84);
+        // = 87
+        assert_eq!(tools.len(), 87);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2849,6 +2887,11 @@ mod tests {
         // Vercel tools
         assert!(names.contains(&"vercel_deployments"));
         assert!(names.contains(&"vercel_logs"));
+        // Neon tools
+        assert!(names.contains(&"neon_query"));
+        assert!(names.contains(&"neon_projects"));
+        assert!(names.contains(&"neon_branches"));
+        assert!(names.contains(&"neon_compute"));
         // Home Assistant tools
         assert!(names.contains(&"ha_states"));
         assert!(names.contains(&"ha_entity"));

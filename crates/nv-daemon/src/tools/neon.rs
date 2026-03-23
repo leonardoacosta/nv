@@ -1,5 +1,6 @@
-//! Neon PostgreSQL read-only query tool.
+//! Neon PostgreSQL read-only query tool and Neon REST API management tools.
 //!
+//! # Direct SQL (`neon_query`)
 //! Executes read-only SQL against per-project Neon databases.
 //! Connection strings resolved via `POSTGRES_URL_{PROJECT_CODE}` env vars
 //! (e.g., `POSTGRES_URL_OO`).
@@ -9,10 +10,16 @@
 //! * Read-only transaction mode
 //! * LIMIT 50 appended when missing
 //! * Cell truncation at 200 chars
+//!
+//! # Neon REST API (`NeonApiClient`)
+//! Read-only access to the Neon platform via the Neon API v2.
+//! Auth via `NEON_API_KEY` env var (Bearer token).
+//! Three tools: `neon_projects`, `neon_branches`, `neon_compute`.
 
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
+use serde::Deserialize;
 use tokio_postgres::types::Type;
 
 use crate::claude::ToolDefinition;
@@ -23,6 +30,12 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ROWS: usize = 50;
 const MAX_CELL_LEN: usize = 200;
+
+/// Base URL for the Neon REST API v2.
+const NEON_API_BASE: &str = "https://console.neon.tech/api/v2";
+
+/// HTTP timeout for Neon REST API requests.
+const API_REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Blocked SQL keywords (case-insensitive). Checked before execution.
 const BLOCKED_KEYWORDS: &[&str] = &[
@@ -41,28 +54,79 @@ pub struct QueryResult {
 // ── Tool Definitions ─────────────────────────────────────────────────
 
 pub fn neon_tool_definitions() -> Vec<ToolDefinition> {
-    vec![ToolDefinition {
-        name: "neon_query".into(),
-        description: "Execute a read-only SQL query against a project's Neon PostgreSQL database. \
-            Returns formatted results as a text table. Only SELECT queries allowed; \
-            INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE are rejected. \
-            Results limited to 50 rows."
-            .into(),
-        input_schema: serde_json::json!({
-            "type": "object",
-            "properties": {
-                "project": {
-                    "type": "string",
-                    "description": "Project code (e.g. 'oo', 'tc', 'tl', 'mv', 'ss')"
+    vec![
+        ToolDefinition {
+            name: "neon_query".into(),
+            description: "Execute a read-only SQL query against a project's Neon PostgreSQL database. \
+                Returns formatted results as a text table. Only SELECT queries allowed; \
+                INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE are rejected. \
+                Results limited to 50 rows."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl', 'mv', 'ss')"
+                    },
+                    "sql": {
+                        "type": "string",
+                        "description": "SQL SELECT query to execute"
+                    }
                 },
-                "sql": {
-                    "type": "string",
-                    "description": "SQL SELECT query to execute"
-                }
-            },
-            "required": ["project", "sql"]
-        }),
-    }]
+                "required": ["project", "sql"]
+            }),
+        },
+        ToolDefinition {
+            name: "neon_projects".into(),
+            description: "List all Neon projects in the account. Returns project name, ID, region, \
+                and creation date as an aligned table. Uses NEON_API_KEY env var for authentication."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "neon_branches".into(),
+            description: "List all branches for a Neon project. Returns branch name, ID, parent branch ID, \
+                creation date, and current state. The project_id is the Neon project ID (e.g. 'aged-bird-123456'), \
+                not the Nova project code."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Neon project ID (e.g. 'aged-bird-123456'), not the Nova project code"
+                    }
+                },
+                "required": ["project_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "neon_compute".into(),
+            description: "List compute endpoints for a Neon project. Returns endpoint ID, type \
+                (read_write/read_only), status (active/idle/suspended), autoscaling size range, \
+                and last active timestamp. Optionally filter by branch_id."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project_id": {
+                        "type": "string",
+                        "description": "Neon project ID (e.g. 'aged-bird-123456')"
+                    },
+                    "branch_id": {
+                        "type": "string",
+                        "description": "Optional branch ID to filter endpoints (e.g. 'br-small-pond-123456')"
+                    }
+                },
+                "required": ["project_id"]
+            }),
+        },
+    ]
 }
 
 // ── SQL Validation ───────────────────────────────────────────────────
@@ -480,6 +544,454 @@ mod tests {
             .to_string()
             .contains("POSTGRES_URL_ZZZTEST"));
     }
+
+    // ── NeonApiClient ────────────────────────────────────────────
+
+    #[test]
+    fn test_neon_api_client_from_env_missing_key() {
+        // Ensure the env var is not set
+        std::env::remove_var("NEON_API_KEY");
+        let result = NeonApiClient::from_env();
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("NEON_API_KEY"));
+    }
+
+    #[test]
+    fn test_project_summary_deserializes() {
+        let json = serde_json::json!({
+            "id": "aged-bird-123456",
+            "name": "otaku-odyssey",
+            "region_id": "aws-us-east-2",
+            "created_at": "2024-01-15T12:00:00Z"
+        });
+        let p: ProjectSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(p.id, "aged-bird-123456");
+        assert_eq!(p.name, "otaku-odyssey");
+        assert_eq!(p.region_id, "aws-us-east-2");
+    }
+
+    #[test]
+    fn test_project_summary_deserializes_with_missing_optional_fields() {
+        // Only required fields — optional fields should default
+        let json = serde_json::json!({
+            "id": "silent-fog-999",
+            "name": "test-project"
+        });
+        let p: ProjectSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(p.id, "silent-fog-999");
+        assert!(p.region_id.is_empty());
+        assert!(p.created_at.is_empty());
+    }
+
+    #[test]
+    fn test_branch_summary_deserializes() {
+        let json = serde_json::json!({
+            "id": "br-small-pond-123456",
+            "name": "main",
+            "parent_id": "",
+            "created_at": "2024-01-15T12:00:00Z",
+            "current_state": "ready"
+        });
+        let b: BranchSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(b.id, "br-small-pond-123456");
+        assert_eq!(b.name, "main");
+        assert_eq!(b.current_state, "ready");
+    }
+
+    #[test]
+    fn test_endpoint_summary_deserializes() {
+        let json = serde_json::json!({
+            "id": "ep-cool-rain-123456",
+            "type": "read_write",
+            "current_state": "idle",
+            "branch_id": "br-small-pond-123456",
+            "autoscaling_limit_min_cu": 0.25,
+            "autoscaling_limit_max_cu": 0.25,
+            "last_active": "2024-01-15T18:30:00Z"
+        });
+        let e: EndpointSummary = serde_json::from_value(json).unwrap();
+        assert_eq!(e.id, "ep-cool-rain-123456");
+        assert_eq!(e.endpoint_type, "read_write");
+        assert_eq!(e.current_state, "idle");
+    }
+
+    #[test]
+    fn test_format_projects_empty() {
+        assert_eq!(format_projects(&[]), "(no projects found)");
+    }
+
+    #[test]
+    fn test_format_projects_table() {
+        let projects = vec![
+            ProjectSummary {
+                id: "aged-bird-123456".into(),
+                name: "otaku-odyssey".into(),
+                region_id: "aws-us-east-2".into(),
+                created_at: "2024-01-15T12:00:00Z".into(),
+            },
+            ProjectSummary {
+                id: "silent-fog-999".into(),
+                name: "tribal-cities".into(),
+                region_id: "aws-us-east-2".into(),
+                created_at: "2024-02-20T08:00:00Z".into(),
+            },
+        ];
+        let output = format_projects(&projects);
+        let lines: Vec<&str> = output.lines().collect();
+        // header + separator + 2 data rows
+        assert_eq!(lines.len(), 4);
+        assert!(lines[0].contains("name"));
+        assert!(lines[0].contains("id"));
+        assert!(lines[2].contains("otaku-odyssey"));
+    }
+
+    #[test]
+    fn test_format_branches_empty() {
+        assert_eq!(format_branches(&[]), "(no branches found)");
+    }
+
+    #[test]
+    fn test_format_endpoints_empty() {
+        assert_eq!(format_endpoints(&[]), "(no compute endpoints found)");
+    }
+
+    #[test]
+    fn test_truncate_timestamp_full() {
+        assert_eq!(truncate_timestamp("2024-01-15T12:00:00Z"), "2024-01-15");
+    }
+
+    #[test]
+    fn test_truncate_timestamp_empty() {
+        assert_eq!(truncate_timestamp(""), "—");
+    }
+}
+
+// ── Neon API Types ───────────────────────────────────────────────────
+
+/// Summary of a single Neon project returned by `GET /projects`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectSummary {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub region_id: String,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+/// Envelope returned by `GET /projects`.
+#[derive(Debug, Deserialize)]
+struct ProjectsResponse {
+    projects: Vec<ProjectSummary>,
+}
+
+/// Summary of a single Neon branch returned by `GET /projects/{id}/branches`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BranchSummary {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub parent_id: String,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub current_state: String,
+}
+
+/// Envelope returned by `GET /projects/{id}/branches`.
+#[derive(Debug, Deserialize)]
+struct BranchesResponse {
+    branches: Vec<BranchSummary>,
+}
+
+/// Summary of a single compute endpoint returned by `GET /projects/{id}/endpoints`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EndpointSummary {
+    pub id: String,
+    #[serde(rename = "type", default)]
+    pub endpoint_type: String,
+    #[serde(default)]
+    pub current_state: String,
+    #[serde(default)]
+    pub branch_id: String,
+    #[serde(default)]
+    pub autoscaling_limit_min_cu: f64,
+    #[serde(default)]
+    pub autoscaling_limit_max_cu: f64,
+    #[serde(default)]
+    pub last_active: String,
+}
+
+/// Envelope returned by `GET /projects/{id}/endpoints`.
+#[derive(Debug, Deserialize)]
+struct EndpointsResponse {
+    endpoints: Vec<EndpointSummary>,
+}
+
+// ── NeonApiClient ────────────────────────────────────────────────────
+
+/// HTTP client for the Neon REST API v2.
+///
+/// Authenticates with `NEON_API_KEY` env var via Bearer token.
+/// All operations are read-only.
+#[derive(Debug)]
+pub struct NeonApiClient {
+    http: reqwest::Client,
+    api_key: String,
+}
+
+impl NeonApiClient {
+    /// Create a new client from the `NEON_API_KEY` environment variable.
+    ///
+    /// Returns `Err` if the env var is not set.
+    pub fn from_env() -> Result<Self> {
+        let api_key = std::env::var("NEON_API_KEY").map_err(|_| {
+            anyhow!("NEON_API_KEY env var not set — required for Neon management tools")
+        })?;
+        if api_key.is_empty() {
+            bail!("NEON_API_KEY env var is empty");
+        }
+        Ok(Self {
+            http: reqwest::Client::builder()
+                .timeout(API_REQUEST_TIMEOUT)
+                .build()?,
+            api_key,
+        })
+    }
+
+    /// Build a GET request with Bearer auth header.
+    fn get(&self, url: &str) -> reqwest::RequestBuilder {
+        self.http
+            .get(url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+    }
+
+    /// Map common HTTP status codes to actionable error messages.
+    fn map_status(status: reqwest::StatusCode, context: &str) -> anyhow::Error {
+        match status.as_u16() {
+            401 => anyhow!("Neon API key invalid (401) — check NEON_API_KEY env var"),
+            403 => anyhow!("Neon API key lacks permissions (403) — check key scopes"),
+            404 => anyhow!("{context} not found (404)"),
+            429 => anyhow!("Neon API rate limited (429) — wait a few moments and retry"),
+            code => anyhow!("Neon API error ({code}) for {context}"),
+        }
+    }
+
+    // ── API Methods ──────────────────────────────────────────────────
+
+    /// List all Neon projects in the account.
+    pub async fn list_projects(&self) -> Result<Vec<ProjectSummary>> {
+        let url = format!("{NEON_API_BASE}/projects");
+        let resp = self.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(Self::map_status(resp.status(), "projects list"));
+        }
+        let envelope: ProjectsResponse = resp.json().await?;
+        Ok(envelope.projects)
+    }
+
+    /// List all branches for a Neon project.
+    pub async fn list_branches(&self, project_id: &str) -> Result<Vec<BranchSummary>> {
+        let url = format!("{NEON_API_BASE}/projects/{project_id}/branches");
+        let resp = self.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(Self::map_status(
+                resp.status(),
+                &format!("branches for project '{project_id}'"),
+            ));
+        }
+        let envelope: BranchesResponse = resp.json().await?;
+        Ok(envelope.branches)
+    }
+
+    /// List compute endpoints for a Neon project, optionally filtered by branch.
+    pub async fn list_endpoints(
+        &self,
+        project_id: &str,
+        branch_id: Option<&str>,
+    ) -> Result<Vec<EndpointSummary>> {
+        let url = format!("{NEON_API_BASE}/projects/{project_id}/endpoints");
+        let resp = self.get(&url).send().await?;
+        if !resp.status().is_success() {
+            return Err(Self::map_status(
+                resp.status(),
+                &format!("endpoints for project '{project_id}'"),
+            ));
+        }
+        let envelope: EndpointsResponse = resp.json().await?;
+        let endpoints = match branch_id {
+            Some(bid) => envelope
+                .endpoints
+                .into_iter()
+                .filter(|e| e.branch_id == bid)
+                .collect(),
+            None => envelope.endpoints,
+        };
+        Ok(endpoints)
+    }
+}
+
+// ── Neon API Formatting ──────────────────────────────────────────────
+
+/// Format a list of Neon projects as an aligned table.
+pub fn format_projects(projects: &[ProjectSummary]) -> String {
+    if projects.is_empty() {
+        return "(no projects found)".to_string();
+    }
+
+    let headers = ["name", "id", "region", "created_at"];
+    let rows: Vec<[String; 4]> = projects
+        .iter()
+        .map(|p| {
+            [
+                p.name.clone(),
+                p.id.clone(),
+                p.region_id.clone(),
+                truncate_timestamp(&p.created_at),
+            ]
+        })
+        .collect();
+
+    format_table(&headers, &rows.iter().map(|r| r.as_slice()).collect::<Vec<_>>())
+}
+
+/// Format a list of Neon branches as an aligned table.
+pub fn format_branches(branches: &[BranchSummary]) -> String {
+    if branches.is_empty() {
+        return "(no branches found)".to_string();
+    }
+
+    let headers = ["name", "id", "parent_id", "state", "created_at"];
+    let rows: Vec<[String; 5]> = branches
+        .iter()
+        .map(|b| {
+            [
+                b.name.clone(),
+                b.id.clone(),
+                if b.parent_id.is_empty() { "(root)".to_string() } else { b.parent_id.clone() },
+                b.current_state.clone(),
+                truncate_timestamp(&b.created_at),
+            ]
+        })
+        .collect();
+
+    format_table(&headers, &rows.iter().map(|r| r.as_slice()).collect::<Vec<_>>())
+}
+
+/// Format a list of Neon compute endpoints as an aligned table.
+pub fn format_endpoints(endpoints: &[EndpointSummary]) -> String {
+    if endpoints.is_empty() {
+        return "(no compute endpoints found)".to_string();
+    }
+
+    let headers = ["id", "type", "status", "size_range", "last_active"];
+    let rows: Vec<[String; 5]> = endpoints
+        .iter()
+        .map(|e| {
+            let size = if e.autoscaling_limit_max_cu > 0.0 {
+                format!("{}-{} CU", e.autoscaling_limit_min_cu, e.autoscaling_limit_max_cu)
+            } else {
+                "n/a".to_string()
+            };
+            [
+                e.id.clone(),
+                e.endpoint_type.clone(),
+                e.current_state.clone(),
+                size,
+                truncate_timestamp(&e.last_active),
+            ]
+        })
+        .collect();
+
+    format_table(&headers, &rows.iter().map(|r| r.as_slice()).collect::<Vec<_>>())
+}
+
+/// Generic aligned table formatter used by all API format functions.
+fn format_table(headers: &[&str], rows: &[&[String]]) -> String {
+    let num_cols = headers.len();
+    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+
+    for row in rows {
+        for (i, cell) in row.iter().enumerate() {
+            if i < num_cols {
+                widths[i] = widths[i].max(cell.len());
+            }
+        }
+    }
+
+    let mut lines = Vec::with_capacity(rows.len() + 2);
+
+    // Header
+    let header: String = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| format!("{:<width$}", h, width = widths[i]))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    lines.push(header);
+
+    // Separator
+    let sep: String = widths
+        .iter()
+        .map(|w| "-".repeat(*w))
+        .collect::<Vec<_>>()
+        .join("-+-");
+    lines.push(sep);
+
+    // Data rows
+    for row in rows {
+        let line: String = row
+            .iter()
+            .enumerate()
+            .map(|(i, cell)| {
+                let w = if i < num_cols { widths[i] } else { cell.len() };
+                format!("{:<width$}", cell, width = w)
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
+        lines.push(line);
+    }
+
+    lines.join("\n")
+}
+
+/// Truncate an ISO 8601 timestamp to just the date portion for display.
+fn truncate_timestamp(ts: &str) -> String {
+    if ts.is_empty() {
+        return "—".to_string();
+    }
+    // "2024-01-15T12:00:00Z" -> "2024-01-15"
+    ts.get(..10).unwrap_or(ts).to_string()
+}
+
+// ── Neon API Entry Points ────────────────────────────────────────────
+
+/// Execute the neon_projects tool: list all Neon projects in the account.
+pub async fn neon_projects() -> Result<String> {
+    tracing::info!("executing neon_projects");
+    let client = NeonApiClient::from_env()?;
+    let projects = client.list_projects().await?;
+    tracing::info!(count = projects.len(), "neon_projects completed");
+    Ok(format_projects(&projects))
+}
+
+/// Execute the neon_branches tool: list branches for a Neon project.
+pub async fn neon_branches(project_id: &str) -> Result<String> {
+    tracing::info!(project_id, "executing neon_branches");
+    let client = NeonApiClient::from_env()?;
+    let branches = client.list_branches(project_id).await?;
+    tracing::info!(project_id, count = branches.len(), "neon_branches completed");
+    Ok(format_branches(&branches))
+}
+
+/// Execute the neon_compute tool: list compute endpoints for a Neon project.
+pub async fn neon_compute(project_id: &str, branch_id: Option<&str>) -> Result<String> {
+    tracing::info!(project_id, branch_id, "executing neon_compute");
+    let client = NeonApiClient::from_env()?;
+    let endpoints = client.list_endpoints(project_id, branch_id).await?;
+    tracing::info!(project_id, count = endpoints.len(), "neon_compute completed");
+    Ok(format_endpoints(&endpoints))
 }
 
 // ── NeonClient wrapper ───────────────────────────────────────────────

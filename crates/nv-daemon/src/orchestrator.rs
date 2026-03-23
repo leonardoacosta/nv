@@ -1285,6 +1285,7 @@ fn humanize_tool(tool: &str) -> (String, String) {
         "tailscale_status" | "tailscale_node" => ("\u{1F310}", "Checking Tailscale network..."),
         "gh_pr_list" | "gh_run_status" | "gh_issues" | "gh_pr_detail" | "gh_pr_diff" | "gh_releases" | "gh_compare" => ("\u{1F419}", "Checking GitHub..."),
         "neon_query" => ("\u{1F5C4}\u{FE0F}", "Querying database..."),
+        "neon_projects" | "neon_branches" | "neon_compute" => ("\u{1F5C4}\u{FE0F}", "Checking Neon infrastructure..."),
         "stripe_customers" | "stripe_invoices" => ("\u{1F4B3}", "Checking Stripe..."),
         "ha_states" | "ha_entity" | "ha_service_call" => ("\u{1F3E0}", "Checking Home Assistant..."),
         "project_health" => ("\u{1F4CA}", "Building project health report..."),

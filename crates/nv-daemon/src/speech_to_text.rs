@@ -43,7 +43,7 @@ pub async fn transcribe_audio_elevenlabs(
         .map_err(|e| anyhow!("invalid MIME type '{}': {e}", mime_type))?;
 
     let form = multipart::Form::new()
-        .part("audio", part)
+        .part("file", part)
         .text("model_id", "scribe_v1");
 
     let response = client

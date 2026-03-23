@@ -40,6 +40,8 @@ mod state;
 #[allow(dead_code)]
 mod tailscale;
 mod tts;
+mod health_poller;
+mod server_health_store;
 mod watchers;
 mod worker;
 

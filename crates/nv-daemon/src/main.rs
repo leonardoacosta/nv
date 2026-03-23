@@ -29,6 +29,8 @@ mod state;
 mod tailscale;
 mod tools;
 mod tts;
+mod health_poller;
+mod server_health_store;
 mod watchers;
 mod worker;
 
@@ -726,6 +728,26 @@ async fn main() -> anyhow::Result<()> {
             );
         } else {
             tracing::warn!("alert_rules configured but obligation store unavailable — watchers disabled");
+        }
+    }
+
+    // Spawn 60s health poll loop (always active — no obligation store required).
+    {
+        let health_poll_db = nv_base.join("messages.db");
+        let health_poll_ob = obligation_store.clone();
+        let health_poll_nexus = nexus_client
+            .as_ref()
+            .map(|c| std::sync::Arc::new(c.clone()));
+
+        if let Some(ob_store) = health_poll_ob {
+            health_poller::spawn_health_poller(
+                health_poll_db,
+                ob_store,
+                health_poll_nexus,
+            );
+            tracing::info!("health poller started (60s interval)");
+        } else {
+            tracing::warn!("health poller: no obligation store — crash detection disabled");
         }
     }
 

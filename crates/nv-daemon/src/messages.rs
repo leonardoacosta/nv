@@ -176,6 +176,21 @@ fn messages_migrations() -> Migrations<'static> {
             CREATE INDEX IF NOT EXISTS idx_alert_rules_name ON alert_rules(name);
             CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);",
         ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS server_health (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                cpu_percent REAL,
+                memory_used_mb INTEGER,
+                memory_total_mb INTEGER,
+                disk_used_gb REAL,
+                disk_total_gb REAL,
+                uptime_seconds INTEGER,
+                load_avg_1m REAL,
+                load_avg_5m REAL
+            );
+            CREATE INDEX IF NOT EXISTS idx_server_health_timestamp ON server_health(timestamp);",
+        ),
     ])
 }
 

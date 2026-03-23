@@ -27,6 +27,7 @@ tokio-util = { workspace = true }
 sd-notify = { workspace = true }
 rusqlite = { workspace = true }
 rusqlite_migration = { workspace = true }
+libc = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 tokio-postgres = { workspace = true }

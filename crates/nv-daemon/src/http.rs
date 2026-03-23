@@ -72,6 +72,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         nv_base: state.nv_base.clone(),
         config_json: Arc::clone(&state.config_json),
         nexus_client: state.nexus_client.clone(),
+        messages_db_path: state.stats_db_path.clone(),
     };
     let dashboard_router = build_dashboard_router(dashboard_state);
 

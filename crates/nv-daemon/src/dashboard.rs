@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use crate::health::HealthState;
 use crate::nexus::client::NexusClient;
 use crate::obligation_store::ObligationStore;
+use crate::server_health_store::{HealthStatus, ServerHealthStore};
 
 // ── Embedded SPA Assets ─────────────────────────────────────────────
 
@@ -51,6 +52,8 @@ pub struct DashboardState {
     pub config_json: Arc<serde_json::Value>,
     /// Nexus client for session queries and context-injected session starts.
     pub nexus_client: Option<Arc<NexusClient>>,
+    /// Path to messages.db for server health queries.
+    pub messages_db_path: PathBuf,
 }
 
 // ── Router builder ───────────────────────────────────────────────────
@@ -751,8 +754,41 @@ fn json_to_toml(val: &serde_json::Value) -> Option<toml::Value> {
 
 // ── GET /api/server-health ────────────────────────────────────────────
 
-/// `GET /api/server-health` — return daemon uptime, channel status, and worker metrics.
+/// `GET /api/server-health` — return daemon uptime, channel status, and server metrics.
+///
+/// Response includes:
+/// - `daemon` — the standard `HealthResponse` (uptime, channels, version)
+/// - `latest` — most recent `server_health` snapshot (CPU, memory, disk, uptime)
+/// - `status` — `"healthy"`, `"degraded"`, or `"critical"` classification
+/// - `history` — up to 1440 snapshots from the last 24h (one per minute)
 async fn get_server_health(State(state): State<DashboardState>) -> impl IntoResponse {
-    let health = state.health.to_health_response().await;
-    (StatusCode::OK, Json(health)).into_response()
+    let daemon_health = state.health.to_health_response().await;
+
+    // Attempt to load latest snapshot and 24h history from server_health table.
+    let (latest, status, history) = match ServerHealthStore::new(&state.messages_db_path) {
+        Err(e) => {
+            tracing::warn!(error = %e, "server-health: failed to open store");
+            (None, HealthStatus::Healthy, vec![])
+        }
+        Ok(store) => {
+            let latest = store.latest().unwrap_or(None);
+            let status = latest
+                .as_ref()
+                .map(|s| HealthStatus::from_metrics(s))
+                .unwrap_or(HealthStatus::Healthy);
+            let history = store.history_24h(1440).unwrap_or_default();
+            (latest, status, history)
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "daemon": daemon_health,
+            "latest": latest,
+            "status": status,
+            "history": history,
+        })),
+    )
+        .into_response()
 }

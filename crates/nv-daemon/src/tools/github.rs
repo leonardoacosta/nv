@@ -160,7 +160,7 @@ impl PrSummary {
             _ => "\u{2753}",             // question mark
         };
         format!(
-            "#{} {} — {} (by {}, {})",
+            "\u{1f4c1} #{} {} **{}**\n   By {} | {}",
             self.number, icon, self.title, self.author.login, self.state
         )
     }
@@ -181,8 +181,8 @@ impl RunSummary {
             .as_deref()
             .unwrap_or(&self.status);
         format!(
-            "{} {} — {} [{}] ({})",
-            icon, self.display_title, conclusion_str, self.head_branch, self.event
+            "\u{1f504} {icon} **{}** \u{2014} {conclusion_str}\n   Branch: {} | Trigger: {}",
+            self.display_title, self.head_branch, self.event
         )
     }
 }
@@ -202,8 +202,8 @@ impl IssueSummary {
             logins.join(", ")
         };
         format!(
-            "#{} {} — {}{} ({})",
-            self.number, self.state, self.title, labels, assignees
+            "\u{1f4c1} #{} **{}**\n   {} | {}{assignees}",
+            self.number, self.title, self.state, labels
         )
     }
 }
@@ -476,7 +476,7 @@ impl PrDetail {
         };
 
         format!(
-            "PR #{number} — {title}\nState: {state} | Author: {author}\nCreated: {created} | Updated: {updated}\nReview: {review_icon} {review}{labels}{assignees}{milestone}{checks}{diff}{body}",
+            "\u{1f4c1} #{number} **{title}**\n**State:** {state} | **Author:** {author}\n**Created:** {created} | **Updated:** {updated}\n**Review:** {review_icon} {review}{labels}{assignees}{milestone}{checks}{diff}{body}",
             number = self.number,
             title = self.title,
             state = self.state,
@@ -527,7 +527,7 @@ impl ReleaseSummary {
             )
         };
         format!(
-            "{tag}{badges} — {title} ({date}){notes}",
+            "\u{1f504} **{tag}**{badges} \u{2014} {title}\n   Released: {date}{notes}",
             tag = self.tag_name,
             badges = badges,
             title = title,
@@ -540,7 +540,7 @@ impl ReleaseSummary {
 impl CompareResult {
     pub fn format_for_telegram(&self, base: &str, head: &str) -> String {
         let status_line = format!(
-            "Comparing {base}...{head}: {status} (ahead {ahead}, behind {behind}, {total} commit(s))",
+            "\u{1f504} **{base}...{head}** \u{2014} {status}\n   +{ahead} ahead, -{behind} behind, {total} commit(s)",
             base = base,
             head = head,
             status = self.status,
@@ -557,9 +557,14 @@ impl CompareResult {
                 let short_sha = &c.sha[..7.min(c.sha.len())];
                 let first_line = c.commit.message.lines().next().unwrap_or("").trim();
                 let first_line = truncate_with_suffix(first_line, 72, "...");
-                let date = &c.commit.author.date.get(..10).unwrap_or(&c.commit.author.date);
+                let date = crate::tools::relative_time(&c.commit.author.date);
+                let date = if date.is_empty() {
+                    c.commit.author.date.get(..10).unwrap_or(&c.commit.author.date).to_string()
+                } else {
+                    date
+                };
                 format!(
-                    "{sha} {author} \u{2014} {msg} ({date})",
+                    "`{sha}` {author} \u{2014} {msg} ({date})",
                     sha = short_sha,
                     author = c.commit.author.name,
                     msg = first_line,
@@ -967,6 +972,7 @@ mod tests {
         assert!(formatted.contains("Add feature X"));
         assert!(formatted.contains("octocat"));
         assert!(formatted.contains("\u{2705}"));
+        assert!(formatted.contains("By octocat"));
     }
 
     #[test]
@@ -984,6 +990,8 @@ mod tests {
         assert!(formatted.contains("\u{2705}"));
         assert!(formatted.contains("CI"));
         assert!(formatted.contains("success"));
+        assert!(formatted.contains("Branch: main"));
+        assert!(formatted.contains("Trigger: push"));
     }
 
     #[test]
@@ -1000,6 +1008,7 @@ mod tests {
         let formatted = run.format_for_telegram();
         assert!(formatted.contains("\u{274c}"));
         assert!(formatted.contains("failure"));
+        assert!(formatted.contains("Branch: feat/x"));
     }
 
     #[test]
@@ -1031,7 +1040,6 @@ mod tests {
         };
         let formatted = issue.format_for_telegram();
         assert!(formatted.contains("unassigned"));
-        assert!(!formatted.contains("["));
     }
 
     #[test]
@@ -1357,6 +1365,7 @@ mod tests {
         assert!(formatted.contains("abcdef1")); // short sha
         assert!(formatted.contains("Add feature"));
         assert!(formatted.contains("1 files changed, +5 -2"));
+        assert!(formatted.contains("+2 ahead"));
     }
 
     #[test]

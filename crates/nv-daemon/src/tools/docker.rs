@@ -87,7 +87,7 @@ pub async fn docker_status(all: bool) -> Result<String> {
         return Ok("No containers found.".into());
     }
 
-    // Build a text table: Name | Image | State | Uptime | Ports
+    // Build a mobile-friendly list: 🐳 name (image) — state
     let mut rows: Vec<[String; 5]> = Vec::new();
     for line in raw.lines() {
         let parts: Vec<&str> = line.splitn(5, '\t').collect();
@@ -107,47 +107,29 @@ pub async fn docker_status(all: bool) -> Result<String> {
         return Ok("No containers found.".into());
     }
 
-    // Calculate column widths
-    let headers = ["Name", "Image", "State", "Uptime", "Ports"];
-    let mut widths = headers.map(|h| h.len());
-    for row in &rows {
-        for (i, cell) in row.iter().enumerate() {
-            widths[i] = widths[i].max(cell.len());
-        }
-    }
-
-    let mut out = String::new();
-    // Header
-    for (i, h) in headers.iter().enumerate() {
-        if i > 0 {
-            out.push_str(" | ");
-        }
-        out.push_str(&format!("{:width$}", h, width = widths[i]));
-    }
-    out.push('\n');
-    // Separator
-    for (i, w) in widths.iter().enumerate() {
-        if i > 0 {
-            out.push_str("-+-");
-        }
-        out.push_str(&"-".repeat(*w));
-    }
-    out.push('\n');
-    // Rows
-    for row in &rows {
-        for (i, cell) in row.iter().enumerate() {
-            if i > 0 {
-                out.push_str(" | ");
-            }
-            out.push_str(&format!("{:width$}", cell, width = widths[i]));
-        }
-        out.push('\n');
-    }
-
     let count = rows.len();
-    out.push_str(&format!("\n({count} container{})", if count == 1 { "" } else { "s" }));
+    let mut lines = vec![format!("Containers ({count}):") ];
 
-    Ok(out)
+    for row in &rows {
+        let name = &row[0];
+        let image = &row[1];
+        let state = &row[2];
+        let uptime = &row[3];
+        let ports = &row[4];
+
+        lines.push(format!("\u{1f433} **{name}** ({image}) \u{2014} {state}"));
+        let detail = match (uptime.is_empty(), ports.is_empty()) {
+            (false, false) => format!("   Uptime: {uptime} | Ports: {ports}"),
+            (false, true)  => format!("   Uptime: {uptime}"),
+            (true, false)  => format!("   Ports: {ports}"),
+            (true, true)   => String::new(),
+        };
+        if !detail.is_empty() {
+            lines.push(detail);
+        }
+    }
+
+    Ok(lines.join("\n"))
 }
 
 // ── docker_logs ─────────────────────────────────────────────────────

@@ -255,12 +255,6 @@ impl DeploymentSummary {
             _ => "\u{2753}",           // question mark
         };
 
-        let url_part = self
-            .url
-            .as_deref()
-            .map(|u| format!(" \u{2192} {u}"))
-            .unwrap_or_default();
-
         let branch = self
             .meta
             .as_ref()
@@ -280,9 +274,33 @@ impl DeploymentSummary {
             })
             .unwrap_or_default();
 
-        let age = self.created_at.map(format_age).unwrap_or_default();
+        let age = self
+            .created_at
+            .map(|ms| {
+                // Convert ms to an ISO-8601-like string for relative_time
+                let secs = ms / 1000;
+                let rt = format_age(ms);
+                // format_age already gives "5m ago" etc. — reuse it
+                let _ = secs;
+                rt
+            })
+            .unwrap_or_default();
 
-        format!("{icon} {state} [{branch}] {commit_msg}{url_part}{age}")
+        let url_part = self
+            .url
+            .as_deref()
+            .map(|u| format!("\n   URL: {u}"))
+            .unwrap_or_default();
+
+        let age_part = if age.is_empty() {
+            String::new()
+        } else {
+            format!(" | {age}")
+        };
+
+        format!(
+            "\u{1f3d7}\u{fe0f} {icon} **{branch}** \u{2014} {state}\n   {commit_msg}{age_part}{url_part}"
+        )
     }
 }
 
@@ -317,16 +335,16 @@ pub fn format_deployments_for_telegram(
     deployments: &[DeploymentSummary],
 ) -> String {
     if deployments.is_empty() {
-        return format!("No recent deployments for {project}.");
+        return format!("No deployments found for {project}.");
     }
     let mut lines = vec![format!(
-        "{} recent deployment(s) for {project}:",
+        "\u{1f3d7}\u{fe0f} **{project}** \u{2014} {} deployment(s):",
         deployments.len()
     )];
     for d in deployments {
         lines.push(d.format_for_telegram());
     }
-    lines.join("\n")
+    lines.join("\n\n")
 }
 
 /// Format build log events for Telegram output.
@@ -336,7 +354,7 @@ pub fn format_build_logs_for_telegram(deploy_id: &str, events: &[BuildEvent]) ->
     }
 
     let mut lines = vec![format!(
-        "Build log for {deploy_id} ({} event(s)):",
+        "\u{1f3d7}\u{fe0f} Build log: {deploy_id} ({} event(s)):",
         events.len()
     )];
     for event in events {
@@ -542,7 +560,7 @@ mod tests {
         let formatted = d.format_for_telegram();
         assert!(formatted.contains("\u{2705}"));
         assert!(formatted.contains("READY"));
-        assert!(formatted.contains("[main]"));
+        assert!(formatted.contains("main"));
         assert!(formatted.contains("fix: login"));
         assert!(formatted.contains("my-app.vercel.app"));
     }
@@ -563,7 +581,7 @@ mod tests {
         let formatted = d.format_for_telegram();
         assert!(formatted.contains("\u{274c}"));
         assert!(formatted.contains("ERROR"));
-        assert!(formatted.contains("[feat/x]"));
+        assert!(formatted.contains("feat/x"));
     }
 
     #[test]
@@ -589,7 +607,8 @@ mod tests {
     #[test]
     fn format_deployments_empty() {
         let output = format_deployments_for_telegram("test-project", &[]);
-        assert!(output.contains("No recent deployments"));
+        assert!(output.contains("No deployments found"));
+        assert!(output.contains("test-project"));
     }
 
     #[test]
@@ -613,7 +632,8 @@ mod tests {
             },
         ];
         let output = format_deployments_for_telegram("my-app", &deployments);
-        assert!(output.contains("2 recent deployment(s) for my-app:"));
+        assert!(output.contains("my-app"));
+        assert!(output.contains("2 deployment(s)"));
         assert!(output.contains("READY"));
         assert!(output.contains("ERROR"));
     }
@@ -642,6 +662,7 @@ mod tests {
         assert!(output.contains("2 event(s)"));
         assert!(output.contains("\u{274c} Type error in main.ts"));
         assert!(output.contains("Compiling..."));
+        assert!(output.contains("dpl_1"));
     }
 
     #[test]

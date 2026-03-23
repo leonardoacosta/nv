@@ -232,42 +232,45 @@ pub fn ado_tool_definitions() -> Vec<ToolDefinition> {
 
 // ── Formatting ───────────────────────────────────────────────────────
 
-/// Format projects as a readable list.
+/// Format projects as a mobile-friendly list.
 pub fn format_projects(projects: &[AdoProject]) -> String {
     if projects.is_empty() {
-        return "(no projects found)".to_string();
+        return "No projects found.".to_string();
     }
 
-    let mut lines = vec![format!("Projects ({}):", projects.len())];
+    let mut lines = vec![format!("ADO projects ({}):", projects.len())];
     for p in projects {
         let date = p
             .last_update_time
             .as_deref()
-            .and_then(|s| s.split('T').next())
-            .unwrap_or("unknown");
-        lines.push(format!("  {} ({}) — last updated {}", p.name, p.state, date));
+            .map(crate::tools::relative_time)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "unknown".to_string());
+        lines.push(format!("\u{1f4c1} **{}** ({})", p.name, p.state));
+        lines.push(format!("   Last updated: {date}"));
     }
     lines.join("\n")
 }
 
-/// Format pipeline definitions as a readable list.
+/// Format pipeline definitions as a mobile-friendly list.
 pub fn format_pipelines(pipelines: &[AdoPipeline]) -> String {
     if pipelines.is_empty() {
-        return "(no pipelines found)".to_string();
+        return "No pipelines found.".to_string();
     }
 
-    let mut lines = vec![format!("Pipelines ({}):", pipelines.len())];
+    let mut lines = vec![format!("ADO pipelines ({}):", pipelines.len())];
     for p in pipelines {
         let folder = p.folder.as_deref().unwrap_or("/");
-        lines.push(format!("  [{}] {} (folder: {})", p.id, p.name, folder));
+        lines.push(format!("\u{1f504} [{}] **{}**", p.id, p.name));
+        lines.push(format!("   Folder: {folder}"));
     }
     lines.join("\n")
 }
 
-/// Format builds as a readable list.
+/// Format builds as a mobile-friendly list.
 pub fn format_builds(builds: &[AdoBuild]) -> String {
     if builds.is_empty() {
-        return "(no builds found)".to_string();
+        return "No builds found.".to_string();
     }
 
     let mut lines = vec![format!("Recent builds ({}):", builds.len())];
@@ -275,6 +278,16 @@ pub fn format_builds(builds: &[AdoBuild]) -> String {
         let number = b.build_number.as_deref().unwrap_or("?");
         let status = b.status.as_deref().unwrap_or("unknown");
         let result = b.result.as_deref().unwrap_or("-");
+        let status_icon = match result {
+            "succeeded" => "\u{2705}",
+            "failed" => "\u{274c}",
+            "canceled" => "\u{23f9}",
+            _ => match status {
+                "inProgress" => "\u{1f504}",
+                "notStarted" => "\u{23f3}",
+                _ => "\u{2753}",
+            },
+        };
         let branch = b
             .source_branch
             .as_deref()
@@ -285,11 +298,24 @@ pub fn format_builds(builds: &[AdoBuild]) -> String {
             .as_ref()
             .and_then(|r| r.display_name.as_deref())
             .unwrap_or("unknown");
-        let queued = b.queue_time.as_deref().unwrap_or("-");
-        let finished = b.finish_time.as_deref().unwrap_or("-");
+        let queued = b
+            .queue_time
+            .as_deref()
+            .map(crate::tools::relative_time)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "-".to_string());
+        let finished = b
+            .finish_time
+            .as_deref()
+            .map(crate::tools::relative_time)
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "-".to_string());
 
         lines.push(format!(
-            "  #{number} | {status}/{result} | {branch} | by {requester} | queued: {queued} | finished: {finished}"
+            "\u{1f3d7}\u{fe0f} #{number} {status_icon} {result} \u{2014} {branch}"
+        ));
+        lines.push(format!(
+            "   By {requester} | Queued: {queued} | Finished: {finished}"
         ));
     }
     lines.join("\n")
@@ -329,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_format_projects_empty() {
-        assert_eq!(format_projects(&[]), "(no projects found)");
+        assert_eq!(format_projects(&[]), "No projects found.");
     }
 
     #[test]
@@ -349,16 +375,16 @@ mod tests {
             },
         ];
         let output = format_projects(&projects);
-        assert!(output.contains("Projects (2)"));
-        assert!(output.contains("MyProject (wellFormed)"));
-        assert!(output.contains("last updated 2026-03-15"));
-        assert!(output.contains("OtherProject (wellFormed)"));
-        assert!(output.contains("last updated unknown"));
+        assert!(output.contains("ADO projects (2)"));
+        assert!(output.contains("MyProject"));
+        assert!(output.contains("wellFormed"));
+        assert!(output.contains("Last updated:"));
+        assert!(output.contains("OtherProject"));
     }
 
     #[test]
     fn test_format_pipelines_empty() {
-        assert_eq!(format_pipelines(&[]), "(no pipelines found)");
+        assert_eq!(format_pipelines(&[]), "No pipelines found.");
     }
 
     #[test]
@@ -378,15 +404,17 @@ mod tests {
             },
         ];
         let output = format_pipelines(&pipelines);
-        assert!(output.contains("Pipelines (2)"));
-        assert!(output.contains("[1] CI Build"));
-        assert!(output.contains("[2] CD Deploy"));
-        assert!(output.contains("folder: \\builds"));
+        assert!(output.contains("ADO pipelines (2)"));
+        assert!(output.contains("[1]"));
+        assert!(output.contains("CI Build"));
+        assert!(output.contains("[2]"));
+        assert!(output.contains("CD Deploy"));
+        assert!(output.contains("Folder: \\builds"));
     }
 
     #[test]
     fn test_format_builds_empty() {
-        assert_eq!(format_builds(&[]), "(no builds found)");
+        assert_eq!(format_builds(&[]), "No builds found.");
     }
 
     #[test]
@@ -405,9 +433,9 @@ mod tests {
         let output = format_builds(&builds);
         assert!(output.contains("Recent builds (1)"));
         assert!(output.contains("#20260322.1"));
-        assert!(output.contains("completed/succeeded"));
+        assert!(output.contains("succeeded"));
         assert!(output.contains("main"));
-        assert!(output.contains("by Leo"));
+        assert!(output.contains("By Leo"));
     }
 
     #[test]

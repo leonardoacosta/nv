@@ -160,6 +160,164 @@ impl<T: Checkable> ServiceRegistry<T> {
     }
 }
 
+// ── Shared Formatting Helpers ────────────────────────────────────────
+
+/// Convert an ISO 8601 / RFC 3339 timestamp string to a human-readable
+/// relative time string for Telegram output.
+///
+/// - `"just now"` — less than 1 minute ago
+/// - `"5m ago"` — less than 1 hour ago
+/// - `"3h ago"` — less than 24 hours ago
+/// - `"2d ago"` — less than 7 days ago
+/// - `"Mar 15"` — 7 days or older (month abbreviation + day)
+/// - `""` — if the timestamp cannot be parsed
+pub fn relative_time(timestamp: &str) -> String {
+    if timestamp.is_empty() {
+        return String::new();
+    }
+
+    // Parse seconds-since-epoch from an ISO 8601 string.
+    // We accept "2024-01-15T12:00:00Z" and "2024-01-15T12:00:00+00:00".
+    // Seconds component is all we need for relative display.
+    let epoch_secs = parse_iso8601_to_epoch(timestamp);
+    let epoch_secs = match epoch_secs {
+        Some(s) => s,
+        None => return String::new(),
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    if now < epoch_secs {
+        // Timestamp is in the future — treat as "just now"
+        return "just now".to_string();
+    }
+
+    let diff = now - epoch_secs;
+
+    if diff < 60 {
+        return "just now".to_string();
+    } else if diff < 3600 {
+        return format!("{}m ago", diff / 60);
+    } else if diff < 86400 {
+        return format!("{}h ago", diff / 3600);
+    } else if diff < 7 * 86400 {
+        return format!("{}d ago", diff / 86400);
+    }
+
+    // Older than 7 days — parse out month+day for display ("Mar 15")
+    month_day_from_iso(timestamp)
+        .unwrap_or_else(|| timestamp.get(..10).unwrap_or(timestamp).to_string())
+}
+
+/// Parse an ISO 8601 date-time string to Unix seconds.
+///
+/// Only handles the subset used by API responses:
+///   `YYYY-MM-DDTHH:MM:SSZ` and `YYYY-MM-DDTHH:MM:SS+HH:MM`
+fn parse_iso8601_to_epoch(s: &str) -> Option<u64> {
+    // Minimum: "YYYY-MM-DD" (10 chars)
+    if s.len() < 10 {
+        return None;
+    }
+
+    let date_part = s.get(..10)?;
+    let parts: Vec<&str> = date_part.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+
+    let year: i64 = parts[0].parse().ok()?;
+    let month: i64 = parts[1].parse().ok()?;
+    let day: i64 = parts[2].parse().ok()?;
+
+    if year < 1970 || month < 1 || month > 12 || day < 1 || day > 31 {
+        return None;
+    }
+
+    // Parse time component if present ("THH:MM:SS")
+    let (hour, minute, second) = if s.len() > 10 && s.as_bytes().get(10) == Some(&b'T') {
+        let time = s.get(11..19).unwrap_or("00:00:00");
+        let tp: Vec<&str> = time.split(':').collect();
+        let h: i64 = tp.first().and_then(|v| v.parse().ok()).unwrap_or(0);
+        let m: i64 = tp.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+        let sc: i64 = tp.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
+        (h, m, sc)
+    } else {
+        (0, 0, 0)
+    };
+
+    // Days since Unix epoch using the proleptic Gregorian formula
+    let days = days_since_epoch(year, month, day)?;
+    let total_secs = days * 86400 + hour * 3600 + minute * 60 + second;
+
+    // Handle UTC offset if present (e.g. "+05:30")
+    let offset_secs = if s.len() > 19 {
+        let tz = &s[19..];
+        if tz.starts_with('+') || tz.starts_with('-') {
+            let sign: i64 = if tz.starts_with('+') { 1 } else { -1 };
+            let tz_digits = &tz[1..];
+            let tp: Vec<&str> = tz_digits.split(':').collect();
+            let oh: i64 = tp.first().and_then(|v| v.parse().ok()).unwrap_or(0);
+            let om: i64 = tp.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+            sign * (oh * 3600 + om * 60)
+        } else {
+            0 // "Z" or unknown — treat as UTC
+        }
+    } else {
+        0
+    };
+
+    let utc_secs = total_secs - offset_secs;
+    if utc_secs < 0 {
+        None
+    } else {
+        Some(utc_secs as u64)
+    }
+}
+
+/// Compute days since Unix epoch (1970-01-01) for a given date.
+fn days_since_epoch(year: i64, month: i64, day: i64) -> Option<i64> {
+    // Cumulative days at the start of each month (non-leap year)
+    const MONTH_DAYS: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+
+    if month < 1 || month > 12 {
+        return None;
+    }
+
+    let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    let leap_day: i64 = if is_leap && month > 2 { 1 } else { 0 };
+
+    // Days from years 1970..year
+    let y = year - 1970;
+    let leap_years = (y - 1) / 4 - (y - 1) / 100 + (y - 1) / 400
+        + if year > 1972 { 1 } else { 0 }; // count leaps in [1970, year)
+    let year_days = y * 365 + leap_years;
+
+    let month_idx = (month - 1) as usize;
+    let total = year_days + MONTH_DAYS[month_idx] + leap_day + (day - 1);
+    Some(total)
+}
+
+/// Extract `"Mon DD"` from the date portion of an ISO 8601 string.
+fn month_day_from_iso(s: &str) -> Option<String> {
+    let date_part = s.get(..10)?;
+    let parts: Vec<&str> = date_part.split('-').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let month: usize = parts[1].parse().ok()?;
+    let day: u32 = parts[2].parse().ok()?;
+
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let month_name = MONTHS.get(month.wrapping_sub(1))?;
+    Some(format!("{month_name} {day}"))
+}
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -3893,5 +4051,127 @@ mod tests {
 
         let d = reg.default().unwrap();
         assert_eq!(d.name(), "the-default");
+    }
+
+    // ── relative_time tests ──────────────────────────────────────────
+
+    #[test]
+    fn relative_time_empty_returns_empty() {
+        assert_eq!(super::relative_time(""), "");
+    }
+
+    #[test]
+    fn relative_time_invalid_returns_empty() {
+        assert_eq!(super::relative_time("not-a-date"), "");
+    }
+
+    #[test]
+    fn relative_time_future_returns_just_now() {
+        // A timestamp far in the future
+        let result = super::relative_time("2099-01-01T00:00:00Z");
+        assert_eq!(result, "just now");
+    }
+
+    #[test]
+    fn relative_time_just_now() {
+        // 30 seconds ago — construct from current epoch
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let ts = epoch_to_iso(now - 30);
+        assert_eq!(super::relative_time(&ts), "just now");
+    }
+
+    #[test]
+    fn relative_time_minutes() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let ts = epoch_to_iso(now - 5 * 60); // 5 minutes ago
+        let result = super::relative_time(&ts);
+        assert_eq!(result, "5m ago");
+    }
+
+    #[test]
+    fn relative_time_hours() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let ts = epoch_to_iso(now - 3 * 3600); // 3 hours ago
+        let result = super::relative_time(&ts);
+        assert_eq!(result, "3h ago");
+    }
+
+    #[test]
+    fn relative_time_days() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let ts = epoch_to_iso(now - 2 * 86400); // 2 days ago
+        let result = super::relative_time(&ts);
+        assert_eq!(result, "2d ago");
+    }
+
+    #[test]
+    fn relative_time_older_returns_month_day() {
+        // 2026-03-15 is well past 7 days relative to any "now" in 2026+
+        let result = super::relative_time("2024-03-15T12:00:00Z");
+        assert_eq!(result, "Mar 15");
+    }
+
+    #[test]
+    fn relative_time_january_date() {
+        let result = super::relative_time("2020-01-07T00:00:00Z");
+        assert_eq!(result, "Jan 7");
+    }
+
+    #[test]
+    fn relative_time_december_date() {
+        let result = super::relative_time("2020-12-25T00:00:00Z");
+        assert_eq!(result, "Dec 25");
+    }
+
+    /// Helper: convert epoch seconds to "YYYY-MM-DDTHH:MM:SSZ" for test use.
+    fn epoch_to_iso(secs: u64) -> String {
+        // Simple conversion — good enough for tests within a few days of now
+        let days = secs / 86400;
+        let rem = secs % 86400;
+        let h = rem / 3600;
+        let m = (rem % 3600) / 60;
+        let s = rem % 60;
+
+        // Days since 1970-01-01
+        let mut year = 1970i64;
+        let mut remaining_days = days as i64;
+        loop {
+            let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+            let days_in_year = if is_leap { 366 } else { 365 };
+            if remaining_days < days_in_year {
+                break;
+            }
+            remaining_days -= days_in_year;
+            year += 1;
+        }
+
+        let is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        let month_days = [
+            31i64, if is_leap { 29 } else { 28 }, 31, 30, 31, 30,
+            31, 31, 30, 31, 30, 31,
+        ];
+        let mut month = 1i64;
+        for days_in_month in &month_days {
+            if remaining_days < *days_in_month {
+                break;
+            }
+            remaining_days -= days_in_month;
+            month += 1;
+        }
+        let day = remaining_days + 1;
+
+        format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
     }
 }

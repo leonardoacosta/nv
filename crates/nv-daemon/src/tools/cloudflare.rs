@@ -223,37 +223,15 @@ pub async fn cf_zones(client: &CloudflareClient) -> Result<String> {
         return Ok("No Cloudflare zones found. Check that CLOUDFLARE_API_TOKEN has Zone:Read permission.".to_string());
     }
 
-    // Build table
-    let col_zone = "Zone";
-    let col_status = "Status";
-    let col_plan = "Plan";
-    let col_ns = "Nameservers";
-
-    // Determine column widths
-    let zone_w = zones.iter().map(|z| z.name.len()).max().unwrap_or(4).max(col_zone.len());
-    let status_w = zones.iter().map(|z| z.status.len()).max().unwrap_or(6).max(col_status.len());
-    let plan_w = zones.iter().map(|z| z.plan.name.len()).max().unwrap_or(4).max(col_plan.len());
-
-    let mut lines = vec![
-        format!(
-            "{:<zone_w$}  {:<status_w$}  {:<plan_w$}  {}",
-            col_zone, col_status, col_plan, col_ns,
-            zone_w = zone_w, status_w = status_w, plan_w = plan_w
-        ),
-        format!(
-            "{:-<zone_w$}  {:-<status_w$}  {:-<plan_w$}  {}",
-            "", "", "", "---",
-            zone_w = zone_w, status_w = status_w, plan_w = plan_w
-        ),
-    ];
-
+    let mut lines = vec![format!("Cloudflare zones ({}):", zones.len())];
     for zone in &zones {
-        let ns = zone.name_servers.join(", ");
-        lines.push(format!(
-            "{:<zone_w$}  {:<status_w$}  {:<plan_w$}  {}",
-            zone.name, zone.status, zone.plan.name, ns,
-            zone_w = zone_w, status_w = status_w, plan_w = plan_w
-        ));
+        let ns = if zone.name_servers.is_empty() {
+            "(none)".to_string()
+        } else {
+            zone.name_servers.join(", ")
+        };
+        lines.push(format!("\u{1f310} **{}** \u{2014} {}", zone.name, zone.status));
+        lines.push(format!("   Plan: {} | NS: {}", zone.plan.name, ns));
     }
 
     Ok(lines.join("\n"))
@@ -301,43 +279,20 @@ pub async fn cf_dns_records(
         return Ok(format!("No DNS records found for {domain}{type_suffix}."));
     }
 
-    // Build table
-    let col_type = "Type";
-    let col_name = "Name";
-    let col_content = "Content";
-    let col_proxied = "Proxied";
-    let col_ttl = "TTL";
-
-    let type_w = records.iter().map(|r| r.record_type.len()).max().unwrap_or(4).max(col_type.len());
-    let name_w = records.iter().map(|r| r.name.len()).max().unwrap_or(4).max(col_name.len());
-    let content_w = records.iter().map(|r| r.content.len()).max().unwrap_or(7).max(col_content.len()).min(50);
-
-    let mut lines = vec![
-        format!(
-            "{:<type_w$}  {:<name_w$}  {:<content_w$}  {:<7}  {}",
-            col_type, col_name, col_content, col_proxied, col_ttl,
-            type_w = type_w, name_w = name_w, content_w = content_w
-        ),
-        format!(
-            "{:-<type_w$}  {:-<name_w$}  {:-<content_w$}  {:-<7}  ---",
-            "", "", "", "",
-            type_w = type_w, name_w = name_w, content_w = content_w
-        ),
-    ];
-
+    let mut lines = vec![format!("DNS records for {domain} ({}):", records.len())];
     for r in &records {
-        let proxied = if r.proxied { "yes" } else { "no" };
+        let proxied = if r.proxied { "proxied" } else { "DNS only" };
         let ttl = if r.ttl == 1 { "auto".to_string() } else { r.ttl.to_string() };
-        let content_display = if r.content.len() > content_w {
-            format!("{}...", &r.content[..content_w.saturating_sub(3)])
+        let content_display = if r.content.len() > 50 {
+            format!("{}...", &r.content[..47])
         } else {
             r.content.clone()
         };
         lines.push(format!(
-            "{:<type_w$}  {:<name_w$}  {:<content_w$}  {:<7}  {}",
-            r.record_type, r.name, content_display, proxied, ttl,
-            type_w = type_w, name_w = name_w, content_w = content_w
+            "\u{1f310} {} **{}** \u{2192} {}",
+            r.record_type, r.name, content_display
         ));
+        lines.push(format!("   Proxied: {proxied} | TTL: {ttl}"));
     }
 
     Ok(lines.join("\n"))
@@ -400,12 +355,11 @@ pub async fn cf_domain_status(client: &CloudflareClient, domain: &str) -> Result
     };
 
     let output = format!(
-        "Domain: {}\n\
-         Status: {}\n\
-         Plan: {}\n\
-         Nameservers: {}\n\
-         SSL Mode: {}\n\
-         Security Level: {}",
+        "\u{1f310} **{}** \u{2014} {}\n\
+         **Plan:** {}\n\
+         **Nameservers:** {}\n\
+         **SSL Mode:** {}\n\
+         **Security Level:** {}",
         zone.name,
         zone.status,
         zone.plan.name,

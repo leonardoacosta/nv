@@ -311,56 +311,14 @@ pub fn format_results(result: &QueryResult) -> String {
             .join("\n");
     }
 
-    // Multi-row → aligned table
-    let num_cols = result.columns.len();
-    let mut widths = vec![0usize; num_cols];
+    // Multi-row → numbered list with key: value per row
+    let mut lines = Vec::with_capacity(result.rows.len() * (result.columns.len() + 1));
 
-    // Measure column header widths
-    for (i, col) in result.columns.iter().enumerate() {
-        widths[i] = col.len();
-    }
-
-    // Measure data widths
-    for row in &result.rows {
-        for (i, cell) in row.iter().enumerate() {
-            if i < num_cols {
-                widths[i] = widths[i].max(cell.len());
-            }
+    for (row_idx, row) in result.rows.iter().enumerate() {
+        lines.push(format!("**Row {}:**", row_idx + 1));
+        for (col, val) in result.columns.iter().zip(row.iter()) {
+            lines.push(format!("  {col}: {val}"));
         }
-    }
-
-    let mut lines = Vec::with_capacity(result.rows.len() + 2);
-
-    // Header
-    let header: String = result
-        .columns
-        .iter()
-        .enumerate()
-        .map(|(i, col)| format!("{:<width$}", col, width = widths[i]))
-        .collect::<Vec<_>>()
-        .join(" | ");
-    lines.push(header);
-
-    // Separator
-    let sep: String = widths
-        .iter()
-        .map(|w| "-".repeat(*w))
-        .collect::<Vec<_>>()
-        .join("-+-");
-    lines.push(sep);
-
-    // Data rows
-    for row in &result.rows {
-        let line: String = row
-            .iter()
-            .enumerate()
-            .map(|(i, cell)| {
-                let w = if i < num_cols { widths[i] } else { cell.len() };
-                format!("{:<width$}", cell, width = w)
-            })
-            .collect::<Vec<_>>()
-            .join(" | ");
-        lines.push(line);
     }
 
     lines.join("\n")
@@ -499,7 +457,7 @@ mod tests {
     }
 
     #[test]
-    fn test_format_multi_row_as_table() {
+    fn test_format_multi_row_as_list() {
         let result = QueryResult {
             columns: vec!["id".into(), "name".into()],
             rows: vec![
@@ -508,12 +466,12 @@ mod tests {
             ],
         };
         let output = format_results(&result);
-        // Should contain header, separator, and data rows
-        let lines: Vec<&str> = output.lines().collect();
-        assert_eq!(lines.len(), 4); // header + separator + 2 data rows
-        assert!(lines[0].contains("id"));
-        assert!(lines[0].contains("name"));
-        assert!(lines[1].contains("---"));
+        // Should contain row labels and key: value pairs
+        assert!(output.contains("Row 1"));
+        assert!(output.contains("id: 1"));
+        assert!(output.contains("name: Alice"));
+        assert!(output.contains("Row 2"));
+        assert!(output.contains("name: Bob"));
     }
 
     // ── truncate_cell ────────────────────────────────────────────
@@ -618,11 +576,11 @@ mod tests {
 
     #[test]
     fn test_format_projects_empty() {
-        assert_eq!(format_projects(&[]), "(no projects found)");
+        assert_eq!(format_projects(&[]), "No projects found.");
     }
 
     #[test]
-    fn test_format_projects_table() {
+    fn test_format_projects_list() {
         let projects = vec![
             ProjectSummary {
                 id: "aged-bird-123456".into(),
@@ -638,22 +596,21 @@ mod tests {
             },
         ];
         let output = format_projects(&projects);
-        let lines: Vec<&str> = output.lines().collect();
-        // header + separator + 2 data rows
-        assert_eq!(lines.len(), 4);
-        assert!(lines[0].contains("name"));
-        assert!(lines[0].contains("id"));
-        assert!(lines[2].contains("otaku-odyssey"));
+        assert!(output.contains("Neon projects (2)"));
+        assert!(output.contains("otaku-odyssey"));
+        assert!(output.contains("aged-bird-123456"));
+        assert!(output.contains("aws-us-east-2"));
+        assert!(output.contains("tribal-cities"));
     }
 
     #[test]
     fn test_format_branches_empty() {
-        assert_eq!(format_branches(&[]), "(no branches found)");
+        assert_eq!(format_branches(&[]), "No branches found.");
     }
 
     #[test]
     fn test_format_endpoints_empty() {
-        assert_eq!(format_endpoints(&[]), "(no compute endpoints found)");
+        assert_eq!(format_endpoints(&[]), "No compute endpoints found.");
     }
 
     #[test]
@@ -834,125 +791,55 @@ impl NeonApiClient {
 
 // ── Neon API Formatting ──────────────────────────────────────────────
 
-/// Format a list of Neon projects as an aligned table.
+/// Format a list of Neon projects as a mobile-friendly list.
 pub fn format_projects(projects: &[ProjectSummary]) -> String {
     if projects.is_empty() {
-        return "(no projects found)".to_string();
+        return "No projects found.".to_string();
     }
 
-    let headers = ["name", "id", "region", "created_at"];
-    let rows: Vec<[String; 4]> = projects
-        .iter()
-        .map(|p| {
-            [
-                p.name.clone(),
-                p.id.clone(),
-                p.region_id.clone(),
-                truncate_timestamp(&p.created_at),
-            ]
-        })
-        .collect();
-
-    format_table(&headers, &rows.iter().map(|r| r.as_slice()).collect::<Vec<_>>())
+    let mut lines = vec![format!("Neon projects ({}):", projects.len())];
+    for p in projects {
+        let created = crate::tools::relative_time(&p.created_at);
+        let created = if created.is_empty() { truncate_timestamp(&p.created_at) } else { created };
+        lines.push(format!("\u{1f5c3}\u{fe0f} **{}**", p.name));
+        lines.push(format!("   ID: {} | Region: {} | Created: {}", p.id, p.region_id, created));
+    }
+    lines.join("\n")
 }
 
-/// Format a list of Neon branches as an aligned table.
+/// Format a list of Neon branches as a mobile-friendly list.
 pub fn format_branches(branches: &[BranchSummary]) -> String {
     if branches.is_empty() {
-        return "(no branches found)".to_string();
+        return "No branches found.".to_string();
     }
 
-    let headers = ["name", "id", "parent_id", "state", "created_at"];
-    let rows: Vec<[String; 5]> = branches
-        .iter()
-        .map(|b| {
-            [
-                b.name.clone(),
-                b.id.clone(),
-                if b.parent_id.is_empty() { "(root)".to_string() } else { b.parent_id.clone() },
-                b.current_state.clone(),
-                truncate_timestamp(&b.created_at),
-            ]
-        })
-        .collect();
-
-    format_table(&headers, &rows.iter().map(|r| r.as_slice()).collect::<Vec<_>>())
+    let mut lines = vec![format!("Neon branches ({}):", branches.len())];
+    for b in branches {
+        let parent = if b.parent_id.is_empty() { "(root)".to_string() } else { b.parent_id.clone() };
+        lines.push(format!("\u{1f5c3}\u{fe0f} **{}** ({})", b.name, b.current_state));
+        lines.push(format!("   ID: {} | Parent: {}", b.id, parent));
+    }
+    lines.join("\n")
 }
 
-/// Format a list of Neon compute endpoints as an aligned table.
+/// Format a list of Neon compute endpoints as a mobile-friendly list.
 pub fn format_endpoints(endpoints: &[EndpointSummary]) -> String {
     if endpoints.is_empty() {
-        return "(no compute endpoints found)".to_string();
+        return "No compute endpoints found.".to_string();
     }
 
-    let headers = ["id", "type", "status", "size_range", "last_active"];
-    let rows: Vec<[String; 5]> = endpoints
-        .iter()
-        .map(|e| {
-            let size = if e.autoscaling_limit_max_cu > 0.0 {
-                format!("{}-{} CU", e.autoscaling_limit_min_cu, e.autoscaling_limit_max_cu)
-            } else {
-                "n/a".to_string()
-            };
-            [
-                e.id.clone(),
-                e.endpoint_type.clone(),
-                e.current_state.clone(),
-                size,
-                truncate_timestamp(&e.last_active),
-            ]
-        })
-        .collect();
-
-    format_table(&headers, &rows.iter().map(|r| r.as_slice()).collect::<Vec<_>>())
-}
-
-/// Generic aligned table formatter used by all API format functions.
-fn format_table(headers: &[&str], rows: &[&[String]]) -> String {
-    let num_cols = headers.len();
-    let mut widths: Vec<usize> = headers.iter().map(|h| h.len()).collect();
-
-    for row in rows {
-        for (i, cell) in row.iter().enumerate() {
-            if i < num_cols {
-                widths[i] = widths[i].max(cell.len());
-            }
-        }
+    let mut lines = vec![format!("Neon endpoints ({}):", endpoints.len())];
+    for e in endpoints {
+        let size = if e.autoscaling_limit_max_cu > 0.0 {
+            format!("{}-{} CU", e.autoscaling_limit_min_cu, e.autoscaling_limit_max_cu)
+        } else {
+            "n/a".to_string()
+        };
+        let last_active = crate::tools::relative_time(&e.last_active);
+        let last_active = if last_active.is_empty() { truncate_timestamp(&e.last_active) } else { last_active };
+        lines.push(format!("\u{1f5c3}\u{fe0f} **{}** ({}) \u{2014} {}", e.id, e.endpoint_type, e.current_state));
+        lines.push(format!("   Size: {size} | Last active: {last_active}"));
     }
-
-    let mut lines = Vec::with_capacity(rows.len() + 2);
-
-    // Header
-    let header: String = headers
-        .iter()
-        .enumerate()
-        .map(|(i, h)| format!("{:<width$}", h, width = widths[i]))
-        .collect::<Vec<_>>()
-        .join(" | ");
-    lines.push(header);
-
-    // Separator
-    let sep: String = widths
-        .iter()
-        .map(|w| "-".repeat(*w))
-        .collect::<Vec<_>>()
-        .join("-+-");
-    lines.push(sep);
-
-    // Data rows
-    for row in rows {
-        let line: String = row
-            .iter()
-            .enumerate()
-            .map(|(i, cell)| {
-                let w = if i < num_cols { widths[i] } else { cell.len() };
-                format!("{:<width$}", cell, width = w)
-            })
-            .collect::<Vec<_>>()
-            .join(" | ");
-        lines.push(line);
-    }
-
     lines.join("\n")
 }
 

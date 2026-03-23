@@ -184,6 +184,121 @@ pub async fn format_project_proposals(
     }
 }
 
+/// Format health info from all connected Nexus agents.
+///
+/// Used by the `query_nexus_health` tool.
+pub async fn format_query_health(client: &NexusClient) -> Result<String> {
+    let (health_list, unreachable) = client.get_health().await?;
+
+    let mut output = String::new();
+
+    if !unreachable.is_empty() {
+        output.push_str(&format!(
+            "Unreachable: {}\n\n",
+            unreachable.join(", ")
+        ));
+    }
+
+    if health_list.is_empty() {
+        output.push_str("No Nexus agents reachable for health check.");
+        return Ok(output);
+    }
+
+    for (agent_name, health) in &health_list {
+        output.push_str(&format!("── {} ──\n", agent_name));
+        output.push_str(&format!("  Uptime: {}s\n", health.uptime_seconds));
+        output.push_str(&format!("  Sessions: {}\n", health.session_count));
+
+        if let Some(machine) = &health.machine {
+            output.push_str(&format!(
+                "  CPU: {:.1}%  Memory: {:.1}/{:.1} GB  Disk: {:.1}/{:.1} GB\n",
+                machine.cpu_percent,
+                machine.memory_used_gb,
+                machine.memory_total_gb,
+                machine.disk_used_gb,
+                machine.disk_total_gb,
+            ));
+            if !machine.load_avg.is_empty() {
+                let loads: Vec<String> = machine.load_avg.iter().map(|l| format!("{:.2}", l)).collect();
+                output.push_str(&format!("  Load: {}\n", loads.join(" ")));
+            }
+            if !machine.docker_containers.is_empty() {
+                let running: Vec<&str> = machine
+                    .docker_containers
+                    .iter()
+                    .filter(|c| c.running)
+                    .map(|c| c.name.as_str())
+                    .collect();
+                let stopped: Vec<&str> = machine
+                    .docker_containers
+                    .iter()
+                    .filter(|c| !c.running)
+                    .map(|c| c.name.as_str())
+                    .collect();
+                output.push_str(&format!(
+                    "  Docker: {} running, {} stopped\n",
+                    running.len(),
+                    stopped.len()
+                ));
+            }
+        }
+
+        if let Some(rl) = &health.latest_rate_limit {
+            output.push_str(&format!(
+                "  Rate Limit: {:.1}% ({}){}\n",
+                rl.utilization_percent,
+                rl.rate_limit_type,
+                if rl.surpassed_threshold { " EXCEEDED" } else { "" },
+            ));
+        }
+
+        output.push('\n');
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+/// Format the list of projects known to connected Nexus agents.
+///
+/// Used by the `query_nexus_projects` tool.
+pub async fn format_query_projects(client: &NexusClient) -> Result<String> {
+    let projects = client.list_projects().await?;
+
+    if projects.is_empty() {
+        return Ok("No projects found across connected Nexus agents.".to_string());
+    }
+
+    let mut output = format!("{} project(s):\n", projects.len());
+    for project in &projects {
+        output.push_str(&format!("  {project}\n"));
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
+/// Format details about all configured Nexus agents.
+///
+/// Used by the `query_nexus_agents` tool.
+pub async fn format_query_agents(client: &NexusClient) -> Result<String> {
+    let details = client.agent_details().await;
+
+    if details.is_empty() {
+        return Ok("No Nexus agents configured.".to_string());
+    }
+
+    let mut output = format!("{} agent(s):\n", details.len());
+    for (name, endpoint, status, last_seen) in &details {
+        let seen = last_seen
+            .map(|t| t.format("%H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| "never".to_string());
+        output.push_str(&format!(
+            "  {name}: {status} ({endpoint}) — last seen: {seen}\n",
+        ));
+    }
+
+    Ok(output.trim_end().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

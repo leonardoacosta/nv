@@ -4,7 +4,7 @@ use nv_core::types::{SessionEvent as NvSessionEvent, SessionEventType, Trigger};
 use tokio::sync::{mpsc, Mutex};
 
 use super::connection::NexusAgentConnection;
-use super::proto::{self, session_event, EventFilter};
+use super::proto::{self, session_event, EventFilter, EventType};
 
 /// Spawn event stream tasks for all connected agents.
 ///
@@ -51,8 +51,11 @@ pub async fn run_event_stream(
             match client
                 .stream_events(EventFilter {
                     session_id: None,
-                    event_types: Vec::new(),
-                    initial_snapshot: false,
+                    event_types: vec![
+                        EventType::StatusChanged as i32,
+                        EventType::SessionStopped as i32,
+                    ],
+                    initial_snapshot: true,
                 })
                 .await
             {
@@ -120,10 +123,18 @@ fn map_event_to_trigger(
 ) -> Option<Trigger> {
     let payload = event.payload.as_ref()?;
 
+    // Prefer event-level agent_name from proto when available, fall back to
+    // the connection-level name passed in by the caller.
+    let effective_agent = if event.agent_name.is_empty() {
+        agent_name
+    } else {
+        &event.agent_name
+    };
+
     match payload {
         session_event::Payload::Stopped(stopped) => {
             Some(Trigger::NexusEvent(NvSessionEvent {
-                agent_name: agent_name.to_string(),
+                agent_name: effective_agent.to_string(),
                 session_id: event.session_id.clone(),
                 event_type: SessionEventType::Completed,
                 details: Some(stopped.reason.clone()),
@@ -136,26 +147,34 @@ fn map_event_to_trigger(
                     .map(|s| s.as_str_name().to_string())
                     .unwrap_or_else(|_| "unknown".into());
                 Some(Trigger::NexusEvent(NvSessionEvent {
-                    agent_name: agent_name.to_string(),
+                    agent_name: effective_agent.to_string(),
                     session_id: event.session_id.clone(),
                     event_type: SessionEventType::Failed,
                     details: Some(format!("status changed from {} to errored", old)),
                 }))
             } else {
                 tracing::debug!(
-                    agent = %agent_name,
+                    agent = %effective_agent,
                     session_id = %event.session_id,
                     "status change (non-error), skipping trigger"
                 );
                 None
             }
         }
-        session_event::Payload::Started(_) => {
-            tracing::debug!(
-                agent = %agent_name,
-                session_id = %event.session_id,
-                "session started (info only, no trigger)"
-            );
+        session_event::Payload::Started(started) => {
+            if started.is_snapshot {
+                tracing::debug!(
+                    agent = %effective_agent,
+                    session_id = %event.session_id,
+                    "snapshot session (bootstrap data, no trigger)"
+                );
+            } else {
+                tracing::debug!(
+                    agent = %effective_agent,
+                    session_id = %event.session_id,
+                    "session started (info only, no trigger)"
+                );
+            }
             None
         }
         session_event::Payload::Heartbeat(_) => {

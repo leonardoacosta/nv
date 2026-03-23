@@ -411,6 +411,101 @@ impl NexusClient {
         }
         result
     }
+
+    /// Query health from all connected agents.
+    ///
+    /// Returns a list of `(agent_name, HealthResponse)` for reachable agents
+    /// and a list of unreachable agent names.
+    pub async fn get_health(&self) -> Result<(Vec<(String, proto::HealthResponse)>, Vec<String>)> {
+        let mut results = Vec::new();
+        let mut unreachable = Vec::new();
+
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                unreachable.push(agent_name);
+                continue;
+            };
+
+            match client.get_health(proto::HealthRequest {}).await {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    results.push((agent_name, response.into_inner()));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        agent = %agent_name,
+                        error = %e,
+                        "GetHealth RPC failed"
+                    );
+                    conn.mark_disconnected();
+                    unreachable.push(agent_name);
+                }
+            }
+        }
+
+        Ok((results, unreachable))
+    }
+
+    /// List projects from all connected agents.
+    ///
+    /// Deduplicates project names across agents and returns them sorted.
+    pub async fn list_projects(&self) -> Result<Vec<String>> {
+        let mut all_projects = std::collections::BTreeSet::new();
+
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                continue;
+            };
+
+            match client
+                .list_projects(proto::ListProjectsRequest {})
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let resp = response.into_inner();
+                    all_projects.extend(resp.projects);
+                }
+                Err(e) => {
+                    if e.code() != tonic::Code::Unimplemented {
+                        tracing::warn!(
+                            agent = %agent_name,
+                            error = %e,
+                            "ListProjects RPC failed"
+                        );
+                        conn.mark_disconnected();
+                    }
+                }
+            }
+        }
+
+        Ok(all_projects.into_iter().collect())
+    }
+
+    /// Get detailed connection info for all configured agents.
+    ///
+    /// Returns `(name, endpoint, status, last_seen)` tuples.
+    pub async fn agent_details(
+        &self,
+    ) -> Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> {
+        let mut result = Vec::new();
+        for agent in &self.agents {
+            let conn = agent.lock().await;
+            result.push((
+                conn.name.clone(),
+                conn.endpoint.clone(),
+                conn.status,
+                conn.last_seen,
+            ));
+        }
+        result
+    }
 }
 
 // ── Conversion Helpers ─────────────────────────────────────────────

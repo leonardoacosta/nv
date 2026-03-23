@@ -428,6 +428,33 @@ pub fn register_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "query_nexus_health".into(),
+            description: "Get health status of all Nexus agents. Returns CPU, memory, disk, load, Docker containers, rate limits, and uptime per agent.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "query_nexus_projects".into(),
+            description: "List all projects known to connected Nexus agents. Returns deduplicated, sorted project names.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "query_nexus_agents".into(),
+            description: "List all configured Nexus agents with their connection status, endpoint, and last-seen time.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
             name: "complete_bootstrap".into(),
             description: "Mark first-run bootstrap as complete. Call this after writing identity.md, user.md, and soul.md during the bootstrap conversation. Writes a state file so bootstrap is skipped on future startups.".into(),
             input_schema: serde_json::json!({
@@ -1054,6 +1081,10 @@ fn nexus_tool_definitions() -> Vec<ToolDefinition> {
                     "command": {
                         "type": "string",
                         "description": "Command to run in the session (e.g. '/apply fix-chat-bugs', '/feature')"
+                    },
+                    "agent": {
+                        "type": "string",
+                        "description": "Target a specific Nexus agent by name instead of round-robin. Optional."
                     }
                 },
                 "required": ["project", "command"]
@@ -1089,6 +1120,33 @@ fn nexus_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["session_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "query_nexus_health".into(),
+            description: "Get machine health stats (CPU, memory, disk, load, uptime, docker containers) for all connected Nexus agents. Use to check machine load before starting sessions.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "query_nexus_projects".into(),
+            description: "List available projects on all connected Nexus agents. Returns project names grouped by agent.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "query_nexus_agents".into(),
+            description: "Get connection status of all configured Nexus agents. Shows which agents are connected, disconnected, or reconnecting.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
             }),
         },
     ]
@@ -1512,6 +1570,21 @@ pub async fn execute_tool_send(
             let output = nexus::tools::format_query_session(client, session_id).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "query_nexus_health" => {
+            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_health(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "query_nexus_projects" => {
+            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_projects(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "query_nexus_agents" => {
+            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_agents(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
         // ── Nexus Project-Scoped Queries ─────────────────────────
         "nexus_project_ready" => {
@@ -1538,11 +1611,21 @@ pub async fn execute_tool_send(
             let command = input["command"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'command' parameter"))?;
-            let description = format!(
-                "Start CC session on {}: `{}`",
-                project.to_uppercase(),
-                command
-            );
+            let agent = input["agent"].as_str();
+            let description = if let Some(agent_name) = agent {
+                format!(
+                    "Start CC session on {} via {}: `{}`",
+                    project.to_uppercase(),
+                    agent_name,
+                    command
+                )
+            } else {
+                format!(
+                    "Start CC session on {}: `{}`",
+                    project.to_uppercase(),
+                    command
+                )
+            };
             Ok(ToolResult::PendingAction {
                 description,
                 action_type: nv_core::types::ActionType::NexusStartSession,
@@ -2362,6 +2445,24 @@ pub async fn execute_tool(
             let output = nexus::tools::format_query_session(client, session_id).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "query_nexus_health" => {
+            let client = nexus_client
+                .ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_health(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "query_nexus_projects" => {
+            let client = nexus_client
+                .ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_projects(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "query_nexus_agents" => {
+            let client = nexus_client
+                .ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = nexus::tools::format_query_agents(client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
         // ── Aggregation Tools ────────────────────────────────────
         "project_health" => {
@@ -3130,7 +3231,8 @@ mod tests {
     #[test]
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
-        // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul + 2 nexus + 6 jira + 8 bash
+        // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul + 5 nexus (query + session + health + projects + agents)
+        // + 6 jira + 8 bash
         // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
         // + 4 neon (neon_query + neon_projects + neon_branches + neon_compute) + 2 stripe + 2 resend + 2 upstash
         // + 3 ha + 3 ado + 2 plaid + 3 aggregation
@@ -3144,8 +3246,8 @@ mod tests {
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
         // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
-        // = 92
-        assert_eq!(tools.len(), 92);
+        // = 98
+        assert_eq!(tools.len(), 98);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -3157,6 +3259,9 @@ mod tests {
         assert!(names.contains(&"update_soul"));
         assert!(names.contains(&"query_nexus"));
         assert!(names.contains(&"query_session"));
+        assert!(names.contains(&"query_nexus_health"));
+        assert!(names.contains(&"query_nexus_projects"));
+        assert!(names.contains(&"query_nexus_agents"));
         assert!(names.contains(&"jira_search"));
         assert!(names.contains(&"jira_get"));
         assert!(names.contains(&"jira_create"));

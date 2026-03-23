@@ -10,4 +10,4 @@
 
 ## E2E Batch
 
-- [ ] [2.1] Unit tests for obligation CRUD and status transitions [owner:test-writer]
+- [x] [2.1] Unit tests for obligation CRUD and status transitions [owner:test-writer]

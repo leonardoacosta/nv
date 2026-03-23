@@ -1678,6 +1678,10 @@ pub async fn execute_tool_send(
         }
 
         // ── Azure DevOps Tools ───────────────────────────────────────
+        "ado_projects" => {
+            let output = ado_tools::ado_projects().await?;
+            Ok(ToolResult::Immediate(output))
+        }
         "ado_pipelines" => {
             let project = input["project"]
                 .as_str()
@@ -2488,6 +2492,10 @@ pub async fn execute_tool(
         }
 
         // ── Azure DevOps Tools ───────────────────────────────────────
+        "ado_projects" => {
+            let output = ado_tools::ado_projects().await?;
+            Ok(ToolResult::Immediate(output))
+        }
         "ado_pipelines" => {
             let project = input["project"]
                 .as_str()

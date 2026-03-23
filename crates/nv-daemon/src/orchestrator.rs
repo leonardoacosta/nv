@@ -1296,6 +1296,8 @@ fn humanize_tool(tool: &str) -> (String, String) {
         "fetch_url" | "check_url" | "search_web" => ("\u{1F310}", "Fetching web content..."),
         "doppler_secrets" | "doppler_compare" | "doppler_activity" => ("\u{1F511}", "Checking Doppler secrets..."),
         "cf_zones" | "cf_dns_records" | "cf_domain_status" => ("\u{1F4CB}", "Checking Cloudflare DNS..."),
+        "teams_channels" | "teams_messages" | "teams_presence" => ("\u{1F4AC}", "Checking Teams..."),
+        "teams_send" => ("\u{1F4AC}", "Sending to Teams..."),
         _ => ("\u{2699}\u{FE0F}", ""),
     };
     let description = if desc.is_empty() {

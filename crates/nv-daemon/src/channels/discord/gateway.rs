@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,6 +24,10 @@ type WsSink = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, WsMessage>;
 ///
 /// Handles the full gateway lifecycle: Hello → Identify → READY,
 /// heartbeat loop, and MESSAGE_CREATE event buffering.
+///
+/// The `is_connected` flag is set to `true` after READY and `false` when the
+/// event loop exits (disconnect, error, or gateway-requested reconnect). The
+/// poll loop checks this flag and reconnects with exponential backoff.
 pub struct GatewayConnection {
     token: String,
     /// Bot's own user ID (set after READY). Used to filter self-messages.
@@ -35,6 +40,8 @@ pub struct GatewayConnection {
     pub message_buffer: Arc<Mutex<VecDeque<Message>>>,
     /// Write half of the WebSocket (for sending heartbeats + close).
     ws_sink: Arc<Mutex<Option<WsSink>>>,
+    /// True when the gateway WebSocket is live and the event loop is running.
+    pub is_connected: Arc<AtomicBool>,
 }
 
 impl GatewayConnection {
@@ -46,6 +53,7 @@ impl GatewayConnection {
             sequence: Arc::new(Mutex::new(None)),
             message_buffer: Arc::new(Mutex::new(VecDeque::new())),
             ws_sink: Arc::new(Mutex::new(None)),
+            is_connected: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -154,6 +162,9 @@ impl GatewayConnection {
             }
         }
 
+        // Mark as connected after READY
+        self.is_connected.store(true, Ordering::Relaxed);
+
         // Step 4: Spawn heartbeat loop
         let hb_sequence = Arc::clone(&self.sequence);
         let hb_sink = Arc::clone(&self.ws_sink);
@@ -161,11 +172,13 @@ impl GatewayConnection {
             heartbeat_loop(heartbeat_interval, hb_sequence, hb_sink).await;
         });
 
-        // Step 5: Spawn event listener
+        // Step 5: Spawn event listener — clears is_connected on exit
         let ev_sequence = Arc::clone(&self.sequence);
         let ev_buffer = Arc::clone(&self.message_buffer);
+        let ev_connected = Arc::clone(&self.is_connected);
         tokio::spawn(async move {
             event_loop(stream, ev_sequence, ev_buffer).await;
+            ev_connected.store(false, Ordering::Relaxed);
         });
 
         Ok(())

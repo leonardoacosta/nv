@@ -2,6 +2,7 @@ pub mod client;
 pub mod gateway;
 pub mod types;
 
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -129,20 +130,47 @@ impl Channel for DiscordChannel {
 /// Run the continuous poll loop as a tokio task.
 ///
 /// Periodically drains the gateway's message buffer and pushes
-/// `Trigger::Message` into the mpsc channel. Uses exponential backoff
-/// on failure (1s to 60s).
-pub async fn run_poll_loop(channel: DiscordChannel) {
-    let mut backoff = Duration::from_secs(1);
-    let max_backoff = Duration::from_secs(60);
+/// `Trigger::Message` into the mpsc channel.
+///
+/// When the gateway WebSocket disconnects (event loop exits), `is_connected`
+/// is cleared and this loop reconnects with exponential backoff:
+/// 1s → 2s → 4s → 8s → 16s → 32s → 60s (capped), with jitter.
+pub async fn run_poll_loop(mut channel: DiscordChannel) {
+    let mut reconnect_backoff = Duration::from_secs(1);
+    let max_reconnect_backoff = Duration::from_secs(60);
     let poll_interval = Duration::from_millis(500);
 
     loop {
         // Sleep briefly to avoid busy-spinning — gateway events are buffered
         tokio::time::sleep(poll_interval).await;
 
+        // Check if the gateway WebSocket is still live; reconnect if not.
+        if !channel.gateway.is_connected.load(Ordering::Relaxed) {
+            tracing::warn!(
+                backoff_secs = reconnect_backoff.as_secs(),
+                "Discord gateway disconnected — reconnecting"
+            );
+            tokio::time::sleep(reconnect_backoff).await;
+
+            use nv_core::channel::Channel as _;
+            match channel.connect().await {
+                Ok(()) => {
+                    tracing::info!("Discord gateway reconnected");
+                    reconnect_backoff = Duration::from_secs(1); // Reset on success
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Discord gateway reconnect failed");
+                    reconnect_backoff = (reconnect_backoff * 2).min(max_reconnect_backoff);
+                }
+            }
+            continue;
+        }
+
+        // Reset reconnect backoff after a successful connected poll cycle
+        reconnect_backoff = Duration::from_secs(1);
+
         match channel.poll_messages().await {
             Ok(messages) => {
-                backoff = Duration::from_secs(1);
                 for msg in messages {
                     if let Err(e) = channel.trigger_tx.send(Trigger::Message(msg)).await {
                         tracing::error!("Failed to send trigger: {e}");
@@ -151,9 +179,7 @@ pub async fn run_poll_loop(channel: DiscordChannel) {
                 }
             }
             Err(e) => {
-                tracing::warn!("Discord poll error: {e}, retrying in {backoff:?}");
-                tokio::time::sleep(backoff).await;
-                backoff = (backoff * 2).min(max_backoff);
+                tracing::warn!("Discord poll error: {e}");
             }
         }
     }

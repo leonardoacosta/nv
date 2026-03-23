@@ -1,6 +1,7 @@
 mod account;
 mod agent;
 mod aggregation;
+mod alert_rules;
 mod bash;
 mod callbacks;
 mod channels;
@@ -27,6 +28,7 @@ mod state;
 mod tailscale;
 mod tools;
 mod tts;
+mod watchers;
 mod worker;
 
 use std::collections::HashMap;
@@ -659,6 +661,72 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+
+    // Spawn proactive watchers if alert_rules are configured
+    if let Some(ref ar_config) = config.alert_rules {
+        // Seed configured rules into the DB (idempotent — INSERT OR IGNORE).
+        let db_path_for_seed = nv_base.join("messages.db");
+        for entry in &ar_config.rules {
+            let rule_type = match alert_rules::AlertRuleType::from_str(&entry.rule_type) {
+                Ok(rt) => rt,
+                Err(e) => {
+                    tracing::warn!(
+                        name = %entry.name,
+                        rule_type = %entry.rule_type,
+                        error = %e,
+                        "alert_rules: unknown rule_type, skipping seed"
+                    );
+                    continue;
+                }
+            };
+            // Open store per-entry to avoid holding a live connection across the seed loop.
+            match alert_rules::AlertRuleStore::new(&db_path_for_seed) {
+                Ok(store) => {
+                    // Only insert if the rule doesn't exist yet (get_by_name returns None).
+                    match store.get_by_name(&entry.name) {
+                        Ok(None) => {
+                            let id = uuid::Uuid::new_v4().to_string();
+                            if let Err(e) = store.create(
+                                &id,
+                                &entry.name,
+                                rule_type,
+                                entry.config.as_deref(),
+                                entry.enabled,
+                            ) {
+                                tracing::warn!(name = %entry.name, error = %e, "failed to seed alert rule");
+                            } else {
+                                tracing::info!(name = %entry.name, "alert rule seeded");
+                            }
+                        }
+                        Ok(Some(_)) => {
+                            tracing::debug!(name = %entry.name, "alert rule already exists, skipping seed");
+                        }
+                        Err(e) => {
+                            tracing::warn!(name = %entry.name, error = %e, "failed to check existing alert rule");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to open alert rule store for seed");
+                }
+            }
+        }
+
+        // Spawn watcher loop only if obligation store is available
+        if let Some(ref ob_store) = obligation_store {
+            let watcher_db = nv_base.join("messages.db");
+            let watcher_ob = Arc::clone(ob_store);
+            let watcher_interval = ar_config.interval_secs;
+            watchers::spawn_watchers(watcher_db, watcher_ob, watcher_interval);
+            tracing::info!(
+                interval_secs = ar_config.interval_secs,
+                rules = ar_config.rules.len(),
+                "proactive watchers started"
+            );
+        } else {
+            tracing::warn!("alert_rules configured but obligation store unavailable — watchers disabled");
+        }
+    }
 
     // Spawn the cron scheduler for periodic digests (skip during bootstrap)
     if agent::check_bootstrap_state() {

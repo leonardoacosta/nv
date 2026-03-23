@@ -163,6 +163,19 @@ fn messages_migrations() -> Migrations<'static> {
             CREATE INDEX idx_obligations_priority ON obligations(priority);
             CREATE INDEX idx_obligations_owner ON obligations(owner);",
         ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS alert_rules (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                rule_type TEXT NOT NULL,
+                config TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_triggered_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_alert_rules_name ON alert_rules(name);
+            CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);",
+        ),
     ])
 }
 

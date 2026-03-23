@@ -13,6 +13,7 @@
 mod account;
 mod aggregation;
 mod agent;
+mod alert_rules;
 mod bash;
 mod callbacks;
 mod channels;
@@ -38,6 +39,7 @@ mod state;
 #[allow(dead_code)]
 mod tailscale;
 mod tts;
+mod watchers;
 mod worker;
 
 /// Service tools — `Checkable` trait, `ServiceRegistry<T>`, `CheckResult`,

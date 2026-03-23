@@ -1,5 +1,34 @@
 # NV Configuration
 
+# ── Alert Rules ──────────────────────────────────────────────────────────────
+# Proactive watchers poll external services and create obligations automatically.
+# interval_secs controls how often all watchers run (default: 300 = 5 minutes).
+[alert_rules]
+interval_secs = 300
+
+[[alert_rules.rules]]
+name = "deploy_failure"
+rule_type = "deploy_failure"
+enabled = true
+
+[[alert_rules.rules]]
+name = "sentry_spike"
+rule_type = "sentry_spike"
+config = '{"threshold": 5}'
+enabled = true
+
+[[alert_rules.rules]]
+name = "stale_ticket"
+rule_type = "stale_ticket"
+config = '{"stale_days": 7}'
+enabled = true
+
+[[alert_rules.rules]]
+name = "ha_anomaly"
+rule_type = "ha_anomaly"
+enabled = true
+# ─────────────────────────────────────────────────────────────────────────────
+
 [agent]
 model = "claude-sonnet-4-6"
 think = true

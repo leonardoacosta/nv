@@ -120,6 +120,9 @@ pub struct Config {
     /// Paths are resolved and validated on load.
     #[serde(default)]
     pub projects: HashMap<String, PathBuf>,
+    /// Optional alert rules configuration. When present, rules are seeded
+    /// into the DB on startup and watchers poll at `interval_secs`.
+    pub alert_rules: Option<AlertRulesConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -495,6 +498,57 @@ pub struct DaemonConfig {
     /// Default: "America/Chicago".
     #[serde(default = "default_timezone")]
     pub timezone: String,
+}
+
+// ── Alert Rules Config ───────────────────────────────────────────────
+
+/// Configuration for a single alert rule.
+///
+/// Maps to a row in the `alert_rules` table. Rules seeded here are inserted
+/// on daemon startup if they don't already exist.
+///
+/// ```toml
+/// [[alert_rules.rules]]
+/// name = "deploy_failure"
+/// rule_type = "deploy_failure"
+/// enabled = true
+///
+/// [[alert_rules.rules]]
+/// name = "sentry_spike"
+/// rule_type = "sentry_spike"
+/// config = '{"threshold": 10}'
+/// enabled = true
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlertRuleEntry {
+    /// Unique name for the rule (e.g. "deploy_failure"). Must match a known rule type.
+    pub name: String,
+    /// Rule type string: "deploy_failure" | "sentry_spike" | "stale_ticket" | "ha_anomaly".
+    pub rule_type: String,
+    /// Optional JSON blob for rule-specific configuration (thresholds, entity IDs, etc.).
+    pub config: Option<String>,
+    /// Whether the rule is active. Defaults to true.
+    #[serde(default = "default_alert_rule_enabled")]
+    pub enabled: bool,
+}
+
+fn default_alert_rule_enabled() -> bool {
+    true
+}
+
+fn default_watcher_interval() -> u64 {
+    300
+}
+
+/// Top-level alert rules configuration block.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AlertRulesConfig {
+    /// Interval in seconds between watcher poll cycles. Default: 300 (5 minutes).
+    #[serde(default = "default_watcher_interval")]
+    pub interval_secs: u64,
+    /// Rules to seed into the DB on startup.
+    #[serde(default)]
+    pub rules: Vec<AlertRuleEntry>,
 }
 
 // ── Config loading ──────────────────────────────────────────────────

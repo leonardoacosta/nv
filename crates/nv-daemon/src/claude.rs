@@ -245,6 +245,7 @@ struct PersistentProcess {
 struct SpawnConfig {
     model: String,
     real_home: String,
+    sandbox_home: String,
 }
 
 impl SpawnConfig {
@@ -252,9 +253,11 @@ impl SpawnConfig {
         let real_home = std::env::var("REAL_HOME")
             .or_else(|_| std::env::var("HOME"))
             .unwrap_or_else(|_| "/home/nyaptor".into());
+        let sandbox_home = format!("{real_home}/.nv/claude-sandbox");
         Self {
             model: model.to_string(),
             real_home,
+            sandbox_home,
         }
     }
 }
@@ -321,6 +324,7 @@ async fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, Api
     let mut child = Command::new("claude")
         .args([
             "--dangerously-skip-permissions",
+            "-p",
             "--verbose",
             "--input-format",
             "stream-json",
@@ -328,10 +332,11 @@ async fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, Api
             "stream-json",
             "--model",
             &config.model,
+            "--no-session-persistence",
             "--tools",
             "Read,Glob,Grep,Bash(git:*)",
         ])
-        .env("HOME", &config.real_home)
+        .env("HOME", &config.sandbox_home)
         .env(
             "PATH",
             format!(
@@ -465,7 +470,10 @@ impl PersistentSession {
                 process: None,
                 config,
                 backoff: BackoffState::new(),
-                fallback_only: false,
+                // CC 2.1.81 stream-json stdin is broken — force cold-start until fixed.
+                // The persistent subprocess path spawns but CC ignores piped input.
+                // Cold-start via `claude -p "prompt"` works correctly.
+                fallback_only: true,
             }),
         }
     }

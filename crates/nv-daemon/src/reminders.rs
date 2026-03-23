@@ -273,7 +273,7 @@ pub struct Reminder {
 fn reminders_migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(
-            "CREATE TABLE reminders (
+            "CREATE TABLE IF NOT EXISTS reminders (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 message      TEXT NOT NULL,
                 due_at       TEXT NOT NULL,
@@ -283,9 +283,9 @@ fn reminders_migrations() -> Migrations<'static> {
                 cancelled    INTEGER NOT NULL DEFAULT 0
             );
 
-            CREATE INDEX idx_reminders_due_at ON reminders(due_at);
+            CREATE INDEX IF NOT EXISTS idx_reminders_due_at ON reminders(due_at);
 
-            CREATE INDEX idx_reminders_active ON reminders(cancelled, delivered_at);",
+            CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(cancelled, delivered_at);",
         ),
     ])
 }

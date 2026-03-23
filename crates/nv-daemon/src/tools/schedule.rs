@@ -42,7 +42,7 @@ pub const RESERVED_NAMES: &[&str] = &["digest", "memory-cleanup"];
 fn schedules_migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(
-            "CREATE TABLE schedules (
+            "CREATE TABLE IF NOT EXISTS schedules (
                 id          TEXT PRIMARY KEY,
                 name        TEXT NOT NULL UNIQUE,
                 cron_expr   TEXT NOT NULL,

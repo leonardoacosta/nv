@@ -27,8 +27,10 @@ mod orchestrator;
 mod posthog_tools;
 mod query;
 mod resend_tools;
+mod schedule_tools;
 mod scheduler;
 mod sentry_tools;
+mod speech_to_text;
 mod shutdown;
 mod stripe_tools;
 mod upstash_tools;
@@ -617,12 +619,25 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    // Initialize schedule store (user-defined recurring schedules)
+    let schedule_store = match schedule_tools::ScheduleStore::new(&nv_base) {
+        Ok(store) => {
+            tracing::info!("schedule store initialized");
+            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to initialize schedule store — schedule tools disabled");
+            None
+        }
+    };
+
     // Spawn the cron scheduler for periodic digests (skip during bootstrap)
     if agent::check_bootstrap_state() {
         let _scheduler_handle = scheduler::spawn_scheduler(
             trigger_tx.clone(),
             config.agent.digest_interval_minutes,
             &nv_base,
+            schedule_store.clone(),
         );
         tracing::info!(
             interval_minutes = config.agent.digest_interval_minutes,
@@ -727,6 +742,7 @@ async fn main() -> anyhow::Result<()> {
             .as_ref()
             .map(|d| d.worker_timeout_secs)
             .unwrap_or(300),
+        schedule_store,
     });
 
     // Extract Telegram client and chat_id for reactions

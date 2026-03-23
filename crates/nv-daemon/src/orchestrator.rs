@@ -658,6 +658,7 @@ impl Orchestrator {
                                     chat_id,
                                     original_msg_id,
                                     &self.deps.state,
+                                    self.deps.schedule_store.as_deref(),
                                 ).await {
                                     tracing::error!(error = %e, "approve callback failed");
                                 }

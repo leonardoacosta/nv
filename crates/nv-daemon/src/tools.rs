@@ -21,6 +21,7 @@ use crate::nexus;
 use crate::plaid_tools;
 use crate::posthog_tools;
 use crate::resend_tools;
+use crate::schedule_tools;
 use crate::sentry_tools;
 use crate::stripe_tools;
 use crate::tailscale;
@@ -210,6 +211,9 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add Nexus project-scoped and session lifecycle tools
     tools.extend(nexus_tool_definitions());
 
+    // Add schedule management tools
+    tools.extend(schedule_tool_definitions());
+
     // Add cross-channel routing tools
     tools.extend(vec![
         ToolDefinition {
@@ -246,6 +250,164 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     ]);
 
     tools
+}
+
+/// Execute a schedule management tool synchronously.
+///
+/// Handles `list_schedules`, `add_schedule`, `modify_schedule`, `remove_schedule`.
+/// Called directly by the worker before delegating to `execute_tool_send` so the
+/// `ScheduleStore` reference (wrapping `rusqlite::Connection`, a `!Send` type) does
+/// not cross an await point.
+///
+/// Returns `None` if `name` is not a schedule tool (caller should fall through to
+/// `execute_tool_send`).
+pub fn execute_schedule_tool(
+    name: &str,
+    input: &serde_json::Value,
+    store: &schedule_tools::ScheduleStore,
+) -> Option<Result<ToolResult>> {
+    match name {
+        "list_schedules" => Some(list_schedules_impl(store, input)),
+        "add_schedule" => Some(add_schedule_impl(store, input)),
+        "modify_schedule" => Some(modify_schedule_impl(store, input)),
+        "remove_schedule" => Some(remove_schedule_impl(store, input)),
+        _ => None,
+    }
+}
+
+fn list_schedules_impl(
+    store: &schedule_tools::ScheduleStore,
+    _input: &serde_json::Value,
+) -> Result<ToolResult> {
+    let user_schedules = store.list()?;
+    let mut lines = vec!["Schedules:".to_string()];
+
+    // Built-in schedules (hardcoded, always enabled)
+    lines.push("- digest (built-in) — always enabled — runs at configured digest interval".to_string());
+    lines.push("- memory-cleanup (built-in) — always enabled — runs on memory cleanup interval".to_string());
+
+    // User schedules from SQLite
+    if user_schedules.is_empty() {
+        lines.push("(no user-created schedules)".to_string());
+    } else {
+        for s in &user_schedules {
+            let status = if s.enabled { "enabled" } else { "paused" };
+            let next = schedule_tools::describe_cron(&s.cron_expr);
+            let last = s.last_run_at.as_deref().unwrap_or("never");
+            lines.push(format!(
+                "- {} ({}) — {} — {} — last run: {}",
+                s.name, s.action, status, next, last
+            ));
+        }
+    }
+
+    Ok(ToolResult::Immediate(lines.join("\n")))
+}
+
+fn add_schedule_impl(
+    store: &schedule_tools::ScheduleStore,
+    input: &serde_json::Value,
+) -> Result<ToolResult> {
+    let name = input["name"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
+    let cron_expr = input["cron_expr"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'cron_expr' parameter"))?;
+    let action = input["action"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'action' parameter"))?;
+    let _channel = input["channel"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'channel' parameter"))?;
+
+    // Validate name format
+    schedule_tools::validate_schedule_name(name)?;
+
+    // Reject reserved names
+    if schedule_tools::RESERVED_NAMES.contains(&name) {
+        anyhow::bail!("'{}' is a reserved name and cannot be used for user schedules", name);
+    }
+
+    // Validate cron expression
+    schedule_tools::validate_cron_expr(cron_expr)?;
+
+    // Reject duplicate names
+    if store.get(name)?.is_some() {
+        anyhow::bail!("a schedule named '{}' already exists", name);
+    }
+
+    let description = format!("Add schedule '{}': {} ({})", name, cron_expr, action);
+    Ok(ToolResult::PendingAction {
+        description,
+        action_type: nv_core::types::ActionType::ScheduleAdd,
+        payload: input.clone(),
+    })
+}
+
+fn modify_schedule_impl(
+    store: &schedule_tools::ScheduleStore,
+    input: &serde_json::Value,
+) -> Result<ToolResult> {
+    let name = input["name"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
+
+    // Reject built-in names
+    if schedule_tools::RESERVED_NAMES.contains(&name) {
+        anyhow::bail!("'{}' is a built-in schedule and cannot be modified", name);
+    }
+
+    // At least one of cron_expr or enabled must be provided
+    let has_cron = input.get("cron_expr").and_then(|v| v.as_str()).is_some();
+    let has_enabled = input.get("enabled").and_then(|v| v.as_bool()).is_some();
+    if !has_cron && !has_enabled {
+        anyhow::bail!("at least one of 'cron_expr' or 'enabled' must be provided");
+    }
+
+    // Validate cron expression if provided
+    if has_cron {
+        let expr = input["cron_expr"].as_str().unwrap();
+        schedule_tools::validate_cron_expr(expr)?;
+    }
+
+    // Validate schedule exists
+    if store.get(name)?.is_none() {
+        anyhow::bail!("schedule '{}' not found", name);
+    }
+
+    let description = format!("Modify schedule '{}'", name);
+    Ok(ToolResult::PendingAction {
+        description,
+        action_type: nv_core::types::ActionType::ScheduleModify,
+        payload: input.clone(),
+    })
+}
+
+fn remove_schedule_impl(
+    store: &schedule_tools::ScheduleStore,
+    input: &serde_json::Value,
+) -> Result<ToolResult> {
+    let name = input["name"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
+
+    // Reject built-in names
+    if schedule_tools::RESERVED_NAMES.contains(&name) {
+        anyhow::bail!("'{}' is a built-in schedule and cannot be removed", name);
+    }
+
+    // Validate schedule exists
+    if store.get(name)?.is_none() {
+        anyhow::bail!("schedule '{}' not found", name);
+    }
+
+    let description = format!("Remove schedule '{}'", name);
+    Ok(ToolResult::PendingAction {
+        description,
+        action_type: nv_core::types::ActionType::ScheduleRemove,
+        payload: input.clone(),
+    })
 }
 
 /// Tool definitions for the scoped bash toolkit.
@@ -567,6 +729,84 @@ fn nexus_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Tool definitions for schedule management (list, add, modify, remove).
+fn schedule_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "list_schedules".into(),
+            description: "List all recurring schedules (built-in and user-created) with next fire time.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "add_schedule".into(),
+            description: "Create a new user-defined recurring schedule. Requires confirmation. Name must be unique, lowercase alphanumeric + hyphens. Action is one of: digest, health_check, reminder.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Unique schedule label (lowercase, alphanumeric + hyphens, e.g. 'morning-health')"
+                    },
+                    "cron_expr": {
+                        "type": "string",
+                        "description": "Standard 5-field cron expression (min hr dom mon dow, e.g. '0 8 * * 1-5')"
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["digest", "health_check", "reminder"],
+                        "description": "What to run when the schedule fires"
+                    },
+                    "channel": {
+                        "type": "string",
+                        "description": "Originating channel name (e.g. 'telegram')"
+                    }
+                },
+                "required": ["name", "cron_expr", "action", "channel"]
+            }),
+        },
+        ToolDefinition {
+            name: "modify_schedule".into(),
+            description: "Update an existing user schedule. At least one of cron_expr or enabled must be provided. Requires confirmation. Cannot modify built-in schedules.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Schedule name to modify"
+                    },
+                    "cron_expr": {
+                        "type": "string",
+                        "description": "New 5-field cron expression (optional)"
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Set to false to pause, true to resume (optional)"
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
+        ToolDefinition {
+            name: "remove_schedule".into(),
+            description: "Delete a user-defined schedule by name. Requires confirmation. Cannot remove built-in schedules.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Schedule name to delete"
+                    }
+                },
+                "required": ["name"]
+            }),
+        },
+    ]
+}
+
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
 /// Used during first-run to prevent Claude from searching Jira/Nexus/memory
 /// instead of focusing on the onboarding conversation.
@@ -630,12 +870,12 @@ pub enum ToolResult {
     },
 }
 
-/// Execute a tool without access to `MessageStore` (Send-safe).
+/// Execute a tool without access to `MessageStore` or `ScheduleStore` (Send-safe).
 ///
-/// This variant avoids referencing `MessageStore` (which wraps
-/// `rusqlite::Connection`, a `!Send` type) so the resulting future
-/// can be used with `tokio::spawn`. The `get_recent_messages` tool
-/// must be handled by the caller before delegating to this function.
+/// This variant avoids referencing `MessageStore` and `ScheduleStore` (which
+/// wrap `rusqlite::Connection`, a `!Send` type) so the resulting future can be
+/// used with `tokio::spawn`. The `get_recent_messages`, `search_messages`, and
+/// all schedule tools must be handled by the caller before delegating here.
 pub async fn execute_tool_send(
     name: &str,
     input: &serde_json::Value,

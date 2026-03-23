@@ -156,6 +156,42 @@ pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBo
                                 continue;
                             }
                         }
+                    } else if msg.metadata.get("photo").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        // Handle photo messages — download and attach for Claude vision
+                        match handle_photo_message(&channel, &msg).await {
+                            Ok(enriched) => enriched,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "photo download failed");
+                                let chat_id = msg.metadata.get("chat_id")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(channel.chat_id);
+                                let _ = channel.client.send_message(
+                                    chat_id,
+                                    "Could not download photo. Please try again.",
+                                    Some(msg.id.clone()),
+                                    None,
+                                ).await;
+                                continue;
+                            }
+                        }
+                    } else if msg.metadata.get("audio").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        // Handle audio file messages — transcribe via ElevenLabs STT
+                        match handle_audio_message(&channel, &msg).await {
+                            Ok(transcribed) => transcribed,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "audio transcription failed");
+                                let chat_id = msg.metadata.get("chat_id")
+                                    .and_then(|v| v.as_i64())
+                                    .unwrap_or(channel.chat_id);
+                                let _ = channel.client.send_message(
+                                    chat_id,
+                                    "Could not transcribe audio file. Please try again.",
+                                    Some(msg.id.clone()),
+                                    None,
+                                ).await;
+                                continue;
+                            }
+                        }
                     } else {
                         msg
                     };
@@ -173,6 +209,171 @@ pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBo
             }
         }
     }
+}
+
+// ── Photo Handling ──────────────────────────────────────────────────
+
+/// Download a photo from Telegram and save to a temp file.
+///
+/// Sets `"image_path"` in the returned message metadata. The caller is
+/// responsible for cleaning up the temp file after the Claude turn completes.
+async fn handle_photo_message(
+    channel: &TelegramChannel,
+    msg: &InboundMessage,
+) -> anyhow::Result<InboundMessage> {
+    let file_id = msg
+        .metadata
+        .get("file_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("photo message missing file_id"))?;
+
+    let chat_id = msg
+        .metadata
+        .get("chat_id")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(channel.chat_id);
+
+    // Send typing indicator while downloading
+    channel.client.send_chat_action(chat_id, "typing").await;
+
+    // Download the photo file
+    let file_path = channel.client.get_file(file_id).await?;
+    let photo_bytes = channel.client.download_file(&file_path).await?;
+
+    tracing::info!(
+        file_id,
+        bytes = photo_bytes.len(),
+        "downloaded photo for vision"
+    );
+
+    // Save to a temp file
+    let tmp_path = format!("/tmp/nv-photo-{}.jpg", uuid::Uuid::new_v4());
+    std::fs::write(&tmp_path, &photo_bytes)
+        .map_err(|e| anyhow::anyhow!("failed to write photo to {tmp_path}: {e}"))?;
+
+    tracing::info!(path = %tmp_path, "photo saved to temp file");
+
+    // Add image_path to metadata
+    let mut metadata = msg.metadata.clone();
+    metadata["image_path"] = serde_json::Value::String(tmp_path);
+
+    Ok(InboundMessage {
+        id: msg.id.clone(),
+        channel: msg.channel.clone(),
+        sender: msg.sender.clone(),
+        content: msg.content.clone(),
+        timestamp: msg.timestamp,
+        thread_id: msg.thread_id.clone(),
+        metadata,
+    })
+}
+
+// ── Audio Handling ──────────────────────────────────────────────────
+
+/// Download an audio file from Telegram and transcribe via ElevenLabs STT.
+///
+/// Returns a modified `InboundMessage` with the transcript as content.
+/// If caption was present it is prepended to the transcript.
+async fn handle_audio_message(
+    channel: &TelegramChannel,
+    msg: &InboundMessage,
+) -> anyhow::Result<InboundMessage> {
+    let file_id = msg
+        .metadata
+        .get("file_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("audio message missing file_id"))?;
+
+    let mime_type = msg
+        .metadata
+        .get("mime_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("audio/mpeg");
+
+    let chat_id = msg
+        .metadata
+        .get("chat_id")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(channel.chat_id);
+
+    // Check for ElevenLabs API key
+    let api_key = match std::env::var("ELEVENLABS_API_KEY") {
+        Ok(key) if !key.is_empty() => key,
+        _ => {
+            let _ = channel
+                .client
+                .send_message(
+                    chat_id,
+                    "Audio transcription not configured (ELEVENLABS_API_KEY missing).",
+                    Some(msg.id.clone()),
+                    None,
+                )
+                .await;
+            anyhow::bail!("ELEVENLABS_API_KEY not set");
+        }
+    };
+
+    // Send typing indicator while transcribing
+    channel.client.send_chat_action(chat_id, "typing").await;
+
+    // Download the audio file
+    let file_path = channel.client.get_file(file_id).await?;
+    let audio_bytes = channel.client.download_file(&file_path).await?;
+
+    tracing::info!(
+        file_id,
+        bytes = audio_bytes.len(),
+        mime_type,
+        "downloaded audio file for transcription"
+    );
+
+    // Derive a sensible file name for the multipart upload
+    let file_name = if mime_type.contains("mpeg") || mime_type.contains("mp3") {
+        "audio.mp3"
+    } else if mime_type.contains("wav") {
+        "audio.wav"
+    } else {
+        "audio.bin"
+    };
+
+    let transcript =
+        crate::speech_to_text::transcribe_audio_elevenlabs(audio_bytes, file_name, mime_type, &api_key)
+            .await?;
+
+    if transcript.is_empty() {
+        let _ = channel
+            .client
+            .send_message(
+                chat_id,
+                "No speech detected in audio file.",
+                Some(msg.id.clone()),
+                None,
+            )
+            .await;
+        anyhow::bail!("empty transcript from ElevenLabs STT");
+    }
+
+    // Prepend caption if present
+    let caption = msg
+        .metadata
+        .get("caption")
+        .and_then(|v| v.as_str());
+
+    let content = if let Some(cap) = caption {
+        format!("{cap}\n\n[Transcription]: {transcript}")
+    } else {
+        transcript
+    };
+
+    Ok(InboundMessage {
+        id: msg.id.clone(),
+        channel: msg.channel.clone(),
+        sender: msg.sender.clone(),
+        content,
+        timestamp: msg.timestamp,
+        thread_id: msg.thread_id.clone(),
+        metadata: msg.metadata.clone(),
+    })
 }
 
 // ── Voice Transcription ─────────────────────────────────────────────

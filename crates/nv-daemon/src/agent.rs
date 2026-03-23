@@ -316,6 +316,7 @@ impl AgentLoop {
                                         chat_id,
                                         original_msg_id,
                                         &self.state,
+                                        None,
                                     ).await {
                                         tracing::error!(error = %e, "approve callback failed");
                                     }

@@ -507,7 +507,6 @@ impl TelegramClient {
     }
 
     /// Call Telegram getFile API to get the file path for a given file_id.
-    #[allow(dead_code)]
     pub async fn get_file(&self, file_id: &str) -> anyhow::Result<String> {
         let url = format!("{}/getFile", self.base_url);
         let body = serde_json::json!({ "file_id": file_id });
@@ -529,7 +528,6 @@ impl TelegramClient {
     /// Download a file from Telegram's file server.
     ///
     /// Returns the raw bytes. The `file_path` is obtained from `get_file()`.
-    #[allow(dead_code)]
     pub async fn download_file(&self, file_path: &str) -> anyhow::Result<Vec<u8>> {
         // Extract the bot token from the base_url (format: https://api.telegram.org/bot{token})
         let token = self

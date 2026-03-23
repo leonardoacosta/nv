@@ -14,6 +14,7 @@ use nv_core::channel::Channel;
 
 use crate::jira;
 use crate::nexus;
+use crate::schedule_tools::ScheduleStore;
 use crate::state::{PendingStatus, State};
 use crate::telegram::client::TelegramClient;
 use crate::tools;
@@ -35,6 +36,7 @@ pub async fn handle_approve(
     chat_id: i64,
     original_message_id: Option<i64>,
     state: &State,
+    schedule_store: Option<&std::sync::Mutex<ScheduleStore>>,
 ) -> Result<()> {
     let uuid = Uuid::parse_str(uuid_str)?;
 
@@ -63,6 +65,15 @@ pub async fn handle_approve(
         }
         nv_core::types::ActionType::ChannelSend => {
             tools::execute_channel_send(channels, &action.payload).await
+        }
+        nv_core::types::ActionType::ScheduleAdd => {
+            execute_schedule_add(&action.payload, schedule_store)
+        }
+        nv_core::types::ActionType::ScheduleModify => {
+            execute_schedule_modify(&action.payload, schedule_store)
+        }
+        nv_core::types::ActionType::ScheduleRemove => {
+            execute_schedule_remove(&action.payload, schedule_store)
         }
         _ => {
             // Jira and other action types
@@ -282,6 +293,9 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
             "ChannelSend" => nv_core::types::ActionType::ChannelSend,
             "NexusStartSession" => nv_core::types::ActionType::NexusStartSession,
             "NexusStopSession" => nv_core::types::ActionType::NexusStopSession,
+            "ScheduleAdd" => nv_core::types::ActionType::ScheduleAdd,
+            "ScheduleModify" => nv_core::types::ActionType::ScheduleModify,
+            "ScheduleRemove" => nv_core::types::ActionType::ScheduleRemove,
             _ => nv_core::types::ActionType::JiraCreate,
         };
     }
@@ -319,6 +333,91 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
         nv_core::types::ActionType::JiraComment
     } else {
         nv_core::types::ActionType::JiraCreate
+    }
+}
+
+// ── Schedule Executors ───────────────────────────────────────────────
+
+/// Execute an approved ScheduleAdd action — insert the row into SQLite.
+fn execute_schedule_add(
+    payload: &serde_json::Value,
+    schedule_store: Option<&std::sync::Mutex<crate::schedule_tools::ScheduleStore>>,
+) -> anyhow::Result<String> {
+    let store_lock = schedule_store
+        .ok_or_else(|| anyhow::anyhow!("schedule store not available"))?;
+    let store = store_lock.lock().unwrap();
+
+    let name = payload["name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'name' in payload"))?;
+    let cron_expr = payload["cron_expr"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'cron_expr' in payload"))?;
+    let action = payload["action"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'action' in payload"))?;
+    let channel = payload["channel"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'channel' in payload"))?;
+
+    let schedule = crate::schedule_tools::build_schedule(
+        name.to_string(),
+        cron_expr.to_string(),
+        action.to_string(),
+        channel.to_string(),
+    );
+    store.insert(&schedule)?;
+    Ok(format!("Schedule '{}' added ({cron_expr}, action: {action})", name))
+}
+
+/// Execute an approved ScheduleModify action — update cron and/or enabled state.
+fn execute_schedule_modify(
+    payload: &serde_json::Value,
+    schedule_store: Option<&std::sync::Mutex<crate::schedule_tools::ScheduleStore>>,
+) -> anyhow::Result<String> {
+    let store_lock = schedule_store
+        .ok_or_else(|| anyhow::anyhow!("schedule store not available"))?;
+    let store = store_lock.lock().unwrap();
+
+    let name = payload["name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'name' in payload"))?;
+
+    let mut changes = Vec::new();
+
+    if let Some(cron_expr) = payload.get("cron_expr").and_then(|v| v.as_str()) {
+        store.update_cron(name, cron_expr)?;
+        changes.push(format!("cron → {cron_expr}"));
+    }
+    if let Some(enabled) = payload.get("enabled").and_then(|v| v.as_bool()) {
+        store.set_enabled(name, enabled)?;
+        changes.push(format!("enabled → {enabled}"));
+    }
+
+    if changes.is_empty() {
+        return Ok(format!("No changes applied to '{name}'"));
+    }
+    Ok(format!("Schedule '{}' updated: {}", name, changes.join(", ")))
+}
+
+/// Execute an approved ScheduleRemove action — delete the row from SQLite.
+fn execute_schedule_remove(
+    payload: &serde_json::Value,
+    schedule_store: Option<&std::sync::Mutex<crate::schedule_tools::ScheduleStore>>,
+) -> anyhow::Result<String> {
+    let store_lock = schedule_store
+        .ok_or_else(|| anyhow::anyhow!("schedule store not available"))?;
+    let store = store_lock.lock().unwrap();
+
+    let name = payload["name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'name' in payload"))?;
+
+    let deleted = store.delete(name)?;
+    if deleted {
+        Ok(format!("Schedule '{}' removed", name))
+    } else {
+        Ok(format!("Schedule '{}' not found (already deleted?)", name))
     }
 }
 

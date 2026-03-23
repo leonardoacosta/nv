@@ -26,6 +26,7 @@ use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::nexus;
 use crate::query;
+use crate::schedule_tools::ScheduleStore;
 use crate::state::State;
 use crate::telegram::client::TelegramClient;
 use crate::tools;
@@ -175,6 +176,8 @@ pub struct SharedDeps {
     pub alert_threshold_pct: u8,
     /// Per-worker session timeout in seconds (from daemon config, default 300).
     pub worker_timeout_secs: u64,
+    /// User-defined schedule store (SQLite). None if the DB failed to open.
+    pub schedule_store: Option<Arc<std::sync::Mutex<ScheduleStore>>>,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -550,10 +553,27 @@ impl Worker {
             duration_ms: context_build_start.elapsed().as_millis() as u64,
         });
 
+        // Extract image_path from trigger metadata (photo messages)
+        let image_path: Option<String> = task.triggers.iter().find_map(|t| {
+            if let Trigger::Message(msg) = t {
+                msg.metadata
+                    .get("image_path")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            } else {
+                None
+            }
+        });
+
         // Call Claude
         let call_start = Instant::now();
         let response = match client
-            .send_messages(&system_prompt, &conversation_history, &tool_definitions)
+            .send_messages_with_image(
+                &system_prompt,
+                &conversation_history,
+                &tool_definitions,
+                image_path.as_deref(),
+            )
             .await
         {
             Ok(r) => r,
@@ -585,6 +605,15 @@ impl Worker {
                 return Err(e);
             }
         };
+
+        // Clean up temporary image file after Claude has processed it
+        if let Some(ref path) = image_path {
+            if let Err(e) = std::fs::remove_file(path) {
+                tracing::warn!(path = %path, error = %e, "failed to remove temp image file");
+            } else {
+                tracing::debug!(path = %path, "removed temp image file after Claude processed it");
+            }
+        }
 
         let response_time_ms = call_start.elapsed().as_millis() as i64;
         let tokens_in = response.usage.input_tokens as i64;
@@ -928,6 +957,25 @@ impl Worker {
                             Ok(tools::ToolResult::Immediate(
                                 format!("Invalid search query: {e}")
                             ))
+                        }
+                    }
+                } else if let Some(sched_result) = deps
+                    .schedule_store
+                    .as_ref()
+                    .and_then(|s| {
+                        let guard = s.lock().unwrap();
+                        tools::execute_schedule_tool(name, input, &guard)
+                    })
+                {
+                    // Schedule tools are synchronous (no await needed)
+                    match sched_result {
+                        Ok(r) => Ok(r),
+                        Err(e) => {
+                            let _ = deps.event_tx.send(WorkerEvent::Error {
+                                worker_id,
+                                error: format!("Tool {name} error: {e}"),
+                            });
+                            Err(e)
                         }
                     }
                 } else {

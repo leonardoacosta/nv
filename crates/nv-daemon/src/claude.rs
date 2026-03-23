@@ -605,6 +605,28 @@ impl ClaudeClient {
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ApiResponse> {
+        self.send_messages_with_image(system, messages, tools, None).await
+    }
+
+    /// Send a messages request with an optional image attachment.
+    ///
+    /// When `image_path` is `Some`, always uses cold-start mode so
+    /// `--attachment <path>` can be passed to the `claude -p` subprocess.
+    /// The persistent session path does not support file attachments.
+    pub async fn send_messages_with_image(
+        &self,
+        system: &str,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        image_path: Option<&str>,
+    ) -> Result<ApiResponse> {
+        // If an image is attached, skip the persistent path (doesn't support attachments)
+        if image_path.is_some() {
+            return self
+                .send_messages_cold_start_with_image(system, messages, tools, image_path)
+                .await;
+        }
+
         // Try persistent path first
         if let Some(result) = self.session.send_turn(system, messages, tools).await {
             return result;
@@ -612,11 +634,14 @@ impl ClaudeClient {
 
         // Fallback to cold-start mode
         tracing::warn!("using cold-start fallback for this turn");
-        self.send_messages_cold_start(system, messages, tools).await
+        self.send_messages_cold_start_with_image(system, messages, tools, None)
+            .await
     }
 
     /// Cold-start fallback: spawn a fresh `claude -p` subprocess per turn.
-    /// This is the original implementation, kept as a reliable fallback.
+    /// This is the original implementation, kept as a reference; prefer
+    /// `send_messages_cold_start_with_image` which supersedes this.
+    #[allow(dead_code)]
     async fn send_messages_cold_start(
         &self,
         system: &str,
@@ -765,6 +790,167 @@ impl ClaudeClient {
         );
 
         // Parse the result text for tool use requests
+        let (content, stop_reason) = parse_tool_calls(&cli_response.result);
+
+        Ok(ApiResponse {
+            id: cli_response.session_id,
+            content,
+            stop_reason,
+            usage: Usage {
+                input_tokens: cli_response.usage.input_tokens,
+                output_tokens: cli_response.usage.output_tokens,
+                total_cost_usd: cli_response.usage.total_cost_usd,
+            },
+        })
+    }
+
+    /// Cold-start variant that accepts an optional image attachment path.
+    ///
+    /// When `image_path` is `Some`, adds `--attachment <path>` to the `claude -p`
+    /// subprocess arguments so Claude receives the image as a vision input.
+    async fn send_messages_cold_start_with_image(
+        &self,
+        system: &str,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        image_path: Option<&str>,
+    ) -> Result<ApiResponse> {
+        let prompt = build_prompt(system, messages, tools);
+
+        let mut base_args: Vec<String> = vec![
+            "--dangerously-skip-permissions".into(),
+            "-p".into(),
+            "--output-format".into(),
+            "json".into(),
+            "--model".into(),
+            self.model.clone(),
+            "--no-session-persistence".into(),
+            "--tools".into(),
+            "Read,Glob,Grep,Bash(git:*)".into(),
+            "--system-prompt".into(),
+            system.to_string(),
+            "--strict-mcp-config".into(),
+        ];
+
+        if let Some(path) = image_path {
+            base_args.push("--attachment".into());
+            base_args.push(path.to_string());
+            tracing::debug!(path = %path, "attaching image to claude CLI invocation");
+        }
+
+        let mut child = Command::new("claude")
+            .args(&base_args)
+            .env("HOME", &self.spawn_config.sandbox_home)
+            .env(
+                "PATH",
+                format!(
+                    "{}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+                    self.spawn_config.real_home
+                ),
+            )
+            .current_dir(format!("{}/dev", self.spawn_config.real_home))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| ApiError::CliError {
+                message: format!("Failed to spawn claude CLI (with-image): {e}"),
+            })?;
+
+        // Write prompt to stdin
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(prompt.as_bytes()).await?;
+            drop(stdin); // Close stdin to signal EOF
+        }
+
+        // Wait for completion
+        let output = child.wait_with_output().await?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+        if !stderr.is_empty() {
+            tracing::debug!(stderr = %stderr, "claude CLI stderr (with-image)");
+        }
+
+        // Parse CLI JSON response with retry on empty/truncated output
+        let cli_response: CliJsonResponse = match serde_json::from_str(&stdout) {
+            Ok(resp) => resp,
+            Err(first_err) => {
+                tracing::warn!(
+                    stdout_len = stdout.len(),
+                    error = %first_err,
+                    "CLI JSON parse failed (with-image), retrying once after 1s"
+                );
+
+                tokio::time::sleep(Duration::from_secs(1)).await;
+
+                let mut retry_child = Command::new("claude")
+                    .args(&base_args)
+                    .env("HOME", &self.spawn_config.sandbox_home)
+                    .env(
+                        "PATH",
+                        format!(
+                            "{}/.local/bin:/usr/local/bin:/usr/bin:/bin",
+                            self.spawn_config.real_home
+                        ),
+                    )
+                    .current_dir(format!("{}/dev", self.spawn_config.real_home))
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map_err(|e| ApiError::CliError {
+                        message: format!("Failed to spawn claude CLI (with-image retry): {e}"),
+                    })?;
+
+                if let Some(mut stdin) = retry_child.stdin.take() {
+                    stdin.write_all(prompt.as_bytes()).await?;
+                    drop(stdin);
+                }
+
+                let retry_output = retry_child.wait_with_output().await?;
+                let retry_stdout =
+                    String::from_utf8_lossy(&retry_output.stdout).to_string();
+
+                serde_json::from_str(&retry_stdout).map_err(|retry_err| {
+                    tracing::error!(
+                        retry_stdout_len = retry_stdout.len(),
+                        first_error = %first_err,
+                        retry_error = %retry_err,
+                        "CLI JSON parse failed on retry (with-image) — returning error"
+                    );
+                    ApiError::Deserialize(format!(
+                        "CLI JSON parse failed after retry (with-image): {retry_err} (first attempt: {first_err})"
+                    ))
+                })?
+            }
+        };
+
+        // Check for auth errors
+        if cli_response.is_error
+            && cli_response
+                .result
+                .to_lowercase()
+                .contains("not logged in")
+        {
+            return Err(ApiError::AuthError(cli_response.result).into());
+        }
+
+        if cli_response.is_error {
+            return Err(ApiError::CliError {
+                message: cli_response.result,
+            }
+            .into());
+        }
+
+        tracing::debug!(
+            input_tokens = cli_response.usage.input_tokens,
+            output_tokens = cli_response.usage.output_tokens,
+            session_id = %cli_response.session_id,
+            has_attachment = image_path.is_some(),
+            "Claude CLI cold-start (with-image) response received"
+        );
+
         let (content, stop_reason) = parse_tool_calls(&cli_response.result);
 
         Ok(ApiResponse {

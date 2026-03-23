@@ -118,6 +118,8 @@ pub enum Trigger {
 pub enum CronEvent {
     Digest,
     MemoryCleanup,
+    /// A user-created recurring schedule fired from the scheduler loop.
+    UserSchedule { name: String, action: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -209,6 +211,12 @@ pub enum ActionType {
     HaServiceCall,
     NexusStartSession,
     NexusStopSession,
+    /// Create a new user-defined recurring schedule in SQLite.
+    ScheduleAdd,
+    /// Modify an existing user-defined recurring schedule (cron expr or enabled state).
+    ScheduleModify,
+    /// Delete a user-defined recurring schedule by name.
+    ScheduleRemove,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

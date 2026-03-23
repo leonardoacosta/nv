@@ -509,3 +509,26 @@ db0:keys=42,expires=10,avg_ttl=0\r\n";
         }
     }
 }
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for UpstashClient {
+    fn name(&self) -> &str {
+        "upstash"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let (latency, result) = timed(|| async { self.execute_command(&["INFO"]).await }).await;
+        match result {
+            Ok(_) => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "INFO command succeeded".into(),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}

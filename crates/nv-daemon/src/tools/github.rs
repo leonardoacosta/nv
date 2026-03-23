@@ -26,6 +26,7 @@ pub struct PrSummary {
     pub title: String,
     pub state: String,
     pub author: PrAuthor,
+    #[allow(dead_code)]
     pub updated_at: String,
     pub mergeable: Option<String>,
 }
@@ -38,12 +39,14 @@ pub struct PrAuthor {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunSummary {
+    #[allow(dead_code)]
     pub database_id: u64,
     pub display_title: String,
     pub status: String,
     pub conclusion: Option<String>,
     pub event: String,
     pub head_branch: String,
+    #[allow(dead_code)]
     pub updated_at: String,
 }
 
@@ -55,6 +58,7 @@ pub struct IssueSummary {
     pub state: String,
     pub labels: Vec<IssueLabel>,
     pub assignees: Vec<IssueAssignee>,
+    #[allow(dead_code)]
     pub updated_at: String,
 }
 
@@ -327,7 +331,9 @@ pub struct StatusCheck {
     pub state: Option<String>,     // for CheckRun: PENDING, SUCCESS, FAILURE
     pub status: Option<String>,    // for StatusContext
     pub conclusion: Option<String>,
+    #[allow(dead_code)]
     pub name: Option<String>,
+    #[allow(dead_code)]
     pub context: Option<String>,
 }
 
@@ -387,6 +393,7 @@ pub struct CompareAuthor {
 pub struct CompareFile {
     pub additions: u64,
     pub deletions: u64,
+    #[allow(dead_code)]
     pub changes: u64,
 }
 
@@ -1378,5 +1385,73 @@ mod tests {
         assert!(formatted.contains("5 more commits not shown"));
         // Commit 30 (index 30) should NOT appear in the list
         assert!(!formatted.contains("Commit 30\n") || formatted.contains("30 more"));
+    }
+}
+
+// ── GithubClient wrapper ─────────────────────────────────────────────
+
+/// Thin wrapper for `Checkable` health checks.
+/// GitHub uses the `gh` CLI — authenticated via `~/.config/gh/hosts.yml`.
+#[allow(dead_code)]
+pub struct GithubClient;
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for GithubClient {
+    fn name(&self) -> &str {
+        "github"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let (latency, result) = timed(|| async {
+            tokio::time::timeout(GH_TIMEOUT, async {
+                Command::new("gh")
+                    .args(["auth", "status"])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .output()
+                    .await
+            })
+            .await
+        })
+        .await;
+        match result {
+            Ok(Ok(output)) if output.status.success() => {
+                // Parse "Logged in to github.com account <user>" from stdout/stderr
+                let combined = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let detail = combined
+                    .lines()
+                    .find(|l| l.contains("Logged in"))
+                    .map(|l| l.trim().to_string())
+                    .unwrap_or_else(|| "gh auth status ok".into());
+                crate::tools::CheckResult::Healthy {
+                    latency_ms: latency,
+                    detail,
+                }
+            }
+            Ok(Ok(output)) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                crate::tools::CheckResult::Unhealthy {
+                    error: if stderr.is_empty() {
+                        "gh auth status failed — run `gh auth login`".into()
+                    } else {
+                        stderr
+                    },
+                }
+            }
+            Ok(Err(e)) => crate::tools::CheckResult::Unhealthy {
+                error: format!("failed to run gh: {e}"),
+            },
+            Err(_) => crate::tools::CheckResult::Unhealthy {
+                error: format!("gh auth status timed out after {}s", GH_TIMEOUT.as_secs()),
+            },
+        }
     }
 }

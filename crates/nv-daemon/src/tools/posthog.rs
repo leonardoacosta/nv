@@ -442,3 +442,60 @@ mod tests {
         std::env::remove_var("POSTHOG_HOST");
     }
 }
+
+// ── PosthogClient wrapper ────────────────────────────────────────────
+
+/// Thin wrapper for `Checkable` health checks.
+#[allow(dead_code)]
+pub struct PosthogClient;
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for PosthogClient {
+    fn name(&self) -> &str {
+        "posthog"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+
+        let key = match api_key() {
+            Ok(k) => k,
+            Err(_) => {
+                return crate::tools::CheckResult::Missing {
+                    env_var: "POSTHOG_API_KEY".into(),
+                }
+            }
+        };
+
+        let h = host();
+        let url = format!("https://{h}/api/projects/");
+
+        let client = match build_client(&key) {
+            Ok(c) => c,
+            Err(e) => {
+                return crate::tools::CheckResult::Unhealthy {
+                    error: format!("failed to build client: {e}"),
+                }
+            }
+        };
+
+        let (latency, result) = timed(|| async { client.get(&url).send().await }).await;
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: format!("projects endpoint reachable ({})", h),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "API key invalid (401) — check POSTHOG_API_KEY".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}

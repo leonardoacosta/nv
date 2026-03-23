@@ -50,3 +50,76 @@ port = 7400
 [daemon]
 tts_url = "http://100.91.88.16:9999"
 health_port = 8400
+
+# ── Multi-instance service examples ──────────────────────────────────
+#
+# All services support both flat (single-instance) and multi-instance formats.
+# Flat format uses unqualified env vars (e.g. STRIPE_SECRET_KEY).
+# Multi-instance uses instance-qualified env vars (e.g. STRIPE_SECRET_KEY_PERSONAL).
+#
+# ── Stripe ──────────────────────────────────────────────────────────
+# Flat (default):
+#   STRIPE_SECRET_KEY — single account
+#
+# Multi-instance:
+# [stripe]
+# [stripe.instances.personal]
+# # uses STRIPE_SECRET_KEY_PERSONAL
+# [stripe.instances.llc]
+# # uses STRIPE_SECRET_KEY_LLC
+# [stripe.project_map]
+# OO = "personal"
+# CT = "llc"
+#
+# ── Sentry ──────────────────────────────────────────────────────────
+# Flat (default):
+#   SENTRY_AUTH_TOKEN + SENTRY_ORG — single org
+#
+# Multi-instance:
+# [sentry.instances.personal]
+# # uses SENTRY_AUTH_TOKEN_PERSONAL + SENTRY_ORG_PERSONAL
+# [sentry.instances.llc]
+# # uses SENTRY_AUTH_TOKEN_LLC + SENTRY_ORG_LLC
+# [sentry.project_map]
+# OO = "personal"
+# CT = "llc"
+#
+# ── PostHog ─────────────────────────────────────────────────────────
+# Per-project IDs via env vars (no multi-instance toml needed):
+#   POSTHOG_PROJECT_OO — PostHog project ID for OO
+#   POSTHOG_PROJECT_TC — PostHog project ID for TC
+#   POSTHOG_PROJECT_ID — default fallback
+#
+# ── Neon (PostgreSQL) ────────────────────────────────────────────────
+# Per-project connection strings via env vars (no multi-instance toml needed):
+#   POSTGRES_URL_OO  — Neon connection string for OO
+#   POSTGRES_URL_TC  — Neon connection string for TC
+#
+# ── Vercel ──────────────────────────────────────────────────────────
+# Flat (default):
+#   VERCEL_TOKEN — single account
+#
+# ── Home Assistant ──────────────────────────────────────────────────
+# Flat (default):
+#   HA_TOKEN + HA_URL — single instance (default http://localhost:8123)
+#
+# ── Upstash ─────────────────────────────────────────────────────────
+# Flat (default):
+#   UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
+#
+# ── Resend ──────────────────────────────────────────────────────────
+# Flat (default):
+#   RESEND_API_KEY
+#
+# ── Azure DevOps ────────────────────────────────────────────────────
+# Flat (default):
+#   ADO_ORG + ADO_PAT
+#
+# ── Cloudflare ──────────────────────────────────────────────────────
+# Flat (default):
+#   CLOUDFLARE_API_TOKEN
+#
+# ── Doppler ─────────────────────────────────────────────────────────
+# Flat (default):
+#   DOPPLER_API_TOKEN
+# ─────────────────────────────────────────────────────────────────────

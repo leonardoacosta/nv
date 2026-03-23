@@ -21,6 +21,9 @@ pub mod web;
 // ── Checkable trait ─────────────────────────────────────────────────
 
 /// Result of a single service connectivity probe.
+// Dead-code suppressed: variants are used by Checkable impls; orchestrator
+// in check.rs activates them in the CLI batch.
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum CheckResult {
@@ -49,6 +52,9 @@ pub enum CheckResult {
 }
 
 /// A service that can validate its own connectivity and credentials.
+// Dead-code suppressed: trait methods are implemented but not yet called by
+// the orchestrator until the CLI batch ([4.x]) lands.
+#[allow(dead_code)]
 #[async_trait::async_trait]
 pub trait Checkable: Send + Sync {
     /// Human-readable service name, e.g. `"stripe"` or `"jira/personal"`.
@@ -74,6 +80,9 @@ pub trait Checkable: Send + Sync {
 /// 1. `project_map` lookup → instance name → client
 /// 2. `"default"` instance (backward-compat flat configs)
 /// 3. First instance in the map
+// Dead-code suppressed: registry is built in main.rs and wired to check_all in
+// the CLI batch ([4.x]).
+#[allow(dead_code)]
 pub struct ServiceRegistry<T: Checkable> {
     /// Instance name → client.
     instances: HashMap<String, T>,
@@ -81,6 +90,7 @@ pub struct ServiceRegistry<T: Checkable> {
     project_map: HashMap<String, String>,
 }
 
+#[allow(dead_code)]
 impl<T: Checkable> ServiceRegistry<T> {
     /// Create a new registry with explicit instances and project map.
     pub fn new(instances: HashMap<String, T>, project_map: HashMap<String, String>) -> Self {
@@ -1197,6 +1207,27 @@ fn cancel_reminder_impl(store: &ReminderStore, input: &serde_json::Value) -> Res
 ///
 /// This variant avoids referencing stores that wrap `rusqlite::Connection` (a `!Send` type)
 /// so the resulting future can be used with `tokio::spawn`. The `get_recent_messages`,
+/// Pre-built service client registries, threaded through `execute_tool_send`
+/// so workers reuse persistent connections instead of re-reading env vars on
+/// every tool call.
+///
+/// Each field is `Option` — `None` means "not configured / fall back to
+/// `from_env()` inline".
+// Some fields not yet consumed in execute_tool_send until the service-registry
+// migration is complete for all tool handlers.
+#[allow(dead_code)]
+pub struct ServiceRegistries<'a> {
+    pub stripe: Option<&'a ServiceRegistry<stripe::StripeClient>>,
+    pub vercel: Option<&'a ServiceRegistry<vercel::VercelClient>>,
+    pub sentry: Option<&'a ServiceRegistry<sentry::SentryClient>>,
+    pub resend: Option<&'a ServiceRegistry<resend::ResendClient>>,
+    pub ha: Option<&'a ServiceRegistry<ha::HAClient>>,
+    pub upstash: Option<&'a ServiceRegistry<upstash::UpstashClient>>,
+    pub ado: Option<&'a ServiceRegistry<ado::AdoClient>>,
+    pub cloudflare: Option<&'a ServiceRegistry<cloudflare::CloudflareClient>>,
+    pub doppler: Option<&'a ServiceRegistry<doppler::DopplerClient>>,
+}
+
 /// `search_messages`, schedule tools, and reminder tools must be handled by the caller
 /// before delegating here.
 #[allow(clippy::too_many_arguments)]
@@ -1210,6 +1241,7 @@ pub async fn execute_tool_send(
     channels: &HashMap<String, Arc<dyn Channel>>,
     calendar_credentials: Option<&str>,
     calendar_id: &str,
+    service_registries: &ServiceRegistries<'_>,
 ) -> Result<ToolResult> {
     match name {
         "read_memory" => {
@@ -1473,16 +1505,30 @@ pub async fn execute_tool_send(
             let project = input["project"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let client = vercel_tools::VercelClient::from_env()?;
-            let output = vercel_tools::vercel_deployments(&client, project).await?;
+            let _owned_vercel;
+            let client = if let Some(reg) = service_registries.vercel {
+                reg.resolve(project)
+                    .or_else(|| reg.default())
+                    .ok_or_else(|| anyhow!("Vercel registry empty"))?
+            } else {
+                _owned_vercel = vercel_tools::VercelClient::from_env()?;
+                &_owned_vercel
+            };
+            let output = vercel_tools::vercel_deployments(client, project).await?;
             Ok(ToolResult::Immediate(output))
         }
         "vercel_logs" => {
             let deploy_id = input["deploy_id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'deploy_id' parameter"))?;
-            let client = vercel_tools::VercelClient::from_env()?;
-            let output = vercel_tools::vercel_logs(&client, deploy_id).await?;
+            let _owned_vercel;
+            let client = if let Some(reg) = service_registries.vercel {
+                reg.default().ok_or_else(|| anyhow!("Vercel registry empty"))?
+            } else {
+                _owned_vercel = vercel_tools::VercelClient::from_env()?;
+                &_owned_vercel
+            };
+            let output = vercel_tools::vercel_logs(client, deploy_id).await?;
             Ok(ToolResult::Immediate(output))
         }
 
@@ -1801,6 +1847,7 @@ pub async fn execute_tool(
     channels: &HashMap<String, Arc<dyn Channel>>,
     calendar_credentials: Option<&str>,
     calendar_id: &str,
+    service_registries: &ServiceRegistries<'_>,
 ) -> Result<ToolResult> {
     match name {
         // ── Memory Tools ────────────────────────────────────────
@@ -2119,16 +2166,30 @@ pub async fn execute_tool(
             let project = input["project"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let client = vercel_tools::VercelClient::from_env()?;
-            let output = vercel_tools::vercel_deployments(&client, project).await?;
+            let _owned_vercel;
+            let client = if let Some(reg) = service_registries.vercel {
+                reg.resolve(project)
+                    .or_else(|| reg.default())
+                    .ok_or_else(|| anyhow!("Vercel registry empty"))?
+            } else {
+                _owned_vercel = vercel_tools::VercelClient::from_env()?;
+                &_owned_vercel
+            };
+            let output = vercel_tools::vercel_deployments(client, project).await?;
             Ok(ToolResult::Immediate(output))
         }
         "vercel_logs" => {
             let deploy_id = input["deploy_id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'deploy_id' parameter"))?;
-            let client = vercel_tools::VercelClient::from_env()?;
-            let output = vercel_tools::vercel_logs(&client, deploy_id).await?;
+            let _owned_vercel;
+            let client = if let Some(reg) = service_registries.vercel {
+                reg.default().ok_or_else(|| anyhow!("Vercel registry empty"))?
+            } else {
+                _owned_vercel = vercel_tools::VercelClient::from_env()?;
+                &_owned_vercel
+            };
+            let output = vercel_tools::vercel_logs(client, deploy_id).await?;
             Ok(ToolResult::Immediate(output))
         }
 

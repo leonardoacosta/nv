@@ -814,6 +814,17 @@ impl AgentLoop {
                 let timeout_dur = std::time::Duration::from_secs(timeout_secs);
 
                 let tool_start = Instant::now();
+                let empty_regs = tools::ServiceRegistries {
+                    stripe: None,
+                    vercel: None,
+                    sentry: None,
+                    resend: None,
+                    ha: None,
+                    upstash: None,
+                    ado: None,
+                    cloudflare: None,
+                    doppler: None,
+                };
                 let result = match tokio::time::timeout(
                     timeout_dur,
                     tools::execute_tool(
@@ -827,6 +838,7 @@ impl AgentLoop {
                         &self.channels,
                         None,
                         "primary",
+                        &empty_regs,
                     ),
                 )
                 .await

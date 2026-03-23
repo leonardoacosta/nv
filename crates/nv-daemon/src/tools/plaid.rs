@@ -419,3 +419,51 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+// ── PlaidClient wrapper ──────────────────────────────────────────────
+
+/// Thin wrapper for `Checkable` health checks.
+/// Plaid data is read from cortex-postgres; no Plaid API key required.
+#[allow(dead_code)]
+pub struct PlaidClient;
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for PlaidClient {
+    fn name(&self) -> &str {
+        "plaid"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+
+        if std::env::var("PLAID_DB_URL").is_err() {
+            return crate::tools::CheckResult::Missing {
+                env_var: "PLAID_DB_URL".into(),
+            };
+        }
+
+        let (latency, result) = timed(|| async {
+            match connect().await {
+                Ok(client) => client
+                    .query_one("SELECT 1", &[])
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| anyhow::anyhow!(e)),
+                Err(e) => Err(e),
+            }
+        })
+        .await;
+
+        match result {
+            Ok(_) => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "cortex-postgres reachable (SELECT 1 ok)".into(),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: format!("connection failed: {e}"),
+            },
+        }
+    }
+}

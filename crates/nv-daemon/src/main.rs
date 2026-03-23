@@ -719,6 +719,106 @@ async fn main() -> anyhow::Result<()> {
     let conversation_store = conversation::ConversationStore::new();
     tracing::info!("conversation store initialized");
 
+    // Build service registries from environment variables
+    let stripe_registry = match tools::stripe::StripeClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Stripe client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Stripe not configured — stripe tools use inline auth");
+            None
+        }
+    };
+
+    let vercel_registry = match tools::vercel::VercelClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Vercel client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Vercel not configured — vercel tools use inline auth");
+            None
+        }
+    };
+
+    let sentry_registry = match tools::sentry::SentryClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Sentry client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Sentry not configured — sentry tools use inline auth");
+            None
+        }
+    };
+
+    let resend_registry = match tools::resend::ResendClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Resend client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Resend not configured — resend tools use inline auth");
+            None
+        }
+    };
+
+    let ha_registry = match tools::ha::HAClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Home Assistant client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Home Assistant not configured — ha tools use inline auth");
+            None
+        }
+    };
+
+    let upstash_registry = match tools::upstash::UpstashClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Upstash client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Upstash not configured — upstash tools use inline auth");
+            None
+        }
+    };
+
+    let ado_registry = match tools::ado::AdoClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Azure DevOps client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "ADO not configured — ado tools use inline auth");
+            None
+        }
+    };
+
+    let cloudflare_registry = match tools::cloudflare::CloudflareClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Cloudflare client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Cloudflare not configured — cloudflare tools use inline auth");
+            None
+        }
+    };
+
+    let doppler_registry = match tools::doppler::DopplerClient::from_env() {
+        Ok(client) => {
+            tracing::info!("Doppler client initialized");
+            Some(tools::ServiceRegistry::single(client))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Doppler not configured — doppler tools use inline auth");
+            None
+        }
+    };
+
     // Build shared dependencies for workers
     let shared_deps = Arc::new(worker::SharedDeps {
         memory: memory::Memory::new(&nv_base),
@@ -755,6 +855,15 @@ async fn main() -> anyhow::Result<()> {
             .as_ref()
             .map(|d| d.timezone.clone())
             .unwrap_or_else(|| "America/Chicago".to_string()),
+        stripe_registry,
+        vercel_registry,
+        sentry_registry,
+        resend_registry,
+        ha_registry,
+        upstash_registry,
+        ado_registry,
+        cloudflare_registry,
+        doppler_registry,
     });
 
     // Extract Telegram client and chat_id for reactions

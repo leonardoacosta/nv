@@ -155,6 +155,74 @@ impl StripeClient {
     }
 }
 
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for StripeClient {
+    fn name(&self) -> &str {
+        "stripe"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let (latency, result) = timed(|| async {
+            self.http
+                .get(format!("{STRIPE_BASE_URL}/balance"))
+                .send()
+                .await
+        })
+        .await;
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "balance endpoint reachable".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "invalid API key (401) — check STRIPE_SECRET_KEY".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+
+    async fn check_write(&self) -> Option<crate::tools::CheckResult> {
+        use crate::tools::check::timed;
+        // POST /v1/invoices with no body — expect 400 (missing required fields), not 2xx
+        let (latency, result) = timed(|| async {
+            self.http
+                .post(format!("{STRIPE_BASE_URL}/invoices"))
+                .send()
+                .await
+        })
+        .await;
+        let result = match result {
+            // 400 means the endpoint is reachable and auth is valid — write permissions confirmed
+            Ok(resp) if resp.status().as_u16() == 400 => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "invoices endpoint writable (400 as expected)".into(),
+            },
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "invoices endpoint writable".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "write probe: invalid API key (401)".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("write probe: HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: format!("write probe: {e}"),
+            },
+        };
+        Some(result)
+    }
+}
+
 // ── Error Mapping ────────────────────────────────────────────────────
 
 fn map_stripe_error(status: reqwest::StatusCode) -> Result<()> {

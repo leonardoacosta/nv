@@ -481,3 +481,65 @@ mod tests {
             .contains("POSTGRES_URL_ZZZTEST"));
     }
 }
+
+// ── NeonClient wrapper ───────────────────────────────────────────────
+
+/// Thin wrapper around the project-scoped Neon connection functions,
+/// used for `Checkable` health checks.
+///
+/// Holds the project code for which connectivity is checked.
+#[allow(dead_code)]
+pub struct NeonClient {
+    /// Project code (e.g. `"oo"`, `"tc"`).
+    pub project: String,
+}
+
+#[allow(dead_code)]
+impl NeonClient {
+    /// Create a `NeonClient` for the given project code.
+    pub fn new(project: impl Into<String>) -> Self {
+        Self {
+            project: project.into(),
+        }
+    }
+}
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for NeonClient {
+    fn name(&self) -> &str {
+        "neon"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+
+        // Resolve env var presence first — fast path for missing creds
+        let env_key = format!("POSTGRES_URL_{}", self.project.to_uppercase());
+        if std::env::var(&env_key).is_err() {
+            return crate::tools::CheckResult::Missing { env_var: env_key };
+        }
+
+        let project = self.project.clone();
+        let (latency, result) = timed(|| async { connect(&project).await }).await;
+
+        match result {
+            Ok(client) => {
+                // Run SELECT 1 to verify query capability
+                match client.query_one("SELECT 1", &[]).await {
+                    Ok(_) => crate::tools::CheckResult::Healthy {
+                        latency_ms: latency,
+                        detail: format!("SELECT 1 ok ({})", self.project.to_uppercase()),
+                    },
+                    Err(e) => crate::tools::CheckResult::Unhealthy {
+                        error: format!("query failed: {e}"),
+                    },
+                }
+            }
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: format!("connection failed: {e}"),
+            },
+        }
+    }
+}

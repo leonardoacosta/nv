@@ -289,3 +289,63 @@ mod tests {
         }
     }
 }
+
+// ── DockerClient wrapper ─────────────────────────────────────────────
+
+/// Thin wrapper for `Checkable` health checks.
+/// Docker uses the `docker` CLI — no API key required.
+#[allow(dead_code)]
+pub struct DockerClient;
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for DockerClient {
+    fn name(&self) -> &str {
+        "docker"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let (latency, result) = timed(|| async {
+            tokio::time::timeout(DOCKER_TIMEOUT, async {
+                Command::new("docker")
+                    .arg("info")
+                    .arg("--format")
+                    .arg("{{.ServerVersion}}")
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::null())
+                    .output()
+                    .await
+            })
+            .await
+        })
+        .await;
+        match result {
+            Ok(Ok(output)) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                crate::tools::CheckResult::Healthy {
+                    latency_ms: latency,
+                    detail: format!("docker daemon reachable (v{version})"),
+                }
+            }
+            Ok(Ok(output)) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                crate::tools::CheckResult::Unhealthy {
+                    error: if stderr.is_empty() {
+                        format!("docker info exited with code {:?}", output.status.code())
+                    } else {
+                        stderr
+                    },
+                }
+            }
+            Ok(Err(e)) => crate::tools::CheckResult::Unhealthy {
+                error: format!("failed to run docker: {e}"),
+            },
+            Err(_) => crate::tools::CheckResult::Unhealthy {
+                error: format!("docker info timed out after {}s", DOCKER_TIMEOUT.as_secs()),
+            },
+        }
+    }
+}

@@ -1,5 +1,8 @@
 //! Service health check orchestrator.
 //!
+//! Dead-code is expected until the CLI batch ([4.x]) wires up `nv check`.
+#![allow(dead_code)]
+//!
 //! `check_all()` runs `check_read()` (and optionally `check_write()`) probes
 //! concurrently across all registered services using `FuturesUnordered`, then
 //! collects results into a `CheckReport`.

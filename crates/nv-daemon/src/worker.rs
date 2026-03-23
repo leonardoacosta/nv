@@ -187,6 +187,25 @@ pub struct SharedDeps {
     pub calendar_id: String,
     /// User timezone (IANA name, e.g. "America/Chicago") for display and time parsing.
     pub timezone: String,
+    // ── Service registries (multi-instance support) ──────────────────
+    /// Stripe client registry. Supports multi-account configs.
+    pub stripe_registry: Option<crate::tools::ServiceRegistry<crate::tools::stripe::StripeClient>>,
+    /// Vercel client registry.
+    pub vercel_registry: Option<crate::tools::ServiceRegistry<crate::tools::vercel::VercelClient>>,
+    /// Sentry client registry.
+    pub sentry_registry: Option<crate::tools::ServiceRegistry<crate::tools::sentry::SentryClient>>,
+    /// Resend client registry.
+    pub resend_registry: Option<crate::tools::ServiceRegistry<crate::tools::resend::ResendClient>>,
+    /// Home Assistant client registry.
+    pub ha_registry: Option<crate::tools::ServiceRegistry<crate::tools::ha::HAClient>>,
+    /// Upstash client registry.
+    pub upstash_registry: Option<crate::tools::ServiceRegistry<crate::tools::upstash::UpstashClient>>,
+    /// Azure DevOps client registry.
+    pub ado_registry: Option<crate::tools::ServiceRegistry<crate::tools::ado::AdoClient>>,
+    /// Cloudflare client registry.
+    pub cloudflare_registry: Option<crate::tools::ServiceRegistry<crate::tools::cloudflare::CloudflareClient>>,
+    /// Doppler client registry.
+    pub doppler_registry: Option<crate::tools::ServiceRegistry<crate::tools::doppler::DopplerClient>>,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -1027,6 +1046,17 @@ impl Worker {
                     let timeout_dur = Duration::from_secs(timeout_secs);
 
                     // Wrap tool execution in a timeout
+                    let svc_regs = tools::ServiceRegistries {
+                        stripe: deps.stripe_registry.as_ref(),
+                        vercel: deps.vercel_registry.as_ref(),
+                        sentry: deps.sentry_registry.as_ref(),
+                        resend: deps.resend_registry.as_ref(),
+                        ha: deps.ha_registry.as_ref(),
+                        upstash: deps.upstash_registry.as_ref(),
+                        ado: deps.ado_registry.as_ref(),
+                        cloudflare: deps.cloudflare_registry.as_ref(),
+                        doppler: deps.doppler_registry.as_ref(),
+                    };
                     match tokio::time::timeout(
                         timeout_dur,
                         tools::execute_tool_send(
@@ -1039,6 +1069,7 @@ impl Worker {
                             &deps.channels,
                             deps.calendar_credentials.as_deref(),
                             &deps.calendar_id,
+                            &svc_regs,
                         ),
                     )
                     .await

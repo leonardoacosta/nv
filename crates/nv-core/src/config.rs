@@ -54,6 +54,10 @@ fn default_email_folder_ids() -> Vec<String> {
     vec!["Inbox".to_string()]
 }
 
+fn default_worker_timeout_secs() -> u64 {
+    300
+}
+
 // ── Config structs ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
@@ -154,12 +158,127 @@ pub struct EmailConfig {
     pub subject_filter: Vec<String>,
 }
 
+// ── Jira Config (multi-instance) ────────────────────────────────────
+
+/// Configuration for a single Jira instance.
 #[derive(Debug, Clone, Deserialize)]
-pub struct JiraConfig {
+pub struct JiraInstanceConfig {
+    /// Atlassian instance hostname, e.g. "myteam.atlassian.net".
     pub instance: String,
+    /// Default project KEY for this instance (used when no project_map entry matches).
     pub default_project: String,
-    /// Shared secret for validating inbound Jira webhooks.
+    /// Shared secret for validating inbound Jira webhooks (per-instance override).
     pub webhook_secret: Option<String>,
+}
+
+/// Multi-instance Jira configuration.
+///
+/// Supports two TOML formats:
+///
+/// **Flat (single-instance, backward-compatible):**
+/// ```toml
+/// [jira]
+/// instance = "myteam.atlassian.net"
+/// default_project = "OO"
+/// ```
+///
+/// **Multi-instance:**
+/// ```toml
+/// [jira.instances.personal]
+/// instance = "leonardoacosta.atlassian.net"
+/// default_project = "OO"
+///
+/// [jira.instances.llc]
+/// instance = "civalent.atlassian.net"
+/// default_project = "CT"
+///
+/// [jira.project_map]
+/// OO = "personal"
+/// TC = "personal"
+/// CT = "llc"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum JiraConfig {
+    /// Flat single-instance format (backward-compatible).
+    Flat(JiraInstanceConfig),
+    /// Multi-instance format with named instances and a project map.
+    Multi(JiraMultiConfig),
+}
+
+/// Named-instances Jira config with optional project-to-instance routing.
+#[derive(Debug, Clone, Deserialize)]
+pub struct JiraMultiConfig {
+    /// Named Jira instances, keyed by instance name (e.g. "personal", "llc").
+    pub instances: HashMap<String, JiraInstanceConfig>,
+    /// Maps project KEYs to instance names (e.g. "OO" -> "personal").
+    #[serde(default)]
+    pub project_map: HashMap<String, String>,
+    /// Shared secret for validating inbound Jira webhooks (applies to all instances
+    /// unless overridden per-instance).
+    pub webhook_secret: Option<String>,
+}
+
+impl JiraConfig {
+    /// Resolve which `JiraInstanceConfig` to use for a given project KEY.
+    ///
+    /// Resolution order:
+    /// 1. `project_map` lookup → instance name → config
+    /// 2. `default_project` match across all instances
+    /// 3. `"default"` instance (for backward-compat flat configs stored under "default")
+    /// 4. First instance in the map
+    pub fn resolve_instance(&self, project: &str) -> Option<(&str, &JiraInstanceConfig)> {
+        match self {
+            JiraConfig::Flat(cfg) => Some(("default", cfg)),
+            JiraConfig::Multi(multi) => {
+                // 1. project_map lookup
+                if let Some(instance_name) = multi.project_map.get(project) {
+                    if let Some(cfg) = multi.instances.get(instance_name) {
+                        return Some((instance_name, cfg));
+                    }
+                }
+                // 2. default_project match
+                for (name, cfg) in &multi.instances {
+                    if cfg.default_project.eq_ignore_ascii_case(project) {
+                        return Some((name, cfg));
+                    }
+                }
+                // 3. "default" instance
+                if let Some(cfg) = multi.instances.get("default") {
+                    return Some(("default", cfg));
+                }
+                // 4. First instance
+                multi.instances.iter().next().map(|(k, v)| (k.as_str(), v))
+            }
+        }
+    }
+
+    /// Return the webhook secret for this config.
+    ///
+    /// For flat configs, uses the instance's `webhook_secret`.
+    /// For multi-instance, uses the top-level `webhook_secret` (per-instance
+    /// overrides are not yet implemented).
+    pub fn webhook_secret(&self) -> Option<&str> {
+        match self {
+            JiraConfig::Flat(cfg) => cfg.webhook_secret.as_deref(),
+            JiraConfig::Multi(multi) => multi.webhook_secret.as_deref(),
+        }
+    }
+
+    /// Return the first/primary instance hostname for logging.
+    pub fn primary_instance(&self) -> &str {
+        match self {
+            JiraConfig::Flat(cfg) => &cfg.instance,
+            JiraConfig::Multi(multi) => {
+                multi
+                    .instances
+                    .values()
+                    .next()
+                    .map(|c| c.instance.as_str())
+                    .unwrap_or("<none>")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -191,6 +310,14 @@ pub struct DaemonConfig {
     pub quiet_start: Option<String>,
     /// Quiet hours end time (e.g. "07:00"). Optional — if unset, no quiet window.
     pub quiet_end: Option<String>,
+    /// Per-worker session timeout in seconds (default: 300 = 5 minutes).
+    ///
+    /// If a worker's entire Claude session (including all tool calls) exceeds
+    /// this duration, it is cancelled and the slot is reclaimed. The existing
+    /// per-tool timeouts (`TOOL_TIMEOUT_READ`, `TOOL_TIMEOUT_WRITE`) remain
+    /// unchanged — this is a hard ceiling above them.
+    #[serde(default = "default_worker_timeout_secs")]
+    pub worker_timeout_secs: u64,
 }
 
 // ── Config loading ──────────────────────────────────────────────────
@@ -260,9 +387,16 @@ pub struct Secrets {
     pub bluebubbles_password: Option<String>,
     pub ms_graph_client_id: Option<String>,
     pub ms_graph_client_secret: Option<String>,
+    /// Default Jira API token (unqualified — used for flat config and as fallback).
     pub jira_api_token: Option<String>,
+    /// Default Jira username (unqualified — used for flat config and as fallback).
     pub jira_username: Option<String>,
     pub elevenlabs_api_key: Option<String>,
+    /// Instance-qualified Jira credentials: `JIRA_API_TOKEN_{INSTANCE_UPPER}`.
+    /// Keyed by uppercase instance name (e.g. "PERSONAL", "LLC").
+    pub jira_api_tokens: HashMap<String, String>,
+    /// Instance-qualified Jira usernames: `JIRA_USERNAME_{INSTANCE_UPPER}`.
+    pub jira_usernames: HashMap<String, String>,
 }
 
 impl Secrets {
@@ -270,7 +404,26 @@ impl Secrets {
     ///
     /// All keys are optional. The Claude CLI handles its own authentication
     /// via OAuth, so ANTHROPIC_API_KEY is not required.
+    ///
+    /// Instance-qualified Jira credentials are loaded by scanning all env vars
+    /// matching `JIRA_API_TOKEN_*` and `JIRA_USERNAME_*`.
     pub fn from_env() -> anyhow::Result<Self> {
+        let mut jira_api_tokens = HashMap::new();
+        let mut jira_usernames = HashMap::new();
+
+        // Scan all env vars for JIRA_API_TOKEN_{INSTANCE} and JIRA_USERNAME_{INSTANCE}
+        for (key, value) in std::env::vars() {
+            if let Some(instance) = key.strip_prefix("JIRA_API_TOKEN_") {
+                if !instance.is_empty() {
+                    jira_api_tokens.insert(instance.to_string(), value);
+                }
+            } else if let Some(instance) = key.strip_prefix("JIRA_USERNAME_") {
+                if !instance.is_empty() {
+                    jira_usernames.insert(instance.to_string(), value);
+                }
+            }
+        }
+
         Ok(Self {
             anthropic_api_key: std::env::var("ANTHROPIC_API_KEY").ok(),
             telegram_bot_token: std::env::var("TELEGRAM_BOT_TOKEN").ok(),
@@ -281,7 +434,33 @@ impl Secrets {
             jira_api_token: std::env::var("JIRA_API_TOKEN").ok(),
             jira_username: std::env::var("JIRA_USERNAME").ok(),
             elevenlabs_api_key: std::env::var("ELEVENLABS_API_KEY").ok(),
+            jira_api_tokens,
+            jira_usernames,
         })
+    }
+
+    /// Resolve the API token for a named Jira instance.
+    ///
+    /// Tries `JIRA_API_TOKEN_{INSTANCE_UPPER}` first, then falls back to
+    /// the unqualified `JIRA_API_TOKEN`.
+    pub fn jira_token_for(&self, instance_name: &str) -> Option<&str> {
+        let key = instance_name.to_uppercase();
+        self.jira_api_tokens
+            .get(&key)
+            .map(|s| s.as_str())
+            .or(self.jira_api_token.as_deref())
+    }
+
+    /// Resolve the username for a named Jira instance.
+    ///
+    /// Tries `JIRA_USERNAME_{INSTANCE_UPPER}` first, then falls back to
+    /// the unqualified `JIRA_USERNAME`.
+    pub fn jira_username_for(&self, instance_name: &str) -> Option<&str> {
+        let key = instance_name.to_uppercase();
+        self.jira_usernames
+            .get(&key)
+            .map(|s| s.as_str())
+            .or(self.jira_username.as_deref())
     }
 }
 
@@ -385,13 +564,23 @@ quiet_end = "07:00"
         assert_eq!(imessage.bluebubbles_url, "http://mac.tailnet:1234");
         assert_eq!(imessage.poll_interval_secs, 5);
 
+        // Flat JiraConfig
         let jira = config.jira.unwrap();
-        assert_eq!(jira.instance, "myteam.atlassian.net");
-        assert_eq!(jira.default_project, "PROJ");
-        assert_eq!(
-            jira.webhook_secret.as_deref(),
-            Some("super-secret-webhook-token-32chars!")
-        );
+        match &jira {
+            JiraConfig::Flat(cfg) => {
+                assert_eq!(cfg.instance, "myteam.atlassian.net");
+                assert_eq!(cfg.default_project, "PROJ");
+                assert_eq!(
+                    cfg.webhook_secret.as_deref(),
+                    Some("super-secret-webhook-token-32chars!")
+                );
+            }
+            JiraConfig::Multi(_) => panic!("expected flat config"),
+        }
+        // resolve_instance always returns something for flat
+        let (name, resolved) = jira.resolve_instance("PROJ").unwrap();
+        assert_eq!(name, "default");
+        assert_eq!(resolved.instance, "myteam.atlassian.net");
 
         let nexus = config.nexus.unwrap();
         assert_eq!(nexus.agents.len(), 1);
@@ -486,6 +675,34 @@ tts_url = "http://localhost:5500/tts"
         assert_eq!(daemon.elevenlabs_model, "eleven_multilingual_v2");
         assert!(daemon.quiet_start.is_none());
         assert!(daemon.quiet_end.is_none());
+        // worker_timeout_secs defaults to 300
+        assert_eq!(daemon.worker_timeout_secs, 300);
+    }
+
+    #[test]
+    fn parse_daemon_worker_timeout_explicit() {
+        let toml_str = r#"
+[agent]
+model = "claude-sonnet-4-20250514"
+
+[daemon]
+worker_timeout_secs = 600
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let daemon = config.daemon.unwrap();
+        assert_eq!(daemon.worker_timeout_secs, 600);
+    }
+
+    #[test]
+    fn parse_worker_timeout_default_when_daemon_absent() {
+        let toml_str = r#"
+[agent]
+model = "claude-sonnet-4-20250514"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        // No daemon section — worker_timeout_secs not accessible, but DaemonConfig
+        // is None. The default is on the field, so this test just ensures no panic.
+        assert!(config.daemon.is_none());
     }
 
     #[test]
@@ -518,5 +735,129 @@ tts_url = "http://localhost:5500/tts"
 
         let secrets = Secrets::from_env().unwrap();
         assert!(secrets.anthropic_api_key.is_none());
+    }
+
+    #[test]
+    fn secrets_instance_qualified_jira_creds() {
+        unsafe {
+            std::env::set_var("JIRA_API_TOKEN_PERSONAL", "token-personal");
+            std::env::set_var("JIRA_USERNAME_PERSONAL", "user-personal");
+            std::env::set_var("JIRA_API_TOKEN_LLC", "token-llc");
+            std::env::set_var("JIRA_API_TOKEN", "token-default");
+            std::env::set_var("JIRA_USERNAME", "user-default");
+        }
+
+        let secrets = Secrets::from_env().unwrap();
+
+        // Instance-qualified lookup
+        assert_eq!(secrets.jira_token_for("personal"), Some("token-personal"));
+        assert_eq!(secrets.jira_username_for("personal"), Some("user-personal"));
+        assert_eq!(secrets.jira_token_for("llc"), Some("token-llc"));
+        // LLC has no username var — falls back to unqualified
+        assert_eq!(secrets.jira_username_for("llc"), Some("user-default"));
+        // Unknown instance falls back to unqualified
+        assert_eq!(secrets.jira_token_for("unknown"), Some("token-default"));
+        // "default" instance also falls back
+        assert_eq!(secrets.jira_token_for("default"), Some("token-default"));
+
+        // Cleanup
+        unsafe {
+            std::env::remove_var("JIRA_API_TOKEN_PERSONAL");
+            std::env::remove_var("JIRA_USERNAME_PERSONAL");
+            std::env::remove_var("JIRA_API_TOKEN_LLC");
+            std::env::remove_var("JIRA_API_TOKEN");
+            std::env::remove_var("JIRA_USERNAME");
+        }
+    }
+
+    #[test]
+    fn parse_jira_flat_config() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[jira]
+instance = "myteam.atlassian.net"
+default_project = "OO"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let jira = config.jira.unwrap();
+        match &jira {
+            JiraConfig::Flat(cfg) => {
+                assert_eq!(cfg.instance, "myteam.atlassian.net");
+                assert_eq!(cfg.default_project, "OO");
+            }
+            JiraConfig::Multi(_) => panic!("expected flat"),
+        }
+        let (name, cfg) = jira.resolve_instance("OO").unwrap();
+        assert_eq!(name, "default");
+        assert_eq!(cfg.instance, "myteam.atlassian.net");
+    }
+
+    #[test]
+    fn parse_jira_multi_instance_config() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[jira.instances.personal]
+instance = "leonardoacosta.atlassian.net"
+default_project = "OO"
+
+[jira.instances.llc]
+instance = "civalent.atlassian.net"
+default_project = "CT"
+
+[jira.project_map]
+OO = "personal"
+TC = "personal"
+CT = "llc"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let jira = config.jira.unwrap();
+        match &jira {
+            JiraConfig::Multi(multi) => {
+                assert_eq!(multi.instances.len(), 2);
+                assert!(multi.instances.contains_key("personal"));
+                assert!(multi.instances.contains_key("llc"));
+                assert_eq!(multi.project_map.get("OO").map(|s| s.as_str()), Some("personal"));
+                assert_eq!(multi.project_map.get("CT").map(|s| s.as_str()), Some("llc"));
+            }
+            JiraConfig::Flat(_) => panic!("expected multi"),
+        }
+
+        // project_map resolution
+        let (name, cfg) = jira.resolve_instance("OO").unwrap();
+        assert_eq!(name, "personal");
+        assert_eq!(cfg.instance, "leonardoacosta.atlassian.net");
+
+        let (name2, cfg2) = jira.resolve_instance("CT").unwrap();
+        assert_eq!(name2, "llc");
+        assert_eq!(cfg2.instance, "civalent.atlassian.net");
+    }
+
+    #[test]
+    fn jira_resolve_instance_fallback_chain() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[jira.instances.personal]
+instance = "leonardoacosta.atlassian.net"
+default_project = "OO"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let jira = config.jira.unwrap();
+
+        // Unknown project — no project_map, no default_project match, no "default" instance
+        // Falls through to first instance
+        let result = jira.resolve_instance("UNKNOWN");
+        assert!(result.is_some());
+        let (_, cfg) = result.unwrap();
+        assert_eq!(cfg.instance, "leonardoacosta.atlassian.net");
+
+        // default_project match
+        let (name, _) = jira.resolve_instance("OO").unwrap();
+        assert_eq!(name, "personal");
     }
 }

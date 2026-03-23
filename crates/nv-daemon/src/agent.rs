@@ -156,7 +156,7 @@ pub struct AgentLoop {
     channels: ChannelRegistry,
     memory: Memory,
     state: State,
-    jira_client: Option<jira::JiraClient>,
+    jira_registry: Option<jira::JiraRegistry>,
     nexus_client: Option<nexus::client::NexusClient>,
     message_store: MessageStore,
     diary: DiaryWriter,
@@ -184,7 +184,7 @@ impl AgentLoop {
         trigger_rx: mpsc::UnboundedReceiver<Trigger>,
         channels: ChannelRegistry,
         nv_base_path: PathBuf,
-        jira_client: Option<jira::JiraClient>,
+        jira_registry: Option<jira::JiraRegistry>,
         nexus_client: Option<nexus::client::NexusClient>,
         message_store: MessageStore,
         diary: DiaryWriter,
@@ -207,7 +207,7 @@ impl AgentLoop {
 
         tracing::info!(
             tools = tool_definitions.len(),
-            jira_enabled = jira_client.is_some(),
+            jira_enabled = jira_registry.is_some(),
             nexus_enabled = nexus_client.is_some(),
             system_prompt_len = system_prompt.len(),
             bootstrapped = check_bootstrap_state(),
@@ -221,7 +221,7 @@ impl AgentLoop {
             channels,
             memory,
             state,
-            jira_client,
+            jira_registry,
             nexus_client,
             message_store,
             diary,
@@ -308,7 +308,7 @@ impl AgentLoop {
                                     let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                     if let Err(e) = crate::callbacks::handle_approve(
                                         uuid_str,
-                                        self.jira_client.as_ref(),
+                                        self.jira_registry.as_ref(),
                                         self.nexus_client.as_ref(),
                                         &self.project_registry,
                                         &tg_channel.client,
@@ -818,7 +818,7 @@ impl AgentLoop {
                         name,
                         input,
                         &self.memory,
-                        self.jira_client.as_ref(),
+                        self.jira_registry.as_ref(),
                         self.nexus_client.as_ref(),
                         Some(&self.message_store),
                         &self.project_registry,

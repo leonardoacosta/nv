@@ -572,15 +572,15 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Create Jira client if configured
-    let jira_client = if let (Some(jira_config), Some(username), Some(token)) = (
-        &config.jira,
-        &secrets.jira_username,
-        &secrets.jira_api_token,
-    ) {
-        let instance_url = format!("https://{}", jira_config.instance);
-        tracing::info!(instance = %jira_config.instance, "Jira client configured");
-        Some(jira::JiraClient::new(&instance_url, username, token))
+    // Build Jira registry if configured
+    let jira_registry = if let Some(jira_config) = &config.jira {
+        match jira::JiraRegistry::new(jira_config, &secrets) {
+            Ok(registry) => registry,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to build Jira registry — jira tools disabled");
+                None
+            }
+        }
     } else {
         tracing::warn!("Jira not configured -- jira tools disabled");
         None
@@ -634,7 +634,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Build Jira webhook state if configured
     let jira_webhook_state = config.jira.as_ref().map(|jira_config| {
-        let secret = jira_config.webhook_secret.clone();
+        let secret = jira_config.webhook_secret().map(String::from);
         if secret.is_none() {
             tracing::info!("Jira configured but no webhook_secret — Jira webhooks will accept all requests");
         }
@@ -644,7 +644,7 @@ async fn main() -> anyhow::Result<()> {
             memory_base_path: nv_base.join("memory"),
         };
         tracing::info!(
-            instance = %jira_config.instance,
+            instance = %jira_config.primary_instance(),
             has_secret = state.webhook_secret.is_some(),
             "Jira webhook endpoint configured"
         );
@@ -711,7 +711,7 @@ async fn main() -> anyhow::Result<()> {
         message_store: Arc::new(std::sync::Mutex::new(message_store)),
         conversation_store: Arc::new(std::sync::Mutex::new(conversation_store)),
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),
-        jira_client,
+        jira_registry,
         nexus_client,
         channels: channels.clone(),
         nv_base_path: nv_base,
@@ -722,6 +722,11 @@ async fn main() -> anyhow::Result<()> {
         event_tx: worker_event_tx,
         weekly_budget_usd: config.agent.weekly_budget_usd,
         alert_threshold_pct: config.agent.alert_threshold_pct,
+        worker_timeout_secs: config
+            .daemon
+            .as_ref()
+            .map(|d| d.worker_timeout_secs)
+            .unwrap_or(300),
     });
 
     // Extract Telegram client and chat_id for reactions

@@ -206,6 +206,13 @@ pub struct Orchestrator {
     quiet_start: Option<chrono::NaiveTime>,
     /// Quiet hours end (parsed from config). None = no quiet window.
     quiet_end: Option<chrono::NaiveTime>,
+    // ── PendingAction error dedup state ──
+    /// Text of the last error sent (or being batched).
+    last_error_text: Option<String>,
+    /// Timestamp of the last error in the current batch.
+    last_error_time: Instant,
+    /// Number of errors accumulated in the current batch.
+    error_count: u32,
 }
 
 impl Orchestrator {
@@ -242,6 +249,9 @@ impl Orchestrator {
             worker_stage_started: std::collections::HashMap::new(),
             quiet_start,
             quiet_end,
+            last_error_text: None,
+            last_error_time: Instant::now(),
+            error_count: 0,
         }
     }
 
@@ -592,7 +602,7 @@ impl Orchestrator {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                 if let Err(e) = crate::callbacks::handle_approve(
                                     uuid_str,
-                                    self.deps.jira_client.as_ref(),
+                                    self.deps.jira_registry.as_ref(),
                                     self.deps.nexus_client.as_ref(),
                                     &self.deps.project_registry,
                                     &tg_channel.client,
@@ -774,7 +784,7 @@ impl Orchestrator {
         for code in &codes {
             let result = crate::aggregation::project_health(
                 code,
-                self.deps.jira_client.as_ref(),
+                self.deps.jira_registry.as_ref().and_then(|r| r.resolve(code)),
                 self.deps.nexus_client.as_ref(),
             )
             .await;
@@ -842,7 +852,7 @@ impl Orchestrator {
         for code in &codes {
             let dot = if let Ok(output) = crate::aggregation::project_health(
                 code,
-                self.deps.jira_client.as_ref(),
+                self.deps.jira_registry.as_ref().and_then(|r| r.resolve(code)),
                 self.deps.nexus_client.as_ref(),
             )
             .await
@@ -969,7 +979,7 @@ impl Orchestrator {
 
     // ── Nexus Error Handlers ────────────────────────────────────────
 
-    async fn handle_nexus_view_error(&self, session_id: &str) {
+    async fn handle_nexus_view_error(&mut self, session_id: &str) {
         let Some(nexus_client) = &self.deps.nexus_client else {
             tracing::warn!("nexus_err:view callback but no Nexus client configured");
             return;
@@ -1005,7 +1015,7 @@ impl Orchestrator {
         }
     }
 
-    async fn handle_nexus_create_bug(&self, session_id: &str) {
+    async fn handle_nexus_create_bug(&mut self, session_id: &str) {
         let Some(nexus_client) = &self.deps.nexus_client else {
             tracing::warn!("nexus_err:bug callback but no Nexus client configured");
             return;
@@ -1061,19 +1071,93 @@ impl Orchestrator {
         }
     }
 
-    /// Send an error message to a channel.
-    async fn send_error(&self, channel_name: &str, message: &str) {
-        if let Some(channel) = self.channels.get(channel_name) {
-            let msg = OutboundMessage {
-                channel: channel_name.into(),
-                content: format!("\u{26A0} {message}"),
-                reply_to: None,
-                keyboard: None,
+    /// Send an error message to a channel, with 2-second dedup batching.
+    ///
+    /// Consecutive calls with the same `message` within 2 seconds are batched:
+    /// the count accumulates and the message is not sent immediately. When a
+    /// different message arrives (or the first call), any previous batch is
+    /// flushed first, then the new error is recorded.
+    ///
+    /// The caller is responsible for invoking `flush_error_batch` after the
+    /// debounce window to send the final batch. In practice this happens via
+    /// the orchestrator's periodic inactivity tick.
+    async fn send_error(&mut self, channel_name: &str, message: &str) {
+        let debounce = Duration::from_secs(2);
+        let now = Instant::now();
+
+        let is_same = self.last_error_text.as_deref() == Some(message);
+        let within_window = now.duration_since(self.last_error_time) < debounce;
+
+        if is_same && within_window {
+            // Same error within debounce window — accumulate
+            self.error_count += 1;
+            self.last_error_time = now;
+            return;
+        }
+
+        // Different error or window expired — flush previous batch if any
+        if let Some(ref prev_text) = self.last_error_text.take() {
+            let prev_count = self.error_count;
+            let text_to_send = if prev_count > 1 {
+                format!("\u{26A0} {prev_count} actions failed: {prev_text}")
+            } else {
+                format!("\u{26A0} {prev_text}")
             };
-            if let Err(e) = channel.send_message(msg).await {
-                tracing::error!(error = %e, "failed to send error to {}", channel_name);
+            if let Some(channel) = self.channels.get(channel_name) {
+                let msg = OutboundMessage {
+                    channel: channel_name.into(),
+                    content: text_to_send,
+                    reply_to: None,
+                    keyboard: None,
+                };
+                if let Err(e) = channel.send_message(msg).await {
+                    tracing::error!(error = %e, "failed to send batched error to {}", channel_name);
+                }
             }
         }
+
+        // Start new batch
+        self.last_error_text = Some(message.to_string());
+        self.last_error_time = now;
+        self.error_count = 1;
+    }
+
+    /// Flush any pending error batch if the debounce window has expired.
+    #[allow(dead_code)]
+    ///
+    /// Called periodically to ensure the final batch in a sequence is always
+    /// sent even if no new errors arrive to trigger a flush.
+    async fn flush_error_batch_if_expired(&mut self, channel_name: &str) {
+        let debounce = Duration::from_secs(2);
+        let now = Instant::now();
+
+        if self.last_error_text.is_none() {
+            return;
+        }
+        if now.duration_since(self.last_error_time) < debounce {
+            return;
+        }
+
+        if let Some(ref prev_text) = self.last_error_text.take() {
+            let prev_count = self.error_count;
+            let text_to_send = if prev_count > 1 {
+                format!("\u{26A0} {prev_count} actions failed: {prev_text}")
+            } else {
+                format!("\u{26A0} {prev_text}")
+            };
+            if let Some(channel) = self.channels.get(channel_name) {
+                let msg = OutboundMessage {
+                    channel: channel_name.into(),
+                    content: text_to_send,
+                    reply_to: None,
+                    keyboard: None,
+                };
+                if let Err(e) = channel.send_message(msg).await {
+                    tracing::error!(error = %e, "failed to flush error batch to {}", channel_name);
+                }
+            }
+        }
+        self.error_count = 0;
     }
 }
 

@@ -147,7 +147,7 @@ pub struct SharedDeps {
     pub message_store: Arc<std::sync::Mutex<MessageStore>>,
     pub conversation_store: Arc<std::sync::Mutex<ConversationStore>>,
     pub diary: Arc<std::sync::Mutex<DiaryWriter>>,
-    pub jira_client: Option<jira::JiraClient>,
+    pub jira_registry: Option<jira::JiraRegistry>,
     pub nexus_client: Option<nexus::client::NexusClient>,
     pub channels: ChannelRegistry,
     pub nv_base_path: PathBuf,
@@ -161,6 +161,8 @@ pub struct SharedDeps {
     pub weekly_budget_usd: f64,
     /// Alert threshold as a percentage of the weekly budget.
     pub alert_threshold_pct: u8,
+    /// Per-worker session timeout in seconds (from daemon config, default 300).
+    pub worker_timeout_secs: u64,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -237,9 +239,11 @@ impl WorkerPool {
         let tg_chat_id = self.telegram_chat_id;
         let max_concurrent = self.max_concurrent;
         let client_template = self.client_template.clone();
+        let worker_timeout_secs = deps.worker_timeout_secs;
 
         tokio::spawn(async move {
             let task_id = task.id;
+            let task_tg_chat_id = task.telegram_chat_id.or(tg_chat_id);
             tracing::info!(
                 worker_task = %task_id,
                 priority = ?task.priority,
@@ -247,16 +251,58 @@ impl WorkerPool {
                 "worker started"
             );
 
-            let result = Worker::run(
-                task,
-                Arc::clone(&deps),
-                client,
-                tg_client.clone(),
-                tg_chat_id,
-            ).await;
+            let timeout_dur = Duration::from_secs(worker_timeout_secs);
+            let result = tokio::time::timeout(
+                timeout_dur,
+                Worker::run(
+                    task,
+                    Arc::clone(&deps),
+                    client,
+                    tg_client.clone(),
+                    tg_chat_id,
+                ),
+            )
+            .await;
 
-            if let Err(e) = &result {
-                tracing::error!(worker_task = %task_id, error = %e, "worker failed");
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    tracing::error!(worker_task = %task_id, error = %e, "worker failed");
+                }
+                Err(_elapsed) => {
+                    // Worker timed out — emit error event, notify user, reclaim slot
+                    tracing::warn!(
+                        worker_task = %task_id,
+                        timeout_secs = worker_timeout_secs,
+                        "worker session timed out"
+                    );
+                    let _ = deps.event_tx.send(WorkerEvent::Error {
+                        worker_id: task_id,
+                        error: format!("Worker timed out after {worker_timeout_secs}s"),
+                    });
+                    // Send Telegram error to the originating chat
+                    if let Some(chat_id) = task_tg_chat_id {
+                        if let Some(channel) = deps.channels.get("telegram") {
+                            let msg = nv_core::types::OutboundMessage {
+                                channel: "telegram".into(),
+                                content: format!(
+                                    "\u{26A0} Request timed out after {worker_timeout_secs}s. \
+                                     Try again or simplify the request."
+                                ),
+                                reply_to: None,
+                                keyboard: None,
+                            };
+                            // Fire-and-forget; we can't await here as we need to release the slot
+                            let channel = channel.clone();
+                            let _ = chat_id; // suppress unused warning — chat_id is in msg routing
+                            tokio::spawn(async move {
+                                if let Err(e) = channel.send_message(msg).await {
+                                    tracing::warn!(error = %e, "failed to send timeout error to Telegram");
+                                }
+                            });
+                        }
+                    }
+                }
             }
 
             // Release slot
@@ -274,15 +320,29 @@ impl WorkerPool {
                     let next_client = client_template;
                     let next_active = Arc::clone(&active);
                     tokio::spawn(async move {
-                        let result = Worker::run(
-                            next_task,
-                            deps,
-                            next_client,
-                            tg_client,
-                            tg_chat_id,
-                        ).await;
-                        if let Err(e) = result {
-                            tracing::error!(error = %e, "queued worker failed");
+                        let next_timeout_dur = Duration::from_secs(worker_timeout_secs);
+                        let result = tokio::time::timeout(
+                            next_timeout_dur,
+                            Worker::run(
+                                next_task,
+                                deps,
+                                next_client,
+                                tg_client,
+                                tg_chat_id,
+                            ),
+                        )
+                        .await;
+                        match result {
+                            Ok(Ok(())) => {}
+                            Ok(Err(e)) => {
+                                tracing::error!(error = %e, "queued worker failed");
+                            }
+                            Err(_elapsed) => {
+                                tracing::warn!(
+                                    timeout_secs = worker_timeout_secs,
+                                    "queued worker session timed out"
+                                );
+                            }
                         }
                         next_active.fetch_sub(1, Ordering::Relaxed);
                     });
@@ -839,7 +899,7 @@ impl Worker {
                             name,
                             input,
                             &deps.memory,
-                            deps.jira_client.as_ref(),
+                            deps.jira_registry.as_ref(),
                             deps.nexus_client.as_ref(),
                             &deps.project_registry,
                         ),

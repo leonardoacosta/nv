@@ -1,5 +1,6 @@
 use std::future::Future;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use base64::Engine;
@@ -10,6 +11,9 @@ use super::types::*;
 
 /// Default maximum number of retries for Jira API requests.
 const DEFAULT_MAX_RETRIES: u32 = 3;
+
+/// TTL for the project key cache (1 hour).
+const PROJECT_CACHE_TTL: Duration = Duration::from_secs(3600);
 
 // ── JiraClient ─────────────────────────────────────────────────────
 
@@ -26,6 +30,9 @@ pub struct JiraClient {
     auth_email: String,
     #[allow(dead_code)]
     auth_token: String,
+    /// In-memory cache of valid project KEYs, refreshed every hour.
+    /// `None` means the cache has never been loaded.
+    project_keys_cache: Mutex<Option<(Vec<String>, Instant)>>,
 }
 
 impl JiraClient {
@@ -63,6 +70,7 @@ impl JiraClient {
             base_url: instance_url.trim_end_matches('/').to_string(),
             auth_email: email.to_string(),
             auth_token: api_token.to_string(),
+            project_keys_cache: Mutex::new(None),
         }
     }
 
@@ -74,6 +82,7 @@ impl JiraClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             auth_email: String::new(),
             auth_token: String::new(),
+            project_keys_cache: Mutex::new(None),
         }
     }
 
@@ -120,6 +129,65 @@ impl JiraClient {
             }
         }
         unreachable!()
+    }
+
+    // ── Project Key Cache ─────────────────────────────────────────
+
+    /// Fetch all project KEYs from this Jira instance.
+    ///
+    /// Returns a `Vec<String>` of project KEYs (e.g. `["OO", "TC", "MV"]`).
+    pub async fn get_projects(&self) -> Result<Vec<String>> {
+        self.request_with_retry(DEFAULT_MAX_RETRIES, || async {
+            let url = format!("{}/rest/api/3/project", self.base_url);
+            let resp = self
+                .http
+                .get(&url)
+                .query(&[("maxResults", "200")])
+                .send()
+                .await?;
+            let projects: Vec<serde_json::Value> =
+                self.handle_response(resp, "list projects").await?;
+            let keys = projects
+                .into_iter()
+                .filter_map(|p| p["key"].as_str().map(String::from))
+                .collect();
+            Ok(keys)
+        })
+        .await
+    }
+
+    /// Return project KEYs from cache, refreshing if stale or absent.
+    ///
+    /// Cache TTL is 1 hour. On fetch failure, returns `None` silently
+    /// so callers can fall through to direct API validation.
+    pub async fn cached_project_keys(&self) -> Option<Vec<String>> {
+        // Check cache without holding lock across await
+        let needs_refresh = {
+            let guard = self.project_keys_cache.lock().unwrap();
+            match &*guard {
+                Some((_, ts)) => ts.elapsed() >= PROJECT_CACHE_TTL,
+                None => true,
+            }
+        };
+
+        if needs_refresh {
+            match self.get_projects().await {
+                Ok(keys) => {
+                    let mut guard = self.project_keys_cache.lock().unwrap();
+                    *guard = Some((keys.clone(), Instant::now()));
+                    Some(keys)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to refresh project key cache");
+                    // Return stale cache if available
+                    let guard = self.project_keys_cache.lock().unwrap();
+                    guard.as_ref().map(|(keys, _)| keys.clone())
+                }
+            }
+        } else {
+            let guard = self.project_keys_cache.lock().unwrap();
+            guard.as_ref().map(|(keys, _)| keys.clone())
+        }
     }
 
     // ── Read Operations (immediate, with retry) ───────────────────

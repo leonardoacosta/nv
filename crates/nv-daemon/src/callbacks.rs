@@ -25,7 +25,7 @@ use std::path::PathBuf;
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_approve(
     uuid_str: &str,
-    jira_client: Option<&jira::JiraClient>,
+    jira_registry: Option<&jira::JiraRegistry>,
     nexus_client: Option<&nexus::client::NexusClient>,
     project_registry: &HashMap<String, PathBuf>,
     telegram: &TelegramClient,
@@ -60,8 +60,8 @@ pub async fn handle_approve(
         }
         _ => {
             // Jira and other action types
-            if let Some(jira) = jira_client {
-                tools::execute_jira_action(jira, &action_type, &action.payload).await
+            if let Some(registry) = jira_registry {
+                tools::execute_jira_action(registry, &action_type, &action.payload).await
             } else {
                 Err(anyhow::anyhow!("Jira not configured"))
             }

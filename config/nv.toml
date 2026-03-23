@@ -14,6 +14,28 @@ chat_id = 7380462766
 instance = "leonardoacosta.atlassian.net"
 default_project = "OO"
 
+# ── Multi-instance example (uncomment to enable) ─────────────────────────────
+# Replace the flat [jira] section above with:
+#
+# [jira.instances.personal]
+# instance = "leonardoacosta.atlassian.net"
+# default_project = "OO"
+#
+# [jira.instances.llc]
+# instance = "civalent.atlassian.net"
+# default_project = "CT"
+#
+# [jira.project_map]
+# OO = "personal"
+# TC = "personal"
+# CT = "llc"
+#
+# Instance-qualified credentials (set in environment):
+#   JIRA_API_TOKEN_PERSONAL / JIRA_USERNAME_PERSONAL
+#   JIRA_API_TOKEN_LLC / JIRA_USERNAME_LLC
+#   Unqualified JIRA_API_TOKEN / JIRA_USERNAME serve as fallback.
+# ─────────────────────────────────────────────────────────────────────────────
+
 [nexus]
 [[nexus.agents]]
 name = "homelab"

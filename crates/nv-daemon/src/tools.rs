@@ -602,7 +602,7 @@ pub async fn execute_tool_send(
     name: &str,
     input: &serde_json::Value,
     memory: &Memory,
-    jira_client: Option<&jira::JiraClient>,
+    jira_registry: Option<&jira::JiraRegistry>,
     nexus_client: Option<&nexus::client::NexusClient>,
     project_registry: &HashMap<String, PathBuf>,
 ) -> Result<ToolResult> {
@@ -622,21 +622,40 @@ pub async fn execute_tool_send(
         }
         "jira_search" => {
             let jql = input["jql"].as_str().ok_or_else(|| anyhow!("missing 'jql' parameter"))?;
-            let client = jira_client.ok_or_else(|| anyhow!("Jira not configured"))?;
+            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
+            // For JQL searches, use the default client (no project context in the query itself)
+            let client = registry.default_client().ok_or_else(|| anyhow!("Jira not configured"))?;
             let issues = client.search(jql).await?;
             Ok(ToolResult::Immediate(jira::format_issues_for_claude(&issues)))
         }
         "jira_get" => {
             let key = input["issue_key"].as_str().ok_or_else(|| anyhow!("missing 'issue_key' parameter"))?;
-            let client = jira_client.ok_or_else(|| anyhow!("Jira not configured"))?;
+            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
+            let client = registry.resolve_from_issue_key(key)
+                .ok_or_else(|| anyhow!("Jira not configured"))?;
             let issue = client.get_issue(key).await?;
             Ok(ToolResult::Immediate(jira::format_issue_for_claude(&issue)))
         }
-        "jira_create" | "jira_transition" | "jira_assign" | "jira_comment" => {
-            if jira_client.is_none() { anyhow::bail!("Jira not configured"); }
+        "jira_create" => {
+            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
+            // Validate project KEY format before queuing the pending action
+            let project = input["project"].as_str().unwrap_or("");
+            validate_jira_project_key(project)?;
+            // Warn if project not found in registry (soft warning — don't block)
+            if registry.resolve(project).is_none() {
+                tracing::warn!(project, "Jira project KEY not found in registry — will attempt on approval");
+            }
+            let description = jira::describe_pending_action(name, input);
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::JiraCreate,
+                payload: input.clone(),
+            })
+        }
+        "jira_transition" | "jira_assign" | "jira_comment" => {
+            if jira_registry.is_none() { anyhow::bail!("Jira not configured"); }
             let description = jira::describe_pending_action(name, input);
             let action_type = match name {
-                "jira_create" => nv_core::types::ActionType::JiraCreate,
                 "jira_transition" => nv_core::types::ActionType::JiraTransition,
                 "jira_assign" => nv_core::types::ActionType::JiraAssign,
                 "jira_comment" => nv_core::types::ActionType::JiraComment,
@@ -734,6 +753,7 @@ pub async fn execute_tool_send(
         // ── Aggregation Tools ────────────────────────────────────
         "project_health" => {
             let code = input["code"].as_str().ok_or_else(|| anyhow!("missing 'code' parameter"))?;
+            let jira_client = jira_registry.and_then(|r| r.resolve(code));
             let output = aggregation::project_health(code, jira_client, nexus_client).await?;
             Ok(ToolResult::Immediate(output))
         }
@@ -978,7 +998,7 @@ pub async fn execute_tool(
     name: &str,
     input: &serde_json::Value,
     memory: &Memory,
-    jira_client: Option<&jira::JiraClient>,
+    jira_registry: Option<&jira::JiraRegistry>,
     nexus_client: Option<&nexus::client::NexusClient>,
     message_store: Option<&MessageStore>,
     project_registry: &HashMap<String, PathBuf>,
@@ -1012,7 +1032,9 @@ pub async fn execute_tool(
             let jql = input["jql"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'jql' parameter"))?;
-            let client = jira_client
+            let registry = jira_registry
+                .ok_or_else(|| anyhow!("Jira not configured"))?;
+            let client = registry.default_client()
                 .ok_or_else(|| anyhow!("Jira not configured"))?;
             let issues = client.search(jql).await?;
             Ok(ToolResult::Immediate(jira::format_issues_for_claude(
@@ -1023,7 +1045,9 @@ pub async fn execute_tool(
             let key = input["issue_key"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'issue_key' parameter"))?;
-            let client = jira_client
+            let registry = jira_registry
+                .ok_or_else(|| anyhow!("Jira not configured"))?;
+            let client = registry.resolve_from_issue_key(key)
                 .ok_or_else(|| anyhow!("Jira not configured"))?;
             let issue = client.get_issue(key).await?;
             Ok(ToolResult::Immediate(jira::format_issue_for_claude(&issue)))
@@ -1031,8 +1055,11 @@ pub async fn execute_tool(
 
         // ── Jira Write Tools (pending action) ──────────────────
         "jira_create" => {
-            if jira_client.is_none() {
-                anyhow::bail!("Jira not configured");
+            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
+            let project = input["project"].as_str().unwrap_or("");
+            validate_jira_project_key(project)?;
+            if registry.resolve(project).is_none() {
+                tracing::warn!(project, "Jira project KEY not found in registry");
             }
             let description = jira::describe_pending_action(name, input);
             Ok(ToolResult::PendingAction {
@@ -1042,7 +1069,7 @@ pub async fn execute_tool(
             })
         }
         "jira_transition" => {
-            if jira_client.is_none() {
+            if jira_registry.is_none() {
                 anyhow::bail!("Jira not configured");
             }
             let description = jira::describe_pending_action(name, input);
@@ -1053,7 +1080,7 @@ pub async fn execute_tool(
             })
         }
         "jira_assign" => {
-            if jira_client.is_none() {
+            if jira_registry.is_none() {
                 anyhow::bail!("Jira not configured");
             }
             let description = jira::describe_pending_action(name, input);
@@ -1064,7 +1091,7 @@ pub async fn execute_tool(
             })
         }
         "jira_comment" => {
-            if jira_client.is_none() {
+            if jira_registry.is_none() {
                 anyhow::bail!("Jira not configured");
             }
             let description = jira::describe_pending_action(name, input);
@@ -1156,6 +1183,7 @@ pub async fn execute_tool(
             let code = input["code"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'code' parameter"))?;
+            let jira_client = jira_registry.and_then(|r| r.resolve(code));
             let output = aggregation::project_health(code, jira_client, nexus_client).await?;
             Ok(ToolResult::Immediate(output))
         }
@@ -1434,20 +1462,26 @@ async fn execute_bash_tool(
     Ok(ToolResult::Immediate(output))
 }
 
-/// Execute a confirmed Jira pending action against the real JiraClient.
+/// Execute a confirmed Jira pending action via the registry.
 ///
 /// Called when the user taps "Approve" on a Telegram inline keyboard.
+/// The registry routes to the correct Jira instance based on the project/issue key
+/// in the payload.
 #[allow(dead_code)]
 pub async fn execute_jira_action(
-    jira_client: &jira::JiraClient,
+    jira_registry: &jira::JiraRegistry,
     action_type: &nv_core::types::ActionType,
     payload: &serde_json::Value,
 ) -> Result<String> {
     match action_type {
         nv_core::types::ActionType::JiraCreate => {
+            let project = payload["project"].as_str().unwrap_or("");
+            let client = jira_registry
+                .resolve(project)
+                .ok_or_else(|| anyhow!("Jira not configured for project {project}"))?;
             let params: jira::JiraCreateParams = serde_json::from_value(payload.clone())
                 .map_err(|e| anyhow!("invalid jira_create payload: {e}"))?;
-            let created = jira_client.create_issue(&params).await?;
+            let created = client.create_issue(&params).await?;
             Ok(format!("Created {}: {}", created.key, params.title))
         }
         nv_core::types::ActionType::JiraTransition => {
@@ -1457,9 +1491,10 @@ pub async fn execute_jira_action(
             let transition_name = payload["transition_name"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing transition_name in transition payload"))?;
-            jira_client
-                .transition_issue(issue_key, transition_name)
-                .await?;
+            let client = jira_registry
+                .resolve_from_issue_key(issue_key)
+                .ok_or_else(|| anyhow!("Jira not configured for issue {issue_key}"))?;
+            client.transition_issue(issue_key, transition_name).await?;
             Ok(format!("Transitioned {issue_key} to {transition_name}"))
         }
         nv_core::types::ActionType::JiraAssign => {
@@ -1470,9 +1505,10 @@ pub async fn execute_jira_action(
                 .as_str()
                 .or_else(|| payload["assignee"].as_str())
                 .ok_or_else(|| anyhow!("missing assignee in assign payload"))?;
-            jira_client
-                .assign_issue(issue_key, assignee)
-                .await?;
+            let client = jira_registry
+                .resolve_from_issue_key(issue_key)
+                .ok_or_else(|| anyhow!("Jira not configured for issue {issue_key}"))?;
+            client.assign_issue(issue_key, assignee).await?;
             Ok(format!("Assigned {issue_key} to {assignee}"))
         }
         nv_core::types::ActionType::JiraComment => {
@@ -1482,11 +1518,52 @@ pub async fn execute_jira_action(
             let body = payload["body"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing body in comment payload"))?;
-            let comment = jira_client.add_comment(issue_key, body).await?;
+            let client = jira_registry
+                .resolve_from_issue_key(issue_key)
+                .ok_or_else(|| anyhow!("Jira not configured for issue {issue_key}"))?;
+            let comment = client.add_comment(issue_key, body).await?;
             Ok(format!("Added comment {} to {issue_key}", comment.id))
         }
         _ => Err(anyhow!("Not a Jira action type: {action_type:?}")),
     }
+}
+
+// ── Jira Validation Helpers ──────────────────────────────────────────
+
+/// Validate that a string is a valid Jira project KEY.
+///
+/// Rules: 2-10 uppercase alphanumeric characters, starting with a letter.
+/// Matches `^[A-Z][A-Z0-9]{1,9}$`.
+pub fn validate_jira_project_key(key: &str) -> Result<()> {
+    if key.is_empty() {
+        anyhow::bail!(
+            "Invalid project KEY '{}'. Must be 2-10 uppercase letters/digits starting with a letter (e.g., OO, TC, MV).",
+            key
+        );
+    }
+    let bytes = key.as_bytes();
+    // Must start with uppercase letter
+    if !bytes[0].is_ascii_uppercase() {
+        anyhow::bail!(
+            "Invalid project KEY '{}'. Must be 2-10 uppercase letters/digits starting with a letter (e.g., OO, TC, MV).",
+            key
+        );
+    }
+    // Length 2-10
+    if key.len() < 2 || key.len() > 10 {
+        anyhow::bail!(
+            "Invalid project KEY '{}'. Must be 2-10 uppercase letters/digits starting with a letter (e.g., OO, TC, MV).",
+            key
+        );
+    }
+    // All chars must be uppercase alphanumeric
+    if !bytes.iter().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()) {
+        anyhow::bail!(
+            "Invalid project KEY '{}'. Must be 2-10 uppercase letters/digits starting with a letter (e.g., OO, TC, MV).",
+            key
+        );
+    }
+    Ok(())
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -1762,15 +1839,34 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("Jira not configured"));
     }
 
+    fn make_test_registry() -> jira::JiraRegistry {
+        use nv_core::config::{JiraConfig, JiraInstanceConfig, Secrets};
+        use std::collections::HashMap;
+        let cfg = JiraConfig::Flat(JiraInstanceConfig {
+            instance: "test.atlassian.net".to_string(),
+            default_project: "OO".to_string(),
+            webhook_secret: None,
+        });
+        let secrets = Secrets {
+            anthropic_api_key: None,
+            telegram_bot_token: None,
+            discord_bot_token: None,
+            bluebubbles_password: None,
+            ms_graph_client_id: None,
+            ms_graph_client_secret: None,
+            jira_api_token: Some("fake-token".to_string()),
+            jira_username: Some("test@test.com".to_string()),
+            elevenlabs_api_key: None,
+            jira_api_tokens: HashMap::new(),
+            jira_usernames: HashMap::new(),
+        };
+        jira::JiraRegistry::new(&cfg, &secrets).unwrap().unwrap()
+    }
+
     #[tokio::test]
     async fn execute_jira_create_returns_pending_action() {
         let (_dir, memory) = setup();
-        // Create a dummy JiraClient (won't be called for write tools)
-        let client = jira::JiraClient::new(
-            "https://test.atlassian.net",
-            "test@test.com",
-            "fake-token",
-        );
+        let registry = make_test_registry();
         let result = execute_tool(
             "jira_create",
             &serde_json::json!({
@@ -1779,7 +1875,7 @@ mod tests {
                 "title": "Test issue"
             }),
             &memory,
-            Some(&client),
+            Some(&registry),
             None,
             None,
             &empty_registry(),
@@ -1805,11 +1901,7 @@ mod tests {
     #[tokio::test]
     async fn execute_jira_transition_returns_pending_action() {
         let (_dir, memory) = setup();
-        let client = jira::JiraClient::new(
-            "https://test.atlassian.net",
-            "test@test.com",
-            "fake-token",
-        );
+        let registry = make_test_registry();
         let result = execute_tool(
             "jira_transition",
             &serde_json::json!({
@@ -1817,7 +1909,7 @@ mod tests {
                 "transition_name": "In Progress"
             }),
             &memory,
-            Some(&client),
+            Some(&registry),
             None,
             None,
             &empty_registry(),
@@ -1844,11 +1936,7 @@ mod tests {
     #[tokio::test]
     async fn execute_jira_comment_returns_pending_action() {
         let (_dir, memory) = setup();
-        let client = jira::JiraClient::new(
-            "https://test.atlassian.net",
-            "test@test.com",
-            "fake-token",
-        );
+        let registry = make_test_registry();
         let result = execute_tool(
             "jira_comment",
             &serde_json::json!({
@@ -1856,7 +1944,7 @@ mod tests {
                 "body": "This is a comment"
             }),
             &memory,
-            Some(&client),
+            Some(&registry),
             None,
             None,
             &empty_registry(),
@@ -1877,6 +1965,35 @@ mod tests {
             }
             _ => panic!("expected PendingAction"),
         }
+    }
+
+    #[test]
+    fn jira_key_validation_valid() {
+        assert!(validate_jira_project_key("OO").is_ok());
+        assert!(validate_jira_project_key("TC").is_ok());
+        assert!(validate_jira_project_key("MV").is_ok());
+        assert!(validate_jira_project_key("A0").is_ok());
+        assert!(validate_jira_project_key("ABCDEFGHIJ").is_ok()); // 10 chars
+    }
+
+    #[test]
+    fn jira_key_validation_invalid() {
+        // Too short
+        assert!(validate_jira_project_key("A").is_err());
+        // Empty
+        assert!(validate_jira_project_key("").is_err());
+        // Lowercase
+        assert!(validate_jira_project_key("oo").is_err());
+        assert!(validate_jira_project_key("Oo").is_err());
+        // Starts with digit
+        assert!(validate_jira_project_key("1A").is_err());
+        // Special chars
+        assert!(validate_jira_project_key("O-O").is_err());
+        assert!(validate_jira_project_key("O_O").is_err());
+        // Too long (11 chars)
+        assert!(validate_jira_project_key("ABCDEFGHIJK").is_err());
+        // Full project name (lowercase + spaces)
+        assert!(validate_jira_project_key("Otaku Odyssey").is_err());
     }
 
     #[tokio::test]

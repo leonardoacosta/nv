@@ -24,7 +24,7 @@ pub mod web;
 // Dead-code suppressed: variants are used by Checkable impls; orchestrator
 // in check.rs activates them in the CLI batch.
 #[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum CheckResult {
     /// Service responded successfully within the timeout.
@@ -392,6 +392,29 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Cloudflare DNS tools
     tools.extend(cloudflare_tools::cloudflare_tool_definitions());
+
+    // Add service diagnostics tool
+    tools.push(ToolDefinition {
+        name: "check_services".into(),
+        description: "Run connectivity and credential probes against all configured services. \
+            Returns a structured report showing which services are healthy, degraded, \
+            unhealthy, or missing credentials. Use this proactively when a tool call \
+            fails with an auth error, or to diagnose service connectivity issues.".into(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "read_only": {
+                    "type": "boolean",
+                    "description": "If true, skip write probes and only run read connectivity checks. Default false."
+                },
+                "service": {
+                    "type": "string",
+                    "description": "Optional: check only the named service (partial match on service name, e.g. 'stripe', 'jira')."
+                }
+            },
+            "required": []
+        }),
+    });
 
     // Add cross-channel routing tools
     tools.extend(vec![
@@ -1822,6 +1845,68 @@ pub async fn execute_tool_send(
             let client = cloudflare_tools::CloudflareClient::from_env()?;
             let output = cloudflare_tools::cf_domain_status(&client, domain).await?;
             Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Service Diagnostics ───────────────────────────────────────
+        "check_services" => {
+            let read_only = input["read_only"].as_bool().unwrap_or(false);
+            let service_filter = input["service"].as_str();
+            let include_write = !read_only;
+
+            // Build owned Checkable instances from environment variables.
+            // The service registries already hold live clients but they yield
+            // &T references; we build fresh clients via from_env() here so
+            // check_all() can take &dyn Checkable with proper lifetimes.
+            let mut owned: Vec<Box<dyn Checkable>> = Vec::new();
+
+            macro_rules! push_env {
+                ($ctor:expr, $missing_name:expr, $missing_var:expr) => {
+                    match $ctor {
+                        Ok(c) => owned.push(Box::new(c)),
+                        Err(_) => owned.push(Box::new(check::MissingService::new(
+                            $missing_name,
+                            $missing_var,
+                        ))),
+                    }
+                };
+            }
+
+            push_env!(stripe::StripeClient::from_env(), "stripe", "STRIPE_SECRET_KEY");
+            push_env!(vercel::VercelClient::from_env(), "vercel", "VERCEL_API_TOKEN");
+            push_env!(sentry::SentryClient::from_env(), "sentry", "SENTRY_AUTH_TOKEN");
+            push_env!(resend::ResendClient::from_env(), "resend", "RESEND_API_KEY");
+            push_env!(ha::HAClient::from_env(), "ha", "HA_TOKEN");
+            push_env!(upstash::UpstashClient::from_env(), "upstash", "UPSTASH_REDIS_REST_URL");
+            push_env!(ado::AdoClient::from_env(), "ado", "ADO_PAT");
+            push_env!(cloudflare::CloudflareClient::from_env(), "cloudflare", "CLOUDFLARE_API_TOKEN");
+            push_env!(doppler::DopplerClient::from_env(), "doppler", "DOPPLER_TOKEN");
+
+            // Zero-arg constructors (check_read resolves credentials internally)
+            owned.push(Box::new(posthog::PosthogClient));
+            owned.push(Box::new(github::GithubClient));
+            owned.push(Box::new(docker::DockerClient));
+            owned.push(Box::new(plaid::PlaidClient));
+
+            // Neon uses a project-specific URL; use "default" project as the probe target
+            owned.push(Box::new(neon::NeonClient::new("default")));
+
+            // Apply optional service filter
+            let filtered: Vec<&dyn Checkable> = if let Some(filter) = service_filter {
+                owned
+                    .iter()
+                    .filter(|s| s.name().contains(filter))
+                    .map(|s| s.as_ref())
+                    .collect()
+            } else {
+                owned.iter().map(|s| s.as_ref()).collect()
+            };
+
+            let report = check::check_all(&filtered, include_write).await;
+            let json_value = check::format_json(&report);
+            Ok(ToolResult::Immediate(
+                serde_json::to_string_pretty(&json_value)
+                    .unwrap_or_else(|e| format!("serialization error: {e}")),
+            ))
         }
 
         _ => Err(anyhow!("unknown tool: {name}")),

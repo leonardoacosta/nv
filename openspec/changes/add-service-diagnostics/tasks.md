@@ -43,12 +43,12 @@
 
 ## CLI Batch
 
-- [ ] [4.1] [P-1] Add `nv check` clap subcommand — parse args (--json, --read-only, --service) [owner:general-purpose]
-- [ ] [4.2] [P-1] Wire `nv check` to `check_all()` — load config, build registries, run probes, format output [owner:general-purpose]
-- [ ] [4.3] [P-1] Register `check_services` tool definition in `register_tools()` [owner:general-purpose]
-- [ ] [4.4] [P-1] Implement `check_services` tool handler in `execute_tool()` — delegates to `check_all()`, returns JSON [owner:general-purpose]
-- [ ] [4.5] [P-2] Extend `HealthResponse` with optional `tools: HashMap<String, CheckResult>` for `?deep=true` [owner:general-purpose]
-- [ ] [4.6] [P-2] Update `/health` HTTP handler to run probes when `deep=true` query param present [owner:general-purpose]
+- [x] [4.1] [P-1] Add `nv check` clap subcommand — parse args (--json, --read-only, --service) [owner:general-purpose]
+- [x] [4.2] [P-1] Wire `nv check` to `check_all()` — load config, build registries, run probes, format output [owner:general-purpose]
+- [x] [4.3] [P-1] Register `check_services` tool definition in `register_tools()` [owner:general-purpose]
+- [x] [4.4] [P-1] Implement `check_services` tool handler in `execute_tool()` — delegates to `check_all()`, returns JSON [owner:general-purpose]
+- [x] [4.5] [P-2] Extend `HealthResponse` with optional `tools: HashMap<String, CheckResult>` for `?deep=true` [owner:general-purpose]
+- [x] [4.6] [P-2] Update `/health` HTTP handler to run probes when `deep=true` query param present [owner:general-purpose]
 
 ## Test Batch
 

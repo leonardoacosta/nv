@@ -32,6 +32,18 @@ enum Commands {
     },
     /// Show message statistics and usage dashboard
     Stats,
+    /// Check connectivity and credentials for all configured services
+    Check {
+        /// Output machine-readable JSON instead of human-readable terminal output
+        #[arg(long)]
+        json: bool,
+        /// Skip write probes (read-only checks only)
+        #[arg(long)]
+        read_only: bool,
+        /// Check only the named service (partial match on service name)
+        #[arg(long)]
+        service: Option<String>,
+    },
 }
 
 /// Request body for POST /ask.
@@ -68,6 +80,13 @@ async fn main() {
             } else {
                 println!("not implemented yet: show last digest");
             }
+        }
+        Commands::Check {
+            json,
+            read_only,
+            service,
+        } => {
+            commands::check::run(json, read_only, service.as_deref()).await;
         }
     }
 }

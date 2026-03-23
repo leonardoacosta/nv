@@ -137,11 +137,27 @@ async fn teams_webhook_handler(
     StatusCode::OK.into_response()
 }
 
+/// Query parameters for GET /health.
+#[derive(Debug, Deserialize, Default)]
+pub struct HealthQuery {
+    /// When `deep=true`, run connectivity probes for all configured services
+    /// and include the results in the `tools` field of the response.
+    pub deep: Option<bool>,
+}
+
 /// GET /health — returns JSON with daemon health state.
+///
+/// With `?deep=true`, runs read probes against all configured service clients
+/// and attaches the results as `"tools": { "<name>": { "status": "healthy", ... } }`.
 async fn health_handler(
     State(state): State<Arc<HttpState>>,
+    Query(query): Query<HealthQuery>,
 ) -> impl IntoResponse {
-    let resp = state.health.to_health_response().await;
+    let resp = if query.deep.unwrap_or(false) {
+        state.health.to_deep_health_response().await
+    } else {
+        state.health.to_health_response().await
+    };
     (StatusCode::OK, Json(resp))
 }
 

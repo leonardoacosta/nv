@@ -19,6 +19,40 @@ use futures_util::stream::FuturesUnordered;
 
 use super::{CheckResult, Checkable};
 
+// ── MissingService ────────────────────────────────────────────────────
+
+/// Placeholder `Checkable` for services whose client failed to construct.
+///
+/// Immediately returns `CheckResult::Missing` without making any network call.
+/// Used when `from_env()` fails (credential not set) so the entry still appears
+/// in the report rather than being silently omitted.
+pub struct MissingService {
+    name: String,
+    env_var: String,
+}
+
+impl MissingService {
+    pub fn new(name: &str, env_var: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            env_var: env_var.to_string(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl Checkable for MissingService {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    async fn check_read(&self) -> CheckResult {
+        CheckResult::Missing {
+            env_var: self.env_var.clone(),
+        }
+    }
+}
+
 // ── CheckEntry ───────────────────────────────────────────────────────
 
 /// A single probe result for one service (read or write).

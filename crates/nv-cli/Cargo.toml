@@ -5,9 +5,11 @@ edition = "2021"
 
 [dependencies]
 nv-core = { path = "../nv-core" }
+nv-daemon = { path = "../nv-daemon" }
 clap = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }
+async-trait = { workspace = true }

@@ -49,7 +49,11 @@ pub async fn run_event_stream(
             };
 
             match client
-                .stream_events(EventFilter { session_id: None })
+                .stream_events(EventFilter {
+                    session_id: None,
+                    event_types: Vec::new(),
+                    initial_snapshot: false,
+                })
                 .await
             {
                 Ok(response) => (name, response.into_inner()),
@@ -171,6 +175,7 @@ mod tests {
             session_id: session_id.into(),
             ts: None,
             payload: Some(payload),
+            agent_name: String::new(),
         }
     }
 
@@ -226,7 +231,7 @@ mod tests {
     fn started_event_returns_none() {
         let event = make_event(
             "s-4",
-            session_event::Payload::Started(SessionStarted { session: None }),
+            session_event::Payload::Started(SessionStarted { session: None, is_snapshot: false }),
         );
         let trigger = map_event_to_trigger("homelab", &event);
         assert!(trigger.is_none());
@@ -250,6 +255,7 @@ mod tests {
             session_id: "s-6".into(),
             ts: None,
             payload: None,
+            agent_name: String::new(),
         };
         let trigger = map_event_to_trigger("homelab", &event);
         assert!(trigger.is_none());

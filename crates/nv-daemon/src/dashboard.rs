@@ -3,7 +3,8 @@
 //! Provides:
 //!   - `/api/obligations` — list and update obligation records
 //!   - `/api/projects`    — list configured project codes
-//!   - `/api/sessions`    — recent worker session events
+//!   - `/api/sessions`    — recent worker session events with progress info
+//!   - `/api/solve`       — start a context-injected Nexus session
 //!   - `/api/memory`      — read/write memory markdown files
 //!   - `/api/config`      — read/write config fields
 //!   - `/api/server-health` — daemon uptime and channel status
@@ -17,13 +18,14 @@ use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, put};
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
 use nv_core::types::{ObligationOwner, ObligationStatus};
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};
 
 use crate::health::HealthState;
+use crate::nexus::client::NexusClient;
 use crate::obligation_store::ObligationStore;
 
 // ── Embedded SPA Assets ─────────────────────────────────────────────
@@ -47,6 +49,8 @@ pub struct DashboardState {
     pub nv_base: PathBuf,
     /// Serialized JSON of the full config (produced once at startup).
     pub config_json: Arc<serde_json::Value>,
+    /// Nexus client for session queries and context-injected session starts.
+    pub nexus_client: Option<Arc<NexusClient>>,
 }
 
 // ── Router builder ───────────────────────────────────────────────────
@@ -62,6 +66,7 @@ pub fn build_dashboard_router(state: DashboardState) -> Router {
         .route("/api/obligations/:id", patch(patch_obligation))
         .route("/api/projects", get(get_projects))
         .route("/api/sessions", get(get_sessions))
+        .route("/api/solve", post(post_solve))
         // P-2 endpoints
         .route("/api/memory", get(get_memory))
         .route("/api/memory", put(put_memory))
@@ -323,11 +328,55 @@ async fn get_projects(State(state): State<DashboardState>) -> impl IntoResponse 
 
 // ── GET /api/sessions ─────────────────────────────────────────────────
 
-/// `GET /api/sessions` — return recent worker session events from health state.
+/// `GET /api/sessions` — return Nexus sessions with progress info.
 ///
-/// Currently returns channel statuses as a proxy for active integrations.
-/// Session-level tracking (per-worker event history) is a future enhancement.
+/// When a NexusClient is available, queries all connected agents and attaches
+/// workflow progress to each session. Falls back to channel-status proxy when
+/// no Nexus client is configured.
 async fn get_sessions(State(state): State<DashboardState>) -> impl IntoResponse {
+    if let Some(nexus) = &state.nexus_client {
+        match nexus.query_sessions().await {
+            Ok(sessions) => {
+                let session_json: Vec<serde_json::Value> = sessions
+                    .iter()
+                    .map(|s| {
+                        let progress = crate::nexus::progress::parse_session_progress(
+                            None,
+                            s.spec.as_deref(),
+                            &s.status,
+                        );
+                        serde_json::json!({
+                            "id": s.id,
+                            "project": s.project,
+                            "status": s.status,
+                            "agent_name": s.agent_name,
+                            "started_at": s.started_at,
+                            "duration_display": s.duration_display,
+                            "branch": s.branch,
+                            "spec": s.spec,
+                            "progress": {
+                                "workflow": progress.workflow,
+                                "phase": progress.phase,
+                                "progress_pct": progress.progress_pct,
+                                "phase_label": progress.phase_label,
+                            },
+                        })
+                    })
+                    .collect();
+
+                return (StatusCode::OK, Json(serde_json::json!({
+                    "sessions": session_json,
+                })))
+                .into_response();
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to query Nexus sessions for dashboard");
+                // Fall through to health-proxy response
+            }
+        }
+    }
+
+    // Fallback: return channel statuses when Nexus is not configured or unreachable
     let health = state.health.to_health_response().await;
 
     let sessions: Vec<serde_json::Value> = health
@@ -348,6 +397,104 @@ async fn get_sessions(State(state): State<DashboardState>) -> impl IntoResponse 
         "last_digest_at": health.last_digest_at,
     })))
     .into_response()
+}
+
+// ── POST /api/solve ───────────────────────────────────────────────────
+
+/// Request body for `POST /api/solve`.
+#[derive(Debug, Deserialize)]
+pub struct SolveRequest {
+    /// Project code (e.g. "oo", "tc").
+    pub project: String,
+    /// Error message to inject as context.
+    pub error: String,
+    /// Optional additional context (file paths, stack trace, etc.).
+    pub context: Option<String>,
+}
+
+/// Response body for `POST /api/solve`.
+#[derive(Debug, Serialize)]
+pub struct SolveResponse {
+    pub session_id: String,
+    pub tmux_session: String,
+}
+
+/// `POST /api/solve` — start a Nexus session with error context injected.
+///
+/// Returns the new session ID that the frontend can track via `/api/sessions`.
+async fn post_solve(
+    State(state): State<DashboardState>,
+    Json(body): Json<SolveRequest>,
+) -> impl IntoResponse {
+    if body.project.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "project must not be empty"})),
+        )
+            .into_response();
+    }
+    if body.error.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "error must not be empty"})),
+        )
+            .into_response();
+    }
+
+    let Some(nexus) = &state.nexus_client else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"error": "Nexus not configured"})),
+        )
+            .into_response();
+    };
+
+    // Resolve project working directory from config
+    let cwd = state
+        .config_json
+        .get("projects")
+        .and_then(|v| v.get(&body.project))
+        .and_then(|v| v.as_str())
+        .unwrap_or("/tmp")
+        .to_string();
+
+    match nexus
+        .start_session_with_context(
+            &body.project,
+            &cwd,
+            &body.error,
+            body.context.as_deref(),
+        )
+        .await
+    {
+        Ok((session_id, tmux_session)) => {
+            tracing::info!(
+                project = %body.project,
+                session_id = %session_id,
+                "solve-with-nexus session started"
+            );
+            (
+                StatusCode::CREATED,
+                Json(SolveResponse {
+                    session_id,
+                    tmux_session,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!(
+                project = %body.project,
+                error = %e,
+                "failed to start solve-with-nexus session"
+            );
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({"error": format!("failed to start session: {e}")})),
+            )
+                .into_response()
+        }
+    }
 }
 
 // ── GET /api/memory ───────────────────────────────────────────────────

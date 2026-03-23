@@ -16,6 +16,7 @@ use crate::health::HealthState;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
 use crate::channels::teams::types::{ChangeNotificationCollection, ChatMessage};
+use crate::nexus::client::NexusClient;
 use crate::obligation_store::ObligationStore;
 use crate::dashboard::{DashboardState, build_dashboard_router};
 
@@ -39,6 +40,8 @@ pub struct HttpState {
     pub nv_base: PathBuf,
     /// Serialized config JSON for the dashboard (secrets redacted).
     pub config_json: Arc<serde_json::Value>,
+    /// Nexus client for dashboard session queries. None if Nexus not configured.
+    pub nexus_client: Option<Arc<NexusClient>>,
 }
 
 /// Request body for POST /ask.
@@ -68,6 +71,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         obligation_store: state.obligation_store.clone(),
         nv_base: state.nv_base.clone(),
         config_json: Arc::clone(&state.config_json),
+        nexus_client: state.nexus_client.clone(),
     };
     let dashboard_router = build_dashboard_router(dashboard_state);
 
@@ -347,6 +351,7 @@ pub async fn run_http_server(
     obligation_store: Option<Arc<Mutex<ObligationStore>>>,
     nv_base: PathBuf,
     config_json: Arc<serde_json::Value>,
+    nexus_client: Option<Arc<NexusClient>>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -359,6 +364,7 @@ pub async fn run_http_server(
         obligation_store,
         nv_base,
         config_json,
+        nexus_client,
     });
     let app = build_router(state);
 
@@ -396,6 +402,7 @@ mod tests {
             obligation_store: None,
             nv_base: tmp.path().to_path_buf(),
             config_json: Arc::new(serde_json::json!({})),
+            nexus_client: None,
         });
         (state, rx, tmp)
     }

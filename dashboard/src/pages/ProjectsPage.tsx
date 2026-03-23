@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FolderOpen, AlertCircle, RefreshCw, Search } from "lucide-react";
 import ProjectAccordion, {
   type Project,
+  type ProjectError,
 } from "@/components/ProjectAccordion";
 
 export default function ProjectsPage() {
@@ -9,6 +10,7 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [solveStatus, setSolveStatus] = useState<string | null>(null);
 
   const fetchProjects = async () => {
     setLoading(true);
@@ -29,9 +31,34 @@ export default function ProjectsPage() {
     void fetchProjects();
   }, []);
 
-  const handleSolveWithNexus = (projectId: string, errorId: string) => {
-    console.log("Solve with Nexus:", projectId, errorId);
-    // Future: navigate to Nexus with context pre-filled
+  const handleSolveWithNexus = async (projectId: string, errorId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    const err = project?.errors?.find((e: ProjectError) => e.id === errorId);
+    if (!project || !err) return;
+
+    setSolveStatus("Starting Nexus session...");
+    try {
+      const res = await fetch("/api/solve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          project: project.id,
+          error: err.message,
+          context: err.file ? `${err.file}${err.line ? `:${err.line}` : ""}` : undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = (await res.json()) as { error?: string };
+        setSolveStatus(data.error ?? `HTTP ${res.status}`);
+      } else {
+        const data = (await res.json()) as { session_id: string };
+        setSolveStatus(`Session started: ${data.session_id.slice(0, 8)}...`);
+      }
+    } catch (e) {
+      setSolveStatus(e instanceof Error ? e.message : "Failed to start session");
+    } finally {
+      setTimeout(() => setSolveStatus(null), 4000);
+    }
   };
 
   const filtered = projects.filter(
@@ -84,6 +111,12 @@ export default function ProjectsPage() {
           className="w-full pl-9 pr-4 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
         />
       </div>
+
+      {solveStatus && (
+        <div className="flex items-center gap-3 p-3 rounded-cosmic bg-cosmic-purple/10 border border-cosmic-purple/30 text-cosmic-purple">
+          <span className="text-sm">{solveStatus}</span>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">

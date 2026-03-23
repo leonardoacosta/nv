@@ -5,6 +5,48 @@ import ActiveSession, {
 } from "@/components/ActiveSession";
 import ServerHealth, { type HealthMetrics } from "@/components/ServerHealth";
 
+// Shape returned by the Nexus-backed /api/sessions endpoint
+interface NexusSessionRaw {
+  id: string;
+  project?: string;
+  status: string;
+  agent_name: string;
+  started_at?: string;
+  duration_display: string;
+  branch?: string;
+  spec?: string;
+  progress?: {
+    workflow: string;
+    phase: string;
+    progress_pct: number;
+    phase_label: string;
+  };
+}
+
+interface SessionsApiResponse {
+  sessions: NexusSessionRaw[];
+}
+
+function mapStatus(raw: string): ActiveSessionData["status"] {
+  if (raw === "active") return "active";
+  if (raw === "idle") return "idle";
+  return "completed";
+}
+
+function mapNexusSession(s: NexusSessionRaw): ActiveSessionData {
+  return {
+    id: s.id,
+    service: s.agent_name,
+    status: mapStatus(s.status),
+    messages: 0,
+    tools_executed: 0,
+    started_at: s.started_at ?? new Date().toISOString(),
+    user: s.project ?? undefined,
+    progress: s.progress?.progress_pct,
+    current_task: s.progress?.phase_label,
+  };
+}
+
 export default function NexusPage() {
   const [sessions, setSessions] = useState<ActiveSessionData[]>([]);
   const [health, setHealth] = useState<HealthMetrics | null>(null);
@@ -19,8 +61,21 @@ export default function NexusPage() {
     try {
       const res = await fetch("/api/sessions");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ActiveSessionData[];
-      setSessions(data);
+      const data = (await res.json()) as SessionsApiResponse | ActiveSessionData[];
+      // Handle both the new Nexus-backed shape and the legacy channel-proxy shape
+      if (Array.isArray(data)) {
+        setSessions(data);
+      } else if (data.sessions && Array.isArray(data.sessions)) {
+        // Check whether sessions look like Nexus sessions (have agent_name) or channel proxies
+        const first = data.sessions[0] as NexusSessionRaw | undefined;
+        if (first && "agent_name" in first) {
+          setSessions(data.sessions.map(mapNexusSession));
+        } else {
+          setSessions([]);
+        }
+      } else {
+        setSessions([]);
+      }
     } catch (err) {
       setSessionError(
         err instanceof Error ? err.message : "Failed to load sessions"

@@ -393,6 +393,38 @@ impl NexusClient {
         anyhow::bail!("Session '{session_id}' not found on any connected agent")
     }
 
+    /// Start a new session with an injected context prompt.
+    ///
+    /// Builds a "Solve with Nexus" prompt from the provided error context
+    /// and passes it as the first argument to the Claude Code session.
+    /// The session starts in the given `cwd`.
+    pub async fn start_session_with_context(
+        &self,
+        project: &str,
+        cwd: &str,
+        error_message: &str,
+        context: Option<&str>,
+    ) -> Result<(String, String)> {
+        let mut prompt = format!(
+            "I encountered an error in project `{project}` and need help solving it.\n\
+             \n\
+             Error:\n\
+             {error_message}"
+        );
+
+        if let Some(ctx) = context {
+            if !ctx.trim().is_empty() {
+                prompt.push_str(&format!("\n\nAdditional context:\n{ctx}"));
+            }
+        }
+
+        prompt.push_str(
+            "\n\nPlease investigate this error, identify the root cause, and implement a fix.",
+        );
+
+        self.start_session(project, cwd, &[prompt], None).await
+    }
+
     /// Stop a running session by ID.
     pub async fn stop_session(&self, session_id: &str) -> Result<String> {
         for agent_mutex in &self.agents {

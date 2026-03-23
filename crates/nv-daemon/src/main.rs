@@ -796,6 +796,9 @@ async fn main() -> anyhow::Result<()> {
     });
     let http_nv_base = nv_base.clone();
     let http_obligation_store = obligation_store.clone();
+    let http_nexus_client = nexus_client
+        .as_ref()
+        .map(|c| std::sync::Arc::new(c.clone()));
 
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
@@ -810,6 +813,7 @@ async fn main() -> anyhow::Result<()> {
             http_obligation_store,
             http_nv_base,
             config_json,
+            http_nexus_client,
         )
         .await
         {

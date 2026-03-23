@@ -1,6 +1,7 @@
 pub mod client;
 pub mod connection;
 pub mod notify;
+pub mod progress;
 pub mod stream;
 pub mod tools;
 pub mod watchdog;

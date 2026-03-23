@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova -- Palette Comparison</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Geist Mono', 'JetBrains Mono', 'Fira Code', monospace; background: #050505; color: #e5e5e5; font-size: 12px; }
+    h1 { text-align: center; padding: 24px; font-size: 18px; color: #737373; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 0 24px 24px; }
+    @media (max-width: 1200px) { .grid { grid-template-columns: 1fr; } }
+    .palette { border-radius: 12px; overflow: hidden; border: 1px solid #262626; }
+    .palette-header { padding: 16px; font-size: 14px; font-weight: 700; border-bottom: 1px solid #262626; }
+    .palette-body { padding: 16px; }
+    .swatch-row { display: flex; gap: 8px; margin-bottom: 12px; }
+    .swatch { width: 40px; height: 40px; border-radius: 6px; }
+    .swatch-label { font-size: 10px; color: #737373; margin-top: 2px; text-align: center; }
+    .mock-card { border-radius: 8px; padding: 12px; margin-bottom: 8px; border: 1px solid; }
+    .mock-session { padding: 10px; border-radius: 8px; margin-bottom: 6px; border: 1px solid; }
+    .mock-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .mock-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    .mock-obl { padding: 10px; border-radius: 8px; margin-bottom: 6px; display: flex; gap: 8px; border: 1px solid; }
+    .mock-obl-bar { width: 4px; border-radius: 2px; flex-shrink: 0; }
+    .mock-note { border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 11px; border: 1px solid; }
+    /* Nova mark concepts */
+    .marks { display: flex; gap: 24px; justify-content: center; padding: 16px; }
+    .mark-concept { text-align: center; }
+    .mark-concept svg { width: 48px; height: 48px; }
+    .mark-concept .label { font-size: 10px; color: #737373; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+<h1>Nova v4 -- Palette Comparison</h1>
+
+<div class="grid">
+  <!-- A: Cosmic Purple + Cyan -->
+  <div class="palette" style="background:#0a0a0a;">
+    <div class="palette-header" style="background:#141414;color:#a78bfa;">A: Cosmic Purple + Cyan</div>
+    <div class="palette-body">
+      <div class="swatch-row">
+        <div><div class="swatch" style="background:#7c3aed;"></div><div class="swatch-label">primary</div></div>
+        <div><div class="swatch" style="background:#06b6d4;"></div><div class="swatch-label">secondary</div></div>
+        <div><div class="swatch" style="background:#a78bfa;"></div><div class="swatch-label">accent</div></div>
+        <div><div class="swatch" style="background:#34d399;"></div><div class="swatch-label">success</div></div>
+        <div><div class="swatch" style="background:#fbbf24;"></div><div class="swatch-label">warning</div></div>
+        <div><div class="swatch" style="background:#f87171;"></div><div class="swatch-label">danger</div></div>
+      </div>
+      <div class="mock-session" style="background:#141414;border-color:#262626;">
+        <span class="mock-badge" style="background:#1a1040;color:#a78bfa;">cron</span> <span style="color:#737373;">12m ago</span>
+        <div style="margin-top:6px;color:#737373;">jira vercel sentry mem -- "Generate digest"</div>
+        <span class="mock-badge" style="background:#0a2a2a;color:#06b6d4;">nova</span>
+      </div>
+      <div class="mock-obl" style="background:#141414;border-color:#262626;">
+        <div class="mock-obl-bar" style="background:#f87171;"></div>
+        <div>
+          <span class="mock-badge" style="background:#3f1a1a;color:#f87171;">P0</span>
+          <strong style="color:#e5e5e5;">OO deploy failed</strong>
+          <div style="color:#737373;margin-top:4px;">
+            <span class="mock-badge" style="background:#0a2a2a;color:#06b6d4;font-size:9px;">nova can handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-obl" style="background:#141414;border-color:#262626;">
+        <div class="mock-obl-bar" style="background:#fbbf24;"></div>
+        <div>
+          <span class="mock-badge" style="background:#3f2a1a;color:#fbbf24;">P1</span>
+          <strong style="color:#e5e5e5;">Update landing page</strong>
+          <div style="color:#737373;margin-top:4px;">
+            <span class="mock-badge" style="background:#1a1040;color:#a78bfa;font-size:9px;">leo must handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-note" style="background:#0d0520;border-color:#2a1a5f;color:#a78bfa;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.7;">Nova -- Recommended</div>
+        <span style="color:#e5e5e5;">Auth.ts TypeError from commit abc1234.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: Electric Blue + Amber -->
+  <div class="palette" style="background:#0a0a0a;">
+    <div class="palette-header" style="background:#141414;color:#60a5fa;">B: Electric Blue + Amber</div>
+    <div class="palette-body">
+      <div class="swatch-row">
+        <div><div class="swatch" style="background:#2563eb;"></div><div class="swatch-label">primary</div></div>
+        <div><div class="swatch" style="background:#f59e0b;"></div><div class="swatch-label">secondary</div></div>
+        <div><div class="swatch" style="background:#60a5fa;"></div><div class="swatch-label">accent</div></div>
+        <div><div class="swatch" style="background:#22c55e;"></div><div class="swatch-label">success</div></div>
+        <div><div class="swatch" style="background:#f59e0b;"></div><div class="swatch-label">warning</div></div>
+        <div><div class="swatch" style="background:#ef4444;"></div><div class="swatch-label">danger</div></div>
+      </div>
+      <div class="mock-session" style="background:#141414;border-color:#262626;">
+        <span class="mock-badge" style="background:#0a1a3a;color:#60a5fa;">cron</span> <span style="color:#737373;">12m ago</span>
+        <div style="margin-top:6px;color:#737373;">jira vercel sentry mem -- "Generate digest"</div>
+        <span class="mock-badge" style="background:#0a1a3a;color:#60a5fa;">nova</span>
+      </div>
+      <div class="mock-obl" style="background:#141414;border-color:#262626;">
+        <div class="mock-obl-bar" style="background:#ef4444;"></div>
+        <div>
+          <span class="mock-badge" style="background:#3f1a1a;color:#ef4444;">P0</span>
+          <strong>OO deploy failed</strong>
+          <div style="color:#737373;margin-top:4px;">
+            <span class="mock-badge" style="background:#0a1a3a;color:#60a5fa;font-size:9px;">nova can handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-obl" style="background:#141414;border-color:#262626;">
+        <div class="mock-obl-bar" style="background:#f59e0b;"></div>
+        <div>
+          <span class="mock-badge" style="background:#2a1a0a;color:#f59e0b;">P1</span>
+          <strong>Update landing page</strong>
+          <div style="color:#737373;margin-top:4px;">
+            <span class="mock-badge" style="background:#2a1a0a;color:#f59e0b;font-size:9px;">leo must handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-note" style="background:#0a0d1a;border-color:#1a2a5f;color:#60a5fa;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.7;">Nova -- Recommended</div>
+        <span style="color:#e5e5e5;">Auth.ts TypeError from commit abc1234.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- C: Teal + Rose (DARK hue per user request) -->
+  <div class="palette" style="background:#080a0a;">
+    <div class="palette-header" style="background:#0f1414;color:#2dd4bf;">C: Teal + Rose (Dark Hue)</div>
+    <div class="palette-body">
+      <div class="swatch-row">
+        <div><div class="swatch" style="background:#0f766e;"></div><div class="swatch-label">primary</div></div>
+        <div><div class="swatch" style="background:#e11d48;"></div><div class="swatch-label">secondary</div></div>
+        <div><div class="swatch" style="background:#14b8a6;"></div><div class="swatch-label">accent</div></div>
+        <div><div class="swatch" style="background:#34d399;"></div><div class="swatch-label">success</div></div>
+        <div><div class="swatch" style="background:#fbbf24;"></div><div class="swatch-label">warning</div></div>
+        <div><div class="swatch" style="background:#e11d48;"></div><div class="swatch-label">danger</div></div>
+      </div>
+      <div class="mock-session" style="background:#0f1414;border-color:#1a2626;">
+        <span class="mock-badge" style="background:#0a1a1a;color:#14b8a6;">cron</span> <span style="color:#737373;">12m ago</span>
+        <div style="margin-top:6px;color:#737373;">jira vercel sentry mem -- "Generate digest"</div>
+        <span class="mock-badge" style="background:#0a1a1a;color:#14b8a6;">nova</span>
+      </div>
+      <div class="mock-obl" style="background:#0f1414;border-color:#1a2626;">
+        <div class="mock-obl-bar" style="background:#e11d48;"></div>
+        <div>
+          <span class="mock-badge" style="background:#2a0a1a;color:#fb7185;">P0</span>
+          <strong>OO deploy failed</strong>
+          <div style="color:#737373;margin-top:4px;">
+            <span class="mock-badge" style="background:#0a1a1a;color:#14b8a6;font-size:9px;">nova can handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-obl" style="background:#0f1414;border-color:#1a2626;">
+        <div class="mock-obl-bar" style="background:#fbbf24;"></div>
+        <div>
+          <span class="mock-badge" style="background:#2a1a0a;color:#fbbf24;">P1</span>
+          <strong>Update landing page</strong>
+          <div style="color:#737373;margin-top:4px;">
+            <span class="mock-badge" style="background:#1a0a1a;color:#fb7185;font-size:9px;">leo must handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-note" style="background:#081210;border-color:#0f2a26;color:#14b8a6;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.7;">Nova -- Recommended</div>
+        <span style="color:#e5e5e5;">Auth.ts TypeError from commit abc1234.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- D: Monochrome + Single Accent -->
+  <div class="palette" style="background:#0a0a0a;">
+    <div class="palette-header" style="background:#141414;color:#a3a3a3;">D: Monochrome + Single Accent</div>
+    <div class="palette-body">
+      <div class="swatch-row">
+        <div><div class="swatch" style="background:#e5e5e5;"></div><div class="swatch-label">primary</div></div>
+        <div><div class="swatch" style="background:#737373;"></div><div class="swatch-label">secondary</div></div>
+        <div><div class="swatch" style="background:#a3a3a3;"></div><div class="swatch-label">accent</div></div>
+        <div><div class="swatch" style="background:#22c55e;"></div><div class="swatch-label">success</div></div>
+        <div><div class="swatch" style="background:#eab308;"></div><div class="swatch-label">warning</div></div>
+        <div><div class="swatch" style="background:#ef4444;"></div><div class="swatch-label">danger</div></div>
+      </div>
+      <div class="mock-session" style="background:#141414;border-color:#262626;">
+        <span class="mock-badge" style="background:#1a1a1a;color:#a3a3a3;">cron</span> <span style="color:#525252;">12m ago</span>
+        <div style="margin-top:6px;color:#525252;">jira vercel sentry mem -- "Generate digest"</div>
+        <span class="mock-badge" style="background:#1a1a1a;color:#a3a3a3;">nova</span>
+      </div>
+      <div class="mock-obl" style="background:#141414;border-color:#262626;">
+        <div class="mock-obl-bar" style="background:#ef4444;"></div>
+        <div>
+          <span class="mock-badge" style="background:#2a1a1a;color:#ef4444;">P0</span>
+          <strong>OO deploy failed</strong>
+          <div style="color:#525252;margin-top:4px;">
+            <span class="mock-badge" style="background:#1a1a1a;color:#a3a3a3;font-size:9px;">nova can handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-obl" style="background:#141414;border-color:#262626;">
+        <div class="mock-obl-bar" style="background:#eab308;"></div>
+        <div>
+          <span class="mock-badge" style="background:#1a1a0a;color:#eab308;">P1</span>
+          <strong>Update landing page</strong>
+          <div style="color:#525252;margin-top:4px;">
+            <span class="mock-badge" style="background:#1a1a1a;color:#a3a3a3;font-size:9px;">leo must handle</span>
+          </div>
+        </div>
+      </div>
+      <div class="mock-note" style="background:#111111;border-color:#262626;color:#a3a3a3;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.7;">Nova -- Recommended</div>
+        <span style="color:#e5e5e5;">Auth.ts TypeError from commit abc1234.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Nova Mark Concepts -->
+<h1>Nova Mark Concepts</h1>
+<div class="marks" style="background:#0a0a0a;padding:32px;border-radius:12px;margin:0 24px 24px;">
+
+  <!-- Constellation concept -->
+  <div class="mark-concept">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Constellation: connected dots -->
+      <circle cx="24" cy="8" r="2.5" fill="#14b8a6"/>
+      <circle cx="12" cy="20" r="2" fill="#14b8a6" opacity="0.7"/>
+      <circle cx="36" cy="18" r="2" fill="#14b8a6" opacity="0.7"/>
+      <circle cx="18" cy="32" r="2.5" fill="#14b8a6"/>
+      <circle cx="34" cy="34" r="2" fill="#14b8a6" opacity="0.7"/>
+      <circle cx="24" cy="42" r="2" fill="#14b8a6" opacity="0.5"/>
+      <!-- Lines connecting -->
+      <line x1="24" y1="8" x2="12" y2="20" stroke="#14b8a6" stroke-width="0.5" opacity="0.4"/>
+      <line x1="24" y1="8" x2="36" y2="18" stroke="#14b8a6" stroke-width="0.5" opacity="0.4"/>
+      <line x1="12" y1="20" x2="18" y2="32" stroke="#14b8a6" stroke-width="0.5" opacity="0.4"/>
+      <line x1="36" y1="18" x2="34" y2="34" stroke="#14b8a6" stroke-width="0.5" opacity="0.4"/>
+      <line x1="18" y1="32" x2="34" y2="34" stroke="#14b8a6" stroke-width="0.5" opacity="0.4"/>
+      <line x1="18" y1="32" x2="24" y2="42" stroke="#14b8a6" stroke-width="0.5" opacity="0.3"/>
+      <line x1="34" y1="34" x2="24" y2="42" stroke="#14b8a6" stroke-width="0.5" opacity="0.3"/>
+    </svg>
+    <div class="label">Constellation</div>
+  </div>
+
+  <!-- Eye concept -->
+  <div class="mark-concept">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Eye shape -->
+      <path d="M4 24 C12 12, 36 12, 44 24 C36 36, 12 36, 4 24Z" stroke="#14b8a6" stroke-width="1.5" fill="none"/>
+      <!-- Iris -->
+      <circle cx="24" cy="24" r="7" stroke="#14b8a6" stroke-width="1" fill="none"/>
+      <!-- Pupil -->
+      <circle cx="24" cy="24" r="3" fill="#14b8a6"/>
+      <!-- Highlight -->
+      <circle cx="22" cy="22" r="1" fill="#2dd4bf"/>
+    </svg>
+    <div class="label">Eye</div>
+  </div>
+
+  <!-- Hybrid: Constellation Eye -->
+  <div class="mark-concept">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Eye outline -->
+      <path d="M4 24 C12 14, 36 14, 44 24 C36 34, 12 34, 4 24Z" stroke="#14b8a6" stroke-width="1.5" fill="none"/>
+      <!-- Iris as constellation -->
+      <circle cx="24" cy="24" r="3" fill="#14b8a6"/>
+      <circle cx="20" cy="20" r="1.5" fill="#14b8a6" opacity="0.6"/>
+      <circle cx="28" cy="20" r="1.5" fill="#14b8a6" opacity="0.6"/>
+      <circle cx="19" cy="27" r="1.5" fill="#14b8a6" opacity="0.6"/>
+      <circle cx="29" cy="27" r="1.5" fill="#14b8a6" opacity="0.6"/>
+      <!-- Constellation lines inside eye -->
+      <line x1="24" y1="24" x2="20" y2="20" stroke="#2dd4bf" stroke-width="0.5" opacity="0.5"/>
+      <line x1="24" y1="24" x2="28" y2="20" stroke="#2dd4bf" stroke-width="0.5" opacity="0.5"/>
+      <line x1="24" y1="24" x2="19" y2="27" stroke="#2dd4bf" stroke-width="0.5" opacity="0.5"/>
+      <line x1="24" y1="24" x2="29" y2="27" stroke="#2dd4bf" stroke-width="0.5" opacity="0.5"/>
+      <line x1="20" y1="20" x2="28" y2="20" stroke="#2dd4bf" stroke-width="0.3" opacity="0.3"/>
+      <line x1="19" y1="27" x2="29" y2="27" stroke="#2dd4bf" stroke-width="0.3" opacity="0.3"/>
+    </svg>
+    <div class="label">Constellation Eye</div>
+  </div>
+
+  <!-- Variant: Abstract constellation eye (more geometric) -->
+  <div class="mark-concept">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Geometric eye shape -->
+      <path d="M6 24 L24 10 L42 24 L24 38 Z" stroke="#14b8a6" stroke-width="1.5" fill="none"/>
+      <!-- Inner diamond (iris) -->
+      <path d="M14 24 L24 17 L34 24 L24 31 Z" stroke="#14b8a6" stroke-width="0.8" fill="none" opacity="0.5"/>
+      <!-- Center dot (pupil) -->
+      <circle cx="24" cy="24" r="3" fill="#14b8a6"/>
+      <!-- Constellation dots at vertices -->
+      <circle cx="6" cy="24" r="1.5" fill="#2dd4bf" opacity="0.6"/>
+      <circle cx="24" cy="10" r="1.5" fill="#2dd4bf" opacity="0.6"/>
+      <circle cx="42" cy="24" r="1.5" fill="#2dd4bf" opacity="0.6"/>
+      <circle cx="24" cy="38" r="1.5" fill="#2dd4bf" opacity="0.6"/>
+    </svg>
+    <div class="label">Diamond Eye</div>
+  </div>
+
+  <!-- Variant: Minimal watchful dot -->
+  <div class="mark-concept">
+    <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Outer ring -->
+      <circle cx="24" cy="24" r="18" stroke="#14b8a6" stroke-width="1" opacity="0.3"/>
+      <!-- Inner ring -->
+      <circle cx="24" cy="24" r="10" stroke="#14b8a6" stroke-width="1" opacity="0.5"/>
+      <!-- Pupil -->
+      <circle cx="24" cy="24" r="4" fill="#14b8a6"/>
+      <!-- Radial constellation lines -->
+      <line x1="24" y1="6" x2="24" y2="14" stroke="#2dd4bf" stroke-width="0.5" opacity="0.4"/>
+      <line x1="42" y1="24" x2="34" y2="24" stroke="#2dd4bf" stroke-width="0.5" opacity="0.4"/>
+      <line x1="24" y1="42" x2="24" y2="34" stroke="#2dd4bf" stroke-width="0.5" opacity="0.4"/>
+      <line x1="6" y1="24" x2="14" y2="24" stroke="#2dd4bf" stroke-width="0.5" opacity="0.4"/>
+      <!-- Corner dots -->
+      <circle cx="24" cy="6" r="1" fill="#2dd4bf" opacity="0.5"/>
+      <circle cx="42" cy="24" r="1" fill="#2dd4bf" opacity="0.5"/>
+      <circle cx="24" cy="42" r="1" fill="#2dd4bf" opacity="0.5"/>
+      <circle cx="6" cy="24" r="1" fill="#2dd4bf" opacity="0.5"/>
+    </svg>
+    <div class="label">Watchful Dot</div>
+  </div>
+</div>
+
+</body>
+</html>

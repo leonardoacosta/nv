@@ -23,14 +23,17 @@ body {
   line-height: 1.5;
 }
 
-/* Layout */
-.shell { display: flex; min-height: 100vh; }
+/* Layout — sidebar fixed, main scrolls independently */
+.shell { display: flex; height: 100vh; overflow: hidden; }
 .sidebar {
   width: 220px;
   background: var(--surface);
   border-right: 1px solid var(--border);
   padding: 16px 0;
   flex-shrink: 0;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
 }
 .main { flex: 1; padding: 24px; overflow-y: auto; }
 

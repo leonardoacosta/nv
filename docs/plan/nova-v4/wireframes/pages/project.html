@@ -18,7 +18,8 @@
 <body>
 <div class="shell">
   <nav class="sidebar">
-    <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div></div>
+    <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">S 20% 1:37h &nbsp; W 4% 4d</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
     <a href="obligations.html" class="nav-item">Obligations</a>
@@ -28,6 +29,7 @@
     <div class="nav-section">System</div>
     <a href="integrations.html" class="nav-item">Integrations</a>
     <a href="usage.html" class="nav-item">Usage</a>
+    <a href="memory.html" class="nav-item">Memory</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
   <main class="main">
@@ -59,25 +61,25 @@
             <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:6px;">Active Errors</div>
             <div class="error-row">
               <span><span class="dot dot-err"></span>TypeError: Cannot read 'session' -- auth.ts:42 <span style="color:var(--text-muted);">(x3)</span></span>
-              <button class="btn btn-sm btn-primary">Explore + Fix</button>
+              <button class="btn btn-sm btn-primary">Solve with Nexus</button>
             </div>
             <div class="error-row">
               <span><span class="dot dot-err"></span>NetworkError: fetch failed -- api.ts:118 <span style="color:var(--text-muted);">(x2)</span></span>
-              <button class="btn btn-sm btn-primary">Explore + Fix</button>
+              <button class="btn btn-sm btn-primary">Solve with Nexus</button>
             </div>
             <div class="error-row">
               <span><span class="dot dot-warn"></span>Vercel build ERROR -- commit abc1234 <span style="color:var(--text-muted);">(12m ago)</span></span>
-              <button class="btn btn-sm btn-primary">Explore + Fix</button>
+              <button class="btn btn-sm btn-primary">Solve with Nexus</button>
             </div>
-            <div style="font-size:10px;color:var(--text-muted);margin:8px 0 12px;">"Explore + Fix" starts a Nexus session with <code>/openspec:explore</code>, injecting the error context.</div>
+            <div style="font-size:10px;color:var(--text-muted);margin:8px 0 12px;">"Solve with Nexus" launches a Nexus CC session with <code>/openspec:explore</code>, injecting the error context for immediate investigation.</div>
             <div class="nova-note"><div class="nova-note-label">Nova -- Recommended</div>The auth.ts TypeError correlates with commit abc1234. Recommend <code>/ci:gh --fix</code>. All 3 Sentry errors share the same root cause.</div>
             <div class="nova-note"><div class="nova-note-label">Nova -- Improvements</div>OO has no error boundary on auth. OO-145 has been in-progress 8 days without commits.</div>
             <div class="nova-note"><div class="nova-note-label">Nova -- Accomplished</div>Fixed CI via Nexus s-abc123 (2h ago). Auto-closed 2 stale Sentry issues.</div>
             <div style="margin-top:12px;display:flex;gap:8px;">
-              <button class="btn btn-sm btn-primary">Start Nexus Session</button>
-              <button class="btn btn-sm">Vercel</button>
-              <button class="btn btn-sm">Sentry</button>
-              <button class="btn btn-sm">Jira</button>
+              <button class="btn btn-sm btn-primary">Start Nexus</button>
+              <button class="btn btn-sm">Open Vercel</button>
+              <button class="btn btn-sm">Open Sentry</button>
+              <button class="btn btn-sm">Open Jira</button>
             </div>
           </td>
         </tr>

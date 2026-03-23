@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova -- Memory</title>
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    .mem-file { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; }
+    .mem-file:hover { background: var(--surface-hover); }
+    .mem-file.selected { background: var(--surface-hover); border-color: var(--accent); }
+    .mem-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 16px; font-size: 12px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; line-height: 1.6; }
+    .mem-actions { display: flex; gap: 8px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">S 20% 1:37h &nbsp; W 4% 4d</div></div>
+    <div class="nav-section">Overview</div>
+    <a href="../index.html" class="nav-item">Dashboard</a>
+    <a href="obligations.html" class="nav-item">Obligations</a>
+    <div class="nav-section">Projects</div>
+    <a href="project.html" class="nav-item">Projects</a>
+    <a href="sessions.html" class="nav-item">Nexus</a>
+    <div class="nav-section">System</div>
+    <a href="integrations.html" class="nav-item">Integrations</a>
+    <a href="usage.html" class="nav-item">Usage</a>
+    <a href="memory.html" class="nav-item active">Memory</a>
+    <a href="settings.html" class="nav-item">Settings</a>
+  </nav>
+  <main class="main">
+    <div class="section-header">
+      <h2 class="section-title">Memory</h2>
+      <span style="font-size:11px;color:var(--text-muted);">~/.nv/memory/ -- Nova reads and writes these files between sessions</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:16px;">
+      <!-- File list -->
+      <div>
+        <div class="mem-file selected">
+          <span>conversations.md</span>
+          <span style="color:var(--text-muted);font-size:10px;">4.8 KB -- 12m ago</span>
+        </div>
+        <div class="mem-file">
+          <span>decisions.md</span>
+          <span style="color:var(--text-muted);font-size:10px;">1.2 KB -- 2h ago</span>
+        </div>
+        <div class="mem-file">
+          <span>projects.md</span>
+          <span style="color:var(--text-muted);font-size:10px;">2.1 KB -- 1d ago</span>
+        </div>
+        <div class="mem-file">
+          <span>user.md</span>
+          <span style="color:var(--text-muted);font-size:10px;">0.8 KB -- 3d ago</span>
+        </div>
+        <div class="mem-file">
+          <span>soul.md</span>
+          <span style="color:var(--text-muted);font-size:10px;">1.5 KB -- 5d ago</span>
+        </div>
+        <div class="mem-file">
+          <span>identity.md</span>
+          <span style="color:var(--text-muted);font-size:10px;">0.4 KB -- 14d ago</span>
+        </div>
+      </div>
+
+      <!-- Preview pane -->
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-weight:600;">conversations.md</span>
+          <div class="mem-actions">
+            <button class="btn btn-sm">Edit</button>
+            <button class="btn btn-sm">Raw</button>
+          </div>
+        </div>
+        <div class="mem-preview">## Recent Conversations
+
+### 2026-03-23 12:30 -- Telegram (Leo)
+Leo asked about OO deploy failures. Investigated via Sentry
+and Vercel tools. Root cause: auth.ts TypeError from commit
+abc1234. Started Nexus session to fix. CI now passing.
+
+### 2026-03-23 10:15 -- Discord (client_name)
+Client requested landing page copy update for OO. Created
+obligation (P1). Notified Leo via Telegram.
+
+### 2026-03-23 08:00 -- Cron (digest)
+Morning digest: 2 deploys succeeded overnight (TC, SS).
+No errors. 1 stale Jira ticket flagged (OO-145).
+
+### 2026-03-22 16:45 -- Telegram (Leo)
+Leo asked to turn off office lights. Created PendingAction
+for ha_service_call. Leo approved. Lights off confirmed.
+
+### 2026-03-22 14:20 -- Teams (manager)
+Manager requested PR review for CT auth migration. Created
+obligation (P2). Leo acknowledged 30m later.</div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -23,7 +23,8 @@
 <body>
 <div class="shell">
   <nav class="sidebar">
-    <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div></div>
+    <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">S 20% 1:37h &nbsp; W 4% 4d</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
     <a href="obligations.html" class="nav-item">Obligations</a>
@@ -68,49 +69,6 @@
       <div class="setting-row"><span class="setting-label">Default priority</span><div class="setting-value"><select><option>P1</option><option selected>P2</option><option>P3</option></select></div></div>
       <div class="setting-row"><span class="setting-label">Overdue threshold (h)</span><div class="setting-value"><input type="number" value="2"></div></div>
       <div class="setting-row"><span class="setting-label">Alert channel</span><div class="setting-value"><select><option selected>Telegram (P0-P1), Dashboard (P2+)</option><option>Telegram (all)</option><option>Dashboard only</option></select></div></div>
-    </div>
-
-    <!-- Memory Viewer -->
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:12px;">Nova Memory</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">~/.nv/memory/ -- Nova reads and writes these files between sessions for continuity.</div>
-
-      <div class="mem-file">
-        <span>decisions.md</span>
-        <span style="color:var(--text-muted);font-size:11px;">1.2 KB -- updated 2h ago</span>
-      </div>
-      <div class="mem-file" style="background:var(--surface-hover);">
-        <span>conversations.md</span>
-        <span style="color:var(--text-muted);font-size:11px;">4.8 KB -- updated 12m ago</span>
-      </div>
-      <!-- Preview of selected file -->
-      <div class="mem-preview">## Recent Conversations
-
-### 2026-03-23 12:30 -- Telegram (Leo)
-Leo asked about OO deploy failures. Investigated via Sentry
-and Vercel tools. Root cause: auth.ts TypeError from commit
-abc1234. Started Nexus session to fix. CI now passing.
-
-### 2026-03-23 10:15 -- Discord (client_name)
-Client requested landing page copy update for OO. Created
-obligation (P1). Notified Leo via Telegram.
-
-### 2026-03-23 08:00 -- Cron (digest)
-Morning digest: 2 deploys succeeded overnight (TC, SS).
-No errors. 1 stale Jira ticket flagged (OO-145).</div>
-
-      <div class="mem-file">
-        <span>projects.md</span>
-        <span style="color:var(--text-muted);font-size:11px;">2.1 KB -- updated 1d ago</span>
-      </div>
-      <div class="mem-file">
-        <span>user.md</span>
-        <span style="color:var(--text-muted);font-size:11px;">0.8 KB -- updated 3d ago</span>
-      </div>
-      <div class="mem-file">
-        <span>soul.md</span>
-        <span style="color:var(--text-muted);font-size:11px;">1.5 KB -- updated 5d ago</span>
-      </div>
     </div>
 
     <!-- System Info (read-only) -->

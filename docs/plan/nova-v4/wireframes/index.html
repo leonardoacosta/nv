@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nova -- Dashboard</title>
   <link rel="stylesheet" href="styles.css">
+  <style>
+    .session-msg { margin: 6px 0; font-size: 13px; }
+    .session-msg .svc-tag { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; background: var(--surface-hover); border-radius: 3px; font-size: 11px; color: var(--text-muted); margin-right: 2px; vertical-align: middle; }
+    .session-msg .svc-tag img { width: 12px; height: 12px; }
+    .trigger-icon { width: 18px; height: 18px; vertical-align: middle; }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -12,28 +18,29 @@
     <div class="sidebar-brand">
       <h1>Nova</h1>
       <div class="status">* online -- 2h uptime</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:4px;">S 20% 1:37h &nbsp; W 4% 4d</div>
     </div>
     <div class="nav-section">Overview</div>
     <a href="index.html" class="nav-item active">Dashboard</a>
-    <a href="pages/obligations.html" class="nav-item">Obligations <span class="badge badge-overdue" style="float:right;">3</span></a>
+    <a href="pages/obligations.html" class="nav-item">Obligations <span class="badge badge-overdue" style="float:right;">4</span></a>
     <div class="nav-section">Projects</div>
     <a href="pages/project.html" class="nav-item">Projects</a>
     <a href="pages/sessions.html" class="nav-item">Nexus</a>
     <div class="nav-section">System</div>
     <a href="pages/integrations.html" class="nav-item">Integrations</a>
-    <a href="pages/integrations.html" class="nav-item">Integrations</a>
     <a href="pages/usage.html" class="nav-item">Usage</a>
+    <a href="pages/memory.html" class="nav-item">Memory</a>
     <a href="pages/settings.html" class="nav-item">Settings</a>
   </nav>
 
   <main class="main">
     <div class="section-header">
       <h2 class="section-title">Recent Sessions</h2>
-      <span style="color: var(--text-muted); font-size: 12px;">Live -- auto-refresh</span>
+      <span style="color: var(--text-muted); font-size: 12px;">Live</span>
     </div>
 
     <div class="session-list">
-      <!-- Session: cron-triggered, no Leo involvement -->
+      <!-- cron trigger (icon) -->
       <div class="card session-card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
@@ -41,60 +48,60 @@
               <span class="badge badge-trigger badge-trigger-cron">cron</span>
               <span style="font-size:12px;color:var(--text-muted);">12m ago -- 45s</span>
             </div>
-            <div style="margin:6px 0;font-size:13px;">"Generate digest synthesis"</div>
-            <div class="service-icons">
-              <span class="svc-icon" title="Jira"><img src="https://cdn.simpleicons.org/jira/2684FF" alt="Jira"></span>
-              <span class="svc-icon" title="Vercel"><img src="https://svgl.app/library/vercel_dark.svg" alt="Vercel"></span>
-              <span class="svc-icon" title="Sentry"><img src="https://svgl.app/library/sentry.svg" alt="Sentry"></span>
-              <span class="svc-icon" title="Memory" style="color:var(--accent);font-size:12px;">mem</span>
-              <span class="svc-icon" title="Telegram"><img src="https://svgl.app/library/telegram.svg" alt="Telegram"></span>
+            <div class="session-msg">
+              <span class="svc-tag"><img src="https://cdn.simpleicons.org/jira/2684FF" alt="">jira</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/vercel_dark.svg" alt="">vercel</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/sentry.svg" alt="">sentry</span>
+              <span class="svc-tag">mem</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/telegram.svg" alt="">tg</span>
+              -- "Generate digest synthesis"
             </div>
           </div>
           <span class="badge badge-nova">auto</span>
         </div>
       </div>
 
-      <!-- Session: Telegram-triggered, Leo involved -->
+      <!-- telegram trigger (icon), Leo involved -->
       <div class="card session-card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;">
-              <span class="badge badge-trigger badge-trigger-telegram">telegram</span>
+              <span class="badge badge-trigger badge-trigger-telegram"><img src="https://svgl.app/library/telegram.svg" class="trigger-icon" alt=""> telegram</span>
               <span class="badge badge-leo">leo</span>
               <span style="font-size:12px;color:var(--text-muted);">35m ago -- 2m 12s</span>
             </div>
-            <div style="margin:6px 0;font-size:13px;">"Can you check why the OO deploy is failing?"</div>
-            <div class="service-icons">
-              <span class="svc-icon" title="Vercel"><img src="https://svgl.app/library/vercel_dark.svg" alt="Vercel"></span>
-              <span class="svc-icon" title="Sentry"><img src="https://svgl.app/library/sentry.svg" alt="Sentry"></span>
-              <span class="svc-icon" title="GitHub"><img src="https://svgl.app/library/github_dark.svg" alt="GitHub"></span>
-              <span class="svc-icon" title="Memory" style="color:var(--accent);font-size:12px;">mem</span>
-              <span class="svc-icon" title="Git" style="color:var(--text-muted);font-size:12px;">git</span>
+            <div class="session-msg">
+              <span class="svc-tag"><img src="https://svgl.app/library/vercel_dark.svg" alt="">vercel</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/sentry.svg" alt="">sentry</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/github_dark.svg" alt="">gh</span>
+              <span class="svc-tag">mem</span>
+              <span class="svc-tag">git</span>
+              -- "Can you check why the OO deploy is failing?"
             </div>
           </div>
           <span class="badge badge-open" style="font-size:10px;">interactive</span>
         </div>
       </div>
 
-      <!-- Session: Discord inbound -->
+      <!-- discord trigger (icon) -->
       <div class="card session-card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;">
-              <span class="badge badge-trigger badge-trigger-discord">discord</span>
+              <span class="badge badge-trigger badge-trigger-discord"><img src="https://svgl.app/library/discord.svg" class="trigger-icon" alt=""> discord</span>
               <span style="font-size:12px;color:var(--text-muted);">1h ago -- 8s</span>
             </div>
-            <div style="margin:6px 0;font-size:13px;">"Hey, can you update the landing page copy?"</div>
-            <div class="service-icons">
-              <span class="svc-icon" title="Obligation" style="color:var(--warning);font-size:12px;">obl</span>
-              <span class="svc-icon" title="Telegram"><img src="https://svgl.app/library/telegram.svg" alt="Telegram"></span>
+            <div class="session-msg">
+              <span class="svc-tag">obl</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/telegram.svg" alt="">tg</span>
+              -- "Hey, can you update the landing page copy?"
             </div>
           </div>
           <span class="badge badge-nova">auto</span>
         </div>
       </div>
 
-      <!-- Session: cron deploy watch -->
+      <!-- cron deploy watch -->
       <div class="card session-card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
@@ -102,31 +109,31 @@
               <span class="badge badge-trigger badge-trigger-cron">cron</span>
               <span style="font-size:12px;color:var(--text-muted);">1h ago -- 3s</span>
             </div>
-            <div style="margin:6px 0;font-size:13px;">"Deploy watch -- OO ERROR detected"</div>
-            <div class="service-icons">
-              <span class="svc-icon" title="Vercel"><img src="https://svgl.app/library/vercel_dark.svg" alt="Vercel"></span>
-              <span class="svc-icon" title="Sentry"><img src="https://svgl.app/library/sentry.svg" alt="Sentry"></span>
-              <span class="svc-icon" title="Obligation" style="color:var(--warning);font-size:12px;">obl</span>
-              <span class="svc-icon" title="Telegram"><img src="https://svgl.app/library/telegram.svg" alt="Telegram"></span>
+            <div class="session-msg">
+              <span class="svc-tag"><img src="https://svgl.app/library/vercel_dark.svg" alt="">vercel</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/sentry.svg" alt="">sentry</span>
+              <span class="svc-tag">obl</span>
+              <span class="svc-tag"><img src="https://svgl.app/library/telegram.svg" alt="">tg</span>
+              -- "Deploy watch -- OO ERROR detected"
             </div>
           </div>
           <span class="badge badge-overdue" style="font-size:10px;">alert</span>
         </div>
       </div>
 
-      <!-- Session: Telegram, Leo, HA control -->
+      <!-- telegram + Leo, HA -->
       <div class="card session-card" style="margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
             <div style="display:flex;align-items:center;gap:8px;">
-              <span class="badge badge-trigger badge-trigger-telegram">telegram</span>
+              <span class="badge badge-trigger badge-trigger-telegram"><img src="https://svgl.app/library/telegram.svg" class="trigger-icon" alt=""> telegram</span>
               <span class="badge badge-leo">leo</span>
               <span style="font-size:12px;color:var(--text-muted);">2h ago -- 15s</span>
             </div>
-            <div style="margin:6px 0;font-size:13px;">"Turn off the office lights"</div>
-            <div class="service-icons">
-              <span class="svc-icon" title="Home Assistant"><img src="https://svgl.app/library/home-assistant.svg" alt="HA"></span>
-              <span class="svc-icon" title="Pending" style="color:var(--text-muted);font-size:12px;">pnd</span>
+            <div class="session-msg">
+              <span class="svc-tag"><img src="https://svgl.app/library/home-assistant.svg" alt="">ha</span>
+              <span class="svc-tag">pnd</span>
+              -- "Turn off the office lights"
             </div>
           </div>
           <span class="badge badge-nova">confirmed</span>
@@ -138,31 +145,12 @@
       <button class="btn btn-sm">Load more sessions</button>
     </div>
 
-    <!-- Summary Cards -->
-    <div class="section-header" style="margin-top:24px;">
-      <h2 class="section-title">Today</h2>
-    </div>
-    <div class="card-grid">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Sessions</span></div>
-        <div class="card-value">14</div>
-        <div class="card-subtitle">5 interactive / 9 auto</div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Obligations</span></div>
-        <div class="card-value" style="color:var(--warning);">3 open</div>
-        <div class="card-subtitle">1 overdue / 5 handled today</div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">API Cost</span></div>
-        <div class="card-value">$2.14</div>
-        <div class="card-subtitle">$50/wk budget / 30% used</div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Tools</span></div>
-        <div class="card-value">142</div>
-        <div class="card-subtitle">98% success / avg 340ms</div>
-      </div>
+    <!-- Compact summary -->
+    <div class="card-grid" style="margin-top:16px;">
+      <div class="card"><div class="card-header"><span class="card-title">Sessions</span></div><div class="card-value">14</div><div class="card-subtitle">5 interactive / 9 auto</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">Obligations</span></div><div class="card-value" style="color:var(--warning);">3 open</div><div class="card-subtitle">1 overdue / 5 handled</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">API Cost</span></div><div class="card-value">$2.14</div><div class="card-subtitle">$50/wk -- 30%</div></div>
+      <div class="card"><div class="card-header"><span class="card-title">Tools</span></div><div class="card-value">142</div><div class="card-subtitle">98% / avg 340ms</div></div>
     </div>
   </main>
 </div>

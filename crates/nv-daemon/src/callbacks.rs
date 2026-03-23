@@ -128,13 +128,15 @@ async fn execute_nexus_start_session(
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| format!("/home/nyaptor/dev/{project}"));
 
+    let agent = payload["agent"].as_str();
+
     let args: Vec<String> = command
         .split_whitespace()
         .map(String::from)
         .collect();
 
     let (session_id, tmux_session) = client
-        .start_session(project, &cwd, &args)
+        .start_session(project, &cwd, &args, agent)
         .await?;
 
     Ok(format!(

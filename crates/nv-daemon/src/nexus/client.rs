@@ -206,13 +206,57 @@ impl NexusClient {
 
     /// Start a new session on the agent managing the given project.
     ///
-    /// Tries each connected agent until one succeeds or all fail.
+    /// When `agent` is `Some(name)`, only the agent whose `conn.name` matches
+    /// is tried. When `None`, every connected agent is tried in round-robin
+    /// order until one succeeds.
     pub async fn start_session(
         &self,
         project: &str,
         cwd: &str,
         args: &[String],
+        agent: Option<&str>,
     ) -> Result<(String, String)> {
+        // If a specific agent was requested, validate it exists and is connected.
+        if let Some(name) = agent {
+            for agent_mutex in &self.agents {
+                let mut conn = agent_mutex.lock().await;
+                if conn.name != name {
+                    continue;
+                }
+
+                // Found the matching agent
+                let Some(client) = conn.client.as_mut() else {
+                    anyhow::bail!("Agent '{}' is not connected", name);
+                };
+
+                match client
+                    .start_session(proto::StartSessionRequest {
+                        project: project.to_string(),
+                        cwd: cwd.to_string(),
+                        args: args.to_vec(),
+                    })
+                    .await
+                {
+                    Ok(response) => {
+                        conn.last_seen = Some(Utc::now());
+                        let resp = response.into_inner();
+                        return Ok((resp.session_id, resp.tmux_session));
+                    }
+                    Err(e) => {
+                        conn.mark_disconnected();
+                        anyhow::bail!(
+                            "StartSession on agent '{}' failed: {}",
+                            name,
+                            e
+                        );
+                    }
+                }
+            }
+
+            anyhow::bail!("Agent '{}' not found", name);
+        }
+
+        // Round-robin: try each connected agent in order.
         for agent_mutex in &self.agents {
             let mut conn = agent_mutex.lock().await;
             let agent_name = conn.name.clone();

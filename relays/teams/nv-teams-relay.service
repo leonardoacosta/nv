@@ -5,10 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 %h/nv/relays/teams/server.py
+ExecStart=%h/.local/bin/doppler run --fallback=true --project nova --config prd -- /usr/bin/python3 %h/nv/relays/teams/server.py
 Restart=on-failure
 RestartSec=10s
-EnvironmentFile=-%h/.nv/env
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

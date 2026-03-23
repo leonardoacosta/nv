@@ -5,12 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=notify
-ExecStart=%h/.local/bin/nv-daemon
+NotifyAccess=all
+ExecStart=%h/.local/bin/doppler run --fallback=true --project nova --config prd -- %h/.local/bin/nv-daemon
 Restart=on-failure
 RestartSec=5s
 WatchdogSec=60
 TimeoutStopSec=30
-EnvironmentFile=-%h/.nv/env
 Environment=RUST_LOG=info
 Environment=HOME=%h
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin

@@ -5,10 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=%h/.nv/relays/discord/venv/bin/python %h/nv/relays/discord/bot.py
+ExecStart=%h/.local/bin/doppler run --fallback=true --project nova --config prd -- %h/.nv/relays/discord/venv/bin/python %h/nv/relays/discord/bot.py
 Restart=on-failure
 RestartSec=10s
-EnvironmentFile=-%h/.nv/env
 Environment=PYTHONUNBUFFERED=1
 
 [Install]

@@ -1520,11 +1520,17 @@ pub async fn execute_tool_send(
         "jira_create" => {
             let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
             // Validate project KEY format before queuing the pending action
-            let project = input["project"].as_str().unwrap_or("");
-            validate_jira_project_key(project)?;
+            let mut project = input["project"].as_str().unwrap_or("").to_string();
+            if project.is_empty() {
+                if let Some(default) = registry.default_project() {
+                    tracing::info!(default_project = default, "jira_create: project not provided, falling back to default");
+                    project = default.to_string();
+                }
+            }
+            validate_jira_project_key(&project)?;
             // Warn if project not found in registry (soft warning — don't block)
-            if registry.resolve(project).is_none() {
-                tracing::warn!(project, "Jira project KEY not found in registry — will attempt on approval");
+            if registry.resolve(&project).is_none() {
+                tracing::warn!(%project, "Jira project KEY not found in registry — will attempt on approval");
             }
             let description = jira::describe_pending_action(name, input);
             Ok(ToolResult::PendingAction {
@@ -2324,10 +2330,16 @@ pub async fn execute_tool(
         // ── Jira Write Tools (pending action) ──────────────────
         "jira_create" => {
             let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
-            let project = input["project"].as_str().unwrap_or("");
-            validate_jira_project_key(project)?;
-            if registry.resolve(project).is_none() {
-                tracing::warn!(project, "Jira project KEY not found in registry");
+            let mut project = input["project"].as_str().unwrap_or("").to_string();
+            if project.is_empty() {
+                if let Some(default) = registry.default_project() {
+                    tracing::info!(default_project = default, "jira_create: project not provided, falling back to default");
+                    project = default.to_string();
+                }
+            }
+            validate_jira_project_key(&project)?;
+            if registry.resolve(&project).is_none() {
+                tracing::warn!(%project, "Jira project KEY not found in registry");
             }
             let description = jira::describe_pending_action(name, input);
             Ok(ToolResult::PendingAction {

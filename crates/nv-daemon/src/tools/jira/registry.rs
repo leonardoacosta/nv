@@ -141,6 +141,17 @@ impl JiraRegistry {
         self.resolve(project)
     }
 
+    /// Return the `default_project` KEY from the first/default Jira instance config.
+    /// Used as fallback when Claude omits the project field in `jira_create`.
+    pub fn default_project(&self) -> Option<&str> {
+        match &self.config {
+            nv_core::config::JiraConfig::Flat(cfg) => Some(&cfg.default_project),
+            nv_core::config::JiraConfig::Multi(multi) => {
+                multi.instances.values().next().map(|cfg| cfg.default_project.as_str())
+            }
+        }
+    }
+
     /// Return the `"default"` or first client, for call sites that don't have
     /// project context (e.g. backward-compatible callers).
     pub fn default_client(&self) -> Option<&JiraClient> {
@@ -204,6 +215,18 @@ mod tests {
             jira_usernames,
             google_calendar_credentials: None,
         }
+    }
+
+    #[test]
+    fn flat_config_default_project_returns_value() {
+        let cfg = JiraConfig::Flat(JiraInstanceConfig {
+            instance: "myteam.atlassian.net".to_string(),
+            default_project: "OO".to_string(),
+            webhook_secret: None,
+        });
+        let secrets = make_secrets_with("token", "user@example.com");
+        let registry = JiraRegistry::new(&cfg, &secrets).unwrap().unwrap();
+        assert_eq!(registry.default_project(), Some("OO"));
     }
 
     #[test]

@@ -1384,13 +1384,11 @@ const HEAVY_TASK_PATTERNS: &[(&str, u32, &str)] = &[
 /// Returns `Some(LongTaskEstimate)` if the task is classified as heavy
 /// (expected >1 minute), `None` for normal tasks.
 fn estimate_task_complexity(triggers: &[Trigger]) -> Option<LongTaskEstimate> {
-    // Check digest triggers
+    // Cron/digest triggers run silently — no Telegram announcement needed.
+    // The digest result itself will be sent when complete.
     for trigger in triggers {
         if let Trigger::Cron(_) = trigger {
-            return Some(LongTaskEstimate {
-                estimated_minutes: 2,
-                description: "Generating digest synthesis".into(),
-            });
+            return None;
         }
     }
 

@@ -390,4 +390,44 @@ mod tests {
         assert!(validate_schedule_name("Has_Capitals").is_err());
         assert!(validate_schedule_name("has spaces").is_err());
     }
+
+    #[test]
+    fn migrations_set_user_version() {
+        // Run migrations against an in-memory database and verify that
+        // rusqlite_migration set PRAGMA user_version = 1 (one migration version).
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        schedules_migrations().to_latest(&mut conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1, "user_version should be 1 after v1 migration");
+
+        // Verify the schedules table exists with the expected schema columns.
+        let table_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='schedules'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(table_exists, 1, "schedules table should exist after migration");
+
+        // Verify column names via PRAGMA table_info.
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(schedules)")
+            .unwrap();
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for col in &["id", "name", "cron_expr", "action", "channel", "enabled", "created_at", "last_run_at"] {
+            assert!(
+                columns.contains(&col.to_string()),
+                "column '{col}' should exist in schedules table"
+            );
+        }
+    }
 }

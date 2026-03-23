@@ -647,4 +647,38 @@ mod tests {
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].id, id_past);
     }
+
+    #[test]
+    fn migrations_set_user_version() {
+        // Run migrations against an in-memory database and verify that
+        // rusqlite_migration set PRAGMA user_version = 1 (one migration version).
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        reminders_migrations().to_latest(&mut conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1, "user_version should be 1 after v1 migration");
+
+        // Verify the reminders table and its indexes exist.
+        let table_exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='reminders'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(table_exists, 1, "reminders table should exist after migration");
+
+        for index in &["idx_reminders_due_at", "idx_reminders_active"] {
+            let idx_exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?1",
+                    rusqlite::params![index],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(idx_exists, 1, "index '{index}' should exist after migration");
+        }
+    }
 }

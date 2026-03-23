@@ -711,6 +711,31 @@ mod tests {
     }
 
     #[test]
+    fn migrations_set_user_version() {
+        // Run migrations against an in-memory database and verify that
+        // rusqlite_migration set PRAGMA user_version = 1 (one migration version).
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        messages_migrations().to_latest(&mut conn).unwrap();
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1, "user_version should be 1 after v1 migration");
+
+        // Verify all expected tables exist.
+        for table in &["messages", "tool_usage", "api_usage", "budget_alert_sent"] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    rusqlite::params![table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 1, "table '{table}' should exist after migration");
+        }
+    }
+
+    #[test]
     fn log_inbound_inserts_row() {
         let (_dir, store) = setup();
         store

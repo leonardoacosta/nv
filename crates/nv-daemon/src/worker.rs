@@ -27,6 +27,7 @@ use crate::messages::MessageStore;
 use crate::nexus;
 use crate::query;
 use crate::reminders::ReminderStore;
+use crate::obligation_store::ObligationStore;
 use crate::tools::schedule::ScheduleStore;
 use crate::state::State;
 use crate::channels::telegram::client::TelegramClient;
@@ -177,6 +178,8 @@ pub struct SharedDeps {
     pub alert_threshold_pct: u8,
     /// Per-worker session timeout in seconds (from daemon config, default 300).
     pub worker_timeout_secs: u64,
+    /// Obligation store (SQLite). None if the DB failed to open.
+    pub obligation_store: Option<Arc<std::sync::Mutex<ObligationStore>>>,
     /// User-defined schedule store (SQLite). None if the DB failed to open.
     pub schedule_store: Option<Arc<std::sync::Mutex<ScheduleStore>>>,
     /// Reminder store (SQLite). None if the DB failed to open.

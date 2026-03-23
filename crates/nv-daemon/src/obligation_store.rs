@@ -1,0 +1,413 @@
+//! Obligation store: CRUD operations on the `obligations` table in messages.db.
+//!
+//! The schema is created by migration v2 in `messages.rs`. This module provides
+//! the `ObligationStore` struct that wraps a SQLite `Connection` and exposes
+//! typed CRUD methods.
+
+use std::path::Path;
+use std::str::FromStr;
+
+use anyhow::Result;
+use nv_core::types::{Obligation, ObligationOwner, ObligationStatus};
+use rusqlite::{params, Connection};
+use rusqlite_migration::{Migrations, M};
+
+// ── Input Type ───────────────────────────────────────────────────────
+
+/// Parameters for creating a new obligation.
+#[derive(Debug, Clone)]
+pub struct NewObligation {
+    /// UUID for the obligation (caller must provide, e.g. `Uuid::new_v4().to_string()`).
+    pub id: String,
+    /// Channel the obligation was detected in.
+    pub source_channel: String,
+    /// Excerpt or identifier of the source message (optional).
+    pub source_message: Option<String>,
+    /// The specific action or commitment detected.
+    pub detected_action: String,
+    /// Optional project code.
+    pub project_code: Option<String>,
+    /// Priority 0-4.
+    pub priority: i32,
+    /// Initial owner.
+    pub owner: ObligationOwner,
+    /// Optional reasoning for the owner assignment.
+    pub owner_reason: Option<String>,
+}
+
+// ── Store ─────────────────────────────────────────────────────────────
+
+/// SQLite-backed obligation store.
+///
+/// Shares messages.db with `MessageStore` — the schema migration is run by
+/// `MessageStore::init`, so callers must ensure `MessageStore::init` has been
+/// called before constructing `ObligationStore`.
+pub struct ObligationStore {
+    conn: Connection,
+}
+
+/// Migrations for the obligations table.
+///
+/// This mirrors the v2 migration in `messages.rs` so `ObligationStore` can
+/// open messages.db independently (e.g., in tests) without going through
+/// `MessageStore`. When opened via `MessageStore`, the migration has already
+/// been applied and `to_latest` is a no-op.
+fn obligation_migrations() -> Migrations<'static> {
+    Migrations::new(vec![
+        M::up(
+            "CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                sender TEXT,
+                content TEXT NOT NULL,
+                telegram_message_id INTEGER,
+                trigger_type TEXT,
+                response_time_ms INTEGER,
+                tokens_in INTEGER,
+                tokens_out INTEGER
+            );",
+        ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS obligations (
+                id TEXT PRIMARY KEY,
+                source_channel TEXT NOT NULL,
+                source_message TEXT,
+                detected_action TEXT NOT NULL,
+                project_code TEXT,
+                priority INTEGER NOT NULL DEFAULT 2,
+                status TEXT NOT NULL DEFAULT 'open',
+                owner TEXT NOT NULL DEFAULT 'nova',
+                owner_reason TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
+            CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
+            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);",
+        ),
+    ])
+}
+
+impl ObligationStore {
+    /// Open (or create) the SQLite database and ensure the obligations schema exists.
+    ///
+    /// Typically called with the same `messages.db` path as `MessageStore`.
+    pub fn new(db_path: &Path) -> Result<Self> {
+        let mut conn = Connection::open(db_path)?;
+
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+
+        obligation_migrations()
+            .to_latest(&mut conn)
+            .map_err(|e| anyhow::anyhow!("failed to run obligation migrations: {e}"))?;
+
+        Ok(Self { conn })
+    }
+
+    /// Insert a new obligation. Returns the created `Obligation`.
+    pub fn create(&self, new: NewObligation) -> Result<Obligation> {
+        self.conn.execute(
+            "INSERT INTO obligations
+                (id, source_channel, source_message, detected_action, project_code,
+                 priority, status, owner, owner_reason,
+                 created_at, updated_at)
+             VALUES
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'), datetime('now'))",
+            params![
+                new.id,
+                new.source_channel,
+                new.source_message,
+                new.detected_action,
+                new.project_code,
+                new.priority,
+                ObligationStatus::Open.as_str(),
+                new.owner.as_str(),
+                new.owner_reason,
+            ],
+        )?;
+
+        // Read back the created row to get the timestamp values from SQLite.
+        self.get_by_id(&new.id)?
+            .ok_or_else(|| anyhow::anyhow!("obligation not found after insert: {}", new.id))
+    }
+
+    /// Retrieve an obligation by its UUID.
+    pub fn get_by_id(&self, id: &str) -> Result<Option<Obligation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, created_at, updated_at
+             FROM obligations
+             WHERE id = ?1",
+        )?;
+
+        let mut rows = stmt.query(params![id])?;
+
+        match rows.next()? {
+            Some(row) => Ok(Some(row_to_obligation(row)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// List obligations filtered by status.
+    ///
+    /// Results are ordered by priority ASC (0 = most urgent), then created_at ASC.
+    pub fn list_by_status(&self, status: &ObligationStatus) -> Result<Vec<Obligation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, created_at, updated_at
+             FROM obligations
+             WHERE status = ?1
+             ORDER BY priority ASC, created_at ASC",
+        )?;
+
+        let rows = stmt.query_map(params![status.as_str()], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_by_status query failed: {e}"))
+    }
+
+    /// List obligations filtered by owner.
+    ///
+    /// Results are ordered by priority ASC, then created_at ASC.
+    pub fn list_by_owner(&self, owner: &ObligationOwner) -> Result<Vec<Obligation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, created_at, updated_at
+             FROM obligations
+             WHERE owner = ?1
+             ORDER BY priority ASC, created_at ASC",
+        )?;
+
+        let rows = stmt.query_map(params![owner.as_str()], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_by_owner query failed: {e}"))
+    }
+
+    /// Update the status of an obligation and touch `updated_at`.
+    ///
+    /// Returns `true` if a row was updated, `false` if the id was not found.
+    pub fn update_status(&self, id: &str, new_status: &ObligationStatus) -> Result<bool> {
+        let rows_changed = self.conn.execute(
+            "UPDATE obligations
+             SET status = ?1, updated_at = datetime('now')
+             WHERE id = ?2",
+            params![new_status.as_str(), id],
+        )?;
+
+        Ok(rows_changed > 0)
+    }
+
+    /// Count obligations that are currently open.
+    pub fn count_open(&self) -> Result<i64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE status = 'open'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        Ok(count)
+    }
+}
+
+// ── Row Mapper ───────────────────────────────────────────────────────
+
+/// Map a SQLite row to an `Obligation`.
+fn row_to_obligation(row: &rusqlite::Row<'_>) -> Result<Obligation> {
+    let status_str: String = row.get(6)?;
+    let owner_str: String = row.get(7)?;
+
+    Ok(Obligation {
+        id: row.get(0)?,
+        source_channel: row.get(1)?,
+        source_message: row.get(2)?,
+        detected_action: row.get(3)?,
+        project_code: row.get(4)?,
+        priority: row.get(5)?,
+        status: ObligationStatus::from_str(&status_str)
+            .map_err(|e| anyhow::anyhow!("invalid status in DB: {e}"))?,
+        owner: ObligationOwner::from_str(&owner_str)
+            .map_err(|e| anyhow::anyhow!("invalid owner in DB: {e}"))?,
+        owner_reason: row.get(8)?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+    })
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    fn temp_store() -> (ObligationStore, NamedTempFile) {
+        let file = NamedTempFile::new().expect("temp file");
+        let store = ObligationStore::new(file.path()).expect("store init");
+        (store, file)
+    }
+
+    fn new_obligation(id: &str, channel: &str, action: &str, priority: i32) -> NewObligation {
+        NewObligation {
+            id: id.to_string(),
+            source_channel: channel.to_string(),
+            source_message: Some(format!("message for {id}")),
+            detected_action: action.to_string(),
+            project_code: None,
+            priority,
+            owner: ObligationOwner::Nova,
+            owner_reason: None,
+        }
+    }
+
+    #[test]
+    fn create_and_get_by_id() {
+        let (store, _f) = temp_store();
+
+        let ob = store
+            .create(new_obligation("id-1", "telegram", "send report", 2))
+            .unwrap();
+
+        assert_eq!(ob.id, "id-1");
+        assert_eq!(ob.source_channel, "telegram");
+        assert_eq!(ob.detected_action, "send report");
+        assert_eq!(ob.priority, 2);
+        assert_eq!(ob.status, ObligationStatus::Open);
+        assert_eq!(ob.owner, ObligationOwner::Nova);
+
+        let fetched = store.get_by_id("id-1").unwrap().expect("should exist");
+        assert_eq!(fetched.id, ob.id);
+    }
+
+    #[test]
+    fn get_by_id_missing_returns_none() {
+        let (store, _f) = temp_store();
+        assert!(store.get_by_id("not-there").unwrap().is_none());
+    }
+
+    #[test]
+    fn list_by_status_returns_matching_rows() {
+        let (store, _f) = temp_store();
+
+        store
+            .create(new_obligation("a", "discord", "action A", 1))
+            .unwrap();
+        store
+            .create(new_obligation("b", "telegram", "action B", 2))
+            .unwrap();
+
+        // Mark "a" as done
+        store
+            .update_status("a", &ObligationStatus::Done)
+            .unwrap();
+
+        let open = store.list_by_status(&ObligationStatus::Open).unwrap();
+        assert_eq!(open.len(), 1);
+        assert_eq!(open[0].id, "b");
+
+        let done = store.list_by_status(&ObligationStatus::Done).unwrap();
+        assert_eq!(done.len(), 1);
+        assert_eq!(done[0].id, "a");
+    }
+
+    #[test]
+    fn list_by_owner_filters_correctly() {
+        let (store, _f) = temp_store();
+
+        let mut nova_ob = new_obligation("n1", "telegram", "nova task", 2);
+        nova_ob.owner = ObligationOwner::Nova;
+        store.create(nova_ob).unwrap();
+
+        let mut leo_ob = new_obligation("l1", "discord", "leo task", 1);
+        leo_ob.owner = ObligationOwner::Leo;
+        store.create(leo_ob).unwrap();
+
+        let nova_list = store.list_by_owner(&ObligationOwner::Nova).unwrap();
+        assert_eq!(nova_list.len(), 1);
+        assert_eq!(nova_list[0].id, "n1");
+
+        let leo_list = store.list_by_owner(&ObligationOwner::Leo).unwrap();
+        assert_eq!(leo_list.len(), 1);
+        assert_eq!(leo_list[0].id, "l1");
+    }
+
+    #[test]
+    fn update_status_changes_status() {
+        let (store, _f) = temp_store();
+
+        store
+            .create(new_obligation("x", "telegram", "do thing", 0))
+            .unwrap();
+
+        let updated = store.update_status("x", &ObligationStatus::InProgress).unwrap();
+        assert!(updated);
+
+        let ob = store.get_by_id("x").unwrap().unwrap();
+        assert_eq!(ob.status, ObligationStatus::InProgress);
+    }
+
+    #[test]
+    fn update_status_missing_id_returns_false() {
+        let (store, _f) = temp_store();
+        let result = store.update_status("ghost", &ObligationStatus::Done).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn count_open_tracks_correctly() {
+        let (store, _f) = temp_store();
+
+        assert_eq!(store.count_open().unwrap(), 0);
+
+        store
+            .create(new_obligation("o1", "telegram", "task 1", 2))
+            .unwrap();
+        store
+            .create(new_obligation("o2", "discord", "task 2", 1))
+            .unwrap();
+
+        assert_eq!(store.count_open().unwrap(), 2);
+
+        store.update_status("o1", &ObligationStatus::Done).unwrap();
+
+        assert_eq!(store.count_open().unwrap(), 1);
+    }
+
+    #[test]
+    fn list_by_status_ordered_by_priority() {
+        let (store, _f) = temp_store();
+
+        // Insert in reverse priority order
+        store
+            .create(new_obligation("p3", "telegram", "low", 3))
+            .unwrap();
+        store
+            .create(new_obligation("p0", "telegram", "critical", 0))
+            .unwrap();
+        store
+            .create(new_obligation("p1", "telegram", "high", 1))
+            .unwrap();
+
+        let open = store.list_by_status(&ObligationStatus::Open).unwrap();
+        let ids: Vec<&str> = open.iter().map(|o| o.id.as_str()).collect();
+        assert_eq!(ids, vec!["p0", "p1", "p3"]);
+    }
+}

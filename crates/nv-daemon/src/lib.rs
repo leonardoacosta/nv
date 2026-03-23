@@ -25,6 +25,8 @@ mod http;
 mod memory;
 mod messages;
 mod nexus;
+mod obligation_detector;
+mod obligation_store;
 mod orchestrator;
 mod query;
 mod reminders;

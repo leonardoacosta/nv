@@ -13,6 +13,8 @@ mod http;
 mod memory;
 mod messages;
 mod nexus;
+mod obligation_detector;
+mod obligation_store;
 mod orchestrator;
 mod query;
 mod reminders;
@@ -634,6 +636,18 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Initialize obligation store (shares messages.db — migration already run by MessageStore)
+    let obligation_store = match obligation_store::ObligationStore::new(&nv_base.join("messages.db")) {
+        Ok(store) => {
+            tracing::info!("obligation store initialized");
+            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to initialize obligation store — obligation tools disabled");
+            None
+        }
+    };
+
     // Initialize reminder store (shares messages.db path)
     let reminder_store = match reminders::ReminderStore::new(&nv_base.join("messages.db")) {
         Ok(store) => {
@@ -863,6 +877,7 @@ async fn main() -> anyhow::Result<()> {
             .as_ref()
             .map(|d| d.worker_timeout_secs)
             .unwrap_or(300),
+        obligation_store,
         schedule_store,
         reminder_store,
         calendar_credentials: secrets.google_calendar_credentials.clone(),

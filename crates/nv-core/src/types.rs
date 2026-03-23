@@ -230,6 +230,123 @@ pub enum ActionStatus {
     Expired,
 }
 
+// ── Obligation Types ─────────────────────────────────────────────────
+
+/// Lifecycle status of a tracked obligation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObligationStatus {
+    /// Newly detected, no action taken.
+    Open,
+    /// Work has started on this obligation.
+    InProgress,
+    /// Obligation has been fulfilled.
+    Done,
+    /// Deliberately ignored or not applicable.
+    Dismissed,
+}
+
+impl ObligationStatus {
+    /// Canonical string value stored in SQLite.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ObligationStatus::Open => "open",
+            ObligationStatus::InProgress => "in_progress",
+            ObligationStatus::Done => "done",
+            ObligationStatus::Dismissed => "dismissed",
+        }
+    }
+}
+
+impl std::fmt::Display for ObligationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ObligationStatus {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "open" => Ok(ObligationStatus::Open),
+            "in_progress" => Ok(ObligationStatus::InProgress),
+            "done" => Ok(ObligationStatus::Done),
+            "dismissed" => Ok(ObligationStatus::Dismissed),
+            other => Err(anyhow::anyhow!("unknown ObligationStatus: {other}")),
+        }
+    }
+}
+
+/// Who is responsible for fulfilling the obligation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ObligationOwner {
+    /// Nova (the AI daemon) is responsible.
+    Nova,
+    /// Leo (the human user) is responsible.
+    Leo,
+}
+
+impl ObligationOwner {
+    /// Canonical string value stored in SQLite.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ObligationOwner::Nova => "nova",
+            ObligationOwner::Leo => "leo",
+        }
+    }
+}
+
+impl std::fmt::Display for ObligationOwner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for ObligationOwner {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "nova" => Ok(ObligationOwner::Nova),
+            "leo" => Ok(ObligationOwner::Leo),
+            other => Err(anyhow::anyhow!("unknown ObligationOwner: {other}")),
+        }
+    }
+}
+
+/// A tracked obligation detected from an inbound message.
+///
+/// Obligations represent commitments or actions that were identified in
+/// messages across any channel. They are persisted in messages.db and
+/// survive daemon restarts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Obligation {
+    /// UUID primary key.
+    pub id: String,
+    /// Channel the obligation was detected in (e.g. "telegram", "discord").
+    pub source_channel: String,
+    /// Excerpt or identifier of the source message.
+    pub source_message: Option<String>,
+    /// The specific action or commitment detected.
+    pub detected_action: String,
+    /// Optional project code this obligation belongs to (e.g. "NV", "OO").
+    pub project_code: Option<String>,
+    /// Priority 0-4 (0 = highest/critical, 4 = backlog).
+    pub priority: i32,
+    /// Current lifecycle status.
+    pub status: ObligationStatus,
+    /// Who is responsible for this obligation.
+    pub owner: ObligationOwner,
+    /// Optional reasoning for the owner assignment.
+    pub owner_reason: Option<String>,
+    /// ISO 8601 UTC creation timestamp.
+    pub created_at: String,
+    /// ISO 8601 UTC last-updated timestamp.
+    pub updated_at: String,
+}
+
 // ── Query Types ─────────────────────────────────────────────────────
 
 /// Source types for query answer citations.

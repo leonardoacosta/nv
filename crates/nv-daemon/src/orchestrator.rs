@@ -15,6 +15,8 @@ use uuid::Uuid;
 
 use crate::agent::ChannelRegistry;
 use crate::nexus;
+use crate::obligation_detector;
+use crate::obligation_store::NewObligation;
 use crate::channels::telegram::client::TelegramClient;
 use crate::worker::{Priority, SharedDeps, WorkerEvent, WorkerPool, WorkerTask};
 
@@ -460,6 +462,117 @@ impl Orchestrator {
                     "sent long-task confirmation"
                 );
             }
+        }
+
+        // ── Obligation detection (fire-and-forget) ───────────────────────
+        // Run only on inbound messages — not on cron events or CLI commands.
+        // Detection is non-blocking: spawned as a background task so it
+        // cannot delay the worker dispatch.
+        if let Some(Trigger::Message(msg)) = triggers.first() {
+            let msg_content = msg.content.clone();
+            let msg_channel = msg.channel.clone();
+            let msg_excerpt = if msg_content.len() > 200 {
+                msg_content[..200].to_string()
+            } else {
+                msg_content.clone()
+            };
+
+            let obligation_store = self.deps.obligation_store.clone();
+            let telegram_client = self.telegram_client.clone();
+            let telegram_chat_id = self.telegram_chat_id;
+
+            tokio::spawn(async move {
+                match obligation_detector::detect_obligation(&msg_content, &msg_channel).await {
+                    Ok(Some(detected)) => {
+                        let obligation_id = uuid::Uuid::new_v4().to_string();
+
+                        let new_ob = NewObligation {
+                            id: obligation_id.clone(),
+                            source_channel: msg_channel.clone(),
+                            source_message: Some(msg_excerpt),
+                            detected_action: detected.detected_action.clone(),
+                            project_code: detected.project_code,
+                            priority: detected.priority,
+                            owner: if detected.owner == "leo" {
+                                nv_core::types::ObligationOwner::Leo
+                            } else {
+                                nv_core::types::ObligationOwner::Nova
+                            },
+                            owner_reason: detected.owner_reason,
+                        };
+
+                        // Store the obligation — lock is held briefly, dropped before any await.
+                        let store_result = if let Some(store_arc) = obligation_store {
+                            match store_arc.lock() {
+                                Ok(store) => match store.create(new_ob) {
+                                    Ok(ob) => {
+                                        tracing::info!(
+                                            obligation_id = %ob.id,
+                                            priority = ob.priority,
+                                            owner = %ob.owner,
+                                            channel = %msg_channel,
+                                            "obligation stored"
+                                        );
+                                        Some(ob)
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "failed to store detected obligation");
+                                        None
+                                    }
+                                },
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "obligation store mutex poisoned");
+                                    None
+                                }
+                            }
+                        } else {
+                            tracing::debug!("obligation store not available, skipping storage");
+                            None
+                        };
+                        // MutexGuard is dropped above; now safe to await.
+
+                        // Notify via Telegram for P0-P1 obligations
+                        if let Some(ob) = store_result {
+                            if ob.priority <= 1 {
+                                if let (Some(tg), Some(chat_id)) =
+                                    (telegram_client, telegram_chat_id)
+                                {
+                                    let priority_label = if ob.priority == 0 {
+                                        "CRITICAL"
+                                    } else {
+                                        "HIGH"
+                                    };
+                                    let notification = format!(
+                                        "[P{priority} {priority_label}] New obligation detected\n\
+                                         Channel: {channel}\n\
+                                         Owner: {owner}\n\
+                                         Action: {action}",
+                                        priority = ob.priority,
+                                        channel = msg_channel,
+                                        owner = ob.owner,
+                                        action = ob.detected_action,
+                                    );
+                                    if let Err(e) = tg
+                                        .send_message(chat_id, &notification, None, None)
+                                        .await
+                                    {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "failed to send P0-P1 obligation notification"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        // No obligation detected — normal case, nothing to do
+                    }
+                    Err(e) => {
+                        tracing::debug!(error = %e, "obligation detection failed (non-fatal)");
+                    }
+                }
+            });
         }
 
         // Dispatch to worker pool

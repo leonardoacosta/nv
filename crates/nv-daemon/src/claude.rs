@@ -775,7 +775,7 @@ impl ClaudeClient {
                 system,
                 "--strict-mcp-config",
             ])
-            .env("HOME", &self.spawn_config.real_home)
+            .env("HOME", &self.spawn_config.sandbox_home)
             .env(
                 "PATH",
                 format!(
@@ -835,7 +835,7 @@ impl ClaudeClient {
                         system,
                         "--strict-mcp-config",
                     ])
-                    .env("HOME", &self.spawn_config.real_home)
+                    .env("HOME", &self.spawn_config.sandbox_home)
                     .env(
                         "PATH",
                         format!(
@@ -950,7 +950,7 @@ impl ClaudeClient {
 
         let mut child = Command::new("claude")
             .args(&base_args)
-            .env("HOME", &self.spawn_config.real_home)
+            .env("HOME", &self.spawn_config.sandbox_home)
             .env(
                 "PATH",
                 format!(
@@ -996,7 +996,7 @@ impl ClaudeClient {
 
                 let mut retry_child = Command::new("claude")
                     .args(&base_args)
-                    .env("HOME", &self.spawn_config.real_home)
+                    .env("HOME", &self.spawn_config.sandbox_home)
                     .env(
                         "PATH",
                         format!(

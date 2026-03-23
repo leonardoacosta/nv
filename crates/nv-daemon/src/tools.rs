@@ -1,7 +1,10 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+use nv_core::channel::Channel;
+use nv_core::types::OutboundMessage;
 
 use crate::ado_tools;
 use crate::aggregation;
@@ -206,6 +209,41 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Nexus project-scoped and session lifecycle tools
     tools.extend(nexus_tool_definitions());
+
+    // Add cross-channel routing tools
+    tools.extend(vec![
+        ToolDefinition {
+            name: "list_channels".into(),
+            description: "List available messaging channels and their connection status.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "send_to_channel".into(),
+            description: "Send a message to a specific channel (telegram/discord/teams/email). Requires confirmation. For email, the recipient parameter is required.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "channel": {
+                        "type": "string",
+                        "description": "Target channel name (must exist in registry, e.g. 'telegram', 'discord', 'email')"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Message content to send"
+                    },
+                    "recipient": {
+                        "type": "string",
+                        "description": "Required for email channel — the recipient address. Ignored by other channels."
+                    }
+                },
+                "required": ["channel", "message"]
+            }),
+        },
+    ]);
 
     tools
 }
@@ -605,6 +643,7 @@ pub async fn execute_tool_send(
     jira_registry: Option<&jira::JiraRegistry>,
     nexus_client: Option<&nexus::client::NexusClient>,
     project_registry: &HashMap<String, PathBuf>,
+    channels: &HashMap<String, Arc<dyn Channel>>,
 ) -> Result<ToolResult> {
     match name {
         "read_memory" => {
@@ -982,6 +1021,62 @@ pub async fn execute_tool_send(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Cross-Channel Routing ─────────────────────────────────
+        "list_channels" => {
+            if channels.is_empty() {
+                return Ok(ToolResult::Immediate("No channels configured.".into()));
+            }
+            let mut lines = vec!["Available channels:".to_string()];
+            let mut names: Vec<&String> = channels.keys().collect();
+            names.sort();
+            for name in names {
+                lines.push(format!("- {name} (connected)"));
+            }
+            Ok(ToolResult::Immediate(lines.join("\n")))
+        }
+        "send_to_channel" => {
+            let channel_name = input["channel"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel' parameter"))?;
+            let message = input["message"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'message' parameter"))?;
+
+            // Validate channel exists
+            if !channels.contains_key(channel_name) {
+                let available: Vec<&str> = channels.keys().map(|s| s.as_str()).collect();
+                anyhow::bail!(
+                    "Channel '{}' not found. Available channels: {}",
+                    channel_name,
+                    available.join(", ")
+                );
+            }
+
+            // Validate message non-empty
+            if message.trim().is_empty() {
+                anyhow::bail!("message must be non-empty");
+            }
+
+            // Validate recipient required for email
+            if channel_name == "email" && input["recipient"].as_str().is_none() {
+                anyhow::bail!("recipient is required for the email channel");
+            }
+
+            // Build human-readable description for confirmation keyboard
+            let preview = if message.len() > 60 {
+                format!("{}…", &message[..60])
+            } else {
+                message.to_string()
+            };
+            let description = format!("Send to {channel_name}: \"{preview}\"");
+
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::ChannelSend,
+                payload: input.clone(),
+            })
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -993,7 +1088,7 @@ pub async fn execute_tool_send(
 ///
 /// NOTE: This function takes `Option<&MessageStore>`, making the resulting
 /// future `!Send`. For use in `tokio::spawn`, use `execute_tool_send` instead.
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub async fn execute_tool(
     name: &str,
     input: &serde_json::Value,
@@ -1002,6 +1097,7 @@ pub async fn execute_tool(
     nexus_client: Option<&nexus::client::NexusClient>,
     message_store: Option<&MessageStore>,
     project_registry: &HashMap<String, PathBuf>,
+    channels: &HashMap<String, Arc<dyn Channel>>,
 ) -> Result<ToolResult> {
     match name {
         // ── Memory Tools ────────────────────────────────────────
@@ -1418,6 +1514,58 @@ pub async fn execute_tool(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Cross-Channel Routing ─────────────────────────────────
+        "list_channels" => {
+            if channels.is_empty() {
+                return Ok(ToolResult::Immediate("No channels configured.".into()));
+            }
+            let mut lines = vec!["Available channels:".to_string()];
+            let mut names: Vec<&String> = channels.keys().collect();
+            names.sort();
+            for ch_name in names {
+                lines.push(format!("- {ch_name} (connected)"));
+            }
+            Ok(ToolResult::Immediate(lines.join("\n")))
+        }
+        "send_to_channel" => {
+            let channel_name = input["channel"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel' parameter"))?;
+            let message = input["message"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'message' parameter"))?;
+
+            if !channels.contains_key(channel_name) {
+                let available: Vec<&str> = channels.keys().map(|s| s.as_str()).collect();
+                anyhow::bail!(
+                    "Channel '{}' not found. Available channels: {}",
+                    channel_name,
+                    available.join(", ")
+                );
+            }
+
+            if message.trim().is_empty() {
+                anyhow::bail!("message must be non-empty");
+            }
+
+            if channel_name == "email" && input["recipient"].as_str().is_none() {
+                anyhow::bail!("recipient is required for the email channel");
+            }
+
+            let preview = if message.len() > 60 {
+                format!("{}…", &message[..60])
+            } else {
+                message.to_string()
+            };
+            let description = format!("Send to {channel_name}: \"{preview}\"");
+
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::ChannelSend,
+                payload: input.clone(),
+            })
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -1528,6 +1676,39 @@ pub async fn execute_jira_action(
     }
 }
 
+/// Execute a confirmed ChannelSend pending action.
+///
+/// Called when the user taps "Approve" on the Telegram inline keyboard for
+/// a `send_to_channel` tool invocation. Deserializes the payload, looks up
+/// the target channel, and calls `Channel::send_message`.
+pub async fn execute_channel_send(
+    channels: &HashMap<String, Arc<dyn Channel>>,
+    payload: &serde_json::Value,
+) -> Result<String> {
+    let channel_name = payload["channel"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'channel' in payload"))?;
+    let message = payload["message"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing 'message' in payload"))?;
+    let recipient = payload["recipient"].as_str().map(String::from);
+
+    let channel = channels
+        .get(channel_name)
+        .ok_or_else(|| anyhow!("Channel '{}' not found", channel_name))?;
+
+    channel
+        .send_message(OutboundMessage {
+            channel: channel_name.to_string(),
+            content: message.to_string(),
+            reply_to: recipient,
+            keyboard: None,
+        })
+        .await?;
+
+    Ok(format!("Message sent to {channel_name}"))
+}
+
 // ── Jira Validation Helpers ──────────────────────────────────────────
 
 /// Validate that a string is a valid Jira project KEY.
@@ -1584,6 +1765,10 @@ mod tests {
         HashMap::new()
     }
 
+    fn empty_channels() -> HashMap<String, Arc<dyn Channel>> {
+        HashMap::new()
+    }
+
     #[test]
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
@@ -1591,8 +1776,9 @@ mod tests {
         // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
         // + 1 neon + 2 stripe + 2 resend + 2 upstash
         // + 3 ha + 2 ado + 2 plaid + 3 aggregation
-        // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session) = 58
-        assert_eq!(tools.len(), 58);
+        // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session)
+        // + 2 cross-channel (list_channels, send_to_channel) = 60
+        assert_eq!(tools.len(), 60);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -1658,6 +1844,9 @@ mod tests {
         assert!(names.contains(&"start_session"));
         assert!(names.contains(&"send_command"));
         assert!(names.contains(&"stop_session"));
+        // Cross-channel routing tools
+        assert!(names.contains(&"list_channels"));
+        assert!(names.contains(&"send_to_channel"));
     }
 
     #[test]
@@ -1708,6 +1897,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1728,6 +1918,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1750,6 +1941,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1773,6 +1965,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1793,6 +1986,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1813,6 +2007,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1833,6 +2028,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await;
         assert!(result.is_err());
@@ -1879,6 +2075,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1913,6 +2110,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1948,6 +2146,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -1999,7 +2198,7 @@ mod tests {
     #[tokio::test]
     async fn execute_query_nexus_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry())
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
@@ -2013,7 +2212,7 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 7400,
         }]);
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry())
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry(), &empty_channels())
             .await
             .unwrap();
         match result {
@@ -2035,6 +2234,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await;
         assert!(result.is_err());
@@ -2053,6 +2253,7 @@ mod tests {
             Some(&client),
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await;
         assert!(result.is_err());
@@ -2062,7 +2263,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry()).await;
+        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -2072,7 +2273,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry()).await;
+        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -2088,6 +2289,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await;
         assert!(result.is_err());
@@ -2111,6 +2313,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -2147,6 +2350,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -2175,6 +2379,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await;
         assert!(result.is_err());
@@ -2227,6 +2432,7 @@ mod tests {
             None,
             Some(&store),
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -2253,6 +2459,7 @@ mod tests {
             None,
             Some(&store),
             &empty_registry(),
+            &empty_channels(),
         )
         .await
         .unwrap();
@@ -2276,6 +2483,7 @@ mod tests {
             None,
             None,
             &empty_registry(),
+            &empty_channels(),
         )
         .await;
         assert!(result.is_err());

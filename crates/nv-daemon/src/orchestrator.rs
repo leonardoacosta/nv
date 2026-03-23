@@ -213,6 +213,11 @@ pub struct Orchestrator {
     last_error_time: Instant,
     /// Number of errors accumulated in the current batch.
     error_count: u32,
+    // ── Thinking message state ──
+    /// Maps worker_id → (thinking_msg_id, chat_id) for active workers.
+    worker_thinking_msgs: std::collections::HashMap<Uuid, (i64, i64)>,
+    /// Maps worker_id → last thinking-message edit timestamp (for debounce).
+    worker_thinking_last_edit: std::collections::HashMap<Uuid, Instant>,
 }
 
 impl Orchestrator {
@@ -252,6 +257,8 @@ impl Orchestrator {
             last_error_text: None,
             last_error_time: Instant::now(),
             error_count: 0,
+            worker_thinking_msgs: std::collections::HashMap::new(),
+            worker_thinking_last_edit: std::collections::HashMap::new(),
         }
     }
 
@@ -472,7 +479,7 @@ impl Orchestrator {
     /// Handle a single worker event — log at appropriate level and track state.
     async fn handle_worker_event(&mut self, event: WorkerEvent) {
         match &event {
-            WorkerEvent::StageStarted { worker_id, stage } => {
+            WorkerEvent::StageStarted { worker_id, stage, thinking_msg_id, thinking_chat_id } => {
                 tracing::debug!(
                     worker_id = %worker_id,
                     stage = %stage,
@@ -480,6 +487,10 @@ impl Orchestrator {
                 );
                 self.worker_stage_started
                     .insert(*worker_id, (stage.clone(), Instant::now()));
+                // Store thinking message ID from the first (context_build) stage
+                if let (Some(msg_id), Some(chat_id)) = (thinking_msg_id, thinking_chat_id) {
+                    self.worker_thinking_msgs.insert(*worker_id, (*msg_id, *chat_id));
+                }
             }
             WorkerEvent::ToolCalled { worker_id, tool } => {
                 tracing::trace!(
@@ -488,9 +499,42 @@ impl Orchestrator {
                     "worker tool called"
                 );
                 // Update stage description with human-readable tool name
-                let desc = humanize_tool(tool);
+                let (emoji, description) = humanize_tool(tool);
+                let stage_label = format!("{emoji} {description}");
                 self.worker_stage_started
-                    .insert(*worker_id, (desc, Instant::now()));
+                    .insert(*worker_id, (stage_label.clone(), Instant::now()));
+
+                // Edit the thinking message with tool status (debounced, Telegram only)
+                if let Some((msg_id, chat_id)) = self.worker_thinking_msgs.get(worker_id).copied() {
+                    // Debounce: skip if we edited within the last 500ms
+                    let should_edit = self.worker_thinking_last_edit
+                        .get(worker_id)
+                        .map(|t| t.elapsed() >= Duration::from_millis(500))
+                        .unwrap_or(true);
+
+                    if should_edit {
+                        if let Some(tg) = self.channels.get("telegram") {
+                            if let Some(tg_channel) =
+                                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                            {
+                                let label = stage_label.clone();
+                                let client = tg_channel.client.clone();
+                                let wid = *worker_id;
+                                // Fire-and-forget — don't block the event loop
+                                tokio::spawn(async move {
+                                    if let Err(e) = client.edit_message(chat_id, msg_id, &label, None).await {
+                                        tracing::debug!(
+                                            worker_id = %wid,
+                                            error = %e,
+                                            "failed to edit thinking message with tool status"
+                                        );
+                                    }
+                                });
+                                self.worker_thinking_last_edit.insert(*worker_id, Instant::now());
+                            }
+                        }
+                    }
+                }
             }
             WorkerEvent::StageComplete {
                 worker_id,
@@ -514,8 +558,10 @@ impl Orchestrator {
                     response_len,
                     "worker complete"
                 );
-                // Clean up any remaining stage tracking
+                // Clean up stage tracking and thinking message state
                 self.worker_stage_started.remove(worker_id);
+                self.worker_thinking_msgs.remove(worker_id);
+                self.worker_thinking_last_edit.remove(worker_id);
             }
             WorkerEvent::Error { worker_id, error } => {
                 tracing::warn!(
@@ -524,6 +570,8 @@ impl Orchestrator {
                     "worker error"
                 );
                 self.worker_stage_started.remove(worker_id);
+                self.worker_thinking_msgs.remove(worker_id);
+                self.worker_thinking_last_edit.remove(worker_id);
             }
         }
     }
@@ -605,6 +653,7 @@ impl Orchestrator {
                                     self.deps.jira_registry.as_ref(),
                                     self.deps.nexus_client.as_ref(),
                                     &self.deps.project_registry,
+                                    &self.deps.channels,
                                     &tg_channel.client,
                                     chat_id,
                                     original_msg_id,
@@ -1218,28 +1267,38 @@ fn humanize_stage(stage: &str) -> &str {
     }
 }
 
-/// Convert tool names to human-readable descriptions for status updates.
-fn humanize_tool(tool: &str) -> String {
-    match tool {
-        "jira_search" | "jira_get" => "Searching Jira...".into(),
-        "jira_create" | "jira_transition" | "jira_assign" => "Updating Jira...".into(),
-        "query_nexus" | "query_session" => "Checking Nexus sessions...".into(),
-        "read_memory" | "search_memory" => "Reading memory...".into(),
-        "write_memory" => "Saving to memory...".into(),
-        "vercel_deployments" | "vercel_logs" => "Checking Vercel deploys...".into(),
-        "sentry_issues" | "sentry_issue" => "Checking Sentry errors...".into(),
-        "posthog_trends" | "posthog_flags" => "Checking PostHog analytics...".into(),
-        "docker_status" | "docker_logs" => "Checking Docker containers...".into(),
-        "tailscale_status" | "tailscale_node" => "Checking Tailscale network...".into(),
-        "gh_pr_list" | "gh_run_status" | "gh_issues" => "Checking GitHub...".into(),
-        "neon_query" => "Querying database...".into(),
-        "stripe_customers" | "stripe_invoices" => "Checking Stripe...".into(),
-        "ha_states" | "ha_entity" => "Checking Home Assistant...".into(),
-        "project_health" => "Building project health report...".into(),
-        "homelab_status" => "Checking homelab status...".into(),
-        "search_messages" => "Searching conversation history...".into(),
-        t => format!("Running {t}..."),
-    }
+/// Convert tool names to (emoji, description) pairs for status updates.
+///
+/// Returns `(emoji, description)` — callers format as `"{emoji} {description}"`.
+fn humanize_tool(tool: &str) -> (String, String) {
+    let (emoji, desc) = match tool {
+        "jira_search" | "jira_get" => ("\u{1F50D}", "Searching Jira..."),
+        "jira_create" | "jira_transition" | "jira_assign" | "jira_comment" => ("\u{270F}\u{FE0F}", "Updating Jira..."),
+        "query_nexus" | "query_session" => ("\u{1F517}", "Checking Nexus sessions..."),
+        "read_memory" | "search_memory" => ("\u{1F9E0}", "Reading memory..."),
+        "write_memory" => ("\u{1F4BE}", "Saving to memory..."),
+        "vercel_deployments" | "vercel_logs" => ("\u{25B6}\u{FE0F}", "Checking Vercel deploys..."),
+        "sentry_issues" | "sentry_issue" => ("\u{1F6A8}", "Checking Sentry errors..."),
+        "posthog_trends" | "posthog_flags" => ("\u{1F4CA}", "Checking PostHog analytics..."),
+        "docker_status" | "docker_logs" => ("\u{1F433}", "Checking Docker containers..."),
+        "tailscale_status" | "tailscale_node" => ("\u{1F310}", "Checking Tailscale network..."),
+        "gh_pr_list" | "gh_run_status" | "gh_issues" => ("\u{1F419}", "Checking GitHub..."),
+        "neon_query" => ("\u{1F5C4}\u{FE0F}", "Querying database..."),
+        "stripe_customers" | "stripe_invoices" => ("\u{1F4B3}", "Checking Stripe..."),
+        "ha_states" | "ha_entity" | "ha_service_call" => ("\u{1F3E0}", "Checking Home Assistant..."),
+        "project_health" => ("\u{1F4CA}", "Building project health report..."),
+        "homelab_status" => ("\u{1F5A5}\u{FE0F}", "Checking homelab status..."),
+        "search_messages" => ("\u{1F4AC}", "Searching conversation history..."),
+        "list_channels" => ("\u{1F4E1}", "Listing channels..."),
+        "send_to_channel" => ("\u{1F4E4}", "Sending to channel..."),
+        _ => ("\u{2699}\u{FE0F}", ""),
+    };
+    let description = if desc.is_empty() {
+        format!("Running {tool}...")
+    } else {
+        desc.to_string()
+    };
+    (emoji.to_string(), description)
 }
 
 fn strip_ansi_codes(s: &str) -> String {
@@ -1520,6 +1579,8 @@ mod tests {
             .send(WorkerEvent::StageStarted {
                 worker_id,
                 stage: "context_build".into(),
+                thinking_msg_id: None,
+                thinking_chat_id: None,
             })
             .unwrap();
         event_tx
@@ -1560,7 +1621,7 @@ mod tests {
         while let Some(event) = rx.recv().await {
             count += 1;
             match &event {
-                WorkerEvent::StageStarted { worker_id, stage } => {
+                WorkerEvent::StageStarted { worker_id, stage, .. } => {
                     stage_map.insert(*worker_id, (stage.clone(), Instant::now()));
                 }
                 WorkerEvent::StageComplete { worker_id, .. } => {

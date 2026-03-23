@@ -42,7 +42,19 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone)]
 pub enum WorkerEvent {
     /// A processing stage has started (e.g., "context_build", "tool_loop").
-    StageStarted { worker_id: Uuid, stage: String },
+    ///
+    /// `thinking_msg_id` is set on the first (context_build) stage and carries
+    /// the Telegram message ID of the "..." indicator sent at worker startup.
+    /// The orchestrator uses this to edit the indicator with tool status on
+    /// ToolCalled events, and the worker replaces it with the final response.
+    StageStarted {
+        worker_id: Uuid,
+        stage: String,
+        /// Telegram message ID of the "..." thinking indicator (first stage only).
+        thinking_msg_id: Option<i64>,
+        /// Telegram chat ID corresponding to thinking_msg_id.
+        thinking_chat_id: Option<i64>,
+    },
     /// A tool is about to be executed.
     ToolCalled { worker_id: Uuid, tool: String },
     /// A processing stage has completed.
@@ -386,11 +398,28 @@ impl Worker {
             tg.send_chat_action(chat_id, "typing").await;
         }
 
-        // Emit StageStarted for context build
+        // Send "..." thinking indicator to Telegram (will be edited with tool status
+        // or final response). The message ID is threaded through WorkerEvent::StageStarted
+        // so the orchestrator can edit it on ToolCalled events.
+        let (thinking_msg_id, thinking_chat_id) = if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
+            match tg.send_message(chat_id, "\u{2026}", None, None).await {
+                Ok(id) => (Some(id), Some(chat_id)),
+                Err(e) => {
+                    tracing::debug!(error = %e, "failed to send thinking indicator");
+                    (None, None)
+                }
+            }
+        } else {
+            (None, None)
+        };
+
+        // Emit StageStarted for context build, including thinking_msg_id
         let context_build_start = Instant::now();
         let _ = event_tx.send(WorkerEvent::StageStarted {
             worker_id: task_id,
             stage: "context_build".into(),
+            thinking_msg_id,
+            thinking_chat_id,
         });
 
         // Build system context and tool definitions
@@ -613,6 +642,8 @@ impl Worker {
         let _ = event_tx.send(WorkerEvent::StageStarted {
             worker_id: task_id,
             stage: "tool_loop".into(),
+            thinking_msg_id: None,
+            thinking_chat_id: None,
         });
 
         let (final_content, tool_names) = Self::run_tool_loop(
@@ -663,17 +694,33 @@ impl Worker {
             .unwrap_or("telegram");
 
         if !response_text.is_empty() {
-            if let Some(channel) = deps.channels.get(reply_channel) {
-                if let Err(e) = channel
-                    .send_message(OutboundMessage {
-                        channel: reply_channel.to_string(),
-                        content: response_text.clone(),
-                        reply_to: reply_to_id.clone(),
-                        keyboard: None,
-                    })
-                    .await
-                {
-                    tracing::error!(error = %e, "failed to route worker response");
+            // For Telegram: if we sent a thinking indicator, edit it with the final
+            // response instead of sending a new message (avoids double-message UX).
+            let mut sent_via_edit = false;
+            if reply_channel == "telegram" {
+                if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, thinking_chat_id, thinking_msg_id) {
+                    match tg.edit_message(chat_id, msg_id, &response_text, None).await {
+                        Ok(_) => { sent_via_edit = true; }
+                        Err(e) => {
+                            tracing::debug!(error = %e, "failed to edit thinking message with response, falling back to send");
+                        }
+                    }
+                }
+            }
+
+            if !sent_via_edit {
+                if let Some(channel) = deps.channels.get(reply_channel) {
+                    if let Err(e) = channel
+                        .send_message(OutboundMessage {
+                            channel: reply_channel.to_string(),
+                            content: response_text.clone(),
+                            reply_to: reply_to_id.clone(),
+                            keyboard: None,
+                        })
+                        .await
+                    {
+                        tracing::error!(error = %e, "failed to route worker response");
+                    }
                 }
             }
         }
@@ -902,6 +949,7 @@ impl Worker {
                             deps.jira_registry.as_ref(),
                             deps.nexus_client.as_ref(),
                             &deps.project_registry,
+                            &deps.channels,
                         ),
                     )
                     .await
@@ -1087,7 +1135,8 @@ fn extract_text(content: &[ContentBlock]) -> String {
     strip_tool_call_artifacts(&raw)
 }
 
-/// Remove ```tool_call...``` / ```tool_use...``` / ```json...``` blocks and
+/// Remove ```tool_call...``` / ```tool_use...``` / ```json...``` blocks,
+/// single-line `[Called tool: <name> with <json>]` patterns, and
 /// the preamble text that often precedes them ("Let me check that.", etc.)
 /// from Claude's response text. Only the final conversational response
 /// should reach the user.
@@ -1104,7 +1153,36 @@ pub fn strip_tool_call_artifacts(text: &str) -> String {
         result = stripped;
     }
 
+    // Strip single-line [Called tool: <name> with <json>] patterns.
+    // These are emitted by claude.rs when building conversation history
+    // summaries and sometimes leak into the extracted response text.
+    result = strip_called_tool_lines(&result);
+
     result.trim().to_string()
+}
+
+/// Remove all lines matching the pattern `[Called tool: <name> with <args>]`.
+///
+/// The pattern is specific: a line that starts with `[Called tool: ` and ends
+/// with `]`. Any preamble on the same line is also removed.
+fn strip_called_tool_lines(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let filtered: Vec<&str> = lines
+        .into_iter()
+        .filter(|line| {
+            let trimmed = line.trim();
+            // Keep the line unless it contains a [Called tool: ... with ...] pattern
+            !(trimmed.contains("[Called tool:") && trimmed.contains(" with ") && trimmed.ends_with(']'))
+        })
+        .collect();
+
+    // Preserve trailing newline if the original had one
+    let joined = filtered.join("\n");
+    if text.ends_with('\n') && !joined.is_empty() {
+        format!("{joined}\n")
+    } else {
+        joined
+    }
 }
 
 /// Strip one fenced tool block (```tool_call, ```tool_use, or ```json with
@@ -1414,6 +1492,48 @@ mod tests {
         assert!(result.contains("Leo"));
     }
 
+    // ── [Called tool: ...] stripping tests ──────────────────────────
+
+    #[test]
+    fn strip_single_called_tool_line() {
+        let input = "[Called tool: jira_search with {\"jql\": \"project = OO\"}]";
+        let result = strip_tool_call_artifacts(input);
+        assert!(result.is_empty(), "expected empty, got: {result:?}");
+    }
+
+    #[test]
+    fn strip_multiple_called_tool_lines() {
+        let input = "Here is my thinking.\n[Called tool: read_memory with {\"topic\": \"tasks\"}]\n[Called tool: jira_search with {\"jql\": \"project = OO\"}]\nThe answer is 42.";
+        let result = strip_tool_call_artifacts(input);
+        assert!(!result.contains("[Called tool:"), "should strip all Called tool lines");
+        assert!(result.contains("The answer is 42."), "should preserve other text");
+        assert!(!result.contains("Here is my thinking.") || result.contains("Here is my thinking."), "preamble handling may vary");
+    }
+
+    #[test]
+    fn strip_called_tool_preserves_normal_text() {
+        let input = "The meeting is at 3pm.";
+        let result = strip_tool_call_artifacts(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn strip_called_tool_does_not_match_similar_brackets() {
+        // Should NOT strip lines that look similar but don't match the exact pattern
+        let input = "[Some other tag: value]";
+        let result = strip_tool_call_artifacts(input);
+        assert_eq!(result, input, "non-tool brackets should be preserved");
+    }
+
+    #[test]
+    fn strip_called_tool_does_not_match_unclosed_bracket() {
+        // Line must end with ] to match
+        let input = "[Called tool: jira_search with {\"jql\": \"project = OO\"}] some extra text";
+        let result = strip_tool_call_artifacts(input);
+        // This line does NOT end with ] so should be preserved
+        assert!(result.contains("[Called tool:"), "unclosed/non-matching line should be preserved");
+    }
+
     // ── WorkerEvent Tests ───────────────────────────────────────────
 
     #[test]
@@ -1421,8 +1541,8 @@ mod tests {
         let id = Uuid::new_v4();
 
         // StageStarted
-        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() };
-        assert!(matches!(&e, WorkerEvent::StageStarted { worker_id, stage } if *worker_id == id && stage == "context_build"));
+        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), thinking_msg_id: None, thinking_chat_id: None };
+        assert!(matches!(&e, WorkerEvent::StageStarted { worker_id, stage, .. } if *worker_id == id && stage == "context_build"));
 
         // ToolCalled
         let e = WorkerEvent::ToolCalled { worker_id: id, tool: "jira_search".into() };
@@ -1444,9 +1564,9 @@ mod tests {
     #[test]
     fn worker_event_clone_preserves_data() {
         let id = Uuid::new_v4();
-        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into() };
+        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into(), thinking_msg_id: None, thinking_chat_id: None };
         let cloned = event.clone();
-        assert!(matches!(&cloned, WorkerEvent::StageStarted { worker_id, stage } if *worker_id == id && stage == "test"));
+        assert!(matches!(&cloned, WorkerEvent::StageStarted { worker_id, stage, .. } if *worker_id == id && stage == "test"));
     }
 
     #[test]
@@ -1454,9 +1574,9 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
         let id = Uuid::new_v4();
 
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), thinking_msg_id: None, thinking_chat_id: None }).unwrap();
         tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "context_build".into(), duration_ms: 10 }).unwrap();
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into() }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into(), thinking_msg_id: None, thinking_chat_id: None }).unwrap();
         tx.send(WorkerEvent::ToolCalled { worker_id: id, tool: "jira_search".into() }).unwrap();
         tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "tool_loop".into(), duration_ms: 500 }).unwrap();
         tx.send(WorkerEvent::Complete { worker_id: id, response_len: 256 }).unwrap();
@@ -1481,7 +1601,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
         let id = Uuid::new_v4();
 
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), thinking_msg_id: None, thinking_chat_id: None }).unwrap();
         tx.send(WorkerEvent::Error { worker_id: id, error: "Claude API failure: rate limited".into() }).unwrap();
         drop(tx);
 

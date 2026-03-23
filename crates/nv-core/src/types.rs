@@ -203,6 +203,9 @@ pub enum ActionType {
     JiraAssign,
     JiraComment,
     ChannelReply,
+    /// Proactive cross-channel send (user-confirmed). Distinct from ChannelReply
+    /// which is used for reply routing.
+    ChannelSend,
     HaServiceCall,
     NexusStartSession,
     NexusStopSession,

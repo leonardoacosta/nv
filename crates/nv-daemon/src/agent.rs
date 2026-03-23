@@ -311,6 +311,7 @@ impl AgentLoop {
                                         self.jira_registry.as_ref(),
                                         self.nexus_client.as_ref(),
                                         &self.project_registry,
+                                        &self.channels,
                                         &tg_channel.client,
                                         chat_id,
                                         original_msg_id,
@@ -822,6 +823,7 @@ impl AgentLoop {
                         self.nexus_client.as_ref(),
                         Some(&self.message_store),
                         &self.project_registry,
+                        &self.channels,
                     ),
                 )
                 .await

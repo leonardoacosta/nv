@@ -5,7 +5,12 @@
 
 use anyhow::Result;
 use chrono::Utc;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 use uuid::Uuid;
+
+use nv_core::channel::Channel;
 
 use crate::jira;
 use crate::nexus;
@@ -13,21 +18,19 @@ use crate::state::{PendingStatus, State};
 use crate::telegram::client::TelegramClient;
 use crate::tools;
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-
 // ── Approve Handler ─────────────────────────────────────────────────
 
 /// Execute a confirmed pending action.
 ///
 /// Loads the action from state, detects the action type, and routes to
-/// the appropriate executor (Jira, Nexus, Home Assistant, etc.).
+/// the appropriate executor (Jira, Nexus, Home Assistant, channel send, etc.).
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_approve(
     uuid_str: &str,
     jira_registry: Option<&jira::JiraRegistry>,
     nexus_client: Option<&nexus::client::NexusClient>,
     project_registry: &HashMap<String, PathBuf>,
+    channels: &HashMap<String, Arc<dyn Channel>>,
     telegram: &TelegramClient,
     chat_id: i64,
     original_message_id: Option<i64>,
@@ -57,6 +60,9 @@ pub async fn handle_approve(
         }
         nv_core::types::ActionType::NexusStopSession => {
             execute_nexus_stop_session(&action.payload, nexus_client).await
+        }
+        nv_core::types::ActionType::ChannelSend => {
+            tools::execute_channel_send(channels, &action.payload).await
         }
         _ => {
             // Jira and other action types
@@ -273,6 +279,7 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
             "JiraTransition" => nv_core::types::ActionType::JiraTransition,
             "JiraAssign" => nv_core::types::ActionType::JiraAssign,
             "JiraComment" => nv_core::types::ActionType::JiraComment,
+            "ChannelSend" => nv_core::types::ActionType::ChannelSend,
             "NexusStartSession" => nv_core::types::ActionType::NexusStartSession,
             "NexusStopSession" => nv_core::types::ActionType::NexusStopSession,
             _ => nv_core::types::ActionType::JiraCreate,
@@ -291,6 +298,11 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
         && payload.get("issue_key").is_none()
     {
         return nv_core::types::ActionType::NexusStopSession;
+    }
+
+    // Infer ChannelSend from payload fields
+    if payload.get("channel").is_some() && payload.get("message").is_some() {
+        return nv_core::types::ActionType::ChannelSend;
     }
 
     // Infer from payload fields — Jira actions

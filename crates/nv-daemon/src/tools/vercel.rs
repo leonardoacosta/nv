@@ -750,7 +750,7 @@ impl crate::tools::Checkable for VercelClient {
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
         let (latency, result) = timed(|| async {
-            self.get(&format!("{VERCEL_API}/v13/user")).send().await
+            self.get(&format!("{VERCEL_API}/v2/user")).send().await
         })
         .await;
         match result {

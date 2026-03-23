@@ -30,10 +30,6 @@ fn default_elevenlabs_model() -> String {
     "eleven_multilingual_v2".to_string()
 }
 
-fn default_deepgram_model() -> String {
-    "nova-2".to_string()
-}
-
 fn default_weekly_budget_usd() -> f64 {
     50.0
 }
@@ -131,9 +127,6 @@ pub struct AgentConfig {
     pub digest_interval_minutes: u64,
     #[serde(default = "default_max_workers")]
     pub max_workers: usize,
-    /// Deepgram model for voice-to-text transcription (default: "nova-2").
-    #[serde(default = "default_deepgram_model")]
-    pub deepgram_model: String,
     /// Weekly budget in USD for Claude API usage (default: 50.0).
     #[serde(default = "default_weekly_budget_usd")]
     pub weekly_budget_usd: f64,

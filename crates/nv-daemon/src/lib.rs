@@ -36,7 +36,6 @@ mod state;
 #[allow(dead_code)]
 mod tailscale;
 mod tts;
-mod voice_input;
 mod worker;
 
 /// Service tools — `Checkable` trait, `ServiceRegistry<T>`, `CheckResult`,

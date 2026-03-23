@@ -3,8 +3,8 @@
 //! Provides `transcribe_audio_elevenlabs()` which POSTs audio bytes to the
 //! ElevenLabs `/v1/speech-to-text` endpoint and returns the transcript text.
 //!
-//! The existing Deepgram pipeline in `voice_input.rs` covers OGG voice notes
-//! and is left unchanged. This module handles MP3/WAV audio files.
+//! Used for both voice notes (OGG) and audio files (MP3/WAV).
+//! Single provider for all speech-to-text in Nova.
 
 use std::time::Duration;
 

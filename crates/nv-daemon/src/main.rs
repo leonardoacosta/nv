@@ -25,7 +25,6 @@ mod state;
 mod tailscale;
 mod tools;
 mod tts;
-mod voice_input;
 mod worker;
 
 use std::collections::HashMap;

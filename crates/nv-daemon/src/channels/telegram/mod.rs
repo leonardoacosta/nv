@@ -378,7 +378,7 @@ async fn handle_audio_message(
 
 // ── Voice Transcription ─────────────────────────────────────────────
 
-/// Transcribe a voice message by downloading from Telegram and calling Deepgram.
+/// Transcribe a voice message by downloading from Telegram and calling ElevenLabs STT.
 ///
 /// Returns a modified `InboundMessage` with the transcribed text as content.
 /// The original voice metadata is preserved.
@@ -404,20 +404,20 @@ async fn transcribe_voice_message(
         .and_then(|v| v.as_i64())
         .unwrap_or(channel.chat_id);
 
-    // Check for DEEPGRAM_API_KEY
-    let api_key = match std::env::var("DEEPGRAM_API_KEY") {
+    // Check for ELEVENLABS_API_KEY
+    let api_key = match std::env::var("ELEVENLABS_API_KEY") {
         Ok(key) if !key.is_empty() => key,
         _ => {
             let _ = channel
                 .client
                 .send_message(
                     chat_id,
-                    "Voice transcription not configured.",
+                    "Voice transcription not configured (ELEVENLABS_API_KEY missing).",
                     Some(msg.id.clone()),
                     None,
                 )
                 .await;
-            anyhow::bail!("DEEPGRAM_API_KEY not set");
+            anyhow::bail!("ELEVENLABS_API_KEY not set");
         }
     };
 
@@ -435,10 +435,14 @@ async fn transcribe_voice_message(
         "downloaded voice message for transcription"
     );
 
-    // Transcribe via Deepgram
-    let model = std::env::var("DEEPGRAM_MODEL").unwrap_or_else(|_| "nova-2".to_string());
-    let transcript =
-        crate::voice_input::transcribe_voice(&audio_bytes, mime_type, &api_key, &model).await?;
+    // Transcribe via ElevenLabs STT
+    let transcript = crate::speech_to_text::transcribe_audio_elevenlabs(
+        audio_bytes,
+        "voice.ogg",
+        mime_type,
+        &api_key,
+    )
+    .await?;
 
     if transcript.is_empty() {
         let _ = channel
@@ -450,7 +454,7 @@ async fn transcribe_voice_message(
                 None,
             )
             .await;
-        anyhow::bail!("empty transcript from Deepgram");
+        anyhow::bail!("empty transcript from ElevenLabs");
     }
 
     tracing::info!(

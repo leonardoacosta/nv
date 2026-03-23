@@ -586,12 +586,34 @@ async fn main() -> anyhow::Result<()> {
                 .await;
         }
 
-        if client.is_connected().await {
-            // Spawn event stream listeners for all connected agents
+        // Spawn event stream listeners for all agents (connected or not — run_event_stream
+        // waits internally for a connection before subscribing).
+        let stream_handles =
             nexus::stream::spawn_event_streams(&client.agents, trigger_tx.clone());
-            tracing::info!("Nexus event streams started");
-        } else {
-            tracing::warn!("Nexus configured but no agents reachable");
+        tracing::info!("Nexus event streams started");
+
+        // Spawn the session watchdog — proactive health checks every N seconds.
+        {
+            let watchdog_client = client.clone();
+            let watchdog_health = Arc::clone(&health_state);
+            let watchdog_interval = nexus_config.watchdog_interval_secs;
+            let watchdog_tx = trigger_tx.clone();
+            let watchdog_channels = channels.clone();
+            tokio::spawn(async move {
+                nexus::watchdog::run_watchdog(
+                    watchdog_client,
+                    watchdog_health,
+                    watchdog_interval,
+                    stream_handles,
+                    watchdog_tx,
+                    watchdog_channels,
+                )
+                .await;
+            });
+            tracing::info!(
+                interval_secs = nexus_config.watchdog_interval_secs,
+                "Nexus session watchdog started"
+            );
         }
 
         Some(client)

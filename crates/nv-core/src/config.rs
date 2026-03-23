@@ -62,6 +62,10 @@ fn default_timezone() -> String {
     "America/Chicago".to_string()
 }
 
+fn default_watchdog_interval() -> u64 {
+    10
+}
+
 fn default_search_url() -> String {
     "https://html.duckduckgo.com/html/".to_string()
 }
@@ -446,6 +450,9 @@ pub struct NexusAgent {
 #[derive(Debug, Clone, Deserialize)]
 pub struct NexusConfig {
     pub agents: Vec<NexusAgent>,
+    /// How often the watchdog checks agent health, in seconds. Default: 10.
+    #[serde(default = "default_watchdog_interval")]
+    pub watchdog_interval_secs: u64,
 }
 
 /// Configuration for the optional Google Calendar integration.

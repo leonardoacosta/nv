@@ -10,23 +10,29 @@ use super::proto::{self, session_event, EventFilter};
 ///
 /// Each connected agent gets its own tokio task that subscribes to
 /// `StreamEvents` and pushes significant events to the trigger channel.
+///
+/// Returns the `JoinHandle` for each spawned task so the watchdog can monitor
+/// liveness and respawn tasks that have exited.
 pub fn spawn_event_streams(
     agents: &[Arc<Mutex<NexusAgentConnection>>],
     trigger_tx: mpsc::UnboundedSender<Trigger>,
-) {
-    for agent in agents {
-        let agent = Arc::clone(agent);
-        let tx = trigger_tx.clone();
-        tokio::spawn(async move {
-            run_event_stream(agent, tx).await;
-        });
-    }
+) -> Vec<tokio::task::JoinHandle<()>> {
+    agents
+        .iter()
+        .map(|agent| {
+            let agent = Arc::clone(agent);
+            let tx = trigger_tx.clone();
+            tokio::spawn(async move {
+                run_event_stream(agent, tx).await;
+            })
+        })
+        .collect()
 }
 
 /// Run the event stream for a single agent.
 ///
 /// On disconnect, waits for reconnection and re-subscribes.
-async fn run_event_stream(
+pub async fn run_event_stream(
     agent: Arc<Mutex<NexusAgentConnection>>,
     trigger_tx: mpsc::UnboundedSender<Trigger>,
 ) {

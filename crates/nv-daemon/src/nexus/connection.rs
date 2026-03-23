@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use tonic::transport::Channel;
@@ -32,6 +32,13 @@ pub struct NexusAgentConnection {
     pub status: ConnectionStatus,
     pub last_seen: Option<DateTime<Utc>>,
     pub consecutive_failures: u32,
+    /// When set, the watchdog skips this agent until the instant has passed.
+    pub quarantined_until: Option<Instant>,
+    /// When the agent first transitioned to Disconnected in the current outage.
+    pub disconnected_since: Option<Instant>,
+    /// Whether a Telegram disconnect notification has already been sent for
+    /// the current outage (prevents re-sending on every watchdog cycle).
+    pub disconnect_notified: bool,
 }
 
 /// Connection timeout for initial connect.
@@ -51,6 +58,9 @@ impl NexusAgentConnection {
             status: ConnectionStatus::Disconnected,
             last_seen: None,
             consecutive_failures: 0,
+            quarantined_until: None,
+            disconnected_since: None,
+            disconnect_notified: false,
         }
     }
 
@@ -66,6 +76,8 @@ impl NexusAgentConnection {
         self.status = ConnectionStatus::Connected;
         self.last_seen = Some(Utc::now());
         self.consecutive_failures = 0;
+        self.quarantined_until = None;
+        self.disconnected_since = None;
 
         tracing::info!(agent = %self.name, endpoint = %self.endpoint, "connected to Nexus agent");
         Ok(())
@@ -76,11 +88,69 @@ impl NexusAgentConnection {
         self.status = ConnectionStatus::Disconnected;
         self.client = None;
         self.consecutive_failures += 1;
+        // Record the first moment we noticed the outage; preserve across cycles.
+        if self.disconnected_since.is_none() {
+            self.disconnected_since = Some(Instant::now());
+        }
         tracing::warn!(
             agent = %self.name,
             failures = self.consecutive_failures,
             "Nexus agent disconnected"
         );
+    }
+
+    /// Returns true if the agent is currently quarantined (watchdog should skip it).
+    pub fn is_quarantined(&self) -> bool {
+        self.quarantined_until
+            .map(|t| Instant::now() < t)
+            .unwrap_or(false)
+    }
+
+    /// Quarantine the agent for 5 minutes — used after 10+ consecutive failures.
+    pub fn quarantine(&mut self) {
+        let until = Instant::now() + Duration::from_secs(300);
+        self.quarantined_until = Some(until);
+        tracing::warn!(
+            agent = %self.name,
+            failures = self.consecutive_failures,
+            "Nexus agent quarantined for 5 minutes"
+        );
+    }
+
+    /// Ping the agent via the `GetHealth` RPC with a 5-second timeout.
+    ///
+    /// - Success: updates `last_seen` and returns `Ok(())`
+    /// - `Unimplemented`: treated as healthy (agent is reachable but hasn't implemented the RPC)
+    /// - Timeout / other error: returns `Err(tonic::Status)`
+    pub async fn health_check(&mut self) -> Result<(), tonic::Status> {
+        let Some(client) = self.client.as_mut() else {
+            return Err(tonic::Status::unavailable("no client"));
+        };
+
+        let request = super::proto::HealthRequest {};
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            client.get_health(request),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(_)) => {
+                self.last_seen = Some(Utc::now());
+                Ok(())
+            }
+            Ok(Err(status)) if status.code() == tonic::Code::Unimplemented => {
+                // Agent is reachable but hasn't implemented GetHealth — treat as healthy.
+                tracing::debug!(
+                    agent = %self.name,
+                    "GetHealth not implemented by agent — treating as healthy"
+                );
+                self.last_seen = Some(Utc::now());
+                Ok(())
+            }
+            Ok(Err(status)) => Err(status),
+            Err(_elapsed) => Err(tonic::Status::deadline_exceeded("health check timed out")),
+        }
     }
 
     /// Calculate backoff duration based on consecutive failures.
@@ -132,6 +202,9 @@ mod tests {
         assert!(conn.last_seen.is_none());
         assert_eq!(conn.consecutive_failures, 0);
         assert_eq!(conn.endpoint, "http://127.0.0.1:7400");
+        assert!(conn.quarantined_until.is_none());
+        assert!(conn.disconnected_since.is_none());
+        assert!(!conn.disconnect_notified);
     }
 
     #[test]
@@ -178,5 +251,46 @@ mod tests {
         assert_eq!(ConnectionStatus::Connected.to_string(), "connected");
         assert_eq!(ConnectionStatus::Disconnected.to_string(), "disconnected");
         assert_eq!(ConnectionStatus::Reconnecting.to_string(), "reconnecting");
+    }
+
+    #[test]
+    fn mark_disconnected_sets_disconnected_since_once() {
+        let mut conn = NexusAgentConnection::new("test".into(), "127.0.0.1", 7400);
+        assert!(conn.disconnected_since.is_none());
+
+        conn.mark_disconnected();
+        let first = conn.disconnected_since.expect("should be set after first disconnect");
+
+        // Second call must NOT overwrite the first timestamp.
+        conn.mark_disconnected();
+        let second = conn.disconnected_since.unwrap();
+        assert_eq!(first, second, "disconnected_since must not be overwritten");
+    }
+
+    #[test]
+    fn is_quarantined_false_when_none() {
+        let conn = NexusAgentConnection::new("test".into(), "127.0.0.1", 7400);
+        assert!(!conn.is_quarantined());
+    }
+
+    #[test]
+    fn quarantine_sets_future_instant() {
+        let mut conn = NexusAgentConnection::new("test".into(), "127.0.0.1", 7400);
+        conn.quarantine();
+        assert!(conn.is_quarantined());
+        // The quarantine deadline should be ~5 minutes in the future.
+        let until = conn.quarantined_until.unwrap();
+        let remaining = until.saturating_duration_since(Instant::now());
+        // Allow a small tolerance — should be between 299s and 301s.
+        assert!(remaining.as_secs() < 301, "quarantine too long: {remaining:?}");
+        assert!(remaining.as_secs() >= 299, "quarantine too short: {remaining:?}");
+    }
+
+    #[test]
+    fn is_quarantined_false_after_expiry() {
+        let mut conn = NexusAgentConnection::new("test".into(), "127.0.0.1", 7400);
+        // Set quarantine to an instant in the past.
+        conn.quarantined_until = Some(Instant::now() - Duration::from_secs(1));
+        assert!(!conn.is_quarantined());
     }
 }

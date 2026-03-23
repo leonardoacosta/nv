@@ -14,11 +14,11 @@
 
 ## Core Batch
 
-- [ ] [2.1] [P-1] Define `Checkable` trait in `tools/mod.rs` — `name()`, `check_read()`, `check_write()` with `CheckResult` enum [owner:general-purpose]
-- [ ] [2.2] [P-1] Define `ServiceRegistry<T: Checkable>` in `tools/mod.rs` — `resolve()`, `get()`, `default()`, `iter()` [owner:general-purpose]
-- [ ] [2.3] [P-1] Create `tools/check.rs` — `CheckReport` struct, `check_all()` orchestrator using FuturesUnordered, terminal formatter, JSON formatter [owner:general-purpose]
-- [ ] [2.4] [P-1] Add generic `ServiceConfig` enum to `nv-core/config.rs` — flat vs instances deserialization with `#[serde(untagged)]` [owner:general-purpose]
-- [ ] [2.5] [P-2] Extend `Secrets` in `nv-core/config.rs` — instance-qualified env var loading for all services (`SERVICE_VAR_INSTANCENAME` pattern) [owner:general-purpose]
+- [x] [2.1] [P-1] Define `Checkable` trait in `tools/mod.rs` — `name()`, `check_read()`, `check_write()` with `CheckResult` enum [owner:general-purpose]
+- [x] [2.2] [P-1] Define `ServiceRegistry<T: Checkable>` in `tools/mod.rs` — `resolve()`, `get()`, `default()`, `iter()` [owner:general-purpose]
+- [x] [2.3] [P-1] Create `tools/check.rs` — `CheckReport` struct, `check_all()` orchestrator using FuturesUnordered, terminal formatter, JSON formatter [owner:general-purpose]
+- [x] [2.4] [P-1] Add generic `ServiceConfig` enum to `nv-core/config.rs` — flat vs instances deserialization with `#[serde(untagged)]` [owner:general-purpose]
+- [x] [2.5] [P-2] Extend `Secrets` in `nv-core/config.rs` — instance-qualified env var loading for all services (`SERVICE_VAR_INSTANCENAME` pattern) [owner:general-purpose]
 
 ## Implementation Batch
 

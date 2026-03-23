@@ -326,6 +326,123 @@ impl JiraConfig {
     }
 }
 
+// ── Generic ServiceConfig (flat vs multi-instance) ───────────────────
+
+/// Inner struct for a named-instance service configuration.
+///
+/// All services that support multi-instance use this as the `instances` value
+/// in `ServiceMultiConfig`. The key is the instance name (e.g. `"personal"`,
+/// `"llc"`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceInstanceConfig {
+    // Currently a marker type — individual services embed this in their own
+    // instance configs. This exists so the generic `ServiceConfig<T>` enum
+    // can be parameterized by the service-specific instance type.
+}
+
+/// Named-instance service config with optional project-to-instance routing.
+///
+/// Used as the `Multi` variant of `ServiceConfig<T>`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServiceMultiConfig<T> {
+    /// Named instances, keyed by instance name (e.g. `"personal"`, `"llc"`).
+    pub instances: HashMap<String, T>,
+    /// Maps project codes to instance names (e.g. `"OO"` → `"personal"`).
+    #[serde(default)]
+    pub project_map: HashMap<String, String>,
+}
+
+/// Generic flat-vs-instances configuration for any service.
+///
+/// Supports two TOML shapes, both backward-compatible:
+///
+/// **Flat (single-instance):**
+/// ```toml
+/// [stripe]
+/// # uses STRIPE_SECRET_KEY
+/// ```
+///
+/// **Multi-instance:**
+/// ```toml
+/// [stripe.instances.personal]
+/// # uses STRIPE_SECRET_KEY_PERSONAL
+///
+/// [stripe.instances.llc]
+/// # uses STRIPE_SECRET_KEY_LLC
+///
+/// [stripe.project_map]
+/// OO = "personal"
+/// CT = "llc"
+/// ```
+///
+/// `T` is the service-specific per-instance configuration struct (e.g. a unit
+/// struct for services with no per-instance config fields, or a struct carrying
+/// fields like a base URL).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum ServiceConfig<T>
+where
+    T: Clone,
+{
+    /// Flat single-instance format. `T` is the entire flat config.
+    Flat(T),
+    /// Multi-instance format with named instances and an optional project map.
+    Multi(ServiceMultiConfig<T>),
+}
+
+impl<T: Clone> ServiceConfig<T> {
+    /// Resolve which instance config to use for a given project code.
+    ///
+    /// For flat configs, always returns the single config as `("default", cfg)`.
+    /// For multi-instance, applies the resolution order:
+    /// 1. `project_map` lookup
+    /// 2. `"default"` instance
+    /// 3. First instance
+    pub fn resolve_instance(&self, project: &str) -> Option<(&str, &T)> {
+        match self {
+            ServiceConfig::Flat(cfg) => Some(("default", cfg)),
+            ServiceConfig::Multi(multi) => {
+                // 1. project_map lookup
+                if let Some(instance_name) = multi.project_map.get(project) {
+                    if let Some(cfg) = multi.instances.get(instance_name) {
+                        return Some((instance_name, cfg));
+                    }
+                }
+                // 2. "default" instance
+                if let Some(cfg) = multi.instances.get("default") {
+                    return Some(("default", cfg));
+                }
+                // 3. First instance
+                multi.instances.iter().next().map(|(k, v)| (k.as_str(), v))
+            }
+        }
+    }
+
+    /// Return all instance names and their configs.
+    ///
+    /// For flat configs, yields a single `("default", cfg)` pair.
+    pub fn all_instances(&self) -> Vec<(&str, &T)> {
+        match self {
+            ServiceConfig::Flat(cfg) => vec![("default", cfg)],
+            ServiceConfig::Multi(multi) => multi
+                .instances
+                .iter()
+                .map(|(k, v)| (k.as_str(), v))
+                .collect(),
+        }
+    }
+
+    /// Return the project map (empty for flat configs).
+    pub fn project_map(&self) -> &HashMap<String, String> {
+        static EMPTY: std::sync::OnceLock<HashMap<String, String>> =
+            std::sync::OnceLock::new();
+        match self {
+            ServiceConfig::Flat(_) => EMPTY.get_or_init(HashMap::new),
+            ServiceConfig::Multi(multi) => &multi.project_map,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct NexusAgent {
     pub name: String,
@@ -522,6 +639,57 @@ impl Secrets {
             .get(&key)
             .map(|s| s.as_str())
             .or(self.jira_username.as_deref())
+    }
+
+    // ── Generic instance-qualified env var helpers ───────────────────
+
+    /// Resolve an instance-qualified env var using the pattern
+    /// `{PREFIX}_{INSTANCE_UPPER}`, falling back to the unqualified `{PREFIX}`.
+    ///
+    /// This is the canonical mechanism for all multi-instance services.
+    ///
+    /// **Convention:**
+    /// - Flat config → `instance_name` is `"default"` → reads `{PREFIX}` directly
+    /// - Multi-instance → reads `{PREFIX}_{INSTANCE_UPPER}`, falls back to `{PREFIX}`
+    ///
+    /// **Example (Stripe):**
+    /// ```
+    /// // instance "personal"  → checks STRIPE_SECRET_KEY_PERSONAL, falls back to STRIPE_SECRET_KEY
+    /// // instance "default"   → checks STRIPE_SECRET_KEY_DEFAULT (unlikely), falls back to STRIPE_SECRET_KEY
+    /// secrets.service_secret("STRIPE_SECRET_KEY", "personal")
+    /// ```
+    pub fn service_secret(prefix: &str, instance_name: &str) -> Option<String> {
+        if instance_name != "default" {
+            let qualified = format!("{}_{}", prefix, instance_name.to_uppercase());
+            if let Ok(val) = std::env::var(&qualified) {
+                return Some(val);
+            }
+        }
+        std::env::var(prefix).ok()
+    }
+
+    /// Collect all instance-qualified secrets matching the pattern `{PREFIX}_*`.
+    ///
+    /// Returns a `HashMap<String, String>` keyed by the uppercase suffix after
+    /// the prefix (i.e. the instance name). The unqualified `{PREFIX}` var is
+    /// NOT included — it is treated as the flat-config fallback and accessed
+    /// via `service_secret(prefix, "default")`.
+    ///
+    /// **Example:**
+    /// ```
+    /// // Env: STRIPE_SECRET_KEY_PERSONAL=sk_personal, STRIPE_SECRET_KEY_LLC=sk_llc
+    /// let map = Secrets::collect_instance_secrets("STRIPE_SECRET_KEY");
+    /// // Returns: {"PERSONAL" => "sk_personal", "LLC" => "sk_llc"}
+    /// ```
+    pub fn collect_instance_secrets(prefix: &str) -> HashMap<String, String> {
+        let search_prefix = format!("{}_", prefix);
+        std::env::vars()
+            .filter_map(|(key, value)| {
+                key.strip_prefix(&search_prefix)
+                    .filter(|suffix| !suffix.is_empty())
+                    .map(|suffix| (suffix.to_string(), value))
+            })
+            .collect()
     }
 }
 

@@ -1,5 +1,6 @@
 pub mod ado;
 pub mod calendar;
+pub mod check;
 pub mod cloudflare;
 pub mod docker;
 pub mod doppler;
@@ -16,6 +17,137 @@ pub mod stripe;
 pub mod upstash;
 pub mod vercel;
 pub mod web;
+
+// ── Checkable trait ─────────────────────────────────────────────────
+
+/// Result of a single service connectivity probe.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum CheckResult {
+    /// Service responded successfully within the timeout.
+    Healthy {
+        /// Round-trip time in milliseconds.
+        latency_ms: u64,
+        /// Human-readable detail (e.g. authenticated account, version).
+        detail: String,
+    },
+    /// Service is reachable but something is wrong (e.g. auth degraded, quota).
+    Degraded {
+        /// Human-readable description of the degraded state.
+        message: String,
+    },
+    /// Service is unreachable or returned a fatal error.
+    Unhealthy {
+        /// Error description.
+        error: String,
+    },
+    /// Required credential (env var) is absent — service was never configured.
+    Missing {
+        /// The environment variable that is not set.
+        env_var: String,
+    },
+}
+
+/// A service that can validate its own connectivity and credentials.
+#[async_trait::async_trait]
+pub trait Checkable: Send + Sync {
+    /// Human-readable service name, e.g. `"stripe"` or `"jira/personal"`.
+    fn name(&self) -> &str;
+
+    /// Check read connectivity — lightweight GET or equivalent.
+    async fn check_read(&self) -> CheckResult;
+
+    /// Check write permissions — dry-run probe (expect 4xx, not 2xx).
+    ///
+    /// Returns `None` if the service has no writable endpoints to probe.
+    async fn check_write(&self) -> Option<CheckResult> {
+        None
+    }
+}
+
+// ── ServiceRegistry<T> ───────────────────────────────────────────────
+
+/// Generic registry holding one or more named instances of a `Checkable` service.
+///
+/// Supports both flat (single-instance) and multi-instance configurations.
+/// The resolution order for `resolve(project)` is:
+/// 1. `project_map` lookup → instance name → client
+/// 2. `"default"` instance (backward-compat flat configs)
+/// 3. First instance in the map
+pub struct ServiceRegistry<T: Checkable> {
+    /// Instance name → client.
+    instances: HashMap<String, T>,
+    /// Project code → instance name (from config's `project_map`).
+    project_map: HashMap<String, String>,
+}
+
+impl<T: Checkable> ServiceRegistry<T> {
+    /// Create a new registry with explicit instances and project map.
+    pub fn new(instances: HashMap<String, T>, project_map: HashMap<String, String>) -> Self {
+        Self {
+            instances,
+            project_map,
+        }
+    }
+
+    /// Create a registry with a single `"default"` instance.
+    pub fn single(instance: T) -> Self {
+        let mut instances = HashMap::new();
+        instances.insert("default".to_string(), instance);
+        Self {
+            instances,
+            project_map: HashMap::new(),
+        }
+    }
+
+    /// Resolve the correct client for a given project code.
+    ///
+    /// Resolution order:
+    /// 1. `project_map` → instance name → client
+    /// 2. `"default"` instance
+    /// 3. First instance
+    pub fn resolve(&self, project: &str) -> Option<&T> {
+        // 1. project_map
+        if let Some(instance_name) = self.project_map.get(project) {
+            if let Some(client) = self.instances.get(instance_name) {
+                return Some(client);
+            }
+        }
+        // 2. "default"
+        if let Some(client) = self.instances.get("default") {
+            return Some(client);
+        }
+        // 3. first
+        self.instances.values().next()
+    }
+
+    /// Direct instance lookup by name.
+    pub fn get(&self, instance: &str) -> Option<&T> {
+        self.instances.get(instance)
+    }
+
+    /// Return the default or first instance (for call sites without project context).
+    pub fn default(&self) -> Option<&T> {
+        self.instances
+            .get("default")
+            .or_else(|| self.instances.values().next())
+    }
+
+    /// Iterate all instances as `(instance_name, client)` pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &T)> {
+        self.instances.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    /// Returns true if the registry has no instances.
+    pub fn is_empty(&self) -> bool {
+        self.instances.is_empty()
+    }
+
+    /// Number of configured instances.
+    pub fn len(&self) -> usize {
+        self.instances.len()
+    }
+}
 
 use std::collections::HashMap;
 use std::path::PathBuf;

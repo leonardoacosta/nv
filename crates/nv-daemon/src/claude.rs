@@ -783,7 +783,7 @@ impl ClaudeClient {
                     self.spawn_config.real_home
                 ),
             )
-            .current_dir(format!("{}/dev", self.spawn_config.real_home))
+            .current_dir("/tmp")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -843,7 +843,7 @@ impl ClaudeClient {
                             self.spawn_config.real_home
                         ),
                     )
-                    .current_dir(format!("{}/dev", self.spawn_config.real_home))
+                    .current_dir("/tmp")
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
@@ -958,7 +958,7 @@ impl ClaudeClient {
                     self.spawn_config.real_home
                 ),
             )
-            .current_dir(format!("{}/dev", self.spawn_config.real_home))
+            .current_dir("/tmp")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1004,7 +1004,7 @@ impl ClaudeClient {
                             self.spawn_config.real_home
                         ),
                     )
-                    .current_dir(format!("{}/dev", self.spawn_config.real_home))
+                    .current_dir("/tmp")
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())

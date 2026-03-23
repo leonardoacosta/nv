@@ -64,8 +64,13 @@ fn api_key() -> Result<String> {
 }
 
 /// Read the PostHog host (default: `app.posthog.com`).
+/// Strips any protocol prefix (https://, http://) if present.
 fn host() -> String {
-    std::env::var("POSTHOG_HOST").unwrap_or_else(|_| "app.posthog.com".into())
+    let raw = std::env::var("POSTHOG_HOST").unwrap_or_else(|_| "app.posthog.com".into());
+    raw.trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .to_string()
 }
 
 /// Resolve a project code (e.g. "oo", "tc") to a PostHog project ID.

@@ -202,6 +202,29 @@ impl ObligationStore {
             .map_err(|e| anyhow::anyhow!("list_by_owner query failed: {e}"))
     }
 
+    /// List all obligations, ordered by priority ASC then created_at ASC.
+    pub fn list_all(&self) -> Result<Vec<Obligation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, created_at, updated_at
+             FROM obligations
+             ORDER BY priority ASC, created_at ASC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_all query failed: {e}"))
+    }
+
     /// Update the status of an obligation and touch `updated_at`.
     ///
     /// Returns `true` if a row was updated, `false` if the id was not found.

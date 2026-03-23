@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -9,12 +9,15 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use nv_core::types::{CliCommand, CliRequest, CronEvent, Trigger};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot};
+use tokio::sync::Mutex as TokioMutex;
 
 use crate::health::HealthState;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
 use crate::channels::teams::types::{ChangeNotificationCollection, ChatMessage};
+use crate::obligation_store::ObligationStore;
+use crate::dashboard::{DashboardState, build_dashboard_router};
 
 /// Shared state for the HTTP server.
 #[derive(Clone)]
@@ -23,13 +26,19 @@ pub struct HttpState {
     pub health: Arc<HealthState>,
     pub stats_db_path: PathBuf,
     /// Shared buffer for Teams webhook messages. None if Teams is not configured.
-    pub teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
+    pub teams_message_buffer: Option<Arc<TokioMutex<VecDeque<ChatMessage>>>>,
     /// Teams client for fetching full message content from notifications.
     pub teams_client: Option<Arc<crate::channels::teams::client::TeamsClient>>,
     /// Jira webhook shared state. None if Jira webhooks are not configured.
     pub jira_webhook_state: Option<Arc<JiraWebhookState>>,
     /// Weekly budget in USD for Claude API usage stats.
     pub weekly_budget_usd: f64,
+    /// Obligation store for dashboard API. None if the DB failed to open.
+    pub obligation_store: Option<Arc<Mutex<ObligationStore>>>,
+    /// `~/.nv` base path (for memory files and config.toml).
+    pub nv_base: PathBuf,
+    /// Serialized config JSON for the dashboard (secrets redacted).
+    pub config_json: Arc<serde_json::Value>,
 }
 
 /// Request body for POST /ask.
@@ -53,6 +62,15 @@ pub struct DigestResponse {
 
 /// Build the axum router with all HTTP endpoints.
 pub fn build_router(state: Arc<HttpState>) -> Router {
+    // Build the dashboard sub-router (API endpoints + SPA serving)
+    let dashboard_state = DashboardState {
+        health: Arc::clone(&state.health),
+        obligation_store: state.obligation_store.clone(),
+        nv_base: state.nv_base.clone(),
+        config_json: Arc::clone(&state.config_json),
+    };
+    let dashboard_router = build_dashboard_router(dashboard_state);
+
     let mut router = Router::new()
         .route("/health", get(health_handler))
         .route("/ask", post(ask_handler))
@@ -68,7 +86,10 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         router = router.merge(jira_router);
     }
 
-    router.with_state(state)
+    // Merge the dashboard router (API + SPA). The dashboard fallback must be last.
+    router
+        .with_state(state)
+        .merge(dashboard_router)
 }
 
 /// Query params for Teams webhook validation handshake.
@@ -319,10 +340,13 @@ pub async fn run_http_server(
     trigger_tx: mpsc::UnboundedSender<Trigger>,
     health: Arc<HealthState>,
     stats_db_path: PathBuf,
-    teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
+    teams_message_buffer: Option<Arc<TokioMutex<VecDeque<ChatMessage>>>>,
     teams_client: Option<Arc<crate::channels::teams::client::TeamsClient>>,
     jira_webhook_state: Option<Arc<JiraWebhookState>>,
     weekly_budget_usd: f64,
+    obligation_store: Option<Arc<Mutex<ObligationStore>>>,
+    nv_base: PathBuf,
+    config_json: Arc<serde_json::Value>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -332,6 +356,9 @@ pub async fn run_http_server(
         teams_client,
         jira_webhook_state,
         weekly_budget_usd,
+        obligation_store,
+        nv_base,
+        config_json,
     });
     let app = build_router(state);
 
@@ -361,11 +388,14 @@ mod tests {
         let state = Arc::new(HttpState {
             trigger_tx: tx,
             health,
-            stats_db_path: db_path,
+            stats_db_path: db_path.clone(),
             teams_message_buffer: None,
             teams_client: None,
             jira_webhook_state: None,
             weekly_budget_usd: 50.0,
+            obligation_store: None,
+            nv_base: tmp.path().to_path_buf(),
+            config_json: Arc::new(serde_json::json!({})),
         });
         (state, rx, tmp)
     }

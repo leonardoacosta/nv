@@ -1,5 +1,6 @@
 mod account;
 mod agent;
+mod dashboard;
 mod aggregation;
 mod alert_rules;
 mod bash;
@@ -779,6 +780,23 @@ async fn main() -> anyhow::Result<()> {
     let http_health = Arc::clone(&health_state);
     let stats_db_path = nv_base.join("messages.db");
     let http_weekly_budget = config.agent.weekly_budget_usd;
+
+    // Build a redacted config JSON for the dashboard API (no secrets).
+    // Read the raw TOML file and convert to JSON so we don't need Serialize on Config.
+    let config_json = Arc::new({
+        let config_path = nv_base.join("config.toml");
+        match std::fs::read_to_string(&config_path)
+            .ok()
+            .and_then(|raw| raw.parse::<toml::Value>().ok())
+            .and_then(|v| serde_json::to_value(v).ok())
+        {
+            Some(v) => v,
+            None => serde_json::json!({}),
+        }
+    });
+    let http_nv_base = nv_base.clone();
+    let http_obligation_store = obligation_store.clone();
+
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -789,6 +807,9 @@ async fn main() -> anyhow::Result<()> {
             teams_client_for_http,
             jira_webhook_state,
             http_weekly_budget,
+            http_obligation_store,
+            http_nv_base,
+            config_json,
         )
         .await
         {

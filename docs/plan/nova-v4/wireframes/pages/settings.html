@@ -3,8 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nova — Settings</title>
+  <title>Nova -- Settings</title>
   <link rel="stylesheet" href="../styles.css">
+  <style>
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-label { font-size: 12px; color: var(--text-muted); width: 200px; }
+    .setting-value input, .setting-value select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-family: var(--font); font-size: 12px; width: 180px; }
+    .setting-value select { width: 194px; }
+    .toggle { width: 36px; height: 20px; background: var(--border); border-radius: 10px; position: relative; cursor: pointer; display: inline-block; }
+    .toggle.on { background: var(--success); }
+    .toggle::after { content: ''; width: 16px; height: 16px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; }
+    .toggle.on::after { left: 18px; }
+    .mem-file { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 4px; font-size: 12px; }
+    .mem-file:hover { background: var(--surface-hover); cursor: pointer; }
+    .mem-preview { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-size: 12px; margin-top: 8px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -14,67 +28,100 @@
     <a href="../index.html" class="nav-item">Dashboard</a>
     <a href="obligations.html" class="nav-item">Obligations</a>
     <div class="nav-section">Projects</div>
-    <a href="project.html" class="nav-item">Project Health</a>
-    <a href="sessions.html" class="nav-item">Nexus Sessions</a>
+    <a href="project.html" class="nav-item">Projects</a>
+    <a href="sessions.html" class="nav-item">Nexus</a>
     <div class="nav-section">System</div>
     <a href="integrations.html" class="nav-item">Integrations</a>
+    <a href="usage.html" class="nav-item">Usage</a>
     <a href="settings.html" class="nav-item active">Settings</a>
   </nav>
-
   <main class="main">
     <div class="section-header">
       <h2 class="section-title">Settings</h2>
+      <button class="btn btn-sm btn-primary">Save Changes</button>
     </div>
 
+    <!-- Agent Config (editable) -->
     <div class="card" style="margin-bottom:16px;">
       <div class="card-title" style="margin-bottom:12px;">Agent</div>
-      <table>
-        <tbody>
-          <tr><td style="width:200px;color:var(--text-muted);">Model</td><td>claude-sonnet-4-6</td></tr>
-          <tr><td style="color:var(--text-muted);">Think mode</td><td>enabled</td></tr>
-          <tr><td style="color:var(--text-muted);">Max workers</td><td>3</td></tr>
-          <tr><td style="color:var(--text-muted);">Worker timeout</td><td>300s</td></tr>
-          <tr><td style="color:var(--text-muted);">Weekly budget</td><td>$50.00 (alert at 90%)</td></tr>
-          <tr><td style="color:var(--text-muted);">Digest interval</td><td>60 min</td></tr>
-        </tbody>
-      </table>
+      <div class="setting-row"><span class="setting-label">Model</span><div class="setting-value"><select><option selected>claude-sonnet-4-6</option><option>claude-opus-4-6</option><option>claude-haiku-4-5</option></select></div></div>
+      <div class="setting-row"><span class="setting-label">Think mode</span><div class="setting-value"><span class="toggle on"></span></div></div>
+      <div class="setting-row"><span class="setting-label">Max workers</span><div class="setting-value"><input type="number" value="3" min="1" max="5"></div></div>
+      <div class="setting-row"><span class="setting-label">Worker timeout (sec)</span><div class="setting-value"><input type="number" value="300"></div></div>
+      <div class="setting-row"><span class="setting-label">Weekly budget ($)</span><div class="setting-value"><input type="number" value="50.00" step="5"></div></div>
+      <div class="setting-row"><span class="setting-label">Budget alert (%)</span><div class="setting-value"><input type="number" value="90" min="50" max="100"></div></div>
+      <div class="setting-row"><span class="setting-label">Digest interval (min)</span><div class="setting-value"><input type="number" value="60"></div></div>
     </div>
 
+    <!-- Quiet Hours -->
     <div class="card" style="margin-bottom:16px;">
       <div class="card-title" style="margin-bottom:12px;">Quiet Hours</div>
-      <table>
-        <tbody>
-          <tr><td style="width:200px;color:var(--text-muted);">Start</td><td>23:00 CT</td></tr>
-          <tr><td style="color:var(--text-muted);">End</td><td>07:00 CT</td></tr>
-          <tr><td style="color:var(--text-muted);">P0 override</td><td>Yes</td></tr>
-        </tbody>
-      </table>
+      <div class="setting-row"><span class="setting-label">Start</span><div class="setting-value"><input type="time" value="23:00"></div></div>
+      <div class="setting-row"><span class="setting-label">End</span><div class="setting-value"><input type="time" value="07:00"></div></div>
+      <div class="setting-row"><span class="setting-label">P0 override</span><div class="setting-value"><span class="toggle on"></span></div></div>
     </div>
 
+    <!-- Obligation Detection -->
     <div class="card" style="margin-bottom:16px;">
       <div class="card-title" style="margin-bottom:12px;">Obligation Detection</div>
-      <table>
-        <tbody>
-          <tr><td style="width:200px;color:var(--text-muted);">Auto-detect</td><td>enabled (all channels)</td></tr>
-          <tr><td style="color:var(--text-muted);">Default priority</td><td>P2</td></tr>
-          <tr><td style="color:var(--text-muted);">Overdue threshold</td><td>2 hours</td></tr>
-          <tr><td style="color:var(--text-muted);">Alert channels</td><td>Telegram (P0-P1), Dashboard only (P2+)</td></tr>
-        </tbody>
-      </table>
+      <div class="setting-row"><span class="setting-label">Auto-detect</span><div class="setting-value"><span class="toggle on"></span></div></div>
+      <div class="setting-row"><span class="setting-label">Default priority</span><div class="setting-value"><select><option>P1</option><option selected>P2</option><option>P3</option></select></div></div>
+      <div class="setting-row"><span class="setting-label">Overdue threshold (h)</span><div class="setting-value"><input type="number" value="2"></div></div>
+      <div class="setting-row"><span class="setting-label">Alert channel</span><div class="setting-value"><select><option selected>Telegram (P0-P1), Dashboard (P2+)</option><option>Telegram (all)</option><option>Dashboard only</option></select></div></div>
     </div>
 
+    <!-- Memory Viewer -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">Nova Memory</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">~/.nv/memory/ -- Nova reads and writes these files between sessions for continuity.</div>
+
+      <div class="mem-file">
+        <span>decisions.md</span>
+        <span style="color:var(--text-muted);font-size:11px;">1.2 KB -- updated 2h ago</span>
+      </div>
+      <div class="mem-file" style="background:var(--surface-hover);">
+        <span>conversations.md</span>
+        <span style="color:var(--text-muted);font-size:11px;">4.8 KB -- updated 12m ago</span>
+      </div>
+      <!-- Preview of selected file -->
+      <div class="mem-preview">## Recent Conversations
+
+### 2026-03-23 12:30 -- Telegram (Leo)
+Leo asked about OO deploy failures. Investigated via Sentry
+and Vercel tools. Root cause: auth.ts TypeError from commit
+abc1234. Started Nexus session to fix. CI now passing.
+
+### 2026-03-23 10:15 -- Discord (client_name)
+Client requested landing page copy update for OO. Created
+obligation (P1). Notified Leo via Telegram.
+
+### 2026-03-23 08:00 -- Cron (digest)
+Morning digest: 2 deploys succeeded overnight (TC, SS).
+No errors. 1 stale Jira ticket flagged (OO-145).</div>
+
+      <div class="mem-file">
+        <span>projects.md</span>
+        <span style="color:var(--text-muted);font-size:11px;">2.1 KB -- updated 1d ago</span>
+      </div>
+      <div class="mem-file">
+        <span>user.md</span>
+        <span style="color:var(--text-muted);font-size:11px;">0.8 KB -- updated 3d ago</span>
+      </div>
+      <div class="mem-file">
+        <span>soul.md</span>
+        <span style="color:var(--text-muted);font-size:11px;">1.5 KB -- updated 5d ago</span>
+      </div>
+    </div>
+
+    <!-- System Info (read-only) -->
     <div class="card">
       <div class="card-title" style="margin-bottom:12px;">System</div>
-      <table>
-        <tbody>
-          <tr><td style="width:200px;color:var(--text-muted);">Version</td><td>0.4.0-dev</td></tr>
-          <tr><td style="color:var(--text-muted);">Uptime</td><td>2h 14m</td></tr>
-          <tr><td style="color:var(--text-muted);">Config</td><td>~/.nv/nv.toml</td></tr>
-          <tr><td style="color:var(--text-muted);">Secrets</td><td>Doppler nova/prd (33 secrets)</td></tr>
-          <tr><td style="color:var(--text-muted);">Database</td><td>~/.nv/messages.db (SQLite)</td></tr>
-          <tr><td style="color:var(--text-muted);">Health</td><td>http://localhost:8400/health</td></tr>
-        </tbody>
-      </table>
+      <div class="setting-row"><span class="setting-label">Version</span><span>0.4.0-dev</span></div>
+      <div class="setting-row"><span class="setting-label">Uptime</span><span>2h 14m</span></div>
+      <div class="setting-row"><span class="setting-label">Config</span><span>~/.nv/nv.toml</span></div>
+      <div class="setting-row"><span class="setting-label">Secrets</span><span>Doppler nova/prd (33 secrets)</span></div>
+      <div class="setting-row"><span class="setting-label">Database</span><span>~/.nv/messages.db (SQLite)</span></div>
+      <div class="setting-row"><span class="setting-label">Health</span><span>http://localhost:8400/health</span></div>
     </div>
   </main>
 </div>

@@ -3,8 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nova — Obligations</title>
+  <title>Nova -- Obligations</title>
   <link rel="stylesheet" href="../styles.css">
+  <style>
+    .obl-section { margin-bottom: 32px; }
+    .obl-section-header { font-size: 13px; font-weight: 600; padding: 8px 0; border-bottom: 1px solid var(--border); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .obl-item { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; background: var(--surface); }
+    .obl-item:hover { background: var(--surface-hover); }
+    .obl-priority { width: 4px; border-radius: 2px; flex-shrink: 0; }
+    .obl-content { flex: 1; min-width: 0; }
+    .obl-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; align-items: flex-end; }
+    .obl-meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .obl-title { font-weight: 600; font-size: 13px; }
+    .owner-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+    .owner-nova { background: #0d2818; color: var(--success); border: 1px solid #1a4a2a; }
+    .owner-leo { background: #1a1030; color: #c084fc; border: 1px solid #2a1a4a; }
+    .handled-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -12,12 +27,13 @@
     <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
-    <a href="obligations.html" class="nav-item active">Obligations <span class="badge badge-overdue" style="float:right;">3</span></a>
+    <a href="obligations.html" class="nav-item active">Obligations <span class="badge badge-overdue" style="float:right;">4</span></a>
     <div class="nav-section">Projects</div>
-    <a href="project.html" class="nav-item">Project Health</a>
-    <a href="sessions.html" class="nav-item">Nexus Sessions</a>
+    <a href="project.html" class="nav-item">Projects</a>
+    <a href="sessions.html" class="nav-item">Nexus</a>
     <div class="nav-section">System</div>
     <a href="integrations.html" class="nav-item">Integrations</a>
+    <a href="usage.html" class="nav-item">Usage</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
 
@@ -25,132 +41,114 @@
     <div class="section-header">
       <h2 class="section-title">Obligations</h2>
       <div>
-        <button class="btn btn-sm">Filter: All</button>
-        <button class="btn btn-sm">Sort: Urgency</button>
-        <a href="obligation-history.html" class="btn btn-sm">History →</a>
+        <button class="btn btn-sm">All</button>
+        <button class="btn btn-sm" style="opacity:0.5;">Nova only</button>
+        <button class="btn btn-sm" style="opacity:0.5;">Leo only</button>
+        <a href="obligation-history.html" class="btn btn-sm">History</a>
       </div>
     </div>
 
-    <!-- Urgency-sorted obligation feed (unified alerts + obligations) -->
+    <!-- NOVA CAN HANDLE -->
+    <div class="obl-section">
+      <div class="obl-section-header">
+        <span class="owner-tag owner-nova">NOVA CAN HANDLE</span>
+        <span style="color:var(--text-muted);font-size:11px;">Nova has the tools and context to resolve these autonomously</span>
+      </div>
 
-    <!-- P0 — urgent alert -->
-    <div class="card obligation-item" style="border-left:3px solid var(--danger);margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <div class="obl-item">
+        <div class="obl-priority" style="background:var(--danger);"></div>
+        <div class="obl-content">
+          <div style="display:flex;align-items:center;gap:6px;">
             <span class="badge badge-p0">P0</span>
             <span class="badge badge-overdue">overdue 12m</span>
-            <span style="font-size:11px;color:var(--text-muted);">Deploy alert</span>
+            <span class="obl-title">OO deploy failed -- TypeError in auth.ts</span>
           </div>
-          <div style="font-weight:600;margin-bottom:4px;">OO deploy failed — TypeError in auth.ts</div>
-          <div style="font-size:12px;color:var(--text-muted);">
-            Source: Cron (deploy_watch) · Detected 12m ago<br>
-            Vercel: ERROR · Sentry: 5 correlated errors
-          </div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-            <span style="font-size:11px;color:var(--accent);">NOVA -- can handle autonomously</span>
-            <span style="font-size:11px;color:var(--text-muted);">→ /ci:gh --fix via Nexus</span>
+          <div class="obl-meta">
+            Cron (deploy_watch) -- Vercel ERROR + 5 Sentry errors correlated<br>
+            Action: <code>/ci:gh --fix</code> via Nexus on homelab
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <button class="btn btn-sm btn-primary">Delegate to Nova</button>
+        <div class="obl-actions">
+          <button class="btn btn-sm btn-primary">Let Nova Fix</button>
           <button class="btn btn-sm">Investigate</button>
-          <button class="btn btn-sm">Dismiss</button>
         </div>
       </div>
-    </div>
 
-    <!-- P1 — client request, Leo's responsibility -->
-    <div class="card obligation-item" style="border-left:3px solid var(--warning);margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-            <span class="badge badge-p1">P1</span>
-            <span class="badge badge-open">open</span>
-            <span style="font-size:11px;color:var(--text-muted);">Client request</span>
-          </div>
-          <div style="font-weight:600;margin-bottom:4px;">Update landing page copy</div>
-          <div style="font-size:12px;color:var(--text-muted);">
-            Source: Discord · @client_name · 3h ago<br>
-            Project: OO · Channel: #general
-          </div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-            <span style="font-size:11px;color:var(--warning);">LEO -- requires human judgment</span>
-            <span style="font-size:11px;color:var(--text-muted);">Content decision required</span>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <button class="btn btn-sm">Acknowledge</button>
-          <button class="btn btn-sm">Create Jira Ticket</button>
-          <button class="btn btn-sm">Dismiss</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- P2 — manager ask, Leo's responsibility -->
-    <div class="card obligation-item" style="border-left:3px solid var(--accent);margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+      <div class="obl-item">
+        <div class="obl-priority" style="background:var(--accent);"></div>
+        <div class="obl-content">
+          <div style="display:flex;align-items:center;gap:6px;">
             <span class="badge badge-p2">P2</span>
             <span class="badge badge-open">open</span>
-            <span style="font-size:11px;color:var(--text-muted);">Manager request</span>
+            <span class="obl-title">Client requesting invoice status</span>
           </div>
-          <div style="font-weight:600;margin-bottom:4px;">Review PR for auth migration</div>
-          <div style="font-size:12px;color:var(--text-muted);">
-            Source: Teams · #engineering · 45m ago<br>
-            Project: CT
-          </div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-            <span style="font-size:11px;color:var(--warning);">LEO -- requires human judgment</span>
-            <span style="font-size:11px;color:var(--text-muted);">Code review requires human judgment</span>
+          <div class="obl-meta">
+            Email -- client@modernvisa.com -- 20m ago -- Project: MV<br>
+            Action: <code>stripe_invoices("open")</code> lookup + draft reply
           </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
+        <div class="obl-actions">
+          <button class="btn btn-sm btn-primary">Let Nova Draft</button>
+          <button class="btn btn-sm">I'll Handle</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LEO MUST HANDLE -->
+    <div class="obl-section">
+      <div class="obl-section-header">
+        <span class="owner-tag owner-leo">LEO MUST HANDLE</span>
+        <span style="color:var(--text-muted);font-size:11px;">Requires human judgment, approval, or domain knowledge</span>
+      </div>
+
+      <div class="obl-item">
+        <div class="obl-priority" style="background:var(--warning);"></div>
+        <div class="obl-content">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="badge badge-p1">P1</span>
+            <span class="badge badge-open">3h</span>
+            <span class="obl-title">Update landing page copy</span>
+          </div>
+          <div class="obl-meta">
+            <img src="https://svgl.app/library/discord.svg" style="width:12px;height:12px;vertical-align:middle;" alt=""> Discord -- @client_name in #general -- Project: OO<br>
+            Why Leo: Content decision -- Nova doesn't know what copy you want
+          </div>
+        </div>
+        <div class="obl-actions">
+          <button class="btn btn-sm">Acknowledge</button>
+          <button class="btn btn-sm">Create Ticket</button>
+          <button class="btn btn-sm" style="opacity:0.5;">Dismiss</button>
+        </div>
+      </div>
+
+      <div class="obl-item">
+        <div class="obl-priority" style="background:var(--accent);"></div>
+        <div class="obl-content">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="badge badge-p2">P2</span>
+            <span class="badge badge-open">45m</span>
+            <span class="obl-title">Review PR for auth migration</span>
+          </div>
+          <div class="obl-meta">
+            <img src="https://svgl.app/library/microsoft-teams.svg" style="width:12px;height:12px;vertical-align:middle;" alt=""> Teams -- #engineering -- Project: CT<br>
+            Why Leo: Code review requires human judgment
+          </div>
+        </div>
+        <div class="obl-actions">
           <button class="btn btn-sm">Acknowledge</button>
           <button class="btn btn-sm">Open PR</button>
         </div>
       </div>
     </div>
 
-    <!-- P2 — client request, Nova could help -->
-    <div class="card obligation-item" style="border-left:3px solid var(--accent);margin-bottom:8px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-            <span class="badge badge-p2">P2</span>
-            <span class="badge badge-open">open</span>
-            <span style="font-size:11px;color:var(--text-muted);">Client inquiry</span>
-          </div>
-          <div style="font-weight:600;margin-bottom:4px;">Client requesting invoice status</div>
-          <div style="font-size:12px;color:var(--text-muted);">
-            Source: Email · client@modernvisa.com · 20m ago<br>
-            Project: MV
-          </div>
-          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
-            <span style="font-size:11px;color:var(--accent);">NOVA -- can research</span>
-            <span style="font-size:11px;color:var(--text-muted);">→ stripe_invoices("open") + draft reply</span>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <button class="btn btn-sm btn-primary">Ask Nova to Draft</button>
-          <button class="btn btn-sm">Acknowledge</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Handled today (collapsed) -->
-    <div class="section-header" style="margin-top:24px;">
-      <h2 class="section-title">Handled Today (5)</h2>
-    </div>
-    <div class="card" style="opacity:0.7;">
-      <div style="font-size:12px;line-height:2;">
-        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">2h ago</span> — Deploy OO fix <span class="badge badge-ack" style="font-size:10px;">nova</span><br>
-        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">3h ago</span> — Responded to TC standup <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">leo</span><br>
-        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">4h ago</span> — Reviewed SS pull request <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">leo</span><br>
-        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">5h ago</span> — Stripe invoice sent for MV <span class="badge badge-ack" style="font-size:10px;">nova</span><br>
-        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">6h ago</span> — ADO pipeline approved <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">leo</span>
-      </div>
+    <!-- Handled Today -->
+    <div class="obl-section">
+      <div class="obl-section-header"><span style="color:var(--text-muted);">Handled Today (5)</span></div>
+      <div class="handled-item"><span class="dot dot-ok"></span> <span class="owner-tag owner-nova" style="font-size:10px;">nova</span> 2h ago -- Deploy OO fix via Nexus</div>
+      <div class="handled-item"><span class="dot dot-ok"></span> <span class="owner-tag owner-leo" style="font-size:10px;">leo</span> 3h ago -- Responded to TC standup</div>
+      <div class="handled-item"><span class="dot dot-ok"></span> <span class="owner-tag owner-leo" style="font-size:10px;">leo</span> 4h ago -- Reviewed SS pull request</div>
+      <div class="handled-item"><span class="dot dot-ok"></span> <span class="owner-tag owner-nova" style="font-size:10px;">nova</span> 5h ago -- Stripe invoice lookup for MV</div>
+      <div class="handled-item"><span class="dot dot-ok"></span> <span class="owner-tag owner-leo" style="font-size:10px;">leo</span> 6h ago -- ADO pipeline approved</div>
     </div>
   </main>
 </div>

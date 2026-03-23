@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nova -- Integrations</title>
   <link rel="stylesheet" href="../styles.css">
+  <style>
+    .int-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border); }
+    .int-card:hover { background: var(--surface-hover); }
+    .int-icon { width: 28px; height: 28px; flex-shrink: 0; }
+    .int-icon img { width: 28px; height: 28px; }
+    .int-info { flex: 1; }
+    .int-name { font-weight: 600; font-size: 13px; }
+    .int-detail { font-size: 11px; color: var(--text-muted); }
+    .int-stats { text-align: right; font-size: 11px; color: var(--text-muted); }
+    .config-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 8px; }
+    .config-field { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .config-field:last-child { border-bottom: none; }
+    .config-field input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 4px; font-family: var(--font); font-size: 12px; width: 200px; }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -14,208 +28,102 @@
     <a href="../index.html" class="nav-item">Dashboard</a>
     <a href="obligations.html" class="nav-item">Obligations</a>
     <div class="nav-section">Projects</div>
-    <a href="project.html" class="nav-item">Project Health</a>
-    <a href="sessions.html" class="nav-item">Nexus Sessions</a>
+    <a href="project.html" class="nav-item">Projects</a>
+    <a href="sessions.html" class="nav-item">Nexus</a>
     <div class="nav-section">System</div>
     <a href="integrations.html" class="nav-item active">Integrations</a>
+    <a href="usage.html" class="nav-item">Usage</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
-
   <main class="main">
     <div class="section-header">
       <h2 class="section-title">Integrations</h2>
       <button class="btn btn-sm">Run Health Check</button>
     </div>
 
+    <!-- FAILING / NOT CONFIGURED (bubbled to top) -->
+    <div class="card" style="margin-bottom:16px;border-color:#3f1a1a;">
+      <div class="card-title" style="margin-bottom:4px;color:var(--danger);">Needs Attention</div>
+      <div class="int-card">
+        <div class="int-icon"><img src="https://svgl.app/library/home-assistant.svg" alt="HA"></div>
+        <div class="int-info">
+          <div class="int-name"><span class="dot dot-err"></span>iMessage (BlueBubbles)</div>
+          <div class="int-detail">Not configured -- BlueBubbles server URL not set</div>
+        </div>
+        <div class="int-stats">--</div>
+        <button class="btn btn-sm btn-primary">Setup</button>
+      </div>
+      <!-- Setup modal wireframe -->
+      <div class="config-modal" style="margin:0 12px 12px;">
+        <div style="font-size:12px;font-weight:600;margin-bottom:8px;">Configure iMessage (BlueBubbles)</div>
+        <div class="config-field">
+          <span style="font-size:12px;color:var(--text-muted);">BlueBubbles URL</span>
+          <input type="text" placeholder="http://mac.tailnet:1234">
+        </div>
+        <div class="config-field">
+          <span style="font-size:12px;color:var(--text-muted);">Password</span>
+          <input type="password" placeholder="stored in Doppler">
+        </div>
+        <div class="config-field">
+          <span style="font-size:12px;color:var(--text-muted);">Poll interval</span>
+          <input type="text" value="10s">
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button class="btn btn-sm btn-primary">Save + Test</button>
+          <button class="btn btn-sm">Cancel</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Channels -->
     <div class="card" style="margin-bottom:16px;">
       <div class="card-title" style="margin-bottom:4px;">Channels</div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/telegram.svg" alt="Telegram"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Telegram</div>
-          <div class="integration-detail">chat_id: 7380462766 / @Nova_acosta_bot</div>
-        </div>
-        <div class="integration-stats">24h: 14 inbound / 28 outbound<br>Last: 12m ago</div>
+      <div class="int-card">
+        <div class="int-icon"><img src="https://svgl.app/library/telegram.svg"></div>
+        <div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Telegram</div><div class="int-detail">@Nova_acosta_bot / chat_id: 7380462766</div></div>
+        <div class="int-stats">24h: 14 in / 28 out<br>Last: 12m ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/discord.svg" alt="Discord"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Discord</div>
-          <div class="integration-detail">Gateway connected / 1 server / 1 channel</div>
-        </div>
-        <div class="integration-stats">24h: 3 inbound / 0 outbound<br>Last: 1h ago</div>
+      <div class="int-card">
+        <div class="int-icon"><img src="https://svgl.app/library/discord.svg"></div>
+        <div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Discord</div><div class="int-detail">Gateway connected / 1 server</div></div>
+        <div class="int-stats">24h: 3 in / 0 out<br>Last: 1h ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/microsoft-teams.svg" alt="Teams"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-warn"></span>Teams</div>
-          <div class="integration-detail">Webhook relay / Graph API polling</div>
-        </div>
-        <div class="integration-stats">24h: 5 inbound / 2 outbound<br>Last: 45m ago</div>
+      <div class="int-card">
+        <div class="int-icon"><img src="https://svgl.app/library/microsoft-teams.svg"></div>
+        <div class="int-info"><div class="int-name"><span class="dot dot-warn"></span>Teams</div><div class="int-detail">Webhook relay / Graph API</div></div>
+        <div class="int-stats">24h: 5 in / 2 out<br>Last: 45m ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/microsoft-outlook.svg" alt="Email"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Email</div>
-          <div class="integration-detail">MS Graph / Inbox / 60s polling</div>
-        </div>
-        <div class="integration-stats">24h: 2 inbound<br>Last: 20m ago</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://cdn.simpleicons.org/apple/FFFFFF" alt="iMessage"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-off"></span>iMessage</div>
-          <div class="integration-detail">BlueBubbles / Not configured</div>
-        </div>
-        <div class="integration-stats">--</div>
-        <button class="btn btn-sm">Setup</button>
-      </div>
-    </div>
-
-    <!-- Tools — Developer & CI -->
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:4px;">Tools -- Developer and CI</div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://cdn.simpleicons.org/jira/2684FF" alt="Jira"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Jira</div>
-          <div class="integration-detail">2 instances (personal, llc) / 4 project mappings</div>
-        </div>
-        <div class="integration-stats">24h: 24 calls / 100% success<br>Avg: 420ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://cdn.simpleicons.org/azuredevops/0078D7" alt="ADO"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Azure DevOps</div>
-          <div class="integration-detail">org: pricelessdev / PAT auth</div>
-        </div>
-        <div class="integration-stats">24h: 6 calls / 100% success<br>Avg: 380ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/github_dark.svg" alt="GitHub"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>GitHub</div>
-          <div class="integration-detail">gh CLI / OAuth</div>
-        </div>
-        <div class="integration-stats">24h: 8 calls / 100% success<br>Avg: 250ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/vercel_dark.svg" alt="Vercel"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Vercel</div>
-          <div class="integration-detail">API token / All projects</div>
-        </div>
-        <div class="integration-stats">24h: 12 calls / 100% success<br>Avg: 680ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/sentry.svg" alt="Sentry"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Sentry</div>
-          <div class="integration-detail">org: leonardoacosta</div>
-        </div>
-        <div class="integration-stats">24h: 10 calls / 90% success<br>Avg: 520ms</div>
+      <div class="int-card">
+        <div class="int-icon"><img src="https://svgl.app/library/microsoft-outlook.svg"></div>
+        <div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Email</div><div class="int-detail">MS Graph / Inbox / 60s poll</div></div>
+        <div class="int-stats">24h: 2 in<br>Last: 20m ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
     </div>
 
-    <!-- Tools — Finance & Data -->
+    <!-- Tools -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:4px;">Tools -- Finance and Data</div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/stripe.svg" alt="Stripe"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Stripe</div>
-          <div class="integration-detail">Live mode / 1 account</div>
-        </div>
-        <div class="integration-stats">24h: 4 calls / 100% success<br>Avg: 890ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/neon.svg" alt="Neon"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Neon</div>
-          <div class="integration-detail">5 project connections</div>
-        </div>
-        <div class="integration-stats">24h: 2 calls / 100% success<br>Avg: 150ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon" style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--success);border:1px solid var(--border);border-radius:4px;">PL</div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Plaid</div>
-          <div class="integration-detail">cortex-postgres read-only</div>
-        </div>
-        <div class="integration-stats">24h: 0 calls<br>Last: 2d ago</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
+      <div class="card-title" style="margin-bottom:4px;">Developer and CI</div>
+      <div class="int-card"><div class="int-icon"><img src="https://cdn.simpleicons.org/jira/2684FF"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Jira</div><div class="int-detail">2 instances (personal, llc)</div></div><div class="int-stats">24h: 24 / 100%<br>420ms avg</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/azure.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Azure DevOps</div><div class="int-detail">org: pricelessdev / PAT</div></div><div class="int-stats">24h: 6 / 100%<br>380ms avg</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/github_dark.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>GitHub</div><div class="int-detail">gh CLI / OAuth</div></div><div class="int-stats">24h: 8 / 100%<br>250ms avg</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/vercel_dark.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Vercel</div><div class="int-detail">API token / all projects</div></div><div class="int-stats">24h: 12 / 100%<br>680ms avg</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/sentry.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Sentry</div><div class="int-detail">org: leonardoacosta</div></div><div class="int-stats">24h: 10 / 90%<br>520ms avg</div><button class="btn btn-sm">Configure</button></div>
     </div>
 
-    <!-- Tools — Infrastructure -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:4px;">Tools -- Infrastructure</div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/home-assistant.svg" alt="HA"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Home Assistant</div>
-          <div class="integration-detail">http://localhost:8123 / 312 entities</div>
-        </div>
-        <div class="integration-stats">24h: 8 calls / 100% success<br>Avg: 45ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/cloudflare.svg" alt="Cloudflare"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Cloudflare</div>
-          <div class="integration-detail">API token / Zone:Read + DNS:Edit</div>
-        </div>
-        <div class="integration-stats">24h: 1 call / 100% success<br>Avg: 340ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon" style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);border:1px solid var(--border);border-radius:4px;">DP</div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Doppler</div>
-          <div class="integration-detail">API token / 13 projects</div>
-        </div>
-        <div class="integration-stats">24h: 3 calls / 100% success<br>Avg: 340ms</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/resend-icon-white.svg" alt="Resend"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Resend</div>
-          <div class="integration-detail">API key</div>
-        </div>
-        <div class="integration-stats">24h: 0 calls<br>Last: 1d ago</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/posthog.svg" alt="PostHog"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>PostHog</div>
-          <div class="integration-detail">3 project IDs configured</div>
-        </div>
-        <div class="integration-stats">24h: 0 calls<br>Last: 3d ago</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
-      <div class="integration-card">
-        <div class="integration-icon"><img src="https://svgl.app/library/upstash.svg" alt="Upstash"></div>
-        <div class="integration-info">
-          <div class="integration-name"><span class="dot dot-ok"></span>Upstash</div>
-          <div class="integration-detail">Redis REST API</div>
-        </div>
-        <div class="integration-stats">24h: 0 calls<br>Last: 5d ago</div>
-        <button class="btn btn-sm">Configure</button>
-      </div>
+      <div class="card-title" style="margin-bottom:4px;">Infrastructure</div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/home-assistant.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Home Assistant</div><div class="int-detail">localhost:8123 / 312 entities</div></div><div class="int-stats">24h: 8 / 100%<br>45ms avg</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/cloudflare.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Cloudflare</div><div class="int-detail">Zone:Read + DNS:Edit</div></div><div class="int-stats">24h: 1 / 100%</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon" style="display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--accent);border:1px solid var(--border);border-radius:4px;">DP</div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Doppler</div><div class="int-detail">13 projects</div></div><div class="int-stats">24h: 3 / 100%</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/stripe.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Stripe</div><div class="int-detail">Live mode</div></div><div class="int-stats">24h: 4 / 100%</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/neon.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Neon</div><div class="int-detail">5 connections</div></div><div class="int-stats">24h: 2 / 100%</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/resend-icon-white.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Resend</div><div class="int-detail">API key</div></div><div class="int-stats">24h: 0<br>Last: 1d ago</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/posthog.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>PostHog</div><div class="int-detail">3 project IDs</div></div><div class="int-stats">24h: 0<br>Last: 3d ago</div><button class="btn btn-sm">Configure</button></div>
+      <div class="int-card"><div class="int-icon"><img src="https://svgl.app/library/upstash.svg"></div><div class="int-info"><div class="int-name"><span class="dot dot-ok"></span>Upstash</div><div class="int-detail">Redis REST</div></div><div class="int-stats">24h: 0<br>Last: 5d ago</div><button class="btn btn-sm">Configure</button></div>
     </div>
   </main>
 </div>

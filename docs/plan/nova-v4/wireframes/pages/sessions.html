@@ -3,8 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nova — Nexus Sessions</title>
+  <title>Nova -- Nexus</title>
   <link rel="stylesheet" href="../styles.css">
+  <style>
+    .two-col { display: grid; grid-template-columns: 1fr 340px; gap: 16px; }
+    @media (max-width: 1024px) { .two-col { grid-template-columns: 1fr; } }
+    .session-live { border-left: 3px solid var(--success); padding: 12px; margin-bottom: 8px; background: var(--surface); border-radius: 0 8px 8px 0; }
+    .session-live .progress-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; }
+    .session-live .progress-fill { height: 100%; background: var(--accent); border-radius: 2px; }
+    .server-card { padding: 12px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    .metric-row { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+    .metric-row:last-child { border-bottom: none; }
+    .crash-alert { background: #1a0a0a; border: 1px solid #3f1a1a; border-radius: 6px; padding: 10px 12px; margin-top: 8px; font-size: 12px; }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -14,75 +25,111 @@
     <a href="../index.html" class="nav-item">Dashboard</a>
     <a href="obligations.html" class="nav-item">Obligations</a>
     <div class="nav-section">Projects</div>
-    <a href="project.html" class="nav-item">Project Health</a>
-    <a href="sessions.html" class="nav-item active">Nexus Sessions</a>
+    <a href="project.html" class="nav-item">Projects</a>
+    <a href="sessions.html" class="nav-item active">Nexus</a>
     <div class="nav-section">System</div>
     <a href="integrations.html" class="nav-item">Integrations</a>
+    <a href="usage.html" class="nav-item">Usage</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
-
   <main class="main">
     <div class="section-header">
-      <h2 class="section-title">Nexus Sessions</h2>
+      <h2 class="section-title">Nexus</h2>
       <button class="btn btn-primary btn-sm">+ New Session</button>
     </div>
 
-    <!-- Compact agent row -->
-    <div style="display:flex;gap:12px;margin-bottom:24px;">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">
-        <span class="dot dot-err"></span>
-        <span style="font-size:12px;"><strong>homelab</strong> · :7400 · 0 sessions</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">
-        <span class="dot dot-err"></span>
-        <span style="font-size:12px;"><strong>macbook</strong> · :7400 · 0 sessions</span>
-      </div>
-    </div>
+    <div class="two-col">
+      <!-- Left: Active Sessions -->
+      <div>
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px;">Active Sessions</div>
 
-    <!-- Active Sessions -->
-    <div class="section-header">
-      <h2 class="section-title" style="font-size:14px;">Active</h2>
-    </div>
-    <div style="color:var(--text-muted);padding:16px;text-align:center;font-size:12px;">
-      No active sessions — agents disconnected (Tailscale DNS pending)
-    </div>
+        <div class="session-live">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <strong>s-abc123</strong> <span style="font-size:11px;color:var(--text-muted);">on homelab</span>
+              <div style="font-size:12px;margin-top:4px;">OO -- <code>/ci:gh --fix</code></div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:20px;font-weight:700;">4:32</div>
+              <button class="btn btn-sm">Jump In</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+            Tools: 8 calls (jira_search x3, sentry_issues x2, git_status x2, vercel_deployments x1)<br>
+            Last output: "Found root cause in auth.ts:42 -- applying fix..."
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:45%;"></div></div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Est. 45% complete (based on typical /ci:gh --fix duration)</div>
+        </div>
 
-    <!-- History -->
-    <div class="section-header" style="margin-top:24px;">
-      <h2 class="section-title" style="font-size:14px;">History</h2>
+        <div class="session-live" style="border-left-color:var(--accent);">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <strong>s-def456</strong> <span style="font-size:11px;color:var(--text-muted);">on macbook</span>
+              <div style="font-size:12px;margin-top:4px;">TC -- <code>/apply add-auth</code></div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:20px;font-weight:700;">12:05</div>
+              <button class="btn btn-sm">Jump In</button>
+            </div>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+            Tools: 22 calls -- Phase: UI Batch (3/5 tasks)<br>
+            Last output: "Building UserAuthForm component..."
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:70%;"></div></div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">Est. 70% complete (UI batch 3/5)</div>
+        </div>
+
+        <!-- History -->
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin:24px 0 8px;">Recent History</div>
+        <table>
+          <thead><tr><th>Session</th><th>Agent</th><th>Project</th><th>Command</th><th>Duration</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td style="font-size:11px;">s-ghi789</td><td>homelab</td><td>MV</td><td><code>/feature</code></td><td>--</td><td><span class="badge badge-overdue">timeout</span></td></tr>
+            <tr><td style="font-size:11px;">s-jkl012</td><td>homelab</td><td>SS</td><td><code>/apply</code></td><td>8m</td><td><span class="badge badge-ack">done</span></td></tr>
+            <tr><td style="font-size:11px;">s-mno345</td><td>macbook</td><td>OO</td><td><code>/ci:gh</code></td><td>3m</td><td><span class="badge badge-ack">done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Right: Server Health -->
+      <div>
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:8px;">Server Health</div>
+
+        <div class="server-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong><span class="dot dot-ok"></span>homelab</strong>
+            <span style="font-size:11px;color:var(--text-muted);">:7400</span>
+          </div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Uptime</span><span>14d 3h</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">CPU</span><span>12%</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Memory</span><span>4.2 / 32 GB</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Disk</span><span>180 / 500 GB</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Active sessions</span><span>1</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Total sessions (24h)</span><span>8</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Last crash</span><span style="color:var(--warning);">2d ago</span></div>
+          <div class="crash-alert">
+            <div style="font-size:10px;text-transform:uppercase;color:var(--danger);margin-bottom:4px;">Last Crash -- 2d ago</div>
+            OOM killed at 31.8 GB -- nexus-agent restarted automatically.<br>
+            <span style="color:var(--accent);font-size:11px;">Nova investigated: large Claude session with 200+ tool calls caused memory spike. Recommend <code>worker_timeout_secs: 180</code>.</span>
+          </div>
+        </div>
+
+        <div class="server-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong><span class="dot dot-ok"></span>macbook</strong>
+            <span style="font-size:11px;color:var(--text-muted);">:7400</span>
+          </div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Uptime</span><span>6h</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">CPU</span><span>8%</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Memory</span><span>12.1 / 36 GB</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Active sessions</span><span>1</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Total sessions (24h)</span><span>3</span></div>
+          <div class="metric-row"><span style="color:var(--text-muted);">Last crash</span><span style="color:var(--success);">none</span></div>
+        </div>
+      </div>
     </div>
-    <table>
-      <thead><tr><th>Session</th><th>Agent</th><th>Project</th><th>Command</th><th>Duration</th><th>Status</th><th>Started</th></tr></thead>
-      <tbody>
-        <tr>
-          <td style="font-family:var(--font);font-size:11px;">s-abc123</td>
-          <td>homelab</td>
-          <td>OO</td>
-          <td><code>/ci:gh --fix</code></td>
-          <td>4m 32s</td>
-          <td><span class="badge badge-ack">completed</span></td>
-          <td>2h ago</td>
-        </tr>
-        <tr>
-          <td style="font-family:var(--font);font-size:11px;">s-def456</td>
-          <td>macbook</td>
-          <td>TC</td>
-          <td><code>/apply add-auth</code></td>
-          <td>12m 05s</td>
-          <td><span class="badge badge-ack">completed</span></td>
-          <td>5h ago</td>
-        </tr>
-        <tr>
-          <td style="font-family:var(--font);font-size:11px;">s-ghi789</td>
-          <td>homelab</td>
-          <td>MV</td>
-          <td><code>/feature stripe-webhooks</code></td>
-          <td>—</td>
-          <td><span class="badge badge-overdue">timeout</span></td>
-          <td>1d ago</td>
-        </tr>
-      </tbody>
-    </table>
   </main>
 </div>
 </body>

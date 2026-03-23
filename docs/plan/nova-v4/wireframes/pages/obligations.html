@@ -12,12 +12,12 @@
     <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
-    <a href="obligations.html" class="nav-item active">Obligations (3)</a>
-    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <a href="obligations.html" class="nav-item active">Obligations <span class="badge badge-overdue" style="float:right;">3</span></a>
     <div class="nav-section">Projects</div>
     <a href="project.html" class="nav-item">Project Health</a>
     <a href="sessions.html" class="nav-item">Nexus Sessions</a>
     <div class="nav-section">System</div>
+    <a href="integrations.html" class="nav-item">Integrations</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
 
@@ -26,74 +26,132 @@
       <h2 class="section-title">Obligations</h2>
       <div>
         <button class="btn btn-sm">Filter: All</button>
-        <button class="btn btn-sm">Sort: Priority</button>
+        <button class="btn btn-sm">Sort: Urgency</button>
+        <a href="obligation-history.html" class="btn btn-sm">History →</a>
       </div>
     </div>
 
-    <!-- Kanban-style columns -->
-    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:24px;">
-      <div class="card" style="border-top: 3px solid var(--danger);">
-        <div class="card-title" style="margin-bottom:12px;">Overdue (1)</div>
-        <div class="card" style="margin-bottom:8px;">
-          <div style="font-size:12px;color:var(--text-muted);">Discord · OO · 3h ago</div>
-          <div style="margin:4px 0;">Update landing page copy</div>
-          <div style="font-size:11px;color:var(--text-muted);">Detected from @client_name message</div>
-          <div style="margin-top:8px;">
-            <button class="btn btn-sm">Acknowledge</button>
-            <button class="btn btn-sm">Delegate</button>
-            <button class="btn btn-sm">Dismiss</button>
-          </div>
-        </div>
-      </div>
+    <!-- Urgency-sorted obligation feed (unified alerts + obligations) -->
 
-      <div class="card" style="border-top: 3px solid var(--accent);">
-        <div class="card-title" style="margin-bottom:12px;">Open (2)</div>
-        <div class="card" style="margin-bottom:8px;">
-          <div style="font-size:12px;color:var(--text-muted);">Teams · CT · 45m ago</div>
-          <div style="margin:4px 0;">Review PR for auth migration</div>
-          <div style="font-size:11px;color:var(--text-muted);">Manager asked in #engineering</div>
-          <div style="margin-top:8px;">
-            <button class="btn btn-sm">Acknowledge</button>
-            <button class="btn btn-sm">Delegate</button>
+    <!-- P0 — urgent alert -->
+    <div class="card obligation-item" style="border-left:3px solid var(--danger);margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="badge badge-p0">P0</span>
+            <span class="badge badge-overdue">overdue 12m</span>
+            <span style="font-size:11px;color:var(--text-muted);">🔴 Deploy alert</span>
+          </div>
+          <div style="font-weight:600;margin-bottom:4px;">OO deploy failed — TypeError in auth.ts</div>
+          <div style="font-size:12px;color:var(--text-muted);">
+            Source: Cron (deploy_watch) · Detected 12m ago<br>
+            Vercel: ERROR · Sentry: 5 correlated errors
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--accent);">🤖 Nova can fix this</span>
+            <span style="font-size:11px;color:var(--text-muted);">→ /ci:gh --fix via Nexus</span>
           </div>
         </div>
-        <div class="card">
-          <div style="font-size:12px;color:var(--text-muted);">Email · MV · 20m ago</div>
-          <div style="margin:4px 0;">Client requesting invoice status</div>
-          <div style="font-size:11px;color:var(--text-muted);">From: client@modernvisa.com</div>
-          <div style="margin-top:8px;">
-            <button class="btn btn-sm">Acknowledge</button>
-            <button class="btn btn-sm">Reply via Nova</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card" style="border-top: 3px solid var(--success);">
-        <div class="card-title" style="margin-bottom:12px;">Handled (5 today)</div>
-        <div style="font-size:12px;color:var(--text-muted);padding:8px 0;">
-          ✅ Deploy OO fix — 2h ago<br>
-          ✅ Responded to TC standup — 3h ago<br>
-          ✅ Reviewed SS pull request — 4h ago<br>
-          ✅ Stripe invoice sent for MV — 5h ago<br>
-          ✅ ADO pipeline approved — 6h ago
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button class="btn btn-sm btn-primary">Delegate to Nova</button>
+          <button class="btn btn-sm">Investigate</button>
+          <button class="btn btn-sm">Dismiss</button>
         </div>
       </div>
     </div>
 
-    <!-- Obligation history table -->
-    <div class="section-header">
-      <h2 class="section-title">History (7 days)</h2>
+    <!-- P1 — client request, Leo's responsibility -->
+    <div class="card obligation-item" style="border-left:3px solid var(--warning);margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="badge badge-p1">P1</span>
+            <span class="badge badge-open">open</span>
+            <span style="font-size:11px;color:var(--text-muted);">📋 Client request</span>
+          </div>
+          <div style="font-weight:600;margin-bottom:4px;">Update landing page copy</div>
+          <div style="font-size:12px;color:var(--text-muted);">
+            Source: Discord · @client_name · 3h ago<br>
+            Project: OO · Channel: #general
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--warning);">👤 Leo must handle</span>
+            <span style="font-size:11px;color:var(--text-muted);">Content decision required</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button class="btn btn-sm">Acknowledge</button>
+          <button class="btn btn-sm">Create Jira Ticket</button>
+          <button class="btn btn-sm">Dismiss</button>
+        </div>
+      </div>
     </div>
-    <table>
-      <thead><tr><th>Date</th><th>Source</th><th>Obligation</th><th>Project</th><th>Resolution</th><th>Time to Handle</th></tr></thead>
-      <tbody>
-        <tr><td>Today</td><td>Discord</td><td>Update landing page copy</td><td>OO</td><td>—</td><td>3h+ (overdue)</td></tr>
-        <tr><td>Today</td><td>Teams</td><td>Deploy OO fix</td><td>OO</td><td>Delegated to Nexus</td><td>15m</td></tr>
-        <tr><td>Yesterday</td><td>Email</td><td>Quarterly report for client</td><td>MV</td><td>Acknowledged</td><td>2h</td></tr>
-        <tr><td>Yesterday</td><td>iMessage</td><td>Check HA thermostat</td><td>—</td><td>Completed via HA</td><td>5m</td></tr>
-        <tr><td>Mar 21</td><td>ADO</td><td>Pipeline review requested</td><td>CT</td><td>Approved</td><td>30m</td></tr>
-      </tbody>
-    </table>
+
+    <!-- P2 — manager ask, Leo's responsibility -->
+    <div class="card obligation-item" style="border-left:3px solid var(--accent);margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="badge badge-p2">P2</span>
+            <span class="badge badge-open">open</span>
+            <span style="font-size:11px;color:var(--text-muted);">📋 Manager request</span>
+          </div>
+          <div style="font-weight:600;margin-bottom:4px;">Review PR for auth migration</div>
+          <div style="font-size:12px;color:var(--text-muted);">
+            Source: Teams · #engineering · 45m ago<br>
+            Project: CT
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--warning);">👤 Leo must handle</span>
+            <span style="font-size:11px;color:var(--text-muted);">Code review requires human judgment</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button class="btn btn-sm">Acknowledge</button>
+          <button class="btn btn-sm">Open PR</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- P2 — client request, Nova could help -->
+    <div class="card obligation-item" style="border-left:3px solid var(--accent);margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="badge badge-p2">P2</span>
+            <span class="badge badge-open">open</span>
+            <span style="font-size:11px;color:var(--text-muted);">📧 Client inquiry</span>
+          </div>
+          <div style="font-weight:600;margin-bottom:4px;">Client requesting invoice status</div>
+          <div style="font-size:12px;color:var(--text-muted);">
+            Source: Email · client@modernvisa.com · 20m ago<br>
+            Project: MV
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--accent);">🤖 Nova can research</span>
+            <span style="font-size:11px;color:var(--text-muted);">→ stripe_invoices("open") + draft reply</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <button class="btn btn-sm btn-primary">Ask Nova to Draft</button>
+          <button class="btn btn-sm">Acknowledge</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Handled today (collapsed) -->
+    <div class="section-header" style="margin-top:24px;">
+      <h2 class="section-title">Handled Today (5)</h2>
+    </div>
+    <div class="card" style="opacity:0.7;">
+      <div style="font-size:12px;line-height:2;">
+        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">2h ago</span> — Deploy OO fix <span class="badge badge-ack" style="font-size:10px;">🤖 nova</span><br>
+        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">3h ago</span> — Responded to TC standup <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">👤 leo</span><br>
+        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">4h ago</span> — Reviewed SS pull request <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">👤 leo</span><br>
+        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">5h ago</span> — Stripe invoice sent for MV <span class="badge badge-ack" style="font-size:10px;">🤖 nova</span><br>
+        <span class="dot dot-ok"></span> <span style="color:var(--text-muted);">6h ago</span> — ADO pipeline approved <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">👤 leo</span>
+      </div>
+    </div>
   </main>
 </div>
 </body>

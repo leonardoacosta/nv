@@ -12,69 +12,71 @@
     <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
-    <a href="obligations.html" class="nav-item">Obligations (3)</a>
-    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <a href="obligations.html" class="nav-item">Obligations</a>
     <div class="nav-section">Projects</div>
     <a href="project.html" class="nav-item">Project Health</a>
     <a href="sessions.html" class="nav-item active">Nexus Sessions</a>
     <div class="nav-section">System</div>
+    <a href="integrations.html" class="nav-item">Integrations</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
 
   <main class="main">
     <div class="section-header">
       <h2 class="section-title">Nexus Sessions</h2>
-      <button class="btn btn-primary">+ New Session</button>
+      <button class="btn btn-primary btn-sm">+ New Session</button>
     </div>
 
-    <!-- Agent Status -->
-    <div class="card-grid">
-      <div class="card">
-        <div class="card-header"><span class="card-title">homelab</span><span class="dot dot-err"></span></div>
-        <div style="font-size:12px;color:var(--text-muted);">Status: disconnected (DNS)<br>Port: 7400<br>Sessions: 0</div>
+    <!-- Compact agent row -->
+    <div style="display:flex;gap:12px;margin-bottom:24px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">
+        <span class="dot dot-err"></span>
+        <span style="font-size:12px;"><strong>homelab</strong> · :7400 · 0 sessions</span>
       </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">macbook</span><span class="dot dot-err"></span></div>
-        <div style="font-size:12px;color:var(--text-muted);">Status: disconnected (DNS)<br>Port: 7400<br>Sessions: 0</div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--surface);border:1px solid var(--border);border-radius:6px;">
+        <span class="dot dot-err"></span>
+        <span style="font-size:12px;"><strong>macbook</strong> · :7400 · 0 sessions</span>
       </div>
     </div>
 
     <!-- Active Sessions -->
-    <div class="section-header" style="margin-top:24px;">
-      <h2 class="section-title">Active Sessions</h2>
+    <div class="section-header">
+      <h2 class="section-title" style="font-size:14px;">Active</h2>
     </div>
-    <div style="color:var(--text-muted);padding:24px;text-align:center;">No active sessions — Nexus agents disconnected (DNS resolution pending Tailscale migration)</div>
+    <div style="color:var(--text-muted);padding:16px;text-align:center;font-size:12px;">
+      No active sessions — agents disconnected (Tailscale DNS pending)
+    </div>
 
-    <!-- Session History -->
+    <!-- History -->
     <div class="section-header" style="margin-top:24px;">
-      <h2 class="section-title">Session History</h2>
+      <h2 class="section-title" style="font-size:14px;">History</h2>
     </div>
     <table>
       <thead><tr><th>Session</th><th>Agent</th><th>Project</th><th>Command</th><th>Duration</th><th>Status</th><th>Started</th></tr></thead>
       <tbody>
         <tr>
-          <td>s-abc123</td>
+          <td style="font-family:var(--font);font-size:11px;">s-abc123</td>
           <td>homelab</td>
           <td>OO</td>
-          <td>/ci:gh --fix</td>
+          <td><code>/ci:gh --fix</code></td>
           <td>4m 32s</td>
           <td><span class="badge badge-ack">completed</span></td>
           <td>2h ago</td>
         </tr>
         <tr>
-          <td>s-def456</td>
+          <td style="font-family:var(--font);font-size:11px;">s-def456</td>
           <td>macbook</td>
           <td>TC</td>
-          <td>/apply add-auth</td>
+          <td><code>/apply add-auth</code></td>
           <td>12m 05s</td>
           <td><span class="badge badge-ack">completed</span></td>
           <td>5h ago</td>
         </tr>
         <tr>
-          <td>s-ghi789</td>
+          <td style="font-family:var(--font);font-size:11px;">s-ghi789</td>
           <td>homelab</td>
           <td>MV</td>
-          <td>/feature stripe-webhooks</td>
+          <td><code>/feature stripe-webhooks</code></td>
           <td>—</td>
           <td><span class="badge badge-overdue">timeout</span></td>
           <td>1d ago</td>

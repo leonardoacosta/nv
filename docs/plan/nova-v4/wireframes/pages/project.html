@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Nova — Project Health</title>
   <link rel="stylesheet" href="../styles.css">
+  <style>
+    .accordion-toggle { cursor: pointer; user-select: none; }
+    .accordion-toggle:hover { background: var(--surface-hover); }
+    .accordion-body { display: none; }
+    .accordion-body.open { display: table-row; }
+    .accordion-chevron { transition: transform 0.2s; display: inline-block; }
+    .accordion-chevron.open { transform: rotate(90deg); }
+    .nova-note { background: #0d1520; border: 1px solid #1e3a5f; border-radius: 6px; padding: 10px 12px; margin: 8px 0; font-size: 12px; }
+    .nova-note-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); margin-bottom: 4px; }
+  </style>
 </head>
 <body>
 <div class="shell">
@@ -12,12 +22,12 @@
     <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
-    <a href="obligations.html" class="nav-item">Obligations (3)</a>
-    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <a href="obligations.html" class="nav-item">Obligations</a>
     <div class="nav-section">Projects</div>
     <a href="project.html" class="nav-item active">Project Health</a>
     <a href="sessions.html" class="nav-item">Nexus Sessions</a>
     <div class="nav-section">System</div>
+    <a href="integrations.html" class="nav-item">Integrations</a>
     <a href="settings.html" class="nav-item">Settings</a>
   </nav>
 
@@ -28,119 +38,145 @@
     </div>
 
     <table>
-      <thead><tr><th>Project</th><th>Deploy</th><th>Errors</th><th>Open PRs</th><th>Jira</th><th>Last Activity</th><th>Actions</th></tr></thead>
+      <thead><tr><th></th><th>Project</th><th>Deploy</th><th>Errors</th><th>Open PRs</th><th>Jira</th><th>Last Activity</th></tr></thead>
       <tbody>
-        <tr>
+        <!-- OO — expanded accordion -->
+        <tr class="accordion-toggle" style="background:var(--surface-hover);">
+          <td><span class="accordion-chevron open">▶</span></td>
           <td><strong>OO</strong> Otaku Odyssey</td>
           <td><span class="dot dot-err"></span>ERROR</td>
           <td><span class="badge badge-overdue">5 new</span></td>
           <td>2</td>
           <td>3 in-progress</td>
           <td>12m ago</td>
-          <td><button class="btn btn-sm btn-primary">Investigate</button></td>
         </tr>
-        <tr>
+        <tr class="accordion-body open">
+          <td colspan="7" style="padding:16px 24px;background:var(--surface);">
+            <div class="card-grid" style="grid-template-columns: repeat(3, 1fr);">
+              <div class="card">
+                <div class="card-title">Vercel</div>
+                <div style="margin-top:8px;">
+                  <span class="dot dot-err"></span>ERROR — 12m ago<br>
+                  <span style="font-size:11px;color:var(--text-muted);">TypeError: Cannot read 'session'<br>Branch: main · abc1234</span>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-title">Sentry (24h)</div>
+                <div style="margin-top:8px;">5 new errors<br>
+                  <span style="font-size:11px;color:var(--text-muted);">TypeError in auth.ts (×3)<br>NetworkError in api.ts (×2)</span>
+                </div>
+              </div>
+              <div class="card">
+                <div class="card-title">Jira</div>
+                <div style="margin-top:8px;">3 in-progress<br>
+                  <span style="font-size:11px;color:var(--text-muted);">OO-142: Auth migration<br>OO-145: Dashboard redesign<br>OO-147: Payment flow</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Nova's notes -->
+            <div class="nova-note">
+              <div class="nova-note-label">🤖 Nova — Recommended Updates</div>
+              The auth.ts TypeError correlates with commit abc1234 (auth migration). Recommend reverting or running <code>/ci:gh --fix</code> via Nexus. The 3 Sentry errors in auth.ts are likely caused by the same root issue.
+            </div>
+            <div class="nova-note">
+              <div class="nova-note-label">🤖 Nova — Potential Improvements</div>
+              OO has no error boundary on the auth flow — a single TypeError crashes the entire page. Consider adding error boundaries around auth components. Also, OO-145 (dashboard redesign) has been in-progress for 8 days without commits.
+            </div>
+            <div class="nova-note">
+              <div class="nova-note-label">🤖 Nova — Recent Accomplishments</div>
+              • Fixed CI via Nexus session s-abc123 (2h ago)<br>
+              • Auto-closed 2 stale Sentry issues (resolved in production)<br>
+              • Updated deployment monitoring frequency from 10m to 5m after recent instability
+            </div>
+
+            <div style="margin-top:12px;">
+              <button class="btn btn-sm btn-primary">Start Nexus Session</button>
+              <button class="btn btn-sm">Run /ci:gh --fix</button>
+              <button class="btn btn-sm">View in Vercel</button>
+              <button class="btn btn-sm">View in Sentry</button>
+            </div>
+          </td>
+        </tr>
+
+        <!-- TC — collapsed -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>TC</strong> Tribal Cities</td>
           <td><span class="dot dot-warn"></span>BUILDING</td>
           <td>0</td>
           <td>1</td>
           <td>5 open</td>
           <td>1h ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
-        <tr>
+
+        <!-- TL -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>TL</strong> Tavern Ledger</td>
           <td><span class="dot dot-ok"></span>READY</td>
           <td>0</td>
           <td>0</td>
           <td>2 open</td>
           <td>3h ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
-        <tr>
+
+        <!-- MV -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>MV</strong> Modern Visa</td>
           <td><span class="dot dot-ok"></span>READY</td>
           <td>0</td>
           <td>0</td>
           <td>1 open</td>
           <td>6h ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
-        <tr>
+
+        <!-- SS -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>SS</strong> Styles Silas</td>
           <td><span class="dot dot-ok"></span>READY</td>
           <td>0</td>
           <td>0</td>
           <td>0</td>
           <td>1d ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
-        <tr>
+
+        <!-- CL -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>CL</strong> Central Leo</td>
           <td><span class="dot dot-ok"></span>OK</td>
           <td>—</td>
           <td>0</td>
           <td>—</td>
           <td>2d ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
-        <tr>
+
+        <!-- CO -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>CO</strong> Central Wholesale</td>
           <td><span class="dot dot-ok"></span>OK</td>
           <td>—</td>
           <td>0</td>
           <td>—</td>
           <td>1d ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
-        <tr>
+
+        <!-- CT -->
+        <tr class="accordion-toggle">
+          <td><span class="accordion-chevron">▶</span></td>
           <td><strong>CT</strong> Civalent (ADO)</td>
           <td>—</td>
           <td>—</td>
           <td>—</td>
           <td>8 open</td>
           <td>45m ago</td>
-          <td><button class="btn btn-sm">Details</button></td>
         </tr>
       </tbody>
     </table>
-
-    <br>
-
-    <!-- Project detail panel (expanded OO) -->
-    <div class="card" style="border-left: 3px solid var(--danger);">
-      <div class="section-header">
-        <h2 class="section-title">OO — Otaku Odyssey</h2>
-        <div>
-          <button class="btn btn-sm btn-primary">Start Nexus Session</button>
-          <button class="btn btn-sm">Run /ci:gh --fix</button>
-        </div>
-      </div>
-
-      <div class="card-grid" style="margin-top:12px;">
-        <div class="card">
-          <div class="card-title">Vercel</div>
-          <div style="margin-top:8px;">
-            <span class="dot dot-err"></span>ERROR — 12m ago<br>
-            <span style="font-size:11px;color:var(--text-muted);">TypeError: Cannot read properties of undefined (reading 'session')<br>Branch: main · Commit: abc1234</span>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Sentry (24h)</div>
-          <div style="margin-top:8px;">5 new errors<br>
-            <span style="font-size:11px;color:var(--text-muted);">TypeError in auth.ts (×3)<br>NetworkError in api.ts (×2)</span>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-title">Jira</div>
-          <div style="margin-top:8px;">3 in-progress<br>
-            <span style="font-size:11px;color:var(--text-muted);">OO-142: Auth migration<br>OO-145: Dashboard redesign<br>OO-147: Payment flow</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="chart-placeholder" style="height:150px;margin-top:16px;">[Chart.js — Error rate timeline, 7 days]</div>
-    </div>
   </main>
 </div>
 </body>

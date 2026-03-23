@@ -12,12 +12,12 @@
     <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
-    <a href="obligations.html" class="nav-item">Obligations (3)</a>
-    <a href="alerts.html" class="nav-item">Alerts (1)</a>
+    <a href="obligations.html" class="nav-item">Obligations</a>
     <div class="nav-section">Projects</div>
     <a href="project.html" class="nav-item">Project Health</a>
     <a href="sessions.html" class="nav-item">Nexus Sessions</a>
     <div class="nav-section">System</div>
+    <a href="integrations.html" class="nav-item">Integrations</a>
     <a href="settings.html" class="nav-item active">Settings</a>
   </nav>
 
@@ -26,66 +26,53 @@
       <h2 class="section-title">Settings</h2>
     </div>
 
-    <!-- Agent Config -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:12px;">Agent Configuration</div>
+      <div class="card-title" style="margin-bottom:12px;">Agent</div>
       <table>
         <tbody>
           <tr><td style="width:200px;color:var(--text-muted);">Model</td><td>claude-sonnet-4-6</td></tr>
           <tr><td style="color:var(--text-muted);">Think mode</td><td>enabled</td></tr>
           <tr><td style="color:var(--text-muted);">Max workers</td><td>3</td></tr>
-          <tr><td style="color:var(--text-muted);">Worker timeout</td><td>300s (5min)</td></tr>
+          <tr><td style="color:var(--text-muted);">Worker timeout</td><td>300s</td></tr>
           <tr><td style="color:var(--text-muted);">Weekly budget</td><td>$50.00 (alert at 90%)</td></tr>
           <tr><td style="color:var(--text-muted);">Digest interval</td><td>60 min</td></tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Channels -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:12px;">Channels</div>
-      <table>
-        <thead><tr><th>Channel</th><th>Status</th><th>Config</th></tr></thead>
-        <tbody>
-          <tr><td>Telegram</td><td><span class="dot dot-ok"></span>Connected</td><td>chat_id: 7380462766</td></tr>
-          <tr><td>Discord</td><td><span class="dot dot-ok"></span>Connected</td><td>1 server, 1 channel</td></tr>
-          <tr><td>Teams</td><td><span class="dot dot-warn"></span>Degraded</td><td>Webhook relay active</td></tr>
-          <tr><td>Email</td><td><span class="dot dot-ok"></span>Polling</td><td>Inbox, 60s interval</td></tr>
-          <tr><td>iMessage</td><td><span class="dot dot-off"></span>Disabled</td><td>BlueBubbles not configured</td></tr>
-          <tr><td>Nexus (homelab)</td><td><span class="dot dot-err"></span>Disconnected</td><td>DNS resolution failed</td></tr>
-          <tr><td>Nexus (macbook)</td><td><span class="dot dot-err"></span>Disconnected</td><td>DNS resolution failed</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Tools -->
-    <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:12px;">Tool Health (top 10 by usage)</div>
-      <table>
-        <thead><tr><th>Tool</th><th>Calls (24h)</th><th>Success</th><th>Avg Duration</th></tr></thead>
-        <tbody>
-          <tr><td>jira_search</td><td>24</td><td>100%</td><td>420ms</td></tr>
-          <tr><td>read_memory</td><td>18</td><td>100%</td><td>2ms</td></tr>
-          <tr><td>write_memory</td><td>15</td><td>100%</td><td>3ms</td></tr>
-          <tr><td>vercel_deployments</td><td>12</td><td>100%</td><td>680ms</td></tr>
-          <tr><td>sentry_issues</td><td>10</td><td>90%</td><td>520ms</td></tr>
-          <tr><td>ha_states</td><td>8</td><td>100%</td><td>45ms</td></tr>
-          <tr><td>git_status</td><td>8</td><td>100%</td><td>12ms</td></tr>
-          <tr><td>stripe_customers</td><td>4</td><td>100%</td><td>890ms</td></tr>
-          <tr><td>doppler_secrets</td><td>3</td><td>100%</td><td>340ms</td></tr>
-          <tr><td>neon_query</td><td>2</td><td>100%</td><td>150ms</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <!-- Quiet Hours -->
-    <div class="card">
       <div class="card-title" style="margin-bottom:12px;">Quiet Hours</div>
       <table>
         <tbody>
           <tr><td style="width:200px;color:var(--text-muted);">Start</td><td>23:00 CT</td></tr>
           <tr><td style="color:var(--text-muted);">End</td><td>07:00 CT</td></tr>
-          <tr><td style="color:var(--text-muted);">P0 override</td><td>Yes (P0 alerts always sent)</td></tr>
+          <tr><td style="color:var(--text-muted);">P0 override</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">Obligation Detection</div>
+      <table>
+        <tbody>
+          <tr><td style="width:200px;color:var(--text-muted);">Auto-detect</td><td>enabled (all channels)</td></tr>
+          <tr><td style="color:var(--text-muted);">Default priority</td><td>P2</td></tr>
+          <tr><td style="color:var(--text-muted);">Overdue threshold</td><td>2 hours</td></tr>
+          <tr><td style="color:var(--text-muted);">Alert channels</td><td>Telegram (P0-P1), Dashboard only (P2+)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title" style="margin-bottom:12px;">System</div>
+      <table>
+        <tbody>
+          <tr><td style="width:200px;color:var(--text-muted);">Version</td><td>0.4.0-dev</td></tr>
+          <tr><td style="color:var(--text-muted);">Uptime</td><td>2h 14m</td></tr>
+          <tr><td style="color:var(--text-muted);">Config</td><td>~/.nv/nv.toml</td></tr>
+          <tr><td style="color:var(--text-muted);">Secrets</td><td>Doppler nova/prd (33 secrets)</td></tr>
+          <tr><td style="color:var(--text-muted);">Database</td><td>~/.nv/messages.db (SQLite)</td></tr>
+          <tr><td style="color:var(--text-muted);">Health</td><td>http://localhost:8400/health</td></tr>
         </tbody>
       </table>
     </div>

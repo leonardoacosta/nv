@@ -11,132 +11,159 @@
   <nav class="sidebar">
     <div class="sidebar-brand">
       <h1>✨ Nova</h1>
-      <div class="status">● online — 2m uptime</div>
+      <div class="status">● online — 2h uptime</div>
     </div>
     <div class="nav-section">Overview</div>
     <a href="index.html" class="nav-item active">Dashboard</a>
-    <a href="pages/obligations.html" class="nav-item">Obligations (3)</a>
-    <a href="pages/alerts.html" class="nav-item">Alerts (1)</a>
+    <a href="pages/obligations.html" class="nav-item">Obligations <span class="badge badge-overdue" style="float:right;">3</span></a>
     <div class="nav-section">Projects</div>
     <a href="pages/project.html" class="nav-item">Project Health</a>
     <a href="pages/sessions.html" class="nav-item">Nexus Sessions</a>
     <div class="nav-section">System</div>
+    <a href="pages/integrations.html" class="nav-item">Integrations</a>
     <a href="pages/settings.html" class="nav-item">Settings</a>
   </nav>
 
   <main class="main">
     <div class="section-header">
-      <h2 class="section-title">System Overview</h2>
-      <span style="color: var(--text-muted); font-size: 12px;">Last updated: 12s ago</span>
+      <h2 class="section-title">Recent Sessions</h2>
+      <span style="color: var(--text-muted); font-size: 12px;">Live — auto-refresh</span>
     </div>
 
-    <!-- Status Cards -->
+    <!-- Recent Sessions -->
+    <div class="session-list">
+      <!-- Session: cron-triggered, no Leo involvement -->
+      <div class="card session-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:#1a2a1a;color:var(--success);font-size:10px;">⏰ cron</span>
+              <span style="font-size:12px;color:var(--text-muted);">12m ago · 45s</span>
+            </div>
+            <div style="margin:6px 0;font-size:13px;">"Generate digest synthesis"</div>
+            <div class="service-icons">
+              <span class="svc-icon" title="Jira">📋</span>
+              <span class="svc-icon" title="Vercel">▲</span>
+              <span class="svc-icon" title="Sentry">🐛</span>
+              <span class="svc-icon" title="Memory write">🧠</span>
+              <span class="svc-icon" title="Telegram send">📨</span>
+            </div>
+          </div>
+          <span class="badge badge-ack" style="font-size:10px;">auto</span>
+        </div>
+      </div>
+
+      <!-- Session: Telegram-triggered, Leo involved -->
+      <div class="card session-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:#1e3a5f;color:var(--accent);font-size:10px;">💬 telegram</span>
+              <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">👤 leo</span>
+              <span style="font-size:12px;color:var(--text-muted);">35m ago · 2m 12s</span>
+            </div>
+            <div style="margin:6px 0;font-size:13px;">"Can you check why the OO deploy is failing?"</div>
+            <div class="service-icons">
+              <span class="svc-icon" title="Vercel">▲</span>
+              <span class="svc-icon" title="Sentry">🐛</span>
+              <span class="svc-icon" title="GitHub">🐙</span>
+              <span class="svc-icon" title="Memory read">🧠</span>
+              <span class="svc-icon" title="Memory write">📝</span>
+              <span class="svc-icon" title="Codebase (git)">💻</span>
+            </div>
+          </div>
+          <span class="badge badge-open" style="font-size:10px;">interactive</span>
+        </div>
+      </div>
+
+      <!-- Session: Discord inbound, no Leo -->
+      <div class="card session-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:#1a1a3a;color:#818cf8;font-size:10px;">🎮 discord</span>
+              <span style="font-size:12px;color:var(--text-muted);">1h ago · 8s</span>
+            </div>
+            <div style="margin:6px 0;font-size:13px;">"Hey, can you update the landing page copy?"</div>
+            <div class="service-icons">
+              <span class="svc-icon" title="Obligation created">🔔</span>
+              <span class="svc-icon" title="Telegram notify">📨</span>
+            </div>
+          </div>
+          <span class="badge badge-ack" style="font-size:10px;">auto</span>
+        </div>
+      </div>
+
+      <!-- Session: cron deploy watch -->
+      <div class="card session-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:#1a2a1a;color:var(--success);font-size:10px;">⏰ cron</span>
+              <span style="font-size:12px;color:var(--text-muted);">1h ago · 3s</span>
+            </div>
+            <div style="margin:6px 0;font-size:13px;">"Deploy watch — OO ERROR detected"</div>
+            <div class="service-icons">
+              <span class="svc-icon" title="Vercel">▲</span>
+              <span class="svc-icon" title="Sentry">🐛</span>
+              <span class="svc-icon" title="Obligation created">🔔</span>
+              <span class="svc-icon" title="Telegram alert">📨</span>
+            </div>
+          </div>
+          <span class="badge badge-overdue" style="font-size:10px;">alert</span>
+        </div>
+      </div>
+
+      <!-- Session: Telegram, Leo, HA control -->
+      <div class="card session-card" style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge" style="background:#1e3a5f;color:var(--accent);font-size:10px;">💬 telegram</span>
+              <span class="badge" style="background:#2a1a3a;color:#c084fc;font-size:10px;">👤 leo</span>
+              <span style="font-size:12px;color:var(--text-muted);">2h ago · 15s</span>
+            </div>
+            <div style="margin:6px 0;font-size:13px;">"Turn off the office lights"</div>
+            <div class="service-icons">
+              <span class="svc-icon" title="Home Assistant">🏠</span>
+              <span class="svc-icon" title="Pending action">⏳</span>
+            </div>
+          </div>
+          <span class="badge badge-ack" style="font-size:10px;">confirmed</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:center;padding:16px;">
+      <button class="btn btn-sm">Load more sessions</button>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="section-header" style="margin-top:24px;">
+      <h2 class="section-title">Today</h2>
+    </div>
     <div class="card-grid">
       <div class="card">
-        <div class="card-header"><span class="card-title">Obligations</span><span class="badge badge-open">3 open</span></div>
-        <div class="card-value">3</div>
-        <div class="card-subtitle">1 overdue · 2 new today</div>
+        <div class="card-header"><span class="card-title">Sessions</span></div>
+        <div class="card-value">14</div>
+        <div class="card-subtitle">5 interactive · 9 auto</div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Projects</span></div>
-        <div class="card-value">18<span style="font-size:14px;color:var(--success)"> / 20</span></div>
-        <div class="card-subtitle">2 degraded (OO, TC)</div>
+        <div class="card-header"><span class="card-title">Obligations</span></div>
+        <div class="card-value" style="color:var(--warning);">3 open</div>
+        <div class="card-subtitle">1 overdue · 5 handled today</div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Active Sessions</span></div>
-        <div class="card-value">2</div>
-        <div class="card-subtitle">homelab: 1 · macbook: 1</div>
+        <div class="card-header"><span class="card-title">API Cost</span></div>
+        <div class="card-value">$2.14</div>
+        <div class="card-subtitle">$50/wk budget · 30% used</div>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">Tools (24h)</span></div>
+        <div class="card-header"><span class="card-title">Tools</span></div>
         <div class="card-value">142</div>
         <div class="card-subtitle">98% success · avg 340ms</div>
       </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">API Cost (today)</span></div>
-        <div class="card-value">$2.14</div>
-        <div class="card-subtitle">Budget: $7.14/day ($50/wk)</div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">Channels</span></div>
-        <div class="card-value">
-          <span class="dot dot-ok"></span>TG
-          <span class="dot dot-ok"></span>DC
-          <span class="dot dot-warn"></span>TM
-          <span class="dot dot-off"></span>NX
-        </div>
-        <div class="card-subtitle">Nexus: DNS resolution failed</div>
-      </div>
     </div>
-
-    <!-- Activity Chart -->
-    <div class="chart-placeholder">[Chart.js — Tool calls per hour, 24h rolling]</div>
-
-    <!-- Recent Obligations -->
-    <div class="section-header">
-      <h2 class="section-title">Recent Obligations</h2>
-      <a href="pages/obligations.html" class="btn btn-sm">View All →</a>
-    </div>
-    <table>
-      <thead><tr><th>Source</th><th>Obligation</th><th>Project</th><th>Priority</th><th>Age</th><th>Status</th></tr></thead>
-      <tbody>
-        <tr>
-          <td><span class="dot dot-err"></span>Discord</td>
-          <td>Update landing page copy</td>
-          <td>OO</td>
-          <td><span class="badge badge-p1">P1</span></td>
-          <td>3h</td>
-          <td><span class="badge badge-overdue">overdue</span></td>
-        </tr>
-        <tr>
-          <td><span class="dot dot-warn"></span>Teams</td>
-          <td>Review PR for auth migration</td>
-          <td>CT</td>
-          <td><span class="badge badge-p2">P2</span></td>
-          <td>45m</td>
-          <td><span class="badge badge-open">open</span></td>
-        </tr>
-        <tr>
-          <td><span class="dot dot-ok"></span>Email</td>
-          <td>Client requesting invoice status</td>
-          <td>MV</td>
-          <td><span class="badge badge-p2">P2</span></td>
-          <td>20m</td>
-          <td><span class="badge badge-open">open</span></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <br>
-
-    <!-- Recent Alerts -->
-    <div class="section-header">
-      <h2 class="section-title">Recent Alerts</h2>
-      <a href="pages/alerts.html" class="btn btn-sm">View All →</a>
-    </div>
-    <table>
-      <thead><tr><th>Type</th><th>Description</th><th>Project</th><th>Time</th></tr></thead>
-      <tbody>
-        <tr>
-          <td>🔴 Deploy</td>
-          <td>Vercel build failed — TypeError in auth.ts</td>
-          <td>OO</td>
-          <td>12m ago</td>
-        </tr>
-        <tr>
-          <td>⚠️ Sentry</td>
-          <td>Error rate spike: 5 new errors in 10m</td>
-          <td>OO</td>
-          <td>15m ago</td>
-        </tr>
-        <tr>
-          <td>✅ Deploy</td>
-          <td>Vercel build succeeded</td>
-          <td>TC</td>
-          <td>1h ago</td>
-        </tr>
-      </tbody>
-    </table>
   </main>
 </div>
 </body>

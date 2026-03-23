@@ -10,6 +10,7 @@ use std::str::FromStr;
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
+use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -34,25 +35,14 @@ pub struct Schedule {
 /// for user schedules.
 pub const RESERVED_NAMES: &[&str] = &["digest", "memory-cleanup"];
 
-// ── ScheduleStore ───────────────────────────────────────────────────
-
-/// SQLite-backed store for user-defined schedules.
-pub struct ScheduleStore {
-    conn: Connection,
-}
-
-impl ScheduleStore {
-    /// Open (or create) the `schedules.db` database inside `nv_base`.
-    ///
-    /// Runs `CREATE TABLE IF NOT EXISTS` on every open so the schema is
-    /// always present.
-    pub fn new(nv_base: &Path) -> Result<Self> {
-        let db_path = nv_base.join("schedules.db");
-        let conn = Connection::open(&db_path)
-            .map_err(|e| anyhow!("failed to open schedules.db at {}: {e}", db_path.display()))?;
-
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS schedules (
+/// Versioned migrations for schedules.db.
+///
+/// Version 1 is the initial schema, converting CREATE TABLE IF NOT EXISTS to a
+/// migration so future ALTER TABLE changes are safe.
+fn schedules_migrations() -> Migrations<'static> {
+    Migrations::new(vec![
+        M::up(
+            "CREATE TABLE schedules (
                 id          TEXT PRIMARY KEY,
                 name        TEXT NOT NULL UNIQUE,
                 cron_expr   TEXT NOT NULL,
@@ -62,8 +52,31 @@ impl ScheduleStore {
                 created_at  TEXT NOT NULL,
                 last_run_at TEXT
             );",
-        )
-        .map_err(|e| anyhow!("failed to create schedules table: {e}"))?;
+        ),
+    ])
+}
+
+// ── ScheduleStore ───────────────────────────────────────────────────
+
+/// SQLite-backed store for user-defined schedules.
+pub struct ScheduleStore {
+    conn: Connection,
+}
+
+impl ScheduleStore {
+    /// Open (or create) the `schedules.db` database inside `nv_base` and run
+    /// versioned migrations to ensure the schema is current.
+    ///
+    /// Uses PRAGMA user_version to track schema version. Safe for ALTER TABLE
+    /// changes in future migration versions.
+    pub fn new(nv_base: &Path) -> Result<Self> {
+        let db_path = nv_base.join("schedules.db");
+        let mut conn = Connection::open(&db_path)
+            .map_err(|e| anyhow!("failed to open schedules.db at {}: {e}", db_path.display()))?;
+
+        schedules_migrations()
+            .to_latest(&mut conn)
+            .map_err(|e| anyhow!("failed to run schedules.db migrations: {e}"))?;
 
         Ok(Self { conn })
     }

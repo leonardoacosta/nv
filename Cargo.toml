@@ -26,6 +26,7 @@ tokio-util = "0.7"
 tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 futures-util = "0.3"
 rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite_migration = { version = "1.2" }
 tokio-postgres = "0.7"
 tokio-postgres-rustls = "0.13"
 rustls = "0.23"

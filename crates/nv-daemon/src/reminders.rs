@@ -17,6 +17,7 @@ use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, NaiveDat
 use nv_core::channel::Channel;
 use nv_core::types::OutboundMessage;
 use rusqlite::{params, Connection};
+use rusqlite_migration::{Migrations, M};
 use tracing::{error, info, warn};
 
 /// Polling interval for the reminder scheduler.
@@ -265,24 +266,14 @@ pub struct Reminder {
     pub cancelled: bool,
 }
 
-// ── ReminderStore ────────────────────────────────────────────────────
-
-/// SQLite-backed reminder store (owns its own connection to avoid !Send issues
-/// with shared connections).
-pub struct ReminderStore {
-    conn: Connection,
-}
-
-impl ReminderStore {
-    /// Open the database and ensure the reminders table + indexes exist.
-    pub fn new(db_path: &Path) -> Result<Self> {
-        let conn = Connection::open(db_path)
-            .context("failed to open reminders database")?;
-
-        conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
-
-            CREATE TABLE IF NOT EXISTS reminders (
+/// Versioned migrations for reminders.db (schedules.db also uses reminders).
+///
+/// Version 1 is the initial schema, converting CREATE TABLE IF NOT EXISTS to a
+/// migration so future ALTER TABLE changes are safe.
+fn reminders_migrations() -> Migrations<'static> {
+    Migrations::new(vec![
+        M::up(
+            "CREATE TABLE reminders (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 message      TEXT NOT NULL,
                 due_at       TEXT NOT NULL,
@@ -292,14 +283,36 @@ impl ReminderStore {
                 cancelled    INTEGER NOT NULL DEFAULT 0
             );
 
-            CREATE INDEX IF NOT EXISTS idx_reminders_due_at
-                ON reminders(due_at);
+            CREATE INDEX idx_reminders_due_at ON reminders(due_at);
 
-            CREATE INDEX IF NOT EXISTS idx_reminders_active
-                ON reminders(cancelled, delivered_at);
-            ",
-        )
-        .context("failed to initialize reminders table")?;
+            CREATE INDEX idx_reminders_active ON reminders(cancelled, delivered_at);",
+        ),
+    ])
+}
+
+// ── ReminderStore ────────────────────────────────────────────────────
+
+/// SQLite-backed reminder store (owns its own connection to avoid !Send issues
+/// with shared connections).
+pub struct ReminderStore {
+    conn: Connection,
+}
+
+impl ReminderStore {
+    /// Open the database and run versioned migrations to ensure the schema is current.
+    ///
+    /// Uses PRAGMA user_version to track schema version. Safe for ALTER TABLE
+    /// changes in future migration versions.
+    pub fn new(db_path: &Path) -> Result<Self> {
+        let mut conn = Connection::open(db_path)
+            .context("failed to open reminders database")?;
+
+        conn.execute_batch("PRAGMA journal_mode=WAL;")
+            .context("failed to set WAL mode on reminders database")?;
+
+        reminders_migrations()
+            .to_latest(&mut conn)
+            .map_err(|e| anyhow!("failed to run reminders.db migrations: {e}"))?;
 
         Ok(Self { conn })
     }

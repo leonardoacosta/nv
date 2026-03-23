@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use rusqlite_migration::{Migrations, M};
 use serde::Serialize;
 
 // ── Stored Message ─────────────────────────────────────────────────
@@ -69,13 +70,14 @@ pub struct MessageStore {
     conn: Connection,
 }
 
-impl MessageStore {
-    /// Open (or create) the SQLite database and ensure the schema exists.
-    pub fn init(path: &Path) -> Result<Self> {
-        let conn = Connection::open(path)?;
-
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS messages (
+/// Versioned migrations for messages.db.
+///
+/// Version 1 is the initial schema, converting the CREATE TABLE IF NOT EXISTS
+/// pattern to a migration so future ALTER TABLE changes are safe.
+fn messages_migrations() -> Migrations<'static> {
+    Migrations::new(vec![
+        M::up(
+            "CREATE TABLE messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 direction TEXT NOT NULL,
@@ -88,10 +90,10 @@ impl MessageStore {
                 tokens_in INTEGER,
                 tokens_out INTEGER
             );
-            CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_messages_direction ON messages(direction);
+            CREATE INDEX idx_messages_timestamp ON messages(timestamp);
+            CREATE INDEX idx_messages_direction ON messages(direction);
 
-            CREATE TABLE IF NOT EXISTS tool_usage (
+            CREATE TABLE tool_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now')),
                 worker_id TEXT,
@@ -103,31 +105,29 @@ impl MessageStore {
                 tokens_in INTEGER,
                 tokens_out INTEGER
             );
-            CREATE INDEX IF NOT EXISTS idx_tool_usage_name ON tool_usage(tool_name);
-            CREATE INDEX IF NOT EXISTS idx_tool_usage_timestamp ON tool_usage(timestamp);
+            CREATE INDEX idx_tool_usage_name ON tool_usage(tool_name);
+            CREATE INDEX idx_tool_usage_timestamp ON tool_usage(timestamp);
 
-            -- FTS5 virtual table for full-text search over messages
-            CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+            CREATE VIRTUAL TABLE messages_fts USING fts5(
                 content,
                 content=messages,
                 content_rowid=id
             );
 
-            -- Sync triggers to keep FTS index current
-            CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+            CREATE TRIGGER messages_ai AFTER INSERT ON messages BEGIN
                 INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
             END;
 
-            CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+            CREATE TRIGGER messages_ad AFTER DELETE ON messages BEGIN
                 INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
             END;
 
-            CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+            CREATE TRIGGER messages_au AFTER UPDATE ON messages BEGIN
                 INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
                 INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
             END;
 
-            CREATE TABLE IF NOT EXISTS api_usage (
+            CREATE TABLE api_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now')),
                 worker_id TEXT NOT NULL,
@@ -137,14 +137,30 @@ impl MessageStore {
                 model TEXT NOT NULL,
                 session_id TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_api_usage_worker ON api_usage(worker_id);
+            CREATE INDEX idx_api_usage_timestamp ON api_usage(timestamp);
+            CREATE INDEX idx_api_usage_worker ON api_usage(worker_id);
 
-            CREATE TABLE IF NOT EXISTS budget_alert_sent (
+            CREATE TABLE budget_alert_sent (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL DEFAULT (datetime('now'))
             );",
-        )?;
+        ),
+    ])
+}
+
+impl MessageStore {
+    /// Open (or create) the SQLite database and run versioned migrations.
+    ///
+    /// Uses PRAGMA user_version to track schema version. Safe for ALTER TABLE
+    /// changes in future migration versions.
+    pub fn init(path: &Path) -> Result<Self> {
+        let mut conn = Connection::open(path)?;
+
+        conn.execute_batch("PRAGMA journal_mode=WAL;")?;
+
+        messages_migrations()
+            .to_latest(&mut conn)
+            .map_err(|e| anyhow::anyhow!("failed to run messages.db migrations: {e}"))?;
 
         // One-time backfill: populate FTS index with any messages that exist
         // but are not yet indexed (idempotent — skips already-indexed rows).

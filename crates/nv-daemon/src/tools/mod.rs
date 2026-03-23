@@ -2768,6 +2768,20 @@ mod tests {
         HashMap::new()
     }
 
+    fn empty_service_registries() -> ServiceRegistries<'static> {
+        ServiceRegistries {
+            stripe: None,
+            vercel: None,
+            sentry: None,
+            resend: None,
+            ha: None,
+            upstash: None,
+            ado: None,
+            cloudflare: None,
+            doppler: None,
+        }
+    }
+
     #[test]
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
@@ -2781,8 +2795,11 @@ mod tests {
         // + 3 reminders (set_reminder, list_reminders, cancel_reminder)
         // + 3 web (fetch_url, check_url, search_web)
         // + 3 doppler (doppler_secrets, doppler_compare, doppler_activity)
-        // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status) = 79
-        assert_eq!(tools.len(), 79);
+        // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status)
+        // + 3 schedule (list_schedules, add_schedule, remove_schedule)
+        // + 1 check_services
+        // + check_services tool = 84
+        assert_eq!(tools.len(), 84);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2855,6 +2872,8 @@ mod tests {
         // Cross-channel routing tools
         assert!(names.contains(&"list_channels"));
         assert!(names.contains(&"send_to_channel"));
+        // Service diagnostics
+        assert!(names.contains(&"check_services"));
     }
 
     #[test]
@@ -2908,6 +2927,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -2931,6 +2951,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -2956,6 +2977,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -2982,6 +3004,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3005,6 +3028,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3028,6 +3052,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3051,6 +3076,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await;
         assert!(result.is_err());
@@ -3101,6 +3127,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3138,6 +3165,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3176,6 +3204,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3227,7 +3256,7 @@ mod tests {
     #[tokio::test]
     async fn execute_query_nexus_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary")
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
@@ -3241,7 +3270,7 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 7400,
         }]);
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry(), &empty_channels(), None, "primary")
+        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
             .await
             .unwrap();
         match result {
@@ -3266,6 +3295,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await;
         assert!(result.is_err());
@@ -3287,6 +3317,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await;
         assert!(result.is_err());
@@ -3296,7 +3327,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary").await;
+        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -3306,7 +3337,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary").await;
+        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -3325,6 +3356,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await;
         assert!(result.is_err());
@@ -3351,6 +3383,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3390,6 +3423,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3421,6 +3455,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await;
         assert!(result.is_err());
@@ -3476,6 +3511,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3505,6 +3541,7 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await
         .unwrap();
@@ -3531,9 +3568,130 @@ mod tests {
             &empty_channels(),
             None,
             "primary",
+            &empty_service_registries(),
         )
         .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Message store not available"));
+    }
+
+    // ── ServiceRegistry<T> tests ─────────────────────────────────────
+
+    // Minimal Checkable for testing ServiceRegistry without real network calls.
+    struct StubService {
+        name: String,
+    }
+
+    #[async_trait::async_trait]
+    impl Checkable for StubService {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        async fn check_read(&self) -> CheckResult {
+            CheckResult::Healthy {
+                latency_ms: 0,
+                detail: "stub".to_string(),
+            }
+        }
+    }
+
+    fn stub(name: &str) -> StubService {
+        StubService { name: name.to_string() }
+    }
+
+    #[test]
+    fn service_registry_single_contains_default() {
+        let reg: ServiceRegistry<StubService> = ServiceRegistry::single(stub("stripe"));
+        assert_eq!(reg.len(), 1);
+        assert!(!reg.is_empty());
+        let default = reg.default().unwrap();
+        assert_eq!(default.name(), "stripe");
+    }
+
+    #[test]
+    fn service_registry_empty() {
+        let reg: ServiceRegistry<StubService> = ServiceRegistry::new(HashMap::new(), HashMap::new());
+        assert!(reg.is_empty());
+        assert_eq!(reg.len(), 0);
+        assert!(reg.default().is_none());
+        assert!(reg.resolve("any").is_none());
+        assert!(reg.get("any").is_none());
+    }
+
+    #[test]
+    fn service_registry_get_by_name() {
+        let mut instances = HashMap::new();
+        instances.insert("personal".to_string(), stub("jira/personal"));
+        instances.insert("llc".to_string(), stub("jira/llc"));
+        let reg = ServiceRegistry::new(instances, HashMap::new());
+
+        assert_eq!(reg.len(), 2);
+        assert!(reg.get("personal").is_some());
+        assert!(reg.get("llc").is_some());
+        assert!(reg.get("unknown").is_none());
+    }
+
+    #[test]
+    fn service_registry_resolve_via_project_map() {
+        let mut instances = HashMap::new();
+        instances.insert("personal".to_string(), stub("jira/personal"));
+        instances.insert("llc".to_string(), stub("jira/llc"));
+        let mut project_map = HashMap::new();
+        project_map.insert("OO".to_string(), "personal".to_string());
+        project_map.insert("CT".to_string(), "llc".to_string());
+        let reg = ServiceRegistry::new(instances, project_map);
+
+        let resolved = reg.resolve("OO").unwrap();
+        assert_eq!(resolved.name(), "jira/personal");
+
+        let resolved_ct = reg.resolve("CT").unwrap();
+        assert_eq!(resolved_ct.name(), "jira/llc");
+    }
+
+    #[test]
+    fn service_registry_resolve_falls_back_to_default_instance() {
+        let mut instances = HashMap::new();
+        instances.insert("default".to_string(), stub("stripe"));
+        let reg = ServiceRegistry::new(instances, HashMap::new());
+
+        // No project_map entry → falls back to "default"
+        let resolved = reg.resolve("UNKNOWN_PROJECT").unwrap();
+        assert_eq!(resolved.name(), "stripe");
+    }
+
+    #[test]
+    fn service_registry_resolve_falls_back_to_first_instance() {
+        let mut instances = HashMap::new();
+        instances.insert("main".to_string(), stub("vercel/main"));
+        let reg = ServiceRegistry::new(instances, HashMap::new());
+
+        // No project_map, no "default" key → falls back to first
+        let resolved = reg.resolve("ANY").unwrap();
+        assert_eq!(resolved.name(), "vercel/main");
+    }
+
+    #[test]
+    fn service_registry_iter_yields_all_instances() {
+        let mut instances = HashMap::new();
+        instances.insert("a".to_string(), stub("svc/a"));
+        instances.insert("b".to_string(), stub("svc/b"));
+        let reg = ServiceRegistry::new(instances, HashMap::new());
+
+        let mut names: Vec<&str> = reg.iter().map(|(_, v)| v.name()).collect();
+        names.sort();
+        assert_eq!(names, vec!["svc/a", "svc/b"]);
+    }
+
+    #[test]
+    fn service_registry_default_prefers_default_key_over_first() {
+        let mut instances = HashMap::new();
+        // Insert "other" before "default" to verify key-based lookup wins
+        instances.insert("other".to_string(), stub("other"));
+        instances.insert("default".to_string(), stub("the-default"));
+        let reg = ServiceRegistry::new(instances, HashMap::new());
+
+        let d = reg.default().unwrap();
+        assert_eq!(d.name(), "the-default");
     }
 }

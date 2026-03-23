@@ -479,4 +479,330 @@ mod tests {
         assert_eq!(val, 42);
         assert!(ms >= 10, "expected at least 10ms, got {ms}ms");
     }
+
+    // ── [5.3] Extended check_all tests ───────────────────────────────
+
+    fn unhealthy_svc(name: &str, error: &str) -> MockService {
+        MockService {
+            name: name.to_string(),
+            read_result: CheckResult::Unhealthy {
+                error: error.to_string(),
+            },
+            write_result: None,
+        }
+    }
+
+    fn degraded_svc(name: &str, message: &str) -> MockService {
+        MockService {
+            name: name.to_string(),
+            read_result: CheckResult::Degraded {
+                message: message.to_string(),
+            },
+            write_result: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn check_all_unhealthy_counted_in_summary() {
+        let svc = unhealthy_svc("neon", "connection refused");
+        let services: Vec<&dyn Checkable> = vec![&svc];
+        let report = check_all(&services, false).await;
+
+        assert_eq!(report.summary.unhealthy, 1);
+        assert_eq!(report.summary.healthy, 0);
+        assert_eq!(report.summary.total, 1);
+    }
+
+    #[tokio::test]
+    async fn check_all_degraded_counted_in_summary() {
+        let svc = degraded_svc("posthog", "quota near limit");
+        let services: Vec<&dyn Checkable> = vec![&svc];
+        let report = check_all(&services, false).await;
+
+        assert_eq!(report.summary.degraded, 1);
+        assert_eq!(report.summary.total, 1);
+    }
+
+    #[tokio::test]
+    async fn check_all_results_sorted_by_name() {
+        let svc_z = healthy_svc("zebra");
+        let svc_a = healthy_svc("alpha");
+        let svc_m = healthy_svc("middle");
+        let services: Vec<&dyn Checkable> = vec![&svc_z, &svc_a, &svc_m];
+        let report = check_all(&services, false).await;
+
+        assert_eq!(report.read_results[0].name, "alpha");
+        assert_eq!(report.read_results[1].name, "middle");
+        assert_eq!(report.read_results[2].name, "zebra");
+    }
+
+    #[tokio::test]
+    async fn check_all_write_results_sorted_by_name() {
+        let svc_z = writable_svc("z-svc");
+        let svc_a = writable_svc("a-svc");
+        let services: Vec<&dyn Checkable> = vec![&svc_z, &svc_a];
+        let report = check_all(&services, true).await;
+
+        assert_eq!(report.write_results[0].name, "a-svc");
+        assert_eq!(report.write_results[1].name, "z-svc");
+    }
+
+    #[tokio::test]
+    async fn check_all_write_only_counted_when_service_returns_some() {
+        // writable_svc returns Some(Healthy) for write
+        // missing_svc returns None for write (default impl)
+        let svc_w = writable_svc("with-write");
+        let svc_r = missing_svc("read-only", "READ_ONLY_KEY");
+        let services: Vec<&dyn Checkable> = vec![&svc_w, &svc_r];
+        let report = check_all(&services, true).await;
+
+        // write_results only contains svc_w (svc_r returns None from check_write)
+        assert_eq!(report.write_results.len(), 1);
+        assert_eq!(report.write_results[0].name, "with-write");
+    }
+
+    #[tokio::test]
+    async fn check_all_mixed_all_variants() {
+        let h = healthy_svc("healthy");
+        let d = degraded_svc("degraded", "slow");
+        let u = unhealthy_svc("unhealthy", "dead");
+        let m = missing_svc("missing", "MY_KEY");
+        let services: Vec<&dyn Checkable> = vec![&h, &d, &u, &m];
+        let report = check_all(&services, false).await;
+
+        assert_eq!(report.summary.total, 4);
+        assert_eq!(report.summary.healthy, 1);
+        assert_eq!(report.summary.degraded, 1);
+        assert_eq!(report.summary.unhealthy, 1);
+        assert_eq!(report.summary.missing, 1);
+    }
+
+    #[tokio::test]
+    async fn check_all_probe_kind_is_read_for_read_probes() {
+        let svc = healthy_svc("stripe");
+        let services: Vec<&dyn Checkable> = vec![&svc];
+        let report = check_all(&services, false).await;
+
+        assert_eq!(report.read_results[0].probe, ProbeKind::Read);
+    }
+
+    #[tokio::test]
+    async fn check_all_probe_kind_is_write_for_write_probes() {
+        let svc = writable_svc("stripe");
+        let services: Vec<&dyn Checkable> = vec![&svc];
+        let report = check_all(&services, true).await;
+
+        assert_eq!(report.write_results[0].probe, ProbeKind::Write);
+    }
+
+    // ── [5.4] Extended formatter tests ───────────────────────────────
+
+    #[test]
+    fn format_terminal_degraded_shows_message() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "posthog".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Degraded {
+                    message: "quota at 90%".to_string(),
+                },
+            }],
+            vec![],
+        );
+        let output = format_terminal(&report);
+        assert!(output.contains("posthog"));
+        assert!(output.contains("quota at 90%"));
+        assert!(output.contains("degraded"));
+        assert!(output.contains("0/1 healthy"));
+    }
+
+    #[test]
+    fn format_terminal_unhealthy_shows_error() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "neon".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Unhealthy {
+                    error: "connection refused".to_string(),
+                },
+            }],
+            vec![],
+        );
+        let output = format_terminal(&report);
+        assert!(output.contains("neon"));
+        assert!(output.contains("connection refused"));
+        assert!(output.contains("unhealthy"));
+        assert!(output.contains("0/1 healthy"));
+    }
+
+    #[test]
+    fn format_terminal_healthy_shows_latency_and_detail() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "stripe".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Healthy {
+                    latency_ms: 42,
+                    detail: "sk_live_...abc".to_string(),
+                },
+            }],
+            vec![],
+        );
+        let output = format_terminal(&report);
+        assert!(output.contains("stripe"));
+        assert!(output.contains("42ms"));
+        assert!(output.contains("sk_live_...abc"));
+        assert!(output.contains("1/1 healthy"));
+    }
+
+    #[test]
+    fn format_terminal_shows_write_section_header() {
+        let report = CheckReport::build(
+            vec![],
+            vec![CheckEntry {
+                name: "stripe".to_string(),
+                probe: ProbeKind::Write,
+                result: CheckResult::Healthy {
+                    latency_ms: 10,
+                    detail: "write ok".to_string(),
+                },
+            }],
+        );
+        let output = format_terminal(&report);
+        assert!(output.contains("Services (write)"));
+    }
+
+    #[test]
+    fn format_json_includes_all_summary_fields() {
+        let report = CheckReport::build(
+            vec![
+                CheckEntry {
+                    name: "a".to_string(),
+                    probe: ProbeKind::Read,
+                    result: CheckResult::Healthy { latency_ms: 1, detail: "ok".to_string() },
+                },
+                CheckEntry {
+                    name: "b".to_string(),
+                    probe: ProbeKind::Read,
+                    result: CheckResult::Unhealthy { error: "err".to_string() },
+                },
+                CheckEntry {
+                    name: "c".to_string(),
+                    probe: ProbeKind::Read,
+                    result: CheckResult::Missing { env_var: "MY_VAR".to_string() },
+                },
+                CheckEntry {
+                    name: "d".to_string(),
+                    probe: ProbeKind::Read,
+                    result: CheckResult::Degraded { message: "slow".to_string() },
+                },
+            ],
+            vec![],
+        );
+        let json = format_json(&report);
+        assert_eq!(json["summary"]["total"].as_u64().unwrap(), 4);
+        assert_eq!(json["summary"]["healthy"].as_u64().unwrap(), 1);
+        assert_eq!(json["summary"]["unhealthy"].as_u64().unwrap(), 1);
+        assert_eq!(json["summary"]["missing"].as_u64().unwrap(), 1);
+        assert_eq!(json["summary"]["degraded"].as_u64().unwrap(), 1);
+    }
+
+    #[test]
+    fn format_json_read_results_array_present() {
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "stripe".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Healthy { latency_ms: 5, detail: "ok".to_string() },
+            }],
+            vec![],
+        );
+        let json = format_json(&report);
+        assert!(json["read_results"].is_array());
+        let entries = json["read_results"].as_array().unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["name"].as_str().unwrap(), "stripe");
+    }
+
+    #[test]
+    fn format_json_status_tag_present_in_result() {
+        // CheckResult uses #[serde(tag = "status")] so each entry has a "status" field
+        let report = CheckReport::build(
+            vec![CheckEntry {
+                name: "vercel".to_string(),
+                probe: ProbeKind::Read,
+                result: CheckResult::Healthy { latency_ms: 3, detail: "ok".to_string() },
+            }],
+            vec![],
+        );
+        let json = format_json(&report);
+        let entry = &json["read_results"][0];
+        assert_eq!(entry["result"]["status"].as_str().unwrap(), "healthy");
+    }
+
+    // ── [5.5] Integration test: check_all pipeline → valid JSON ──────
+
+    #[tokio::test]
+    async fn integration_check_all_pipeline_produces_valid_json() {
+        // Simulates what `nv check --json` does:
+        // 1. Build services (all missing → no network calls)
+        // 2. Run check_all
+        // 3. format_json → serde_json::to_string_pretty
+        // 4. Verify result is parseable and structurally valid
+
+        let svc_a = missing_svc("stripe", "STRIPE_SECRET_KEY");
+        let svc_b = missing_svc("vercel", "VERCEL_API_TOKEN");
+        let svc_c = healthy_svc("posthog");
+        let services: Vec<&dyn Checkable> = vec![&svc_a, &svc_b, &svc_c];
+
+        let report = check_all(&services, false).await;
+        let json_value = format_json(&report);
+        let json_str = serde_json::to_string_pretty(&json_value)
+            .expect("format_json result must be serializable to string");
+
+        // Must be valid JSON
+        let reparsed: serde_json::Value =
+            serde_json::from_str(&json_str).expect("output must be valid JSON");
+
+        // Top-level keys
+        assert!(reparsed["read_results"].is_array());
+        assert!(reparsed["write_results"].is_array());
+        assert!(reparsed["summary"].is_object());
+
+        // Summary counts are consistent with input
+        let summary = &reparsed["summary"];
+        assert_eq!(summary["total"].as_u64().unwrap(), 3);
+        assert_eq!(summary["missing"].as_u64().unwrap(), 2);
+        assert_eq!(summary["healthy"].as_u64().unwrap(), 1);
+
+        // Read results sorted alphabetically
+        let read = reparsed["read_results"].as_array().unwrap();
+        assert_eq!(read.len(), 3);
+        assert_eq!(read[0]["name"].as_str().unwrap(), "posthog");
+        assert_eq!(read[1]["name"].as_str().unwrap(), "stripe");
+        assert_eq!(read[2]["name"].as_str().unwrap(), "vercel");
+
+        // Each entry has name, probe, result
+        for entry in read {
+            assert!(entry["name"].is_string());
+            assert!(entry["probe"].is_string());
+            assert!(entry["result"].is_object());
+            assert!(entry["result"]["status"].is_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn integration_check_all_json_with_write_probes() {
+        let svc = writable_svc("stripe");
+        let services: Vec<&dyn Checkable> = vec![&svc];
+
+        let report = check_all(&services, true).await;
+        let json_value = format_json(&report);
+        let json_str = serde_json::to_string_pretty(&json_value).unwrap();
+        let reparsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+        let write = reparsed["write_results"].as_array().unwrap();
+        assert_eq!(write.len(), 1);
+        assert_eq!(write[0]["probe"].as_str().unwrap(), "write");
+    }
 }

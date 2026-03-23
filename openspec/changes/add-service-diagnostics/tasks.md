@@ -52,8 +52,8 @@
 
 ## Test Batch
 
-- [ ] [5.1] Unit tests for `ServiceRegistry` — resolve, get, default, iter, empty registry [owner:general-purpose]
-- [ ] [5.2] Unit tests for `ServiceConfig` deserialization — flat, multi-instance, backward compat [owner:general-purpose]
-- [ ] [5.3] Unit tests for `check_all` — mock Checkable impls, verify concurrent execution and report format [owner:general-purpose]
-- [ ] [5.4] Unit tests for terminal and JSON formatters [owner:general-purpose]
-- [ ] [5.5] Integration test: `nv check --json` with mocked services returns valid JSON [owner:general-purpose]
+- [x] [5.1] Unit tests for `ServiceRegistry` — resolve, get, default, iter, empty registry [owner:general-purpose]
+- [x] [5.2] Unit tests for `ServiceConfig` deserialization — flat, multi-instance, backward compat [owner:general-purpose]
+- [x] [5.3] Unit tests for `check_all` — mock Checkable impls, verify concurrent execution and report format [owner:general-purpose]
+- [x] [5.4] Unit tests for terminal and JSON formatters [owner:general-purpose]
+- [x] [5.5] Integration test: `nv check --json` with mocked services returns valid JSON [owner:general-purpose]

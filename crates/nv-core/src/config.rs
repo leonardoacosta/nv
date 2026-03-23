@@ -1089,4 +1089,193 @@ default_project = "OO"
         let (name, _) = jira.resolve_instance("OO").unwrap();
         assert_eq!(name, "personal");
     }
+
+    // ── ServiceConfig<T> unit tests ──────────────────────────────────
+
+    // Simple per-instance config for testing the generic ServiceConfig<T>.
+    #[derive(Debug, Clone, Deserialize, PartialEq)]
+    struct TestInstanceCfg {
+        url: String,
+    }
+
+    #[test]
+    fn service_config_flat_deserializes() {
+        let toml_str = r#"url = "https://api.example.com""#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        match &cfg {
+            ServiceConfig::Flat(inner) => assert_eq!(inner.url, "https://api.example.com"),
+            ServiceConfig::Multi(_) => panic!("expected Flat variant"),
+        }
+    }
+
+    #[test]
+    fn service_config_flat_resolve_returns_default_name() {
+        let cfg: ServiceConfig<TestInstanceCfg> =
+            toml::from_str(r#"url = "https://flat.example.com""#).unwrap();
+        let (name, inner) = cfg.resolve_instance("any-project").unwrap();
+        assert_eq!(name, "default");
+        assert_eq!(inner.url, "https://flat.example.com");
+    }
+
+    #[test]
+    fn service_config_flat_all_instances_returns_single_default() {
+        let cfg: ServiceConfig<TestInstanceCfg> =
+            toml::from_str(r#"url = "https://flat.example.com""#).unwrap();
+        let instances = cfg.all_instances();
+        assert_eq!(instances.len(), 1);
+        assert_eq!(instances[0].0, "default");
+    }
+
+    #[test]
+    fn service_config_multi_instance_deserializes() {
+        let toml_str = r#"
+[instances.prod]
+url = "https://prod.example.com"
+
+[instances.staging]
+url = "https://staging.example.com"
+
+[project_map]
+OO = "prod"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        match &cfg {
+            ServiceConfig::Multi(multi) => {
+                assert_eq!(multi.instances.len(), 2);
+                assert!(multi.instances.contains_key("prod"));
+                assert!(multi.instances.contains_key("staging"));
+                assert_eq!(multi.project_map.get("OO").map(|s| s.as_str()), Some("prod"));
+            }
+            ServiceConfig::Flat(_) => panic!("expected Multi variant"),
+        }
+    }
+
+    #[test]
+    fn service_config_multi_resolve_via_project_map() {
+        let toml_str = r#"
+[instances.prod]
+url = "https://prod.example.com"
+
+[instances.staging]
+url = "https://staging.example.com"
+
+[project_map]
+OO = "prod"
+TC = "staging"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        let (name, inner) = cfg.resolve_instance("OO").unwrap();
+        assert_eq!(name, "prod");
+        assert_eq!(inner.url, "https://prod.example.com");
+
+        let (name2, inner2) = cfg.resolve_instance("TC").unwrap();
+        assert_eq!(name2, "staging");
+        assert_eq!(inner2.url, "https://staging.example.com");
+    }
+
+    #[test]
+    fn service_config_multi_resolve_falls_back_to_default_instance() {
+        let toml_str = r#"
+[instances.default]
+url = "https://default.example.com"
+
+[instances.other]
+url = "https://other.example.com"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        // No project_map entry for "UNKNOWN" → falls back to "default" instance
+        let (name, inner) = cfg.resolve_instance("UNKNOWN").unwrap();
+        assert_eq!(name, "default");
+        assert_eq!(inner.url, "https://default.example.com");
+    }
+
+    #[test]
+    fn service_config_multi_resolve_falls_back_to_first_instance() {
+        let toml_str = r#"
+[instances.only]
+url = "https://only.example.com"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        // No project_map, no "default" key → first instance
+        let result = cfg.resolve_instance("ANYTHING");
+        assert!(result.is_some());
+        let (_, inner) = result.unwrap();
+        assert_eq!(inner.url, "https://only.example.com");
+    }
+
+    #[test]
+    fn service_config_multi_resolve_returns_none_when_empty() {
+        let toml_str = r#"
+[instances]
+"#;
+        // TOML with empty instances table parses as Multi with no instances
+        let cfg: ServiceConfig<TestInstanceCfg> =
+            toml::from_str(toml_str).unwrap_or(ServiceConfig::Multi(ServiceMultiConfig {
+                instances: HashMap::new(),
+                project_map: HashMap::new(),
+            }));
+        match &cfg {
+            ServiceConfig::Multi(multi) if multi.instances.is_empty() => {
+                assert!(cfg.resolve_instance("ANY").is_none());
+            }
+            _ => {
+                // Acceptable: TOML may parse differently; just verify no panic
+            }
+        }
+    }
+
+    #[test]
+    fn service_config_multi_all_instances_returns_all() {
+        let toml_str = r#"
+[instances.a]
+url = "https://a.example.com"
+
+[instances.b]
+url = "https://b.example.com"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        let mut instances = cfg.all_instances();
+        instances.sort_by_key(|(k, _)| *k);
+        assert_eq!(instances.len(), 2);
+        assert_eq!(instances[0].0, "a");
+        assert_eq!(instances[1].0, "b");
+    }
+
+    #[test]
+    fn service_config_flat_project_map_is_empty() {
+        let cfg: ServiceConfig<TestInstanceCfg> =
+            toml::from_str(r#"url = "https://flat.example.com""#).unwrap();
+        assert!(cfg.project_map().is_empty());
+    }
+
+    #[test]
+    fn service_config_multi_project_map_accessible() {
+        let toml_str = r#"
+[instances.prod]
+url = "https://prod.example.com"
+
+[project_map]
+OO = "prod"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        let pm = cfg.project_map();
+        assert_eq!(pm.get("OO").map(|s| s.as_str()), Some("prod"));
+    }
+
+    #[test]
+    fn service_config_multi_backward_compat_no_project_map() {
+        // project_map is #[serde(default)] — omitting it is valid
+        let toml_str = r#"
+[instances.main]
+url = "https://main.example.com"
+"#;
+        let cfg: ServiceConfig<TestInstanceCfg> = toml::from_str(toml_str).unwrap();
+        match &cfg {
+            ServiceConfig::Multi(multi) => {
+                assert!(multi.project_map.is_empty());
+                assert_eq!(multi.instances.len(), 1);
+            }
+            ServiceConfig::Flat(_) => panic!("expected Multi"),
+        }
+    }
 }

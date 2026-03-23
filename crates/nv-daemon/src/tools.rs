@@ -1259,6 +1259,32 @@ pub async fn execute_tool_send(
             let output = github::gh_issues(repo).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "gh_pr_detail" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let pr_number = input["pr_number"].as_u64().ok_or_else(|| anyhow!("missing or invalid 'pr_number' parameter"))?;
+            let output = github::gh_pr_detail(repo, pr_number).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_pr_diff" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let pr_number = input["pr_number"].as_u64().ok_or_else(|| anyhow!("missing or invalid 'pr_number' parameter"))?;
+            let file_filter = input["file_filter"].as_str();
+            let output = github::gh_pr_diff(repo, pr_number, file_filter).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_releases" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let limit = input["limit"].as_u64();
+            let output = github::gh_releases(repo, limit).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_compare" => {
+            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let base = input["base"].as_str().ok_or_else(|| anyhow!("missing 'base' parameter"))?;
+            let head = input["head"].as_str().ok_or_else(|| anyhow!("missing 'head' parameter"))?;
+            let output = github::gh_compare(repo, base, head).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
 
         // ── Tailscale Tools ──────────────────────────────────────────
@@ -1863,6 +1889,48 @@ pub async fn execute_tool(
             let output = github::gh_issues(repo).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "gh_pr_detail" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let pr_number = input["pr_number"]
+                .as_u64()
+                .ok_or_else(|| anyhow!("missing or invalid 'pr_number' parameter"))?;
+            let output = github::gh_pr_detail(repo, pr_number).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_pr_diff" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let pr_number = input["pr_number"]
+                .as_u64()
+                .ok_or_else(|| anyhow!("missing or invalid 'pr_number' parameter"))?;
+            let file_filter = input["file_filter"].as_str();
+            let output = github::gh_pr_diff(repo, pr_number, file_filter).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_releases" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let limit = input["limit"].as_u64();
+            let output = github::gh_releases(repo, limit).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "gh_compare" => {
+            let repo = input["repo"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
+            let base = input["base"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'base' parameter"))?;
+            let head = input["head"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'head' parameter"))?;
+            let output = github::gh_compare(repo, base, head).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
 
         // ── Tailscale Tools ──────────────────────────────────────────
@@ -2456,6 +2524,10 @@ mod tests {
         assert!(names.contains(&"gh_pr_list"));
         assert!(names.contains(&"gh_run_status"));
         assert!(names.contains(&"gh_issues"));
+        assert!(names.contains(&"gh_pr_detail"));
+        assert!(names.contains(&"gh_pr_diff"));
+        assert!(names.contains(&"gh_releases"));
+        assert!(names.contains(&"gh_compare"));
         // Sentry tools
         assert!(names.contains(&"sentry_issues"));
         assert!(names.contains(&"sentry_issue"));

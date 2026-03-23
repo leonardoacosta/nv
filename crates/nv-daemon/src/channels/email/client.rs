@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::bail;
 use reqwest::Client;
 
-use crate::teams::oauth::MsGraphAuth;
+use crate::channels::teams::oauth::MsGraphAuth;
 
 use super::types::{
     GraphMailFolder, GraphMailListResponse, GraphMailMessage, SendMailAddress, SendMailBody,

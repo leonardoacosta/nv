@@ -1,53 +1,30 @@
 mod account;
 mod agent;
-mod calendar_tools;
-mod cloudflare_tools;
 mod aggregation;
 mod bash;
 mod callbacks;
+mod channels;
 mod claude;
 mod conversation;
 mod diary;
 mod digest;
-mod discord;
-mod docker_tools;
-mod email;
-#[allow(dead_code)]
-mod github;
-mod ha_tools;
-mod ado_tools;
-mod plaid_tools;
 mod health;
-mod imessage;
 mod http;
-mod jira;
 mod memory;
 mod messages;
-mod neon_tools;
 mod nexus;
 mod orchestrator;
-mod posthog_tools;
 mod query;
 mod reminders;
-mod resend_tools;
-mod schedule_tools;
 mod scheduler;
-mod sentry_tools;
 mod speech_to_text;
 mod shutdown;
-mod stripe_tools;
-mod upstash_tools;
 #[allow(dead_code)]
 mod state;
 #[allow(dead_code)]
 mod tailscale;
-mod teams;
-mod telegram;
 mod tools;
 mod tts;
-mod vercel_tools;
-mod web_tools;
-mod doppler_tools;
 mod voice_input;
 mod worker;
 
@@ -62,9 +39,9 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
+use channels::telegram::{run_poll_loop, TelegramChannel};
 use claude::ClaudeClient;
 use health::{ChannelStatus, HealthState};
-use telegram::{run_poll_loop, TelegramChannel};
 
 // ── Log Rotation ────────────────────────────────────────────────────
 
@@ -319,7 +296,7 @@ async fn main() -> anyhow::Result<()> {
         let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
 
         let mut discord_channel =
-            discord::DiscordChannel::new(bot_token, discord_config.clone(), poll_tx);
+            channels::discord::DiscordChannel::new(bot_token, discord_config.clone(), poll_tx);
 
         // Connect to Discord gateway
         use nv_core::channel::Channel as _;
@@ -330,7 +307,7 @@ async fn main() -> anyhow::Result<()> {
             .await;
 
         // Create an Arc-wrapped channel for the registry (for sending outbound messages)
-        let discord_for_registry = Arc::new(discord::DiscordChannel::new(
+        let discord_for_registry = Arc::new(channels::discord::DiscordChannel::new(
             bot_token,
             discord_config.clone(),
             // Dummy sender — not used for outbound, only the REST client matters
@@ -350,7 +327,7 @@ async fn main() -> anyhow::Result<()> {
         });
 
         tokio::spawn(async move {
-            discord::run_poll_loop(discord_channel).await;
+            channels::discord::run_poll_loop(discord_channel).await;
         });
         tracing::info!("Discord channel started");
     }
@@ -363,7 +340,7 @@ async fn main() -> anyhow::Result<()> {
             let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
 
             let mut imessage_channel =
-                imessage::IMessageChannel::new(imessage_config.clone(), bb_password, poll_tx);
+                channels::imessage::IMessageChannel::new(imessage_config.clone(), bb_password, poll_tx);
 
             // Validate connectivity at startup
             use nv_core::channel::Channel as _;
@@ -374,7 +351,7 @@ async fn main() -> anyhow::Result<()> {
                 .await;
 
             // Create an Arc-wrapped channel for the registry (for sending outbound messages)
-            let imessage_for_registry = Arc::new(imessage::IMessageChannel::new(
+            let imessage_for_registry = Arc::new(channels::imessage::IMessageChannel::new(
                 imessage_config.clone(),
                 bb_password,
                 // Dummy sender — not used for outbound, only the BB client matters
@@ -394,7 +371,7 @@ async fn main() -> anyhow::Result<()> {
             });
 
             tokio::spawn(async move {
-                imessage::run_poll_loop(imessage_channel).await;
+                channels::imessage::run_poll_loop(imessage_channel).await;
             });
             tracing::info!(
                 url = %imessage_config.bluebubbles_url,
@@ -406,9 +383,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Start Teams channel if configured
     let mut teams_message_buffer: Option<
-        std::sync::Arc<tokio::sync::Mutex<std::collections::VecDeque<teams::types::ChatMessage>>>,
+        std::sync::Arc<tokio::sync::Mutex<std::collections::VecDeque<channels::teams::types::ChatMessage>>>,
     > = None;
-    let mut teams_client_for_http: Option<std::sync::Arc<teams::client::TeamsClient>> = None;
+    let mut teams_client_for_http: Option<std::sync::Arc<channels::teams::client::TeamsClient>> = None;
 
     if let (Some(teams_config), Some(client_id), Some(client_secret)) = (
         &config.teams,
@@ -429,7 +406,7 @@ async fn main() -> anyhow::Result<()> {
 
         let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
 
-        let mut teams_channel = teams::TeamsChannel::new(
+        let mut teams_channel = channels::teams::TeamsChannel::new(
             &teams_config.tenant_id,
             client_id,
             client_secret,
@@ -452,17 +429,17 @@ async fn main() -> anyhow::Result<()> {
 
         // Create an Arc-wrapped TeamsClient for the HTTP webhook handler
         let auth_for_http =
-            std::sync::Arc::new(teams::oauth::MsGraphAuth::new(
+            std::sync::Arc::new(channels::teams::oauth::MsGraphAuth::new(
                 &teams_config.tenant_id,
                 client_id,
                 client_secret,
             ));
-        teams_client_for_http = Some(std::sync::Arc::new(teams::client::TeamsClient::new(
+        teams_client_for_http = Some(std::sync::Arc::new(channels::teams::client::TeamsClient::new(
             auth_for_http,
         )));
 
         // Create an Arc-wrapped channel for the registry (for sending outbound messages)
-        let teams_for_registry = Arc::new(teams::TeamsChannel::new(
+        let teams_for_registry = Arc::new(channels::teams::TeamsChannel::new(
             &teams_config.tenant_id,
             client_id,
             client_secret,
@@ -485,7 +462,7 @@ async fn main() -> anyhow::Result<()> {
         });
 
         tokio::spawn(async move {
-            teams::run_poll_loop(teams_channel).await;
+            channels::teams::run_poll_loop(teams_channel).await;
         });
         tracing::info!("Teams channel started");
     }
@@ -522,15 +499,15 @@ async fn main() -> anyhow::Result<()> {
 
                 let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
 
-                let email_auth = Arc::new(teams::oauth::MsGraphAuth::new(
+                let email_auth = Arc::new(channels::teams::oauth::MsGraphAuth::new(
                     &tenant_id,
                     &client_id,
                     &client_secret,
                 ));
-                let email_client = email::client::EmailClient::new(Arc::clone(&email_auth));
+                let email_client = channels::email::client::EmailClient::new(Arc::clone(&email_auth));
 
                 let mut email_channel =
-                    email::EmailChannel::new(email_client, email_config.clone(), poll_tx);
+                    channels::email::EmailChannel::new(email_client, email_config.clone(), poll_tx);
 
                 // Connect (authenticate + initialize last_seen)
                 use nv_core::channel::Channel as _;
@@ -541,14 +518,14 @@ async fn main() -> anyhow::Result<()> {
                     .await;
 
                 // Create an Arc-wrapped channel for the registry (for sending outbound messages)
-                let email_for_registry_auth = Arc::new(teams::oauth::MsGraphAuth::new(
+                let email_for_registry_auth = Arc::new(channels::teams::oauth::MsGraphAuth::new(
                     &tenant_id,
                     &client_id,
                     &client_secret,
                 ));
                 let email_for_registry_client =
-                    email::client::EmailClient::new(email_for_registry_auth);
-                let email_for_registry = Arc::new(email::EmailChannel::new(
+                    channels::email::client::EmailClient::new(email_for_registry_auth);
+                let email_for_registry = Arc::new(channels::email::EmailChannel::new(
                     email_for_registry_client,
                     email_config.clone(),
                     // Dummy sender — not used for outbound, only the REST client matters
@@ -568,7 +545,7 @@ async fn main() -> anyhow::Result<()> {
                 });
 
                 tokio::spawn(async move {
-                    email::run_poll_loop(email_channel).await;
+                    channels::email::run_poll_loop(email_channel).await;
                 });
                 tracing::info!(
                     folders = ?email_config.folder_ids,
@@ -581,7 +558,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Build Jira registry if configured
     let jira_registry = if let Some(jira_config) = &config.jira {
-        match jira::JiraRegistry::new(jira_config, &secrets) {
+        match tools::jira::JiraRegistry::new(jira_config, &secrets) {
             Ok(registry) => registry,
             Err(e) => {
                 tracing::error!(error = %e, "Failed to build Jira registry — jira tools disabled");
@@ -625,7 +602,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Initialize schedule store (user-defined recurring schedules)
-    let schedule_store = match schedule_tools::ScheduleStore::new(&nv_base) {
+    let schedule_store = match tools::schedule::ScheduleStore::new(&nv_base) {
         Ok(store) => {
             tracing::info!("schedule store initialized");
             Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
@@ -676,7 +653,7 @@ async fn main() -> anyhow::Result<()> {
         if secret.is_none() {
             tracing::info!("Jira configured but no webhook_secret — Jira webhooks will accept all requests");
         }
-        let state = jira::JiraWebhookState {
+        let state = tools::jira::JiraWebhookState {
             trigger_tx: trigger_tx.clone(),
             webhook_secret: secret,
             memory_base_path: nv_base.join("memory"),

@@ -4,7 +4,7 @@ use nv_core::types::{
 };
 
 use super::client::SessionDetail;
-use crate::jira::types::JiraCreateParams;
+use crate::tools::jira::types::JiraCreateParams;
 
 /// Format a session completed event into a Telegram notification.
 ///

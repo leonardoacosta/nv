@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use crate::calendar_tools;
-use crate::jira;
+use crate::tools::calendar as calendar_tools;
+use crate::tools::jira;
 use crate::memory::Memory;
 use crate::nexus;
 

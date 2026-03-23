@@ -286,11 +286,11 @@ pub async fn run_poll_loop(channel: EmailChannel) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::email::types::{GraphMailMessage, MailBody};
+    use crate::channels::email::types::{GraphMailMessage, MailBody};
 
     /// Helper to create an EmailChannel with dummy config for testing filters.
     fn make_channel(sender_filter: Vec<String>, subject_filter: Vec<String>) -> EmailChannel {
-        let auth = Arc::new(crate::teams::oauth::MsGraphAuth::new("t", "c", "s"));
+        let auth = Arc::new(crate::channels::teams::oauth::MsGraphAuth::new("t", "c", "s"));
         let client = EmailClient::new(auth);
         let config = EmailConfig {
             enabled: true,

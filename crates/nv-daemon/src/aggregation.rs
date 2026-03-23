@@ -14,16 +14,16 @@ use std::time::Duration;
 use anyhow::Result;
 
 use crate::claude::ToolDefinition;
-use crate::docker_tools;
-use crate::github;
-use crate::ha_tools;
-use crate::jira;
+use crate::tools::docker as docker_tools;
+use crate::tools::github;
+use crate::tools::ha as ha_tools;
+use crate::tools::jira;
 use crate::nexus;
-use crate::plaid_tools;
-use crate::sentry_tools;
-use crate::stripe_tools;
+use crate::tools::plaid as plaid_tools;
+use crate::tools::sentry as sentry_tools;
+use crate::tools::stripe as stripe_tools;
 use crate::tailscale;
-use crate::vercel_tools;
+use crate::tools::vercel as vercel_tools;
 
 /// Timeout for each individual data source call.
 const SOURCE_TIMEOUT: Duration = Duration::from_secs(5);

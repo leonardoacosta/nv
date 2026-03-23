@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::health::HealthState;
-use crate::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
+use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
-use crate::teams::types::{ChangeNotificationCollection, ChatMessage};
+use crate::channels::teams::types::{ChangeNotificationCollection, ChatMessage};
 
 /// Shared state for the HTTP server.
 #[derive(Clone)]
@@ -25,7 +25,7 @@ pub struct HttpState {
     /// Shared buffer for Teams webhook messages. None if Teams is not configured.
     pub teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
     /// Teams client for fetching full message content from notifications.
-    pub teams_client: Option<Arc<crate::teams::client::TeamsClient>>,
+    pub teams_client: Option<Arc<crate::channels::teams::client::TeamsClient>>,
     /// Jira webhook shared state. None if Jira webhooks are not configured.
     pub jira_webhook_state: Option<Arc<JiraWebhookState>>,
     /// Weekly budget in USD for Claude API usage stats.
@@ -304,7 +304,7 @@ pub async fn run_http_server(
     health: Arc<HealthState>,
     stats_db_path: PathBuf,
     teams_message_buffer: Option<Arc<Mutex<VecDeque<ChatMessage>>>>,
-    teams_client: Option<Arc<crate::teams::client::TeamsClient>>,
+    teams_client: Option<Arc<crate::channels::teams::client::TeamsClient>>,
     jira_webhook_state: Option<Arc<JiraWebhookState>>,
     weekly_budget_usd: f64,
 ) -> anyhow::Result<()> {

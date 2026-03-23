@@ -6,7 +6,7 @@ use nv_core::types::{CronEvent, Trigger};
 use tokio::sync::mpsc;
 
 use crate::digest::state::DigestStateManager;
-use crate::schedule_tools::{validate_cron_expr, ScheduleStore};
+use crate::tools::schedule::{validate_cron_expr, ScheduleStore};
 
 /// Minimum allowed digest interval (prevents runaway loops).
 const MIN_INTERVAL_MINUTES: u64 = 5;

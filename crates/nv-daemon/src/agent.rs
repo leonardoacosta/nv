@@ -19,7 +19,7 @@ use crate::claude::{
 };
 use crate::conversation::{MAX_HISTORY_CHARS, MAX_HISTORY_TURNS, SESSION_TIMEOUT};
 use crate::diary::{DiaryEntry, DiaryWriter};
-use crate::jira;
+use crate::tools::jira;
 use crate::tts;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
@@ -304,7 +304,7 @@ impl AgentLoop {
                         if let Some(uuid_str) = data.strip_prefix("approve:") {
                             handled_jira_callbacks = true;
                             if let Some(tg) = self.channels.get("telegram") {
-                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                     let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                     if let Err(e) = crate::callbacks::handle_approve(
                                         uuid_str,
@@ -325,7 +325,7 @@ impl AgentLoop {
                         } else if let Some(uuid_str) = data.strip_prefix("edit:") {
                             handled_jira_callbacks = true;
                             if let Some(tg) = self.channels.get("telegram") {
-                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                     let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                     match crate::callbacks::handle_edit(
                                         uuid_str,
@@ -346,7 +346,7 @@ impl AgentLoop {
                         } else if let Some(uuid_str) = data.strip_prefix("cancel:") {
                             handled_jira_callbacks = true;
                             if let Some(tg) = self.channels.get("telegram") {
-                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                     let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                     if let Err(e) = crate::callbacks::handle_cancel(
                                         uuid_str,
@@ -372,7 +372,7 @@ impl AgentLoop {
             if self.last_expiry_check.elapsed() >= EXPIRY_CHECK_INTERVAL {
                 self.last_expiry_check = Instant::now();
                 if let Some(tg) = self.channels.get("telegram") {
-                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                         if let Err(e) = crate::callbacks::check_expired_actions(
                             &tg_channel.client,
                             tg_channel.chat_id,
@@ -479,7 +479,7 @@ impl AgentLoop {
             let (thinking_msg_id, thinking_chat_id, thinking_client) =
                 if let Some(tg) = self.channels.get("telegram") {
                     if let Some(tg_channel) =
-                        tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                        tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
                     {
                         match tg_channel.client.send_thinking(tg_channel.chat_id).await {
                             Ok(id) => (
@@ -575,7 +575,7 @@ impl AgentLoop {
                             if let Some(msg_id) = thinking_msg_id {
                                 let mut sent = false;
                                 if let Some(tg) = self.channels.get("telegram") {
-                                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                    if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                         let text = extract_text(&final_content);
                                         if tg_channel.client.edit_message(
                                             tg_channel.chat_id, msg_id, &text, None,
@@ -653,7 +653,7 @@ impl AgentLoop {
                             {
                                 if let Some(tts_client) = &self.tts_client {
                                     if let Some(tg) = self.channels.get("telegram") {
-                                        if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                                        if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                             let tts_c = Arc::clone(tts_client);
                                             let tg_client = tg_channel.client.clone();
                                             let chat_id = tg_channel.chat_id;
@@ -888,7 +888,7 @@ impl AgentLoop {
                         let mut tg_chat_id: Option<i64> = None;
 
                         if let Some(tg) = self.channels.get("telegram") {
-                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                 tg_chat_id = Some(tg_channel.chat_id);
                                 match tg_channel.client.send_message(
                                     tg_channel.chat_id,

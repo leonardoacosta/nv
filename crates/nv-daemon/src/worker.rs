@@ -21,15 +21,15 @@ use crate::agent::{
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
 use crate::conversation::{ConversationStore, MAX_HISTORY_CHARS, MAX_HISTORY_TURNS};
 use crate::diary::{DiaryEntry, DiaryWriter};
-use crate::jira;
+use crate::tools::jira;
 use crate::memory::Memory;
 use crate::messages::MessageStore;
 use crate::nexus;
 use crate::query;
 use crate::reminders::ReminderStore;
-use crate::schedule_tools::ScheduleStore;
+use crate::tools::schedule::ScheduleStore;
 use crate::state::State;
-use crate::telegram::client::TelegramClient;
+use crate::channels::telegram::client::TelegramClient;
 use crate::tools;
 use crate::tts;
 use tokio::sync::mpsc;
@@ -832,7 +832,7 @@ impl Worker {
             if let Some(tts_client) = &deps.tts_client {
                 if let Some(tg) = deps.channels.get("telegram") {
                     if let Some(tg_channel) =
-                        tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                        tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
                     {
                         let tts_c = Arc::clone(tts_client);
                         let tg_client_voice = tg_channel.client.clone();
@@ -1106,7 +1106,7 @@ impl Worker {
 
                         if let Some(tg) = deps.channels.get("telegram") {
                             if let Some(tg_channel) =
-                                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
                             {
                                 tg_chat_id = Some(tg_channel.chat_id);
                                 match tg_channel

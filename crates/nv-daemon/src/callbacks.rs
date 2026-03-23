@@ -12,11 +12,11 @@ use uuid::Uuid;
 
 use nv_core::channel::Channel;
 
-use crate::jira;
+use crate::tools::jira;
 use crate::nexus;
-use crate::schedule_tools::ScheduleStore;
+use crate::tools::schedule::ScheduleStore;
 use crate::state::{PendingStatus, State};
-use crate::telegram::client::TelegramClient;
+use crate::channels::telegram::client::TelegramClient;
 use crate::tools;
 
 // ── Approve Handler ─────────────────────────────────────────────────
@@ -341,7 +341,7 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
 /// Execute an approved ScheduleAdd action — insert the row into SQLite.
 fn execute_schedule_add(
     payload: &serde_json::Value,
-    schedule_store: Option<&std::sync::Mutex<crate::schedule_tools::ScheduleStore>>,
+    schedule_store: Option<&std::sync::Mutex<crate::tools::schedule::ScheduleStore>>,
 ) -> anyhow::Result<String> {
     let store_lock = schedule_store
         .ok_or_else(|| anyhow::anyhow!("schedule store not available"))?;
@@ -360,7 +360,7 @@ fn execute_schedule_add(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("missing 'channel' in payload"))?;
 
-    let schedule = crate::schedule_tools::build_schedule(
+    let schedule = crate::tools::schedule::build_schedule(
         name.to_string(),
         cron_expr.to_string(),
         action.to_string(),
@@ -373,7 +373,7 @@ fn execute_schedule_add(
 /// Execute an approved ScheduleModify action — update cron and/or enabled state.
 fn execute_schedule_modify(
     payload: &serde_json::Value,
-    schedule_store: Option<&std::sync::Mutex<crate::schedule_tools::ScheduleStore>>,
+    schedule_store: Option<&std::sync::Mutex<crate::tools::schedule::ScheduleStore>>,
 ) -> anyhow::Result<String> {
     let store_lock = schedule_store
         .ok_or_else(|| anyhow::anyhow!("schedule store not available"))?;
@@ -403,7 +403,7 @@ fn execute_schedule_modify(
 /// Execute an approved ScheduleRemove action — delete the row from SQLite.
 fn execute_schedule_remove(
     payload: &serde_json::Value,
-    schedule_store: Option<&std::sync::Mutex<crate::schedule_tools::ScheduleStore>>,
+    schedule_store: Option<&std::sync::Mutex<crate::tools::schedule::ScheduleStore>>,
 ) -> anyhow::Result<String> {
     let store_lock = schedule_store
         .ok_or_else(|| anyhow::anyhow!("schedule store not available"))?;

@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::agent::ChannelRegistry;
 use crate::nexus;
-use crate::telegram::client::TelegramClient;
+use crate::channels::telegram::client::TelegramClient;
 use crate::worker::{Priority, SharedDeps, WorkerEvent, WorkerPool, WorkerTask};
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -354,7 +354,7 @@ impl Orchestrator {
             self.last_expiry_check = Instant::now();
             if let Some(tg) = self.channels.get("telegram") {
                 if let Some(tg_channel) =
-                    tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                    tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
                 {
                     if let Err(e) = crate::callbacks::check_expired_actions(
                         &tg_channel.client,
@@ -515,7 +515,7 @@ impl Orchestrator {
                     if should_edit {
                         if let Some(tg) = self.channels.get("telegram") {
                             if let Some(tg_channel) =
-                                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
                             {
                                 let label = stage_label.clone();
                                 let client = tg_channel.client.clone();
@@ -599,7 +599,7 @@ impl Orchestrator {
         // Telegram typing indicator expires after ~5s, so we refresh every cycle
         if let Some(tg) = self.channels.get("telegram") {
             if let Some(tg_channel) =
-                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
             {
                 let _ = tg_channel
                     .client
@@ -646,7 +646,7 @@ impl Orchestrator {
                     // Action callbacks (Jira, Nexus, HA, etc.)
                     if let Some(uuid_str) = data.strip_prefix("approve:") {
                         if let Some(tg) = self.channels.get("telegram") {
-                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                 if let Err(e) = crate::callbacks::handle_approve(
                                     uuid_str,
@@ -666,7 +666,7 @@ impl Orchestrator {
                         }
                     } else if let Some(uuid_str) = data.strip_prefix("edit:") {
                         if let Some(tg) = self.channels.get("telegram") {
-                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                 match crate::callbacks::handle_edit(
                                     uuid_str,
@@ -686,7 +686,7 @@ impl Orchestrator {
                         }
                     } else if let Some(uuid_str) = data.strip_prefix("cancel:") {
                         if let Some(tg) = self.channels.get("telegram") {
-                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>() {
+                            if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                 if let Err(e) = crate::callbacks::handle_cancel(
                                     uuid_str,
@@ -973,7 +973,7 @@ impl Orchestrator {
         // Send confirmation keyboard via Telegram
         if let Some(tg) = self.channels.get("telegram") {
             if let Some(tg_channel) =
-                tg.as_any().downcast_ref::<crate::telegram::TelegramChannel>()
+                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
             {
                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                 match tg_channel

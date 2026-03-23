@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 
-use crate::jira;
+use crate::tools::jira;
 use crate::memory::Memory;
 use crate::nexus;
 

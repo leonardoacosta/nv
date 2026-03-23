@@ -4,13 +4,13 @@
 
 ## Restructure Batch
 
-- [ ] [1.1] [P-1] Create `tools/mod.rs` — move `register_tools()` and `execute_tool()` from `tools.rs`, update module declarations [owner:general-purpose]
-- [ ] [1.2] [P-1] Move 16 `*_tools.rs` files into `tools/` (stripe, vercel, sentry, neon, posthog, upstash, resend, ado, ha, docker, plaid, github, web, cloudflare, doppler, calendar, schedule) — rename dropping `_tools` suffix [owner:general-purpose]
-- [ ] [1.3] [P-1] Move `jira/` module into `tools/jira/` [owner:general-purpose]
-- [ ] [1.4] [P-1] Create `channels/mod.rs` — re-export telegram, discord, teams, email, imessage modules [owner:general-purpose]
-- [ ] [1.5] [P-1] Update `main.rs` module declarations — replace 20+ flat `mod` statements with `mod tools; mod channels;` [owner:general-purpose]
-- [ ] [1.6] [P-2] Update all `use crate::xxx_tools` imports across agent.rs, worker.rs, callbacks.rs, aggregation.rs, orchestrator.rs [owner:general-purpose]
-- [ ] [1.7] [P-2] Verify `cargo check` passes with zero logic changes [owner:general-purpose]
+- [x] [1.1] [P-1] Create `tools/mod.rs` — move `register_tools()` and `execute_tool()` from `tools.rs`, update module declarations [owner:general-purpose]
+- [x] [1.2] [P-1] Move 16 `*_tools.rs` files into `tools/` (stripe, vercel, sentry, neon, posthog, upstash, resend, ado, ha, docker, plaid, github, web, cloudflare, doppler, calendar, schedule) — rename dropping `_tools` suffix [owner:general-purpose]
+- [x] [1.3] [P-1] Move `jira/` module into `tools/jira/` [owner:general-purpose]
+- [x] [1.4] [P-1] Create `channels/mod.rs` — re-export telegram, discord, teams, email, imessage modules [owner:general-purpose]
+- [x] [1.5] [P-1] Update `main.rs` module declarations — replace 20+ flat `mod` statements with `mod tools; mod channels;` [owner:general-purpose]
+- [x] [1.6] [P-2] Update all `use crate::xxx_tools` imports across agent.rs, worker.rs, callbacks.rs, aggregation.rs, orchestrator.rs [owner:general-purpose]
+- [x] [1.7] [P-2] Verify `cargo check` passes with zero logic changes [owner:general-purpose]
 
 ## Core Batch
 

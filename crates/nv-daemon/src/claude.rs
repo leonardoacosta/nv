@@ -939,7 +939,7 @@ impl ClaudeClient {
             "Read,Glob,Grep,Bash(git:*)".into(),
             "--system-prompt".into(),
             system.to_string(),
-            "--strict-mcp-config".into(),
+            // --strict-mcp-config removed — causes hangs when MCP servers fail
         ];
 
         if let Some(path) = image_path {

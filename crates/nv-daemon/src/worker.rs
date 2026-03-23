@@ -1348,10 +1348,14 @@ fn strip_tool_error_lines(text: &str) -> String {
         "known projects",
         "unreachable",
         "connection refused",
+        "connection failed",
         "timed out",
         "no such tool",
         "tool execution failed",
         "failed to execute",
+        "env var",
+        "not set",
+        "environment variable",
     ];
 
     let lines: Vec<&str> = text.lines().collect();
@@ -1453,15 +1457,22 @@ fn strip_internal_reasoning_lines(text: &str) -> String {
         "cannot inspect",
         "no such tool",
         "let me try",
+        "let me check",
         "i'll try",
+        "i'll use a different",
+        "i'll use another",
         "falling back to",
         "the tool returned",
         "i don't have access to",
+        "i don't have direct access",
         "unable to access",
         "that tool isn't available",
         "that tool failed",
         "that tool doesn't exist",
         "that tool is not available",
+        "i can't inspect",
+        "i cannot inspect",
+        "no such tool available",
     ];
 
     let lines: Vec<&str> = text.lines().collect();
@@ -1587,6 +1598,11 @@ fn strip_preamble(text: &str) -> String {
             "checking",
             "searching",
             "looking",
+            "i don't have direct",
+            "i don't have access",
+            "unable to access",
+            "can't inspect",
+            "cannot inspect",
         ];
         for pattern in &preamble_patterns {
             if lower.starts_with(pattern) {
@@ -2033,6 +2049,48 @@ mod tests {
         let input = "Can't inspect the nv source directly.";
         let result = strip_internal_reasoning_lines(input);
         assert!(result.trim().is_empty());
+    }
+
+    #[test]
+    fn strip_preamble_let_me_check_removed() {
+        let input = "Let me check what I can.";
+        let result = strip_internal_reasoning_lines(input);
+        assert!(result.trim().is_empty(), "let me check preamble should be stripped; got: {result:?}");
+    }
+
+    #[test]
+    fn strip_preamble_no_direct_access_removed() {
+        let input = "I don't have direct access to that resource.";
+        let result = strip_internal_reasoning_lines(input);
+        assert!(result.trim().is_empty(), "no direct access line should be stripped; got: {result:?}");
+    }
+
+    #[test]
+    fn strip_preamble_no_such_tool_available_removed() {
+        let input = "No such tool available in this context.";
+        let result = strip_internal_reasoning_lines(input);
+        assert!(result.trim().is_empty(), "no such tool available line should be stripped; got: {result:?}");
+    }
+
+    #[test]
+    fn strip_error_env_var_not_set_removed() {
+        let input = "Error: env var NEXUS_TOKEN is not set";
+        let result = strip_tool_error_lines(input);
+        assert!(result.trim().is_empty(), "env var error line should be stripped; got: {result:?}");
+    }
+
+    #[test]
+    fn strip_error_connection_failed_removed() {
+        let input = "Error: connection failed to registry endpoint";
+        let result = strip_tool_error_lines(input);
+        assert!(result.trim().is_empty(), "connection failed error should be stripped; got: {result:?}");
+    }
+
+    #[test]
+    fn strip_error_environment_variable_removed() {
+        let input = "Error: environment variable DATABASE_URL not set";
+        let result = strip_tool_error_lines(input);
+        assert!(result.trim().is_empty(), "environment variable error should be stripped; got: {result:?}");
     }
 
     // ── Integration test: full pipeline ──────────────────────────────

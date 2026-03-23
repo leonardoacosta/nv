@@ -759,6 +759,15 @@ impl Worker {
             })
             .unwrap_or("telegram");
 
+        if response_text.is_empty() {
+            // All content was stripped — delete the "..." thinking indicator so it
+            // doesn't hang in the chat with no follow-up response.
+            if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, thinking_chat_id, thinking_msg_id) {
+                tracing::debug!(chat_id, msg_id, "response empty after stripping — deleting thinking indicator");
+                let _ = tg.delete_message(chat_id, msg_id).await;
+            }
+        }
+
         if !response_text.is_empty() {
             // For Telegram: if we sent a thinking indicator, edit it with the final
             // response instead of sending a new message (avoids double-message UX).
@@ -1256,8 +1265,9 @@ fn extract_text(content: &[ContentBlock]) -> String {
 }
 
 /// Remove ```tool_call...``` / ```tool_use...``` / ```json...``` blocks,
-/// single-line `[Called tool: <name> with <json>]` patterns, and
-/// the preamble text that often precedes them ("Let me check that.", etc.)
+/// single-line `[Called tool: <name> with <json>]` patterns,
+/// `<tool_response>...</tool_response>` XML blocks, tool error result lines,
+/// score-annotated search result blocks, and internal-reasoning preamble
 /// from Claude's response text. Only the final conversational response
 /// should reach the user.
 pub fn strip_tool_call_artifacts(text: &str) -> String {
@@ -1278,7 +1288,189 @@ pub fn strip_tool_call_artifacts(text: &str) -> String {
     // summaries and sometimes leak into the extracted response text.
     result = strip_called_tool_lines(&result);
 
+    // Strip <tool_response>...</tool_response> XML blocks (runs after fenced-block
+    // pass so code-fence content has already been removed).
+    result = strip_tool_response_xml(&result);
+
+    // Strip tool error lines (^Error: + infrastructure keywords).
+    result = strip_tool_error_lines(&result);
+
+    // Strip score-annotated search result blocks.
+    result = strip_score_annotated_results(&result);
+
+    // Strip short internal-reasoning lines.
+    result = strip_internal_reasoning_lines(&result);
+
     result.trim().to_string()
+}
+
+/// Remove `<tool_response>...</tool_response>` blocks (multi-line, non-greedy).
+///
+/// Only bare `<tool_response>` tags are matched — content already inside a
+/// fenced code block has been removed by the time this function is called.
+fn strip_tool_response_xml(text: &str) -> String {
+    let open_tag = "<tool_response>";
+    let close_tag = "</tool_response>";
+    let mut result = text.to_string();
+    while let Some(start) = result.find(open_tag) {
+        if let Some(rel_end) = result[start..].find(close_tag) {
+            let end = start + rel_end + close_tag.len();
+            result = format!("{}{}", &result[..start], &result[end..]);
+        } else {
+            // Unclosed tag — strip from the open tag to end of text to
+            // avoid leaking partial XML to the user.
+            result = result[..start].to_string();
+            break;
+        }
+    }
+    result
+}
+
+/// Remove lines that begin with `Error:` and contain tool-infrastructure keywords.
+///
+/// Only strips infra-level errors (registry, connection, timeout, etc.).
+/// User-facing errors that don't reference tool infrastructure are preserved.
+fn strip_tool_error_lines(text: &str) -> String {
+    const INFRA_KEYWORDS: &[&str] = &[
+        "not found in registry",
+        "known projects",
+        "unreachable",
+        "connection refused",
+        "timed out",
+        "no such tool",
+        "tool execution failed",
+        "failed to execute",
+    ];
+
+    let lines: Vec<&str> = text.lines().collect();
+    let filtered: Vec<&str> = lines
+        .into_iter()
+        .filter(|line| {
+            let trimmed = line.trim();
+            if !trimmed.starts_with("Error:") {
+                return true; // keep non-error lines
+            }
+            let lower = trimmed.to_lowercase();
+            // Keep error lines that don't contain any infra keyword
+            !INFRA_KEYWORDS.iter().any(|kw| lower.contains(kw))
+        })
+        .collect();
+
+    let joined = filtered.join("\n");
+    if text.ends_with('\n') && !joined.is_empty() {
+        format!("{joined}\n")
+    } else {
+        joined
+    }
+}
+
+/// Remove score-annotated search result blocks.
+///
+/// Strips lines matching `<filename>.<ext> (score: N):` and any immediately
+/// following non-empty continuation lines until a blank line or a line that
+/// looks like the start of a new sentence (uppercase letter followed by text
+/// not matching the score pattern).
+fn strip_score_annotated_results(text: &str) -> String {
+    // Pattern: line starts with a non-whitespace token containing a dot,
+    // followed by " (score: <number>):"
+    fn is_score_header(line: &str) -> bool {
+        let trimmed = line.trim();
+        // Must match: <word>.<ext> (score: N): — require non-space token, dot, then " (score:"
+        if let Some(paren_pos) = trimmed.find(" (score:") {
+            let prefix = &trimmed[..paren_pos];
+            // prefix must be a single token (no spaces) containing a dot
+            !prefix.contains(' ') && prefix.contains('.')
+        } else {
+            false
+        }
+    }
+
+    fn is_continuation(line: &str) -> bool {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return false; // blank line ends block
+        }
+        // A line starting with an uppercase letter followed by lowercase
+        // suggests a new sentence — stop stripping there.
+        let mut chars = trimmed.chars();
+        if let Some(first) = chars.next() {
+            if first.is_uppercase() {
+                if let Some(second) = chars.next() {
+                    if second.is_lowercase() {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut result: Vec<&str> = Vec::with_capacity(lines.len());
+    let mut i = 0;
+    while i < lines.len() {
+        if is_score_header(lines[i]) {
+            // Skip the header line and continuation lines
+            i += 1;
+            while i < lines.len() && is_continuation(lines[i]) {
+                i += 1;
+            }
+        } else {
+            result.push(lines[i]);
+            i += 1;
+        }
+    }
+
+    let joined = result.join("\n");
+    if text.ends_with('\n') && !joined.is_empty() {
+        format!("{joined}\n")
+    } else {
+        joined
+    }
+}
+
+/// Strip short lines that represent Claude's internal reasoning about tool
+/// failures. Only lines shorter than 150 characters that match known
+/// infrastructure-reasoning phrases are stripped.
+fn strip_internal_reasoning_lines(text: &str) -> String {
+    const MAX_LINE_LEN: usize = 150;
+
+    const REASONING_PATTERNS: &[&str] = &[
+        "nexus is unreachable",
+        "can't inspect",
+        "cannot inspect",
+        "no such tool",
+        "let me try",
+        "i'll try",
+        "falling back to",
+        "the tool returned",
+        "i don't have access to",
+        "unable to access",
+        "that tool isn't available",
+        "that tool failed",
+        "that tool doesn't exist",
+        "that tool is not available",
+    ];
+
+    let lines: Vec<&str> = text.lines().collect();
+    let filtered: Vec<&str> = lines
+        .into_iter()
+        .filter(|line| {
+            let trimmed = line.trim();
+            if trimmed.len() >= MAX_LINE_LEN {
+                return true; // preserve long lines
+            }
+            let lower = trimmed.to_lowercase();
+            !REASONING_PATTERNS.iter().any(|p| lower.contains(p))
+        })
+        .collect();
+
+    let joined = filtered.join("\n");
+    if text.ends_with('\n') && !joined.is_empty() {
+        format!("{joined}\n")
+    } else {
+        joined
+    }
 }
 
 /// Remove all lines matching the pattern `[Called tool: <name> with <args>]`.
@@ -1652,6 +1844,216 @@ mod tests {
         let result = strip_tool_call_artifacts(input);
         // This line does NOT end with ] so should be preserved
         assert!(result.contains("[Called tool:"), "unclosed/non-matching line should be preserved");
+    }
+
+    // ── strip_tool_response_xml tests ────────────────────────────────
+
+    #[test]
+    fn strip_xml_basic_block() {
+        let input = "Before\n<tool_response>some result</tool_response>\nAfter";
+        let result = strip_tool_response_xml(input);
+        assert!(!result.contains("<tool_response>"), "open tag should be removed");
+        assert!(!result.contains("</tool_response>"), "close tag should be removed");
+        assert!(!result.contains("some result"), "content should be removed");
+        assert!(result.contains("Before"), "text before should be preserved");
+        assert!(result.contains("After"), "text after should be preserved");
+    }
+
+    #[test]
+    fn strip_xml_multiline_content() {
+        let input = "<tool_response>\nline1\nline2\nline3\n</tool_response>\nReal answer.";
+        let result = strip_tool_response_xml(input);
+        assert!(!result.contains("line1"));
+        assert!(!result.contains("line2"));
+        assert!(result.contains("Real answer."));
+    }
+
+    #[test]
+    fn strip_xml_multiple_blocks() {
+        let input = "<tool_response>block one</tool_response> mid <tool_response>block two</tool_response> end";
+        let result = strip_tool_response_xml(input);
+        assert!(!result.contains("block one"));
+        assert!(!result.contains("block two"));
+        assert!(result.contains("end"));
+    }
+
+    #[test]
+    fn strip_xml_unclosed_tag_removes_to_end() {
+        let input = "Preamble\n<tool_response>dangling content without close tag";
+        let result = strip_tool_response_xml(input);
+        assert!(!result.contains("<tool_response>"));
+        assert!(!result.contains("dangling content"));
+        assert!(result.contains("Preamble"));
+    }
+
+    #[test]
+    fn strip_xml_no_match_passthrough() {
+        let input = "Just a normal response with no XML tags.";
+        let result = strip_tool_response_xml(input);
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn strip_xml_inside_code_fence_already_removed_by_pipeline() {
+        // By the time strip_tool_response_xml runs, fenced blocks are gone.
+        // This test verifies the standalone function works on bare XML only.
+        let input = "Answer: <tool_response>raw</tool_response> done";
+        let result = strip_tool_call_artifacts(input);
+        assert!(!result.contains("raw"));
+        assert!(result.contains("Answer:"));
+        assert!(result.contains("done"));
+    }
+
+    // ── strip_tool_error_lines tests ─────────────────────────────────
+
+    #[test]
+    fn strip_error_infra_keyword_removed() {
+        let input = "Error: project 'nv' not found in registry. Known projects: oo, tc";
+        let result = strip_tool_error_lines(input);
+        assert!(!result.contains("not found in registry"), "infra error should be stripped");
+    }
+
+    #[test]
+    fn strip_error_connection_refused_removed() {
+        let input = "Error: connection refused to nexus endpoint";
+        let result = strip_tool_error_lines(input);
+        assert!(result.trim().is_empty(), "connection refused line should be stripped");
+    }
+
+    #[test]
+    fn strip_error_user_facing_preserved() {
+        let input = "Error: your Jira ticket was not found.";
+        let result = strip_tool_error_lines(input);
+        assert!(result.contains("Error: your Jira ticket was not found."), "user-facing error should be preserved");
+    }
+
+    #[test]
+    fn strip_error_mixed_content() {
+        let input = "Here is the result.\nError: tool execution failed for nexus\nThe data is ready.";
+        let result = strip_tool_error_lines(input);
+        assert!(!result.contains("tool execution failed"), "infra error line should be stripped");
+        assert!(result.contains("Here is the result."));
+        assert!(result.contains("The data is ready."));
+    }
+
+    #[test]
+    fn strip_error_timed_out_removed() {
+        let input = "Error: request timed out waiting for tool response";
+        let result = strip_tool_error_lines(input);
+        assert!(result.trim().is_empty());
+    }
+
+    // ── strip_score_annotated_results tests ──────────────────────────
+
+    #[test]
+    fn strip_score_single_result_block() {
+        let input = "worker.rs (score: 0.95):\nsome raw content here\nmore raw content\n\nReal answer.";
+        let result = strip_score_annotated_results(input);
+        assert!(!result.contains("score: 0.95"), "score header should be stripped");
+        assert!(!result.contains("some raw content"), "continuation should be stripped");
+        assert!(result.contains("Real answer."));
+    }
+
+    #[test]
+    fn strip_score_multiple_blocks() {
+        let input = "file1.rs (score: 0.9):\ncontent one\n\nfile2.md (score: 0.7):\ncontent two\n\nFinal.";
+        let result = strip_score_annotated_results(input);
+        assert!(!result.contains("score: 0.9"));
+        assert!(!result.contains("score: 0.7"));
+        assert!(!result.contains("content one"));
+        assert!(!result.contains("content two"));
+        assert!(result.contains("Final."));
+    }
+
+    #[test]
+    fn strip_score_non_matching_lines_preserved() {
+        let input = "This line has a dot.ext but no score annotation.\nNormal sentence.";
+        let result = strip_score_annotated_results(input);
+        assert!(result.contains("This line has a dot.ext"));
+        assert!(result.contains("Normal sentence."));
+    }
+
+    #[test]
+    fn strip_score_result_followed_by_real_sentence() {
+        // A line starting with uppercase then lowercase ends the block.
+        let input = "notes.txt (score: 1.0):\nraw data\nNormal sentence continues here.";
+        let result = strip_score_annotated_results(input);
+        assert!(!result.contains("notes.txt"));
+        assert!(!result.contains("raw data"));
+        assert!(result.contains("Normal sentence continues here."));
+    }
+
+    // ── strip_preamble / internal reasoning tests ─────────────────────
+
+    #[test]
+    fn strip_preamble_nexus_unreachable_removed() {
+        let input = "Nexus is unreachable at the moment.";
+        let result = strip_internal_reasoning_lines(input);
+        assert!(result.trim().is_empty(), "internal reasoning line should be stripped");
+    }
+
+    #[test]
+    fn strip_preamble_falling_back_removed() {
+        let input = "Falling back to cached data since nexus is down.";
+        let result = strip_internal_reasoning_lines(input);
+        assert!(result.trim().is_empty());
+    }
+
+    #[test]
+    fn strip_preamble_long_line_preserved() {
+        // Lines >= 150 chars must not be stripped even if they contain a pattern.
+        let filler = "x".repeat(130);
+        let input = format!("Unable to access the resource because {filler}.");
+        assert!(input.len() >= 150, "test input must be at least 150 chars, got {}", input.len());
+        let result = strip_internal_reasoning_lines(&input);
+        assert!(result.contains("Unable to access"), "long line should be preserved");
+    }
+
+    #[test]
+    fn strip_preamble_legitimate_short_response_preserved() {
+        let input = "Your meeting is at 3pm today.";
+        let result = strip_internal_reasoning_lines(input);
+        assert_eq!(result, input, "legitimate short response should not be stripped");
+    }
+
+    #[test]
+    fn strip_preamble_cant_inspect_removed() {
+        let input = "Can't inspect the nv source directly.";
+        let result = strip_internal_reasoning_lines(input);
+        assert!(result.trim().is_empty());
+    }
+
+    // ── Integration test: full pipeline ──────────────────────────────
+
+    #[test]
+    fn strip_full_pipeline_all_artifacts() {
+        let input = [
+            "Let me check that.",
+            "```tool_call",
+            "{\"tool\": \"read_memory\", \"input\": {}}",
+            "```",
+            "<tool_response>tool result content here</tool_response>",
+            "Error: project 'nv' not found in registry. Known projects: oo",
+            "worker.rs (score: 0.88):",
+            "some raw search snippet",
+            "",
+            "Nexus is unreachable right now.",
+            "Here is the real answer you asked for.",
+        ].join("\n");
+
+        let result = strip_tool_call_artifacts(&input);
+
+        // All artifact categories removed
+        assert!(!result.contains("tool_call"), "fenced tool block should be stripped");
+        assert!(!result.contains("tool result content"), "xml block should be stripped");
+        assert!(!result.contains("not found in registry"), "error line should be stripped");
+        assert!(!result.contains("score: 0.88"), "score result should be stripped");
+        assert!(!result.contains("raw search snippet"), "score continuation should be stripped");
+        assert!(!result.contains("Nexus is unreachable"), "reasoning line should be stripped");
+
+        // Real content preserved
+        assert!(result.contains("Here is the real answer you asked for."),
+            "real response must be preserved; got: {result:?}");
     }
 
     // ── WorkerEvent Tests ───────────────────────────────────────────

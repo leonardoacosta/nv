@@ -158,6 +158,9 @@ pub struct DiscordConfig {
 pub struct TeamsConfig {
     /// Azure AD tenant ID.
     pub tenant_id: String,
+    /// Default team ID for tool operations (e.g. `teams_channels`, `teams_messages`).
+    /// Distinct from `team_ids` which is the inbound watch list.
+    pub team_id: Option<String>,
     /// Team IDs to watch for messages.
     #[serde(default)]
     pub team_ids: Vec<String>,
@@ -561,6 +564,9 @@ pub struct Secrets {
     pub bluebubbles_password: Option<String>,
     pub ms_graph_client_id: Option<String>,
     pub ms_graph_client_secret: Option<String>,
+    /// Azure AD tenant ID for MS Graph API.
+    /// Sourced from `MS_GRAPH_TENANT_ID`. Resolution order: env > `[teams].tenant_id` in config.
+    pub ms_graph_tenant_id: Option<String>,
     /// Default Jira API token (unqualified — used for flat config and as fallback).
     pub jira_api_token: Option<String>,
     /// Default Jira username (unqualified — used for flat config and as fallback).
@@ -608,6 +614,7 @@ impl Secrets {
             bluebubbles_password: std::env::var("BLUEBUBBLES_PASSWORD").ok(),
             ms_graph_client_id: std::env::var("MS_GRAPH_CLIENT_ID").ok(),
             ms_graph_client_secret: std::env::var("MS_GRAPH_CLIENT_SECRET").ok(),
+            ms_graph_tenant_id: std::env::var("MS_GRAPH_TENANT_ID").ok(),
             jira_api_token: std::env::var("JIRA_API_TOKEN").ok(),
             jira_username: std::env::var("JIRA_USERNAME").ok(),
             elevenlabs_api_key: std::env::var("ELEVENLABS_API_KEY").ok(),

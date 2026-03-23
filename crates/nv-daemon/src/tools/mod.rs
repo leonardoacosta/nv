@@ -14,6 +14,7 @@ pub mod resend;
 pub mod schedule;
 pub mod sentry;
 pub mod stripe;
+pub mod teams;
 pub mod upstash;
 pub mod vercel;
 pub mod web;
@@ -189,6 +190,7 @@ use self::schedule as schedule_tools;
 use self::sentry as sentry_tools;
 use self::stripe as stripe_tools;
 use crate::tailscale;
+use self::teams as teams_tools;
 use self::upstash as upstash_tools;
 use self::vercel as vercel_tools;
 
@@ -392,6 +394,9 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Cloudflare DNS tools
     tools.extend(cloudflare_tools::cloudflare_tool_definitions());
+
+    // Add Microsoft Teams tools (channels, messages, send, presence)
+    tools.extend(teams_tools::teams_tool_definitions());
 
     // Add service diagnostics tool
     tools.push(ToolDefinition {
@@ -1778,6 +1783,74 @@ pub async fn execute_tool_send(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Teams Tools ───────────────────────────────────────────────
+        "teams_channels" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
+            let team_id = input["team_id"]
+                .as_str()
+                .or(env_team_id.as_deref())
+                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
+            let output = teams_tools::teams_channels(&client, team_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "teams_messages" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
+            let team_id = input["team_id"]
+                .as_str()
+                .or(env_team_id.as_deref())
+                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
+            let channel_id = input["channel_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
+            let output = teams_tools::teams_messages(&client, team_id, channel_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "teams_send" => {
+            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
+            let team_id = input["team_id"]
+                .as_str()
+                .or(env_team_id.as_deref())
+                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
+            let channel_id = input["channel_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
+            let message = input["message"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'message' parameter"))?;
+            if message.trim().is_empty() {
+                anyhow::bail!("message must be non-empty");
+            }
+            let preview = if message.len() > 60 {
+                format!("{}…", &message[..60])
+            } else {
+                message.to_string()
+            };
+            let description = format!("Send to Teams #{channel_id}: \"{preview}\"");
+            let payload = serde_json::json!({
+                "channel": "teams",
+                "message": message,
+                "recipient": format!("{team_id}:{channel_id}"),
+            });
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::ChannelSend,
+                payload,
+            })
+        }
+        "teams_presence" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let user = input["user"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'user' parameter"))?;
+            let output = teams_tools::teams_presence(&client, user).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         // ── Web Fetch Tools ────────────────────────────────────────────
         "fetch_url" => {
             let url = input["url"]
@@ -2516,6 +2589,74 @@ pub async fn execute_tool(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Teams Tools ───────────────────────────────────────────────
+        "teams_channels" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
+            let team_id = input["team_id"]
+                .as_str()
+                .or(env_team_id.as_deref())
+                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
+            let output = teams_tools::teams_channels(&client, team_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "teams_messages" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
+            let team_id = input["team_id"]
+                .as_str()
+                .or(env_team_id.as_deref())
+                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
+            let channel_id = input["channel_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
+            let output = teams_tools::teams_messages(&client, team_id, channel_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "teams_send" => {
+            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
+            let team_id = input["team_id"]
+                .as_str()
+                .or(env_team_id.as_deref())
+                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
+            let channel_id = input["channel_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
+            let message = input["message"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'message' parameter"))?;
+            if message.trim().is_empty() {
+                anyhow::bail!("message must be non-empty");
+            }
+            let preview = if message.len() > 60 {
+                format!("{}…", &message[..60])
+            } else {
+                message.to_string()
+            };
+            let description = format!("Send to Teams #{channel_id}: \"{preview}\"");
+            let payload = serde_json::json!({
+                "channel": "teams",
+                "message": message,
+                "recipient": format!("{team_id}:{channel_id}"),
+            });
+            Ok(ToolResult::PendingAction {
+                description,
+                action_type: nv_core::types::ActionType::ChannelSend,
+                payload,
+            })
+        }
+        "teams_presence" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let user = input["user"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'user' parameter"))?;
+            let output = teams_tools::teams_presence(&client, user).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         // ── Web Fetch Tools ────────────────────────────────────────────
         "fetch_url" => {
             let url = input["url"]
@@ -2836,8 +2977,9 @@ mod tests {
         // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status)
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
-        // = 87
-        assert_eq!(tools.len(), 87);
+        // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
+        // = 91
+        assert_eq!(tools.len(), 91);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2917,6 +3059,11 @@ mod tests {
         assert!(names.contains(&"send_to_channel"));
         // Service diagnostics
         assert!(names.contains(&"check_services"));
+        // Teams tools
+        assert!(names.contains(&"teams_channels"));
+        assert!(names.contains(&"teams_messages"));
+        assert!(names.contains(&"teams_send"));
+        assert!(names.contains(&"teams_presence"));
     }
 
     #[test]
@@ -3141,6 +3288,7 @@ mod tests {
             bluebubbles_password: None,
             ms_graph_client_id: None,
             ms_graph_client_secret: None,
+            ms_graph_tenant_id: None,
             jira_api_token: Some("fake-token".to_string()),
             jira_username: Some("test@test.com".to_string()),
             elevenlabs_api_key: None,

@@ -9,6 +9,7 @@ use super::types::OAuthTokenResponse;
 const REFRESH_BUFFER: Duration = Duration::from_secs(300);
 
 /// Cached token state.
+#[derive(Debug)]
 struct TokenState {
     access_token: String,
     expires_at: Instant,
@@ -21,6 +22,7 @@ struct TokenState {
 ///
 /// Designed as a reusable struct so future MS Graph integrations (e.g.,
 /// email channel) can share the same auth client.
+#[derive(Debug)]
 pub struct MsGraphAuth {
     http: Client,
     tenant_id: String,

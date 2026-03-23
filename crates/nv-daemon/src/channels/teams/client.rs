@@ -6,7 +6,8 @@ use reqwest::Client;
 
 use super::oauth::MsGraphAuth;
 use super::types::{
-    ChatMessage, GraphListResponse, SubscriptionRequest, SubscriptionResponse, TeamChannel,
+    ChannelMessage, ChatMessage, GraphListResponse, PresenceResponse, SubscriptionRequest,
+    SubscriptionResponse, TeamChannel,
 };
 
 /// MS Graph API base URL (v1.0).
@@ -19,6 +20,7 @@ const MAX_RATE_LIMIT_RETRIES: u32 = 3;
 ///
 /// All requests use a Bearer token from the shared `MsGraphAuth` instance.
 /// Handles 429 rate limiting with Retry-After header.
+#[derive(Debug)]
 pub struct TeamsClient {
     http: Client,
     auth: Arc<MsGraphAuth>,
@@ -227,6 +229,81 @@ impl TeamsClient {
 
         let list: GraphListResponse<TeamChannel> = resp.json().await?;
         Ok(list.value)
+    }
+
+    /// Get recent messages from a Teams channel.
+    ///
+    /// Returns up to `top` messages ordered by created time descending.
+    pub async fn get_channel_messages(
+        &self,
+        team_id: &str,
+        channel_id: &str,
+        top: u32,
+    ) -> anyhow::Result<Vec<ChannelMessage>> {
+        let url = format!(
+            "{GRAPH_API_BASE}/teams/{team_id}/channels/{channel_id}/messages?$top={top}"
+        );
+
+        let token = self.auth.get_token().await?;
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if status.as_u16() == 403 {
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Insufficient permissions to read channel messages (403). \
+                Ensure the Azure AD app has ChannelMessage.Read.All permission. Details: {}",
+                body
+            );
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Get channel messages failed ({}): {}", status, body);
+        }
+
+        let list: GraphListResponse<ChannelMessage> = resp.json().await?;
+        Ok(list.value)
+    }
+
+    /// Get a user's presence status from MS Graph.
+    ///
+    /// `user` may be an email/UPN (e.g. `sarah@civalent.com`) or an object ID.
+    /// Requires `Presence.Read.All` application permission.
+    pub async fn get_user_presence(&self, user: &str) -> anyhow::Result<PresenceResponse> {
+        let url = format!("{GRAPH_API_BASE}/users/{user}/presence");
+
+        let token = self.auth.get_token().await?;
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if status.as_u16() == 403 {
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Insufficient permissions to read user presence (403). \
+                Ensure the Azure AD app has Presence.Read.All permission. Details: {}",
+                body
+            );
+        }
+        if status.as_u16() == 404 {
+            bail!("User '{}' not found in Azure AD", user);
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Get user presence failed ({}): {}", status, body);
+        }
+
+        let presence: PresenceResponse = resp.json().await?;
+        Ok(presence)
     }
 
     // ── Internal Helpers ─────────────────────────────────────────

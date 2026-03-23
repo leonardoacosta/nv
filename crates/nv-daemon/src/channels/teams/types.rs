@@ -145,6 +145,53 @@ pub struct GraphListResponse<T> {
     pub value: Vec<T>,
 }
 
+// ── Teams Tool Types ─────────────────────────────────────────────────
+
+/// User presence response from `/users/{user}/presence`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresenceResponse {
+    /// Availability status: Available, Busy, DoNotDisturb, Away, Offline, etc.
+    pub availability: String,
+    /// Current activity: InACall, InAMeeting, Presenting, Available, Away, etc.
+    pub activity: String,
+}
+
+/// Body content of a channel message.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelMessageBody {
+    pub content: String,
+    pub content_type: Option<String>,
+}
+
+/// Sender user info embedded in a channel message.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelMessageUser {
+    pub display_name: Option<String>,
+}
+
+/// Sender container for a channel message.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChannelMessageFrom {
+    pub user: Option<ChannelMessageUser>,
+}
+
+/// A single message from the channel messages list API.
+///
+/// Used by `get_channel_messages()` — separate from `ChatMessage` which is used
+/// by the inbound webhook relay and has additional fields.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChannelMessage {
+    pub id: String,
+    pub created_date_time: Option<String>,
+    pub body: ChannelMessageBody,
+    pub from: Option<ChannelMessageFrom>,
+}
+
 // ── Conversion ───────────────────────────────────────────────────
 
 impl ChatMessage {

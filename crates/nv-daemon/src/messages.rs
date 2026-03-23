@@ -145,6 +145,24 @@ fn messages_migrations() -> Migrations<'static> {
                 timestamp TEXT NOT NULL DEFAULT (datetime('now'))
             );",
         ),
+        M::up(
+            "CREATE TABLE obligations (
+                id TEXT PRIMARY KEY,
+                source_channel TEXT NOT NULL,
+                source_message TEXT,
+                detected_action TEXT NOT NULL,
+                project_code TEXT,
+                priority INTEGER NOT NULL DEFAULT 2,
+                status TEXT NOT NULL DEFAULT 'open',
+                owner TEXT NOT NULL DEFAULT 'nova',
+                owner_reason TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX idx_obligations_status ON obligations(status);
+            CREATE INDEX idx_obligations_priority ON obligations(priority);
+            CREATE INDEX idx_obligations_owner ON obligations(owner);",
+        ),
     ])
 }
 

@@ -60,6 +60,30 @@ struct AskResponse {
 
 #[tokio::main]
 async fn main() {
+    // Load ~/.nv/env so CLI commands have the same env vars as the daemon
+    // (systemd loads this via EnvironmentFile, but CLI runs in user shell)
+    let env_path = std::env::var("HOME")
+        .map(|h| std::path::PathBuf::from(h).join(".nv/env"))
+        .unwrap_or_default();
+    if env_path.exists() {
+        if let Ok(contents) = std::fs::read_to_string(&env_path) {
+            for line in contents.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                if let Some((key, value)) = line.split_once('=') {
+                    let key = key.trim();
+                    let value = value.trim().trim_matches('"');
+                    // Only set if not already in environment (explicit env takes precedence)
+                    if std::env::var(key).is_err() {
+                        std::env::set_var(key, value);
+                    }
+                }
+            }
+        }
+    }
+
     let cli = Cli::parse();
 
     match cli.command {

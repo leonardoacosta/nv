@@ -314,7 +314,6 @@ pub async fn ha_entity(id: &str) -> Result<String> {
 }
 
 /// Execute ha_service_call after confirmation.
-#[allow(dead_code)]
 pub async fn ha_service_call_execute(
     domain: &str,
     service: &str,

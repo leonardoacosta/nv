@@ -75,6 +75,9 @@ pub async fn handle_approve(
         nv_core::types::ActionType::ScheduleRemove => {
             execute_schedule_remove(&action.payload, schedule_store)
         }
+        nv_core::types::ActionType::HaServiceCall => {
+            execute_ha_service_call(&action.payload).await
+        }
         _ => {
             // Jira and other action types
             if let Some(registry) = jira_registry {
@@ -298,6 +301,7 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
             "ScheduleAdd" => nv_core::types::ActionType::ScheduleAdd,
             "ScheduleModify" => nv_core::types::ActionType::ScheduleModify,
             "ScheduleRemove" => nv_core::types::ActionType::ScheduleRemove,
+            "HaServiceCall" => nv_core::types::ActionType::HaServiceCall,
             _ => nv_core::types::ActionType::JiraCreate,
         };
     }
@@ -319,6 +323,11 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
     // Infer ChannelSend from payload fields
     if payload.get("channel").is_some() && payload.get("message").is_some() {
         return nv_core::types::ActionType::ChannelSend;
+    }
+
+    // Infer HaServiceCall from payload fields
+    if payload.get("domain").is_some() && payload.get("service").is_some() {
+        return nv_core::types::ActionType::HaServiceCall;
     }
 
     // Infer from payload fields — Jira actions
@@ -423,6 +432,21 @@ fn execute_schedule_remove(
     }
 }
 
+/// Execute an approved HaServiceCall action.
+async fn execute_ha_service_call(payload: &serde_json::Value) -> anyhow::Result<String> {
+    let domain = payload["domain"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'domain' in payload"))?;
+    let service = payload["service"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("missing 'service' in payload"))?;
+    let data = payload
+        .get("data")
+        .ok_or_else(|| anyhow::anyhow!("missing 'data' in payload"))?;
+
+    crate::tools::ha::ha_service_call_execute(domain, service, data).await
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -499,6 +523,33 @@ mod tests {
         assert!(matches!(
             detect_action_type(&payload),
             nv_core::types::ActionType::NexusStopSession
+        ));
+    }
+
+    #[test]
+    fn detect_action_type_explicit_ha_service_call() {
+        let payload = serde_json::json!({
+            "_action_type": "HaServiceCall",
+            "domain": "light",
+            "service": "turn_off",
+            "data": {"entity_id": "light.office"}
+        });
+        assert!(matches!(
+            detect_action_type(&payload),
+            nv_core::types::ActionType::HaServiceCall
+        ));
+    }
+
+    #[test]
+    fn detect_action_type_infers_ha_service_call() {
+        let payload = serde_json::json!({
+            "domain": "light",
+            "service": "turn_off",
+            "data": {"entity_id": "light.office"}
+        });
+        assert!(matches!(
+            detect_action_type(&payload),
+            nv_core::types::ActionType::HaServiceCall
         ));
     }
 }

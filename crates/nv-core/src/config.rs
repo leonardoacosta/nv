@@ -66,7 +66,38 @@ fn default_timezone() -> String {
     "America/Chicago".to_string()
 }
 
+fn default_search_url() -> String {
+    "https://html.duckduckgo.com/html/".to_string()
+}
+
 // ── Config structs ──────────────────────────────────────────────────
+
+/// Configuration for web fetch and search tools.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebConfig {
+    /// Base URL for the web search backend. Defaults to DuckDuckGo HTML endpoint.
+    /// Set to a SearXNG instance URL (containing `/search`) for structured JSON results.
+    #[serde(default = "default_search_url")]
+    pub search_url: String,
+}
+
+/// Configuration for the Doppler secrets management tools.
+///
+/// Provides short alias mapping so the operator can use project codes (e.g. `oo`)
+/// instead of full Doppler project names (e.g. `otaku-odyssey`).
+///
+/// ```toml
+/// [doppler.projects]
+/// oo = "otaku-odyssey"
+/// tc = "tribal-cities"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct DopplerConfig {
+    /// Maps project aliases to full Doppler project names.
+    /// E.g. `{"oo" => "otaku-odyssey"}`.
+    #[serde(default)]
+    pub projects: HashMap<String, String>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -81,6 +112,10 @@ pub struct Config {
     pub daemon: Option<DaemonConfig>,
     /// Optional Google Calendar integration config.
     pub calendar: Option<CalendarConfig>,
+    /// Optional web fetch / search configuration.
+    pub web: Option<WebConfig>,
+    /// Optional Doppler secrets management configuration (alias mappings).
+    pub doppler: Option<DopplerConfig>,
     /// Project code to filesystem path mapping (e.g. "oo" -> "~/dev/oo").
     /// Paths are resolved and validated on load.
     #[serde(default)]

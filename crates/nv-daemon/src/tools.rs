@@ -8,6 +8,9 @@ use nv_core::types::OutboundMessage;
 
 use crate::ado_tools;
 use crate::aggregation;
+use crate::cloudflare_tools;
+use crate::doppler_tools;
+use crate::web_tools;
 use crate::bash;
 use crate::calendar_tools;
 use crate::claude::ToolDefinition;
@@ -221,6 +224,15 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add reminder tools (set, list, cancel)
     tools.extend(reminder_tool_definitions());
+
+    // Add web fetch and search tools
+    tools.extend(web_tools::web_tool_definitions());
+
+    // Add Doppler secrets management tools
+    tools.extend(doppler_tools::doppler_tool_definitions());
+
+    // Add Cloudflare DNS tools
+    tools.extend(cloudflare_tools::cloudflare_tool_definitions());
 
     // Add cross-channel routing tools
     tools.extend(vec![
@@ -1503,6 +1515,94 @@ pub async fn execute_tool_send(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Web Fetch Tools ────────────────────────────────────────────
+        "fetch_url" => {
+            let url = input["url"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'url' parameter"))?;
+            let format_hint = input["format"].as_str();
+            let output = web_tools::fetch_url(url, format_hint).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "check_url" => {
+            let url = input["url"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'url' parameter"))?;
+            let output = web_tools::check_url(url).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "search_web" => {
+            let query = input["query"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
+            let count = input["count"].as_u64().unwrap_or(5) as usize;
+            // search_url: use NV_WEB_SEARCH_URL env var if set, otherwise None (defaults to DDG)
+            let search_url_env = std::env::var("NV_WEB_SEARCH_URL").ok();
+            let search_url = search_url_env.as_deref();
+            let output = web_tools::search_web(query, count, search_url).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Doppler Tools ──────────────────────────────────────────────
+        "doppler_secrets" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let environment = input["environment"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'environment' parameter"))?;
+            let client = doppler_tools::DopplerClient::from_env()?;
+            let output = doppler_tools::doppler_secrets(&client, project, environment, None).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "doppler_compare" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let env_a = input["env_a"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'env_a' parameter"))?;
+            let env_b = input["env_b"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'env_b' parameter"))?;
+            let client = doppler_tools::DopplerClient::from_env()?;
+            let output = doppler_tools::doppler_compare(&client, project, env_a, env_b, None).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "doppler_activity" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let count = input["count"].as_u64();
+            let client = doppler_tools::DopplerClient::from_env()?;
+            let output = doppler_tools::doppler_activity(&client, project, count, None).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Cloudflare DNS Tools ───────────────────────────────────────
+        "cf_zones" => {
+            let client = cloudflare_tools::CloudflareClient::from_env()?;
+            let output = cloudflare_tools::cf_zones(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "cf_dns_records" => {
+            let domain = input["domain"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
+            let record_type = input["record_type"].as_str();
+            let client = cloudflare_tools::CloudflareClient::from_env()?;
+            let output = cloudflare_tools::cf_dns_records(&client, domain, record_type).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "cf_domain_status" => {
+            let domain = input["domain"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
+            let client = cloudflare_tools::CloudflareClient::from_env()?;
+            let output = cloudflare_tools::cf_domain_status(&client, domain).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -2015,6 +2115,93 @@ pub async fn execute_tool(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Web Fetch Tools ────────────────────────────────────────────
+        "fetch_url" => {
+            let url = input["url"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'url' parameter"))?;
+            let format_hint = input["format"].as_str();
+            let output = web_tools::fetch_url(url, format_hint).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "check_url" => {
+            let url = input["url"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'url' parameter"))?;
+            let output = web_tools::check_url(url).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "search_web" => {
+            let query = input["query"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
+            let count = input["count"].as_u64().unwrap_or(5) as usize;
+            let search_url_env = std::env::var("NV_WEB_SEARCH_URL").ok();
+            let search_url = search_url_env.as_deref();
+            let output = web_tools::search_web(query, count, search_url).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Doppler Tools ──────────────────────────────────────────────
+        "doppler_secrets" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let environment = input["environment"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'environment' parameter"))?;
+            let client = doppler_tools::DopplerClient::from_env()?;
+            let output = doppler_tools::doppler_secrets(&client, project, environment, None).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "doppler_compare" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let env_a = input["env_a"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'env_a' parameter"))?;
+            let env_b = input["env_b"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'env_b' parameter"))?;
+            let client = doppler_tools::DopplerClient::from_env()?;
+            let output = doppler_tools::doppler_compare(&client, project, env_a, env_b, None).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "doppler_activity" => {
+            let project = input["project"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
+            let count = input["count"].as_u64();
+            let client = doppler_tools::DopplerClient::from_env()?;
+            let output = doppler_tools::doppler_activity(&client, project, count, None).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Cloudflare DNS Tools ───────────────────────────────────────
+        "cf_zones" => {
+            let client = cloudflare_tools::CloudflareClient::from_env()?;
+            let output = cloudflare_tools::cf_zones(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "cf_dns_records" => {
+            let domain = input["domain"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
+            let record_type = input["record_type"].as_str();
+            let client = cloudflare_tools::CloudflareClient::from_env()?;
+            let output = cloudflare_tools::cf_dns_records(&client, domain, record_type).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "cf_domain_status" => {
+            let domain = input["domain"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
+            let client = cloudflare_tools::CloudflareClient::from_env()?;
+            let output = cloudflare_tools::cf_domain_status(&client, domain).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         _ => Err(anyhow!("unknown tool: {name}")),
     }
 }
@@ -2228,8 +2415,11 @@ mod tests {
         // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session)
         // + 2 cross-channel (list_channels, send_to_channel)
         // + 3 calendar (calendar_today, calendar_upcoming, calendar_next)
-        // + 3 reminders (set_reminder, list_reminders, cancel_reminder) = 70
-        assert_eq!(tools.len(), 70);
+        // + 3 reminders (set_reminder, list_reminders, cancel_reminder)
+        // + 3 web (fetch_url, check_url, search_web)
+        // + 3 doppler (doppler_secrets, doppler_compare, doppler_activity)
+        // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status) = 79
+        assert_eq!(tools.len(), 79);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));

@@ -1,6 +1,7 @@
 mod account;
 mod agent;
 mod calendar_tools;
+mod cloudflare_tools;
 mod aggregation;
 mod bash;
 mod callbacks;
@@ -45,6 +46,8 @@ mod telegram;
 mod tools;
 mod tts;
 mod vercel_tools;
+mod web_tools;
+mod doppler_tools;
 mod voice_input;
 mod worker;
 

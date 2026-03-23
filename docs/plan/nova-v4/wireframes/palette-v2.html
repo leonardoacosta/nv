@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nova -- Palette V2 + Mark Iterations</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Geist Mono', 'JetBrains Mono', monospace; background: #050505; color: #e5e5e5; font-size: 12px; }
+    h1 { text-align: center; padding: 24px; font-size: 16px; color: #737373; }
+    h2 { font-size: 13px; color: #737373; padding: 16px 24px 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .palette { border-radius: 12px; overflow: hidden; border: 1px solid #1a1a2a; margin: 0 24px 24px; }
+    .palette-header { padding: 16px; font-size: 14px; font-weight: 700; border-bottom: 1px solid #1a1a2a; }
+    .palette-body { padding: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .palette-body { grid-template-columns: 1fr; } }
+    .swatch-row { display: flex; gap: 6px; margin-bottom: 12px; }
+    .swatch { width: 32px; height: 32px; border-radius: 6px; }
+    .swatch-label { font-size: 9px; color: #525252; margin-top: 2px; text-align: center; }
+    .mock-session { padding: 10px; border-radius: 8px; margin-bottom: 6px; border: 1px solid; }
+    .mock-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+    .mock-obl { padding: 10px; border-radius: 8px; margin-bottom: 6px; display: flex; gap: 8px; border: 1px solid; }
+    .mock-obl-bar { width: 4px; border-radius: 2px; flex-shrink: 0; }
+    .mock-note { border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 11px; border: 1px solid; }
+    .marks-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 24px; padding: 16px 24px 32px; }
+    .mark-cell { text-align: center; padding: 16px; border: 1px solid #1a1a2a; border-radius: 12px; background: #0a0a0f; }
+    .mark-cell:hover { border-color: #7c3aed; }
+    .mark-cell svg { width: 64px; height: 64px; margin-bottom: 8px; }
+    .mark-cell .label { font-size: 10px; color: #737373; }
+    .mark-cell .sublabel { font-size: 9px; color: #525252; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<h1>Nova v4 -- Cosmic Purple + Rose Palette + Mark Iterations</h1>
+
+<!-- PALETTE: Cosmic Purple + Rose -->
+<div class="palette" style="background:#0a0a0f;">
+  <div class="palette-header" style="background:#0f0f18;color:#c4b5fd;">
+    Cosmic Purple + Rose
+    <span style="font-size:11px;color:#737373;margin-left:12px;">Purple primary, rose for urgency/Leo, violet accent for Nova</span>
+  </div>
+  <div class="palette-body">
+    <div>
+      <div class="swatch-row">
+        <div><div class="swatch" style="background:#7c3aed;"></div><div class="swatch-label">primary</div></div>
+        <div><div class="swatch" style="background:#e11d48;"></div><div class="swatch-label">rose</div></div>
+        <div><div class="swatch" style="background:#c4b5fd;"></div><div class="swatch-label">nova</div></div>
+        <div><div class="swatch" style="background:#fb7185;"></div><div class="swatch-label">leo</div></div>
+        <div><div class="swatch" style="background:#34d399;"></div><div class="swatch-label">ok</div></div>
+        <div><div class="swatch" style="background:#fbbf24;"></div><div class="swatch-label">warn</div></div>
+        <div><div class="swatch" style="background:#f87171;"></div><div class="swatch-label">err</div></div>
+      </div>
+      <div class="mock-session" style="background:#0f0f18;border-color:#1a1a2a;">
+        <span class="mock-badge" style="background:#1a0a2a;color:#c4b5fd;">cron</span> <span style="color:#525252;">12m -- 45s</span>
+        <div style="margin-top:6px;color:#525252;">jira vercel sentry mem -- "Generate digest"</div>
+        <div style="margin-top:4px;"><span class="mock-badge" style="background:#1a0a2a;color:#c4b5fd;">nova</span></div>
+      </div>
+      <div class="mock-session" style="background:#0f0f18;border-color:#1a1a2a;">
+        <span class="mock-badge" style="background:#1a0a2a;color:#c4b5fd;">telegram</span>
+        <span class="mock-badge" style="background:#2a0a1a;color:#fb7185;">leo</span>
+        <span style="color:#525252;">35m -- 2m 12s</span>
+        <div style="margin-top:6px;color:#525252;">vercel sentry gh mem git -- "Check OO deploy"</div>
+      </div>
+    </div>
+    <div>
+      <div class="mock-obl" style="background:#0f0f18;border-color:#1a1a2a;">
+        <div class="mock-obl-bar" style="background:#f87171;"></div>
+        <div>
+          <span class="mock-badge" style="background:#2a0a0a;color:#f87171;">P0</span>
+          <span class="mock-badge" style="background:#2a0a1a;color:#fb7185;font-size:9px;">overdue</span>
+          <strong>OO deploy failed</strong>
+          <div style="margin-top:4px;"><span class="mock-badge" style="background:#1a0a2a;color:#c4b5fd;font-size:9px;">nova can handle</span></div>
+        </div>
+      </div>
+      <div class="mock-obl" style="background:#0f0f18;border-color:#1a1a2a;">
+        <div class="mock-obl-bar" style="background:#fbbf24;"></div>
+        <div>
+          <span class="mock-badge" style="background:#1a1a0a;color:#fbbf24;">P1</span>
+          <strong>Update landing page</strong>
+          <div style="margin-top:4px;"><span class="mock-badge" style="background:#2a0a1a;color:#fb7185;font-size:9px;">leo must handle</span></div>
+        </div>
+      </div>
+      <div class="mock-note" style="background:#0d0a1a;border-color:#1a1040;color:#c4b5fd;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.7;">Nova -- Recommended</div>
+        <span style="color:#e5e5e5;">Auth.ts TypeError correlates with abc1234. Recommend /ci:gh --fix.</span>
+      </div>
+      <div class="mock-note" style="background:#1a0a10;border-color:#2a1020;color:#fb7185;">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;opacity:0.7;">Leo -- Action Required</div>
+        <span style="color:#e5e5e5;">Content decision needed for OO landing page copy update.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MARK ITERATIONS -->
+<h2>Constellation Iterations</h2>
+<div class="marks-grid">
+
+  <!-- C1: Original constellation -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="10" r="3" fill="#c4b5fd"/>
+      <circle cx="16" cy="26" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="48" cy="24" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="22" cy="44" r="3" fill="#c4b5fd"/>
+      <circle cx="46" cy="46" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="32" cy="56" r="2.5" fill="#c4b5fd" opacity="0.5"/>
+      <line x1="32" y1="10" x2="16" y2="26" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="10" x2="48" y2="24" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="16" y1="26" x2="22" y2="44" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="48" y1="24" x2="46" y2="46" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="22" y1="44" x2="46" y2="46" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="22" y1="44" x2="32" y2="56" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+      <line x1="46" y1="46" x2="32" y2="56" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+    </svg>
+    <div class="label">C1: Organic</div>
+    <div class="sublabel">Natural star pattern</div>
+  </div>
+
+  <!-- C2: Tighter constellation with central node -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <!-- Central bright node -->
+      <circle cx="32" cy="32" r="4" fill="#c4b5fd"/>
+      <!-- Orbital nodes -->
+      <circle cx="32" cy="12" r="2.5" fill="#c4b5fd" opacity="0.6"/>
+      <circle cx="14" cy="24" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="50" cy="24" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="14" cy="42" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="50" cy="42" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="32" cy="52" r="2.5" fill="#c4b5fd" opacity="0.6"/>
+      <!-- Spokes to center -->
+      <line x1="32" y1="32" x2="32" y2="12" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="32" x2="14" y2="24" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="32" x2="50" y2="24" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="32" x2="14" y2="42" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="32" x2="50" y2="42" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+      <line x1="32" y1="32" x2="32" y2="52" stroke="#7c3aed" stroke-width="0.8" opacity="0.4"/>
+    </svg>
+    <div class="label">C2: Hub</div>
+    <div class="sublabel">Central intelligence node</div>
+  </div>
+
+  <!-- C3: Nova "N" constellation -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <!-- N shape from constellation dots -->
+      <circle cx="18" cy="50" r="3" fill="#c4b5fd"/>
+      <circle cx="18" cy="14" r="3" fill="#c4b5fd"/>
+      <circle cx="46" cy="50" r="3" fill="#c4b5fd"/>
+      <circle cx="46" cy="14" r="3" fill="#c4b5fd" opacity="0.6"/>
+      <!-- Mid dots -->
+      <circle cx="18" cy="32" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="32" cy="32" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <!-- N lines -->
+      <line x1="18" y1="50" x2="18" y2="14" stroke="#7c3aed" stroke-width="1" opacity="0.5"/>
+      <line x1="18" y1="14" x2="46" y2="50" stroke="#7c3aed" stroke-width="1" opacity="0.5"/>
+      <line x1="46" y1="50" x2="46" y2="14" stroke="#7c3aed" stroke-width="1" opacity="0.5"/>
+    </svg>
+    <div class="label">C3: Nova N</div>
+    <div class="sublabel">Letter as constellation</div>
+  </div>
+
+  <!-- C4: Compact hexagonal -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="14" r="2.5" fill="#c4b5fd"/>
+      <circle cx="48" cy="23" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="48" cy="41" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="32" cy="50" r="2.5" fill="#c4b5fd"/>
+      <circle cx="16" cy="41" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="16" cy="23" r="2.5" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="32" cy="32" r="3.5" fill="#c4b5fd"/>
+      <!-- Hex edges -->
+      <line x1="32" y1="14" x2="48" y2="23" stroke="#7c3aed" stroke-width="0.7" opacity="0.4"/>
+      <line x1="48" y1="23" x2="48" y2="41" stroke="#7c3aed" stroke-width="0.7" opacity="0.4"/>
+      <line x1="48" y1="41" x2="32" y2="50" stroke="#7c3aed" stroke-width="0.7" opacity="0.4"/>
+      <line x1="32" y1="50" x2="16" y2="41" stroke="#7c3aed" stroke-width="0.7" opacity="0.4"/>
+      <line x1="16" y1="41" x2="16" y2="23" stroke="#7c3aed" stroke-width="0.7" opacity="0.4"/>
+      <line x1="16" y1="23" x2="32" y2="14" stroke="#7c3aed" stroke-width="0.7" opacity="0.4"/>
+      <!-- Spokes -->
+      <line x1="32" y1="32" x2="32" y2="14" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+      <line x1="32" y1="32" x2="48" y2="23" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+      <line x1="32" y1="32" x2="48" y2="41" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+      <line x1="32" y1="32" x2="32" y2="50" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+      <line x1="32" y1="32" x2="16" y2="41" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+      <line x1="32" y1="32" x2="16" y2="23" stroke="#7c3aed" stroke-width="0.5" opacity="0.3"/>
+    </svg>
+    <div class="label">C4: Hexagonal</div>
+    <div class="sublabel">Structured network</div>
+  </div>
+</div>
+
+<h2>Watchful Dot Iterations</h2>
+<div class="marks-grid">
+
+  <!-- W1: Original watchful dot -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="22" stroke="#7c3aed" stroke-width="1" opacity="0.3"/>
+      <circle cx="32" cy="32" r="12" stroke="#7c3aed" stroke-width="1" opacity="0.5"/>
+      <circle cx="32" cy="32" r="5" fill="#c4b5fd"/>
+      <line x1="32" y1="10" x2="32" y2="20" stroke="#c4b5fd" stroke-width="0.5" opacity="0.4"/>
+      <line x1="54" y1="32" x2="44" y2="32" stroke="#c4b5fd" stroke-width="0.5" opacity="0.4"/>
+      <line x1="32" y1="54" x2="32" y2="44" stroke="#c4b5fd" stroke-width="0.5" opacity="0.4"/>
+      <line x1="10" y1="32" x2="20" y2="32" stroke="#c4b5fd" stroke-width="0.5" opacity="0.4"/>
+      <circle cx="32" cy="10" r="1.5" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="54" cy="32" r="1.5" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="32" cy="54" r="1.5" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="10" cy="32" r="1.5" fill="#c4b5fd" opacity="0.5"/>
+    </svg>
+    <div class="label">W1: Crosshair</div>
+    <div class="sublabel">Focused observation</div>
+  </div>
+
+  <!-- W2: Radar sweep -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="24" stroke="#7c3aed" stroke-width="0.8" opacity="0.2"/>
+      <circle cx="32" cy="32" r="16" stroke="#7c3aed" stroke-width="0.8" opacity="0.3"/>
+      <circle cx="32" cy="32" r="8" stroke="#7c3aed" stroke-width="0.8" opacity="0.5"/>
+      <circle cx="32" cy="32" r="3" fill="#c4b5fd"/>
+      <!-- Radar sweep line -->
+      <line x1="32" y1="32" x2="52" y2="16" stroke="#c4b5fd" stroke-width="1.5" opacity="0.6"/>
+      <!-- Detected dots on rings -->
+      <circle cx="44" cy="20" r="2" fill="#e11d48" opacity="0.8"/>
+      <circle cx="22" cy="42" r="1.5" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="40" cy="46" r="1.5" fill="#fbbf24" opacity="0.6"/>
+    </svg>
+    <div class="label">W2: Radar</div>
+    <div class="sublabel">Active scanning</div>
+  </div>
+
+  <!-- W3: Pulse rings -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="26" stroke="#7c3aed" stroke-width="0.5" opacity="0.15" stroke-dasharray="2 4"/>
+      <circle cx="32" cy="32" r="20" stroke="#7c3aed" stroke-width="0.8" opacity="0.25"/>
+      <circle cx="32" cy="32" r="14" stroke="#7c3aed" stroke-width="1" opacity="0.4"/>
+      <circle cx="32" cy="32" r="8" stroke="#c4b5fd" stroke-width="1.2" opacity="0.6"/>
+      <circle cx="32" cy="32" r="3.5" fill="#c4b5fd"/>
+      <!-- Pulse glow -->
+      <circle cx="32" cy="32" r="6" fill="#c4b5fd" opacity="0.1"/>
+    </svg>
+    <div class="label">W3: Pulse</div>
+    <div class="sublabel">Emanating awareness</div>
+  </div>
+
+  <!-- W4: Minimal target with constellation dots -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="20" stroke="#7c3aed" stroke-width="1" opacity="0.3"/>
+      <circle cx="32" cy="32" r="4" fill="#c4b5fd"/>
+      <!-- Constellation dots on the ring -->
+      <circle cx="32" cy="12" r="2" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="49" cy="22" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="49" cy="42" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="32" cy="52" r="2" fill="#c4b5fd" opacity="0.7"/>
+      <circle cx="15" cy="42" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="15" cy="22" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <!-- Faint connections -->
+      <line x1="32" y1="32" x2="32" y2="12" stroke="#7c3aed" stroke-width="0.4" opacity="0.25"/>
+      <line x1="32" y1="32" x2="49" y2="22" stroke="#7c3aed" stroke-width="0.4" opacity="0.25"/>
+      <line x1="32" y1="32" x2="49" y2="42" stroke="#7c3aed" stroke-width="0.4" opacity="0.25"/>
+      <line x1="32" y1="32" x2="32" y2="52" stroke="#7c3aed" stroke-width="0.4" opacity="0.25"/>
+      <line x1="32" y1="32" x2="15" y2="42" stroke="#7c3aed" stroke-width="0.4" opacity="0.25"/>
+      <line x1="32" y1="32" x2="15" y2="22" stroke="#7c3aed" stroke-width="0.4" opacity="0.25"/>
+    </svg>
+    <div class="label">W4: Orbit</div>
+    <div class="sublabel">Watchful + connected</div>
+  </div>
+
+  <!-- W5: Minimal single ring + offset pupil -->
+  <div class="mark-cell">
+    <svg viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="18" stroke="#7c3aed" stroke-width="1.2" opacity="0.4"/>
+      <circle cx="30" cy="30" r="5" fill="#c4b5fd"/>
+      <circle cx="28" cy="28" r="1.5" fill="#e5e5e5" opacity="0.6"/>
+    </svg>
+    <div class="label">W5: Watchful</div>
+    <div class="sublabel">Off-center gaze</div>
+  </div>
+
+  <!-- Hybrid: W4 + C2 -->
+  <div class="mark-cell" style="border-color:#7c3aed;">
+    <svg viewBox="0 0 64 64" fill="none">
+      <!-- Outer ring -->
+      <circle cx="32" cy="32" r="22" stroke="#7c3aed" stroke-width="0.8" opacity="0.25"/>
+      <!-- Central node (Nova) -->
+      <circle cx="32" cy="32" r="5" fill="#c4b5fd"/>
+      <circle cx="32" cy="32" r="8" fill="#c4b5fd" opacity="0.08"/>
+      <!-- Constellation nodes on orbit -->
+      <circle cx="32" cy="10" r="2.5" fill="#c4b5fd" opacity="0.6"/>
+      <circle cx="51" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="46" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="18" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <circle cx="13" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+      <!-- Spoke connections -->
+      <line x1="32" y1="32" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+      <line x1="32" y1="32" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+      <line x1="32" y1="32" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+      <line x1="32" y1="32" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+      <line x1="32" y1="32" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+      <!-- Ring arc connections -->
+      <line x1="32" y1="10" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+      <line x1="51" y1="26" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+      <line x1="46" y1="48" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+      <line x1="18" y1="48" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+      <line x1="13" y1="26" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+    </svg>
+    <div class="label" style="color:#c4b5fd;">Hybrid: Sentinel</div>
+    <div class="sublabel">Orbit + Hub + Constellation</div>
+  </div>
+</div>
+
+<!-- Size tests -->
+<h2>Mark at Dashboard Sizes</h2>
+<div style="display:flex;gap:32px;padding:16px 24px 32px;align-items:end;">
+  <!-- Favicon (16px) -->
+  <div style="text-align:center;">
+    <div style="background:#0f0f18;padding:8px;border-radius:4px;display:inline-block;">
+      <svg viewBox="0 0 64 64" fill="none" width="16" height="16">
+        <circle cx="32" cy="32" r="22" stroke="#7c3aed" stroke-width="3" opacity="0.25"/>
+        <circle cx="32" cy="32" r="5" fill="#c4b5fd"/>
+        <circle cx="32" cy="10" r="3" fill="#c4b5fd" opacity="0.6"/>
+        <circle cx="51" cy="26" r="3" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="46" cy="48" r="3" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="18" cy="48" r="3" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="13" cy="26" r="3" fill="#c4b5fd" opacity="0.5"/>
+      </svg>
+    </div>
+    <div class="swatch-label" style="margin-top:4px;">16px favicon</div>
+  </div>
+  <!-- Sidebar (24px) -->
+  <div style="text-align:center;">
+    <div style="background:#0f0f18;padding:8px;border-radius:4px;display:inline-block;">
+      <svg viewBox="0 0 64 64" fill="none" width="24" height="24">
+        <circle cx="32" cy="32" r="22" stroke="#7c3aed" stroke-width="1.5" opacity="0.25"/>
+        <circle cx="32" cy="32" r="5" fill="#c4b5fd"/>
+        <circle cx="32" cy="10" r="2.5" fill="#c4b5fd" opacity="0.6"/>
+        <circle cx="51" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="46" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="18" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="13" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <line x1="32" y1="32" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+      </svg>
+    </div>
+    <div class="swatch-label" style="margin-top:4px;">24px sidebar</div>
+  </div>
+  <!-- Telegram avatar (48px) -->
+  <div style="text-align:center;">
+    <div style="background:#0f0f18;padding:8px;border-radius:4px;display:inline-block;">
+      <svg viewBox="0 0 64 64" fill="none" width="48" height="48">
+        <circle cx="32" cy="32" r="22" stroke="#7c3aed" stroke-width="0.8" opacity="0.25"/>
+        <circle cx="32" cy="32" r="5" fill="#c4b5fd"/>
+        <circle cx="32" cy="32" r="8" fill="#c4b5fd" opacity="0.08"/>
+        <circle cx="32" cy="10" r="2.5" fill="#c4b5fd" opacity="0.6"/>
+        <circle cx="51" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="46" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="18" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="13" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <line x1="32" y1="32" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="10" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="51" y1="26" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="46" y1="48" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="18" y1="48" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="13" y1="26" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+      </svg>
+    </div>
+    <div class="swatch-label" style="margin-top:4px;">48px avatar</div>
+  </div>
+  <!-- Full size (96px) -->
+  <div style="text-align:center;">
+    <div style="background:#0f0f18;padding:12px;border-radius:8px;display:inline-block;">
+      <svg viewBox="0 0 64 64" fill="none" width="96" height="96">
+        <circle cx="32" cy="32" r="22" stroke="#7c3aed" stroke-width="0.8" opacity="0.25"/>
+        <circle cx="32" cy="32" r="5" fill="#c4b5fd"/>
+        <circle cx="32" cy="32" r="8" fill="#c4b5fd" opacity="0.08"/>
+        <circle cx="32" cy="10" r="2.5" fill="#c4b5fd" opacity="0.6"/>
+        <circle cx="51" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="46" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="18" cy="48" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <circle cx="13" cy="26" r="2" fill="#c4b5fd" opacity="0.5"/>
+        <line x1="32" y1="32" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="32" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.6" opacity="0.3"/>
+        <line x1="32" y1="10" x2="51" y2="26" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="51" y1="26" x2="46" y2="48" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="46" y1="48" x2="18" y2="48" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="18" y1="48" x2="13" y2="26" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+        <line x1="13" y1="26" x2="32" y2="10" stroke="#7c3aed" stroke-width="0.4" opacity="0.15"/>
+      </svg>
+    </div>
+    <div class="swatch-label" style="margin-top:4px;">96px full</div>
+  </div>
+</div>
+
+</body>
+</html>

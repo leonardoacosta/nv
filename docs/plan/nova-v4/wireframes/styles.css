@@ -87,7 +87,6 @@ body {
 .svc-icon img {
   width: 16px;
   height: 16px;
-  filter: brightness(0.9);
 }
 
 /* Integration list */

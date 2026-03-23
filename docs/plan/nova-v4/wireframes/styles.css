@@ -40,7 +40,7 @@ body {
   border-bottom: 1px solid var(--border);
   margin-bottom: 8px;
 }
-.sidebar-brand h1 { font-size: 16px; font-weight: 600; }
+.sidebar-brand h1 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .sidebar-brand .status { font-size: 11px; color: var(--success); }
 .nav-item {
   display: block;
@@ -74,6 +74,32 @@ body {
 .dot-err { background: var(--danger); }
 .dot-off { background: var(--text-muted); }
 
+/* Service icons (inline SVGs from svgl.app) */
+.svc-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.svc-icon img {
+  width: 16px;
+  height: 16px;
+  filter: brightness(0.9);
+}
+
+/* Integration list */
+.integration-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border); }
+.integration-card:hover { background: var(--surface-hover); }
+.integration-icon { width: 28px; height: 28px; flex-shrink: 0; }
+.integration-icon img { width: 28px; height: 28px; }
+.integration-info { flex: 1; }
+.integration-name { font-weight: 600; font-size: 13px; }
+.integration-detail { font-size: 11px; color: var(--text-muted); }
+.integration-stats { text-align: right; font-size: 11px; color: var(--text-muted); }
+
 /* Tables */
 table { width: 100%; border-collapse: collapse; }
 th { text-align: left; padding: 8px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
@@ -88,6 +114,14 @@ tr:hover { background: var(--surface-hover); }
 .badge-p0 { background: #3f1a1a; color: var(--danger); }
 .badge-p1 { background: #3f2a1a; color: var(--warning); }
 .badge-p2 { background: #1e3a5f; color: var(--accent); }
+.badge-nova { background: #1a3a1a; color: var(--success); font-size: 10px; }
+.badge-leo { background: #2a1a3a; color: #c084fc; font-size: 10px; }
+.badge-trigger { font-size: 10px; }
+.badge-trigger-cron { background: #1a2a1a; color: var(--success); }
+.badge-trigger-telegram { background: #1e3a5f; color: var(--accent); }
+.badge-trigger-discord { background: #1a1a3a; color: #818cf8; }
+.badge-trigger-teams { background: #1a2a3a; color: #60a5fa; }
+.badge-trigger-email { background: #2a2a1a; color: var(--warning); }
 
 /* Chart placeholder */
 .chart-placeholder {
@@ -112,6 +146,10 @@ tr:hover { background: var(--surface-hover); }
 .btn:hover { background: var(--surface-hover); }
 .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
 .btn-sm { padding: 3px 8px; font-size: 11px; }
+
+/* Nova notes */
+.nova-note { background: #0d1520; border: 1px solid #1e3a5f; border-radius: 6px; padding: 10px 12px; margin: 8px 0; font-size: 12px; }
+.nova-note-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); margin-bottom: 4px; }
 
 /* Responsive */
 @media (max-width: 768px) {

@@ -3,22 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nova — Integrations</title>
+  <title>Nova -- Integrations</title>
   <link rel="stylesheet" href="../styles.css">
-  <style>
-    .integration-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--border); }
-    .integration-card:hover { background: var(--surface-hover); }
-    .integration-icon { font-size: 20px; width: 36px; text-align: center; }
-    .integration-info { flex: 1; }
-    .integration-name { font-weight: 600; font-size: 13px; }
-    .integration-detail { font-size: 11px; color: var(--text-muted); }
-    .integration-stats { text-align: right; font-size: 11px; color: var(--text-muted); }
-  </style>
 </head>
 <body>
 <div class="shell">
   <nav class="sidebar">
-    <div class="sidebar-brand"><h1>✨ Nova</h1><div class="status">● online</div></div>
+    <div class="sidebar-brand"><h1>Nova</h1><div class="status">* online</div></div>
     <div class="nav-section">Overview</div>
     <a href="../index.html" class="nav-item">Dashboard</a>
     <a href="obligations.html" class="nav-item">Obligations</a>
@@ -40,124 +31,125 @@
     <div class="card" style="margin-bottom:16px;">
       <div class="card-title" style="margin-bottom:4px;">Channels</div>
       <div class="integration-card">
-        <div class="integration-icon">💬</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/telegram.svg" alt="Telegram"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Telegram</div>
-          <div class="integration-detail">chat_id: 7380462766 · @Nova_acosta_bot</div>
+          <div class="integration-detail">chat_id: 7380462766 / @Nova_acosta_bot</div>
         </div>
-        <div class="integration-stats">24h: 14 inbound · 28 outbound<br>Last: 12m ago</div>
+        <div class="integration-stats">24h: 14 inbound / 28 outbound<br>Last: 12m ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🎮</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/discord.svg" alt="Discord"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Discord</div>
-          <div class="integration-detail">Gateway connected · 1 server · 1 channel</div>
+          <div class="integration-detail">Gateway connected / 1 server / 1 channel</div>
         </div>
-        <div class="integration-stats">24h: 3 inbound · 0 outbound<br>Last: 1h ago</div>
+        <div class="integration-stats">24h: 3 inbound / 0 outbound<br>Last: 1h ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">👥</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/microsoft-teams.svg" alt="Teams"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-warn"></span>Teams</div>
-          <div class="integration-detail">Webhook relay · Graph API polling</div>
+          <div class="integration-detail">Webhook relay / Graph API polling</div>
         </div>
-        <div class="integration-stats">24h: 5 inbound · 2 outbound<br>Last: 45m ago</div>
+        <div class="integration-stats">24h: 5 inbound / 2 outbound<br>Last: 45m ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">📧</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/microsoft-outlook.svg" alt="Email"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Email</div>
-          <div class="integration-detail">MS Graph · Inbox · 60s polling</div>
+          <div class="integration-detail">MS Graph / Inbox / 60s polling</div>
         </div>
         <div class="integration-stats">24h: 2 inbound<br>Last: 20m ago</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">📱</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/apple.svg" alt="iMessage"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-off"></span>iMessage</div>
-          <div class="integration-detail">BlueBubbles · Not configured</div>
+          <div class="integration-detail">BlueBubbles / Not configured</div>
         </div>
-        <div class="integration-stats">—</div>
+        <div class="integration-stats">--</div>
         <button class="btn btn-sm">Setup</button>
       </div>
     </div>
 
-    <!-- Tools -->
+    <!-- Tools — Developer & CI -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:4px;">Tools — Developer & CI</div>
+      <div class="card-title" style="margin-bottom:4px;">Tools -- Developer and CI</div>
       <div class="integration-card">
-        <div class="integration-icon">📋</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/jira.svg" alt="Jira"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Jira</div>
-          <div class="integration-detail">2 instances (personal, llc) · 4 project mappings</div>
+          <div class="integration-detail">2 instances (personal, llc) / 4 project mappings</div>
         </div>
-        <div class="integration-stats">24h: 24 calls · 100% success<br>Avg: 420ms</div>
+        <div class="integration-stats">24h: 24 calls / 100% success<br>Avg: 420ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">⚙️</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/azure-devops.svg" alt="ADO"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Azure DevOps</div>
-          <div class="integration-detail">org: pricelessdev · PAT auth</div>
+          <div class="integration-detail">org: pricelessdev / PAT auth</div>
         </div>
-        <div class="integration-stats">24h: 6 calls · 100% success<br>Avg: 380ms</div>
+        <div class="integration-stats">24h: 6 calls / 100% success<br>Avg: 380ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🐙</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/github-dark.svg" alt="GitHub"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>GitHub</div>
-          <div class="integration-detail">gh CLI · OAuth</div>
+          <div class="integration-detail">gh CLI / OAuth</div>
         </div>
-        <div class="integration-stats">24h: 8 calls · 100% success<br>Avg: 250ms</div>
+        <div class="integration-stats">24h: 8 calls / 100% success<br>Avg: 250ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">▲</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/vercel_wordmark.svg" alt="Vercel"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Vercel</div>
-          <div class="integration-detail">API token · All projects</div>
+          <div class="integration-detail">API token / All projects</div>
         </div>
-        <div class="integration-stats">24h: 12 calls · 100% success<br>Avg: 680ms</div>
+        <div class="integration-stats">24h: 12 calls / 100% success<br>Avg: 680ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🐛</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/sentry.svg" alt="Sentry"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Sentry</div>
           <div class="integration-detail">org: leonardoacosta</div>
         </div>
-        <div class="integration-stats">24h: 10 calls · 90% success<br>Avg: 520ms</div>
+        <div class="integration-stats">24h: 10 calls / 90% success<br>Avg: 520ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
     </div>
 
+    <!-- Tools — Finance & Data -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:4px;">Tools — Finance & Data</div>
+      <div class="card-title" style="margin-bottom:4px;">Tools -- Finance and Data</div>
       <div class="integration-card">
-        <div class="integration-icon">💳</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/stripe.svg" alt="Stripe"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Stripe</div>
-          <div class="integration-detail">Live mode · 1 account</div>
+          <div class="integration-detail">Live mode / 1 account</div>
         </div>
-        <div class="integration-stats">24h: 4 calls · 100% success<br>Avg: 890ms</div>
+        <div class="integration-stats">24h: 4 calls / 100% success<br>Avg: 890ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🐘</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/neon.svg" alt="Neon"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Neon</div>
           <div class="integration-detail">5 project connections</div>
         </div>
-        <div class="integration-stats">24h: 2 calls · 100% success<br>Avg: 150ms</div>
+        <div class="integration-stats">24h: 2 calls / 100% success<br>Avg: 150ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🏦</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/plaid.svg" alt="Plaid"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Plaid</div>
           <div class="integration-detail">cortex-postgres read-only</div>
@@ -167,37 +159,38 @@
       </div>
     </div>
 
+    <!-- Tools — Infrastructure -->
     <div class="card" style="margin-bottom:16px;">
-      <div class="card-title" style="margin-bottom:4px;">Tools — Infrastructure</div>
+      <div class="card-title" style="margin-bottom:4px;">Tools -- Infrastructure</div>
       <div class="integration-card">
-        <div class="integration-icon">🏠</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/home-assistant.svg" alt="HA"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Home Assistant</div>
-          <div class="integration-detail">http://localhost:8123 · 312 entities</div>
+          <div class="integration-detail">http://localhost:8123 / 312 entities</div>
         </div>
-        <div class="integration-stats">24h: 8 calls · 100% success<br>Avg: 45ms</div>
+        <div class="integration-stats">24h: 8 calls / 100% success<br>Avg: 45ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">☁️</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/cloudflare.svg" alt="Cloudflare"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Cloudflare</div>
-          <div class="integration-detail">API token · Zone:Read + DNS:Edit</div>
+          <div class="integration-detail">API token / Zone:Read + DNS:Edit</div>
         </div>
-        <div class="integration-stats">24h: 1 call · 100% success<br>Avg: 340ms</div>
+        <div class="integration-stats">24h: 1 call / 100% success<br>Avg: 340ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🔐</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/doppler.svg" alt="Doppler"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Doppler</div>
-          <div class="integration-detail">API token · 13 projects</div>
+          <div class="integration-detail">API token / 13 projects</div>
         </div>
-        <div class="integration-stats">24h: 3 calls · 100% success<br>Avg: 340ms</div>
+        <div class="integration-stats">24h: 3 calls / 100% success<br>Avg: 340ms</div>
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">📮</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/resend.svg" alt="Resend"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Resend</div>
           <div class="integration-detail">API key</div>
@@ -206,7 +199,7 @@
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">📊</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/posthog.svg" alt="PostHog"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>PostHog</div>
           <div class="integration-detail">3 project IDs configured</div>
@@ -215,7 +208,7 @@
         <button class="btn btn-sm">Configure</button>
       </div>
       <div class="integration-card">
-        <div class="integration-icon">🔴</div>
+        <div class="integration-icon"><img src="https://svgl.app/library/upstash.svg" alt="Upstash"></div>
         <div class="integration-info">
           <div class="integration-name"><span class="dot dot-ok"></span>Upstash</div>
           <div class="integration-detail">Redis REST API</div>

@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import NovaMark from "@/components/NovaMark";
+import UsageSparkline from "@/components/UsageSparkline";
 
 interface NavItem {
   to: string;
@@ -42,14 +44,21 @@ export default function Sidebar() {
       ].join(" ")}
     >
       {/* Nova mark / logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-cosmic-border overflow-hidden">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cosmic-purple shrink-0">
-          <span className="text-white font-bold text-sm font-mono select-none">N</span>
+      <div className="flex flex-col border-b border-cosmic-border overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-5">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cosmic-purple/20 border border-cosmic-purple/30 shrink-0">
+            <NovaMark size={20} />
+          </div>
+          {!collapsed && (
+            <span className="text-cosmic-bright font-semibold text-base tracking-tight truncate">
+              Nova
+            </span>
+          )}
         </div>
         {!collapsed && (
-          <span className="text-cosmic-bright font-semibold text-base tracking-tight truncate">
-            Nova
-          </span>
+          <div className="px-4 pb-3">
+            <UsageSparkline />
+          </div>
         )}
       </div>
 

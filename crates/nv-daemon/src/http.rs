@@ -369,7 +369,7 @@ pub async fn run_http_server(
     });
     let app = build_router(state);
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     tracing::info!(port, "HTTP server listening");
 
     axum::serve(listener, app).await?;

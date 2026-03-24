@@ -160,7 +160,7 @@ fn spawn_watchdog(_health: Arc<HealthState>) {
                         let slice = cg.lines().next()?.strip_prefix("0::")?;
                         Some(format!("/sys/fs/cgroup{slice}/pids.current"))
                     })
-                    .map(|p| std::fs::read_to_string(p))
+                    .map(std::fs::read_to_string)
                     .unwrap_or(Err(std::io::Error::other("no cgroup"))),
                 tokio::fs::read_to_string("/proc/self/cgroup")
                     .await
@@ -169,7 +169,7 @@ fn spawn_watchdog(_health: Arc<HealthState>) {
                         let slice = cg.lines().next()?.strip_prefix("0::")?;
                         Some(format!("/sys/fs/cgroup{slice}/pids.max"))
                     })
-                    .map(|p| std::fs::read_to_string(p))
+                    .map(std::fs::read_to_string)
                     .unwrap_or(Err(std::io::Error::other("no cgroup"))),
             ) {
                 let cur: u64 = current.trim().parse().unwrap_or(0);

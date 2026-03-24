@@ -378,9 +378,11 @@ fn short_timestamp(ts: &str) -> &str {
 // ── Public Tool Handlers ─────────────────────────────────────────────
 
 /// List unresolved Sentry issues for a project.
-pub async fn sentry_issues(project: &str) -> Result<String> {
+///
+/// Uses a pre-initialized client (from the service registry) when provided,
+/// otherwise constructs one from environment variables on demand.
+pub async fn sentry_issues(client: &SentryClient, project: &str) -> Result<String> {
     validate_project_slug(project)?;
-    let client = SentryClient::from_env()?;
     let issues = client.list_issues(project).await?;
 
     if issues.is_empty() {
@@ -395,9 +397,11 @@ pub async fn sentry_issues(project: &str) -> Result<String> {
 }
 
 /// Get details and stack trace for a specific Sentry issue.
-pub async fn sentry_issue(issue_id: &str) -> Result<String> {
+///
+/// Uses a pre-initialized client (from the service registry) when provided,
+/// otherwise constructs one from environment variables on demand.
+pub async fn sentry_issue(client: &SentryClient, issue_id: &str) -> Result<String> {
     validate_issue_id(issue_id)?;
-    let client = SentryClient::from_env()?;
     let detail = client.get_issue(issue_id).await?;
 
     // Fetch latest event for stack trace

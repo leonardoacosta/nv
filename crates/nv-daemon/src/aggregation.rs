@@ -230,7 +230,8 @@ pub async fn project_health(
             if let Some(slug) = res.sentry_slug {
                 let slug_owned = slug.to_string();
                 timed_call("Errors", || async move {
-                    sentry_tools::sentry_issues(&slug_owned).await
+                    let client = sentry_tools::SentryClient::from_env()?;
+                    sentry_tools::sentry_issues(&client, &slug_owned).await
                 })
                 .await
             } else {
@@ -385,7 +386,8 @@ pub async fn financial_summary() -> Result<String> {
     let (plaid_result, stripe_result) = tokio::join!(
         timed_call("Accounts", || async { plaid_tools::plaid_balances().await }),
         timed_call("Stripe", || async {
-            stripe_tools::stripe_invoices("open").await
+            let client = stripe_tools::StripeClient::from_env()?;
+            stripe_tools::stripe_invoices(&client, "open").await
         }),
     );
 

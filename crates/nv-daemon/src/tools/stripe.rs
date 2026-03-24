@@ -344,11 +344,13 @@ fn format_unix_date(ts: i64) -> String {
 // ── Public Tool Handlers ─────────────────────────────────────────────
 
 /// Search Stripe customers by query string.
-pub async fn stripe_customers(query: &str) -> Result<String> {
+///
+/// Uses a pre-initialized client (from the service registry) when provided,
+/// otherwise constructs one from environment variables on demand.
+pub async fn stripe_customers(client: &StripeClient, query: &str) -> Result<String> {
     if query.is_empty() {
         bail!("search query cannot be empty");
     }
-    let client = StripeClient::from_env()?;
     let customers = client.search_customers(query).await?;
 
     if customers.is_empty() {
@@ -363,11 +365,13 @@ pub async fn stripe_customers(query: &str) -> Result<String> {
 }
 
 /// List Stripe invoices by status.
-pub async fn stripe_invoices(status: &str) -> Result<String> {
+///
+/// Uses a pre-initialized client (from the service registry) when provided,
+/// otherwise constructs one from environment variables on demand.
+pub async fn stripe_invoices(client: &StripeClient, status: &str) -> Result<String> {
     let status = if status.is_empty() { "open" } else { status };
     validate_invoice_status(status)?;
 
-    let client = StripeClient::from_env()?;
     let invoices = client.list_invoices(status).await?;
 
     if invoices.is_empty() {

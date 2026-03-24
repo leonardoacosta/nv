@@ -17,8 +17,8 @@
 - [x] [2.2] [P-1] Register stripe_customers, stripe_invoices in tools.rs tool definitions (name, description, input schema) [owner:api-engineer]
 - [x] [2.3] [P-2] Add dispatch handlers in tools.rs — validate inputs (query non-empty, status in allowed set), call stripe module, return formatted result [owner:api-engineer]
 - [x] [2.4] [P-2] Add error handling — missing env var, 401/403/429 HTTP errors, timeout, malformed response [owner:api-engineer]
-- [ ] [2.5] [P-3] Init StripeClient in main.rs on startup, pass to tool dispatch context [owner:api-engineer]
-- [ ] [2.6] [P-3] Log each tool invocation to tool_usage audit table (query/status text, NOT API key) [owner:api-engineer]
+- [x] [2.5] [P-3] Init StripeClient in main.rs on startup, pass to tool dispatch context [owner:api-engineer]
+- [x] [2.6] [P-3] Log each tool invocation to tool_usage audit table (query/status text, NOT API key) [owner:api-engineer]
 
 ## Verify
 

@@ -22,7 +22,7 @@
 - [x] [2.2] [P-1] Register neon_query in tools.rs tool definition (name, description, input schema with project + sql params) [owner:api-engineer]
 - [x] [2.3] [P-2] Add dispatch handler in tools.rs — validate project code, validate SQL, connect, execute, format, return [owner:api-engineer]
 - [x] [2.4] [P-2] Add error handling — missing env var, connection failure, query syntax error, timeout, read-only violation [owner:api-engineer]
-- [ ] [2.5] [P-3] Log each tool invocation to tool_usage audit table (query text, NOT connection string) [owner:api-engineer]
+- [x] [2.5] [P-3] Log each tool invocation to tool_usage audit table (query text, NOT connection string) [owner:api-engineer]
 
 ## Verify
 

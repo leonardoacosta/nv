@@ -17,8 +17,8 @@
 - [x] [2.2] [P-1] Register sentry_issues, sentry_issue in tools.rs tool definitions (name, description, input schema) [owner:api-engineer]
 - [x] [2.3] [P-2] Add dispatch handlers in tools.rs — validate inputs (slug format, numeric ID), call sentry module, return formatted result [owner:api-engineer]
 - [x] [2.4] [P-2] Add error handling — missing env vars, 401/403/404 HTTP errors, timeout, malformed JSON [owner:api-engineer]
-- [ ] [2.5] [P-3] Init SentryClient in main.rs on startup, pass to tool dispatch context [owner:api-engineer]
-- [ ] [2.6] [P-3] Log each tool invocation to tool_usage audit table [owner:api-engineer]
+- [x] [2.5] [P-3] Init SentryClient in main.rs on startup, pass to tool dispatch context [owner:api-engineer]
+- [x] [2.6] [P-3] Log each tool invocation to tool_usage audit table [owner:api-engineer]
 
 ## Verify
 

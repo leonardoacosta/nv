@@ -1821,14 +1821,30 @@ pub async fn execute_tool_send(
             let project = input["project"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let output = sentry_tools::sentry_issues(project).await?;
+            let _owned_sentry;
+            let client = if let Some(reg) = service_registries.sentry {
+                reg.resolve(project)
+                    .or_else(|| reg.default())
+                    .ok_or_else(|| anyhow!("Sentry registry empty"))?
+            } else {
+                _owned_sentry = sentry_tools::SentryClient::from_env()?;
+                &_owned_sentry
+            };
+            let output = sentry_tools::sentry_issues(client, project).await?;
             Ok(ToolResult::Immediate(output))
         }
         "sentry_issue" => {
             let id = input["id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
-            let output = sentry_tools::sentry_issue(id).await?;
+            let _owned_sentry;
+            let client = if let Some(reg) = service_registries.sentry {
+                reg.default().ok_or_else(|| anyhow!("Sentry registry empty"))?
+            } else {
+                _owned_sentry = sentry_tools::SentryClient::from_env()?;
+                &_owned_sentry
+            };
+            let output = sentry_tools::sentry_issue(client, id).await?;
             Ok(ToolResult::Immediate(output))
         }
 
@@ -1868,14 +1884,28 @@ pub async fn execute_tool_send(
             let query = input["query"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
-            let output = stripe_tools::stripe_customers(query).await?;
+            let _owned_stripe;
+            let client = if let Some(reg) = service_registries.stripe {
+                reg.default().ok_or_else(|| anyhow!("Stripe registry empty"))?
+            } else {
+                _owned_stripe = stripe_tools::StripeClient::from_env()?;
+                &_owned_stripe
+            };
+            let output = stripe_tools::stripe_customers(client, query).await?;
             Ok(ToolResult::Immediate(output))
         }
         "stripe_invoices" => {
             let status = input["status"]
                 .as_str()
                 .unwrap_or("open");
-            let output = stripe_tools::stripe_invoices(status).await?;
+            let _owned_stripe;
+            let client = if let Some(reg) = service_registries.stripe {
+                reg.default().ok_or_else(|| anyhow!("Stripe registry empty"))?
+            } else {
+                _owned_stripe = stripe_tools::StripeClient::from_env()?;
+                &_owned_stripe
+            };
+            let output = stripe_tools::stripe_invoices(client, status).await?;
             Ok(ToolResult::Immediate(output))
         }
 

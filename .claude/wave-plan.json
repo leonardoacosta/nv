@@ -126,10 +126,12 @@
     }
   ],
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
-    "nv-tools-scaffold"
+    "nv-tools-scaffold",
+    "nv-tools-extract-wave-a"
   ],
-  "current_wave": 2
+  "current_wave": 3
 }

@@ -91,7 +91,6 @@ pub async fn transcribe_audio_elevenlabs(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn parse_transcript_from_json() {

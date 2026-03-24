@@ -22,9 +22,6 @@ pub mod web;
 // ── Checkable trait ─────────────────────────────────────────────────
 
 /// Result of a single service connectivity probe.
-// Dead-code suppressed: variants are used by Checkable impls; orchestrator
-// in check.rs activates them in the CLI batch.
-#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum CheckResult {
@@ -53,9 +50,6 @@ pub enum CheckResult {
 }
 
 /// A service that can validate its own connectivity and credentials.
-// Dead-code suppressed: trait methods are implemented but not yet called by
-// the orchestrator until the CLI batch ([4.x]) lands.
-#[allow(dead_code)]
 #[async_trait::async_trait]
 pub trait Checkable: Send + Sync {
     /// Human-readable service name, e.g. `"stripe"` or `"jira/personal"`.
@@ -81,9 +75,6 @@ pub trait Checkable: Send + Sync {
 /// 1. `project_map` lookup → instance name → client
 /// 2. `"default"` instance (backward-compat flat configs)
 /// 3. First instance in the map
-// Dead-code suppressed: registry is built in main.rs and wired to check_all in
-// the CLI batch ([4.x]).
-#[allow(dead_code)]
 pub struct ServiceRegistry<T: Checkable> {
     /// Instance name → client.
     instances: HashMap<String, T>,
@@ -91,6 +82,8 @@ pub struct ServiceRegistry<T: Checkable> {
     project_map: HashMap<String, String>,
 }
 
+// Methods `new`, `get`, `iter`, `is_empty`, `len` are part of the public API
+// and used in tests; the binary uses only `single`, `resolve`, and `default`.
 #[allow(dead_code)]
 impl<T: Checkable> ServiceRegistry<T> {
     /// Create a new registry with explicit instances and project map.

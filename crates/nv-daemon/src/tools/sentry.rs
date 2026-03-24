@@ -129,14 +129,6 @@ impl SentryClient {
         Ok(Self { http, org })
     }
 
-    /// Create a `SentryClient` with a custom HTTP client (for testing with mock servers).
-    #[cfg(test)]
-    pub fn with_http_client(http: reqwest::Client, org: &str) -> Self {
-        Self {
-            http,
-            org: org.to_string(),
-        }
-    }
 
     /// List unresolved issues for a Sentry project.
     pub async fn list_issues(&self, project: &str) -> Result<Vec<SentryIssueSummary>> {
@@ -451,6 +443,39 @@ pub fn sentry_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
     ]
+}
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for SentryClient {
+    fn name(&self) -> &str {
+        "sentry"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let url = format!("{SENTRY_BASE_URL}/organizations/{}/", self.org);
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: format!("org: {}", self.org),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "token invalid or expired (401) — check SENTRY_AUTH_TOKEN".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
+                error: format!("access denied (403) to org '{}' — check token scopes", self.org),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -782,38 +807,5 @@ mod tests {
             module: None,
         };
         assert!(!is_vendor_frame(&frame));
-    }
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for SentryClient {
-    fn name(&self) -> &str {
-        "sentry"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let url = format!("{SENTRY_BASE_URL}/organizations/{}/", self.org);
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: format!("org: {}", self.org),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "token invalid or expired (401) — check SENTRY_AUTH_TOKEN".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
-                error: format!("access denied (403) to org '{}' — check token scopes", self.org),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
     }
 }

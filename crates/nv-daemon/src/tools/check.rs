@@ -1,8 +1,5 @@
 //! Service health check orchestrator.
 //!
-//! Dead-code is expected until the CLI batch ([4.x]) wires up `nv check`.
-#![allow(dead_code)]
-//!
 //! `check_all()` runs `check_read()` (and optionally `check_write()`) probes
 //! concurrently across all registered services using `FuturesUnordered`, then
 //! collects results into a `CheckReport`.
@@ -209,6 +206,9 @@ pub async fn check_all(
 ///   ✓ stripe       sk_live_...abc     67ms
 ///   ✗ stripe/llc   STRIPE_SECRET_KEY_LLC missing  --
 /// ```
+///
+/// Called from `nv-cli`; unused in the daemon binary.
+#[allow(dead_code)]
 pub fn format_terminal(report: &CheckReport) -> String {
     let mut out = String::new();
 
@@ -247,6 +247,7 @@ pub fn format_terminal(report: &CheckReport) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn format_entry_terminal(entry: &CheckEntry) -> String {
     match &entry.result {
         CheckResult::Healthy { latency_ms, detail } => {
@@ -289,6 +290,10 @@ fn format_entry_terminal(entry: &CheckEntry) -> String {
 ///    ❌ neon · connection refused
 ///    ○ vercel · VERCEL_API_TOKEN not set
 /// ```
+///
+/// Called from Telegram notification handlers; unused in the daemon binary's
+/// main hot path at present.
+#[allow(dead_code)]
 pub fn format_telegram(report: &CheckReport) -> String {
     let s = &report.summary;
     let overall = if s.unhealthy > 0 || s.missing > 0 {
@@ -326,6 +331,7 @@ pub fn format_telegram(report: &CheckReport) -> String {
     out
 }
 
+#[allow(dead_code)]
 fn format_entry_telegram(entry: &CheckEntry) -> String {
     let probe_tag = match entry.probe {
         ProbeKind::Write => " (w)",

@@ -77,16 +77,6 @@ impl UpstashClient {
         })
     }
 
-    /// Create an `UpstashClient` with custom URL, token, and HTTP client (for testing).
-    #[cfg(test)]
-    pub fn with_http_client(http: reqwest::Client, rest_url: &str, token: &str) -> Self {
-        Self {
-            http,
-            rest_url: rest_url.to_string(),
-            token: token.to_string(),
-        }
-    }
-
     /// Execute a Redis command via the Upstash REST API.
     ///
     /// Sends a POST with a JSON array body `["COMMAND", "arg1", ...]`.
@@ -320,6 +310,29 @@ pub fn upstash_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for UpstashClient {
+    fn name(&self) -> &str {
+        "upstash"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.execute_command(&["INFO"]).await }).await;
+        match result {
+            Ok(_) => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "INFO command succeeded".into(),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -518,29 +531,6 @@ db0:keys=42,expires=10,avg_ttl=0\r\n";
         }
         if let Some(val) = saved_token {
             std::env::set_var("UPSTASH_REDIS_REST_TOKEN", val);
-        }
-    }
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for UpstashClient {
-    fn name(&self) -> &str {
-        "upstash"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.execute_command(&["INFO"]).await }).await;
-        match result {
-            Ok(_) => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: "INFO command succeeded".into(),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
         }
     }
 }

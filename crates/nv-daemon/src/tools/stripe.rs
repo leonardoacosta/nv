@@ -90,12 +90,6 @@ impl StripeClient {
         Ok(Self { http })
     }
 
-    /// Create a `StripeClient` with a custom HTTP client (for testing with mock servers).
-    #[cfg(test)]
-    pub fn with_http_client(http: reqwest::Client) -> Self {
-        Self { http }
-    }
-
     /// Search customers via the Stripe Search API.
     pub async fn search_customers(&self, query: &str) -> Result<Vec<Customer>> {
         let url = format!("{STRIPE_BASE_URL}/customers/search");

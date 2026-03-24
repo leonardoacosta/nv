@@ -863,6 +863,73 @@ pub fn github_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+// ── GithubClient wrapper ─────────────────────────────────────────────
+
+/// Thin wrapper for `Checkable` health checks.
+/// GitHub uses the `gh` CLI — authenticated via `~/.config/gh/hosts.yml`.
+pub struct GithubClient;
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for GithubClient {
+    fn name(&self) -> &str {
+        "github"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
+            tokio::time::timeout(GH_TIMEOUT, async {
+                Command::new("gh")
+                    .args(["auth", "status"])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .output()
+                    .await
+            })
+            .await
+        })
+        .await;
+        match result {
+            Ok(Ok(output)) if output.status.success() => {
+                // Parse "Logged in to github.com account <user>" from stdout/stderr
+                let combined = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let detail = combined
+                    .lines()
+                    .find(|l| l.contains("Logged in"))
+                    .map(|l| l.trim().to_string())
+                    .unwrap_or_else(|| "gh auth status ok".into());
+                crate::tools::CheckResult::Healthy {
+                    latency_ms: latency,
+                    detail,
+                }
+            }
+            Ok(Ok(output)) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                crate::tools::CheckResult::Unhealthy {
+                    error: if stderr.is_empty() {
+                        "gh auth status failed — run `gh auth login`".into()
+                    } else {
+                        stderr
+                    },
+                }
+            }
+            Ok(Err(e)) => crate::tools::CheckResult::Unhealthy {
+                error: format!("failed to run gh: {e}"),
+            },
+            Err(_) => crate::tools::CheckResult::Unhealthy {
+                error: format!("gh auth status timed out after {}s", GH_TIMEOUT.as_secs()),
+            },
+        }
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1249,7 +1316,7 @@ mod tests {
         let releases = parse_releases(json).unwrap();
         assert_eq!(releases.len(), 1);
         assert_eq!(releases[0].tag_name, "v1.0.0");
-        assert_eq!(releases[0].is_draft, false);
+        assert!(!releases[0].is_draft);
     }
 
     #[test]
@@ -1394,73 +1461,5 @@ mod tests {
         assert!(formatted.contains("5 more commits not shown"));
         // Commit 30 (index 30) should NOT appear in the list
         assert!(!formatted.contains("Commit 30\n") || formatted.contains("30 more"));
-    }
-}
-
-// ── GithubClient wrapper ─────────────────────────────────────────────
-
-/// Thin wrapper for `Checkable` health checks.
-/// GitHub uses the `gh` CLI — authenticated via `~/.config/gh/hosts.yml`.
-#[allow(dead_code)]
-pub struct GithubClient;
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for GithubClient {
-    fn name(&self) -> &str {
-        "github"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
-            tokio::time::timeout(GH_TIMEOUT, async {
-                Command::new("gh")
-                    .args(["auth", "status"])
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped())
-                    .output()
-                    .await
-            })
-            .await
-        })
-        .await;
-        match result {
-            Ok(Ok(output)) if output.status.success() => {
-                // Parse "Logged in to github.com account <user>" from stdout/stderr
-                let combined = format!(
-                    "{}{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
-                );
-                let detail = combined
-                    .lines()
-                    .find(|l| l.contains("Logged in"))
-                    .map(|l| l.trim().to_string())
-                    .unwrap_or_else(|| "gh auth status ok".into());
-                crate::tools::CheckResult::Healthy {
-                    latency_ms: latency,
-                    detail,
-                }
-            }
-            Ok(Ok(output)) => {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                crate::tools::CheckResult::Unhealthy {
-                    error: if stderr.is_empty() {
-                        "gh auth status failed — run `gh auth login`".into()
-                    } else {
-                        stderr
-                    },
-                }
-            }
-            Ok(Err(e)) => crate::tools::CheckResult::Unhealthy {
-                error: format!("failed to run gh: {e}"),
-            },
-            Err(_) => crate::tools::CheckResult::Unhealthy {
-                error: format!("gh auth status timed out after {}s", GH_TIMEOUT.as_secs()),
-            },
-        }
     }
 }

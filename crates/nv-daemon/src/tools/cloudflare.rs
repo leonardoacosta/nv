@@ -420,6 +420,40 @@ pub fn cloudflare_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for CloudflareClient {
+    fn name(&self) -> &str {
+        "cloudflare"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let url = format!("{CF_API}/user/tokens/verify");
+        let (latency, result) =
+            timed(std::time::Duration::from_secs(15), || async { self.get(&url).send().await }).await;
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "token verified".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "token invalid (401) — check CLOUDFLARE_API_TOKEN".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
+                error: "token lacks Zone:Read permission (403)".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -516,39 +550,5 @@ mod tests {
         assert_eq!(record.content, "203.0.113.1");
         assert!(record.proxied);
         assert_eq!(record.ttl, 1);
-    }
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for CloudflareClient {
-    fn name(&self) -> &str {
-        "cloudflare"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let url = format!("{CF_API}/user/tokens/verify");
-        let (latency, result) =
-            timed(std::time::Duration::from_secs(15), || async { self.get(&url).send().await }).await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: "token verified".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "token invalid (401) — check CLOUDFLARE_API_TOKEN".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
-                error: "token lacks Zone:Read permission (403)".into(),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
     }
 }

@@ -323,7 +323,7 @@ mod tests {
         // STATUS_CHANGED, SESSION_STOPPED, SESSION_STARTED, and HEARTBEAT_RECEIVED so
         // that the Started and Heartbeat match arms in map_event_to_trigger are
         // reachable (Req-5).
-        let filter_types = vec![
+        let filter_types = [
             EventType::StatusChanged as i32,
             EventType::SessionStopped as i32,
             EventType::SessionStarted as i32,

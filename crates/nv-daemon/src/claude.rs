@@ -2016,7 +2016,7 @@ mod tests {
         // And Ok(None) for the timeout branch
         let ok_none: Result<Option<String>, ApiError> = Ok(None);
         assert!(ok_none.is_ok());
-        assert!(ok_none.unwrap().is_none());
+        assert!(ok_none.ok().flatten().is_none());
     }
 
     /// [3.6] drain_init_events returns Err on EOF (subprocess died).

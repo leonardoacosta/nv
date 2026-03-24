@@ -326,6 +326,65 @@ pub async fn ha_service_call_execute(
     Ok(result)
 }
 
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for HAClient {
+    fn name(&self) -> &str {
+        "ha"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        let url = format!("{}/api/", self.base_url);
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: format!("API reachable ({})", self.base_url),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "token invalid (401) — check HA_TOKEN".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: format!("unreachable ({}): {e}", self.base_url),
+            },
+        }
+    }
+
+    async fn check_write(&self) -> Option<crate::tools::CheckResult> {
+        use crate::tools::check::timed;
+        // POST /api/services/light/turn_on with empty body — expect 200 or 400
+        let url = format!("{}/api/services/light/turn_on", self.base_url);
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
+            self.http.post(&url).json(&serde_json::json!({})).send().await
+        })
+        .await;
+        let result = match result {
+            // HA returns 200 with an entity state array on success, or 400 on bad input
+            Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 400 => {
+                crate::tools::CheckResult::Healthy {
+                    latency_ms: latency,
+                    detail: "services endpoint writable".into(),
+                }
+            }
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "write probe: token invalid (401)".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("write probe: HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: format!("write probe: {e}"),
+            },
+        };
+        Some(result)
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -407,64 +466,5 @@ mod tests {
         let result = HAClient::from_env();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not configured"));
-    }
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for HAClient {
-    fn name(&self) -> &str {
-        "ha"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let url = format!("{}/api/", self.base_url);
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: format!("API reachable ({})", self.base_url),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "token invalid (401) — check HA_TOKEN".into(),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: format!("unreachable ({}): {e}", self.base_url),
-            },
-        }
-    }
-
-    async fn check_write(&self) -> Option<crate::tools::CheckResult> {
-        use crate::tools::check::timed;
-        // POST /api/services/light/turn_on with empty body — expect 200 or 400
-        let url = format!("{}/api/services/light/turn_on", self.base_url);
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
-            self.http.post(&url).json(&serde_json::json!({})).send().await
-        })
-        .await;
-        let result = match result {
-            // HA returns 200 with an entity state array on success, or 400 on bad input
-            Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 400 => {
-                crate::tools::CheckResult::Healthy {
-                    latency_ms: latency,
-                    detail: "services endpoint writable".into(),
-                }
-            }
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "write probe: token invalid (401)".into(),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("write probe: HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: format!("write probe: {e}"),
-            },
-        };
-        Some(result)
     }
 }

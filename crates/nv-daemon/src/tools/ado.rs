@@ -347,6 +347,41 @@ pub async fn ado_builds(project: &str, pipeline_id: u32) -> Result<String> {
     Ok(format_builds(&builds))
 }
 
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for AdoClient {
+    fn name(&self) -> &str {
+        "ado"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+        // GET /_apis/projects — list projects at the org level
+        let url = format!("{}/_apis/projects?api-version=7.1", self.org_url);
+        let (latency, result) =
+            timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "projects endpoint reachable".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "PAT invalid or expired (401) — check ADO_PAT".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
+                error: "PAT lacks read permission (403) — check ADO_PAT scopes".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -445,40 +480,5 @@ mod tests {
         let result = AdoClient::from_env();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("ADO_ORG"));
-    }
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for AdoClient {
-    fn name(&self) -> &str {
-        "ado"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        // GET /_apis/projects — list projects at the org level
-        let url = format!("{}/_apis/projects?api-version=7.1", self.org_url);
-        let (latency, result) =
-            timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: "projects endpoint reachable".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "PAT invalid or expired (401) — check ADO_PAT".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
-                error: "PAT lacks read permission (403) — check ADO_PAT scopes".into(),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
     }
 }

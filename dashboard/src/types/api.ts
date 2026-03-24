@@ -97,6 +97,8 @@ export interface ServerHealthSnapshot {
   cpu_percent: number | null;
   memory_used_mb: number | null;
   memory_total_mb: number | null;
+  disk_used_gb: number | null;
+  disk_total_gb: number | null;
   uptime_seconds: number | null;
   load_avg_1m: number | null;
   load_avg_5m: number | null;

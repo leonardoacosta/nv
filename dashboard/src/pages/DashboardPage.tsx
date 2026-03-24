@@ -8,9 +8,16 @@ import {
   TrendingUp,
   AlertCircle,
   RefreshCw,
+  Cpu,
+  MemoryStick,
+  Heart,
 } from "lucide-react";
 import SessionCard, { type Session } from "@/components/SessionCard";
-import type { ProjectsGetResponse, SessionsGetResponse } from "@/types/api";
+import type {
+  ProjectsGetResponse,
+  SessionsGetResponse,
+  ServerHealthGetResponse,
+} from "@/types/api";
 
 interface SummaryData {
   obligations_count: number;
@@ -24,6 +31,13 @@ interface SummaryData {
 interface ApiObligation {
   id: string;
   title: string;
+}
+
+interface HealthSummary {
+  status: "ok" | "degraded" | "critical" | "down";
+  cpu_percent: number;
+  memory_used_mb: number;
+  memory_total_mb: number;
 }
 
 function StatCard({
@@ -59,9 +73,38 @@ function StatCard({
   );
 }
 
+function HealthStatCard({
+  icon: Icon,
+  label,
+  value,
+  statusClass,
+}: {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  statusClass: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 p-5 rounded-cosmic bg-cosmic-surface border border-cosmic-border">
+      <div className={`flex items-center justify-center w-10 h-10 rounded-lg ${statusClass}`}>
+        <Icon size={20} className={statusClass.includes("emerald") ? "text-emerald-400" : statusClass.includes("orange") ? "text-[#F97316]" : "text-[#EF4444]"} />
+      </div>
+      <div>
+        <p className="text-xs text-cosmic-muted uppercase tracking-wide">
+          {label}
+        </p>
+        <p className={`text-xl font-semibold font-mono ${statusClass.includes("emerald") ? "text-emerald-400" : statusClass.includes("orange") ? "text-[#F97316]" : "text-[#EF4444]"}`}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [healthSummary, setHealthSummary] = useState<HealthSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,10 +112,11 @@ export default function DashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      const [oblRes, projRes, sessRes] = await Promise.allSettled([
+      const [oblRes, projRes, sessRes, healthRes] = await Promise.allSettled([
         fetch("/api/obligations"),
         fetch("/api/projects"),
         fetch("/api/sessions"),
+        fetch("/api/server-health"),
       ]);
 
       const obligationsCount =
@@ -89,6 +133,24 @@ export default function DashboardPage() {
         sessRes.status === "fulfilled" && sessRes.value.ok
           ? ((await sessRes.value.json()) as SessionsGetResponse).sessions as unknown as Session[]
           : [];
+
+      // Parse health response
+      if (healthRes.status === "fulfilled" && healthRes.value.ok) {
+        const hData = (await healthRes.value.json()) as ServerHealthGetResponse;
+        if (hData.latest) {
+          const mapStatus = (s: ServerHealthGetResponse["status"]): HealthSummary["status"] => {
+            if (s === "healthy") return "ok";
+            if (s === "critical") return "critical";
+            return s;
+          };
+          setHealthSummary({
+            status: mapStatus(hData.status),
+            cpu_percent: hData.latest.cpu_percent ?? 0,
+            memory_used_mb: hData.latest.memory_used_mb ?? 0,
+            memory_total_mb: hData.latest.memory_total_mb ?? 0,
+          });
+        }
+      }
 
       setSessions(sessData);
       setSummary({
@@ -112,6 +174,15 @@ export default function DashboardPage() {
   useEffect(() => {
     void fetchData();
   }, []);
+
+  // Derive status class for health cards
+  const healthStatusClass = (status: HealthSummary["status"] | undefined) => {
+    if (!status || status === "ok") return "bg-emerald-500/20";
+    if (status === "degraded") return "bg-[#F97316]/20";
+    return "bg-[#EF4444]/20";
+  };
+
+  const healthStatus = healthSummary?.status;
 
   return (
     <div className="p-8 space-y-8 max-w-6xl">
@@ -145,7 +216,7 @@ export default function DashboardPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {loading ? (
-          Array.from({ length: 6 }).map((_, i) => (
+          Array.from({ length: 9 }).map((_, i) => (
             <div
               key={i}
               className="h-20 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
@@ -185,6 +256,43 @@ export default function DashboardPage() {
               label="Cost Today"
               value={`$${(summary?.cost_today_usd ?? 0).toFixed(4)}`}
               accent="bg-cosmic-rose/20"
+            />
+            {/* Health cards */}
+            <HealthStatCard
+              icon={Heart}
+              label="Server Health"
+              value={healthSummary ? healthSummary.status : "—"}
+              statusClass={healthStatusClass(healthStatus)}
+            />
+            <HealthStatCard
+              icon={Cpu}
+              label="CPU"
+              value={healthSummary ? `${healthSummary.cpu_percent.toFixed(1)}%` : "—"}
+              statusClass={
+                healthSummary && healthSummary.cpu_percent >= 90
+                  ? "bg-[#EF4444]/20"
+                  : healthSummary && healthSummary.cpu_percent >= 70
+                    ? "bg-[#F97316]/20"
+                    : "bg-emerald-500/20"
+              }
+            />
+            <HealthStatCard
+              icon={MemoryStick}
+              label="Memory"
+              value={
+                healthSummary && healthSummary.memory_total_mb > 0
+                  ? `${((healthSummary.memory_used_mb / healthSummary.memory_total_mb) * 100).toFixed(0)}%`
+                  : "—"
+              }
+              statusClass={
+                healthSummary && healthSummary.memory_total_mb > 0 &&
+                (healthSummary.memory_used_mb / healthSummary.memory_total_mb) >= 0.9
+                  ? "bg-[#EF4444]/20"
+                  : healthSummary && healthSummary.memory_total_mb > 0 &&
+                    (healthSummary.memory_used_mb / healthSummary.memory_total_mb) >= 0.8
+                    ? "bg-[#F97316]/20"
+                    : "bg-emerald-500/20"
+              }
             />
           </>
         )}

@@ -7,6 +7,7 @@ import ServerHealth, { type HealthMetrics } from "@/components/ServerHealth";
 import type {
   SessionsGetResponse,
   ServerHealthGetResponse,
+  ServerHealthSnapshot,
 } from "@/types/api";
 
 // Shape returned by the Nexus-backed /api/sessions endpoint
@@ -35,6 +36,7 @@ function mapNexusSession(s: NexusSessionRaw): ActiveSessionData {
 export default function NexusPage() {
   const [sessions, setSessions] = useState<ActiveSessionData[]>([]);
   const [health, setHealth] = useState<HealthMetrics | null>(null);
+  const [healthHistory, setHealthHistory] = useState<ServerHealthSnapshot[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingHealth, setLoadingHealth] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -89,12 +91,18 @@ export default function NexusPage() {
           cpu_percent: data.latest.cpu_percent ?? 0,
           memory_used_mb: data.latest.memory_used_mb ?? 0,
           memory_total_mb: data.latest.memory_total_mb ?? 0,
+          disk_used_gb: data.latest.disk_used_gb ?? null,
+          disk_total_gb: data.latest.disk_total_gb ?? null,
+          load_avg_1m: data.latest.load_avg_1m ?? null,
+          load_avg_5m: data.latest.load_avg_5m ?? null,
           uptime_seconds: data.latest.uptime_seconds ?? 0,
           status: mapBackendStatus(data.status),
         });
       } else {
         setHealth(null);
       }
+
+      setHealthHistory(data.history ?? []);
     } catch (err) {
       setHealthError(
         err instanceof Error ? err.message : "Failed to load health metrics"
@@ -234,6 +242,7 @@ export default function NexusPage() {
 
           <ServerHealth
             metrics={health}
+            history={healthHistory}
             loading={loadingHealth}
             error={healthError}
           />

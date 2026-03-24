@@ -1,12 +1,22 @@
-import { Cpu, MemoryStick, Clock, Wifi, WifiOff, AlertCircle } from "lucide-react";
+import { Cpu, MemoryStick, Clock, Wifi, WifiOff, AlertCircle, HardDrive, Activity } from "lucide-react";
+import type { ServerHealthSnapshot, BackendHealthStatus } from "@/types/api";
+import MiniChart from "@/components/MiniChart";
 
+/**
+ * HealthMetrics is the display-facing subset passed into this component.
+ * All fields come from ServerHealthSnapshot + the top-level status field.
+ */
 export interface HealthMetrics {
   cpu_percent: number;
   memory_used_mb: number;
   memory_total_mb: number;
+  disk_used_gb?: number | null;
+  disk_total_gb?: number | null;
   uptime_seconds: number;
+  load_avg_1m?: number | null;
+  load_avg_5m?: number | null;
   /** Supports both frontend display values ("ok"/"down") and backend enum values ("healthy"/"critical"). */
-  status: "ok" | "healthy" | "degraded" | "critical" | "down";
+  status: "ok" | BackendHealthStatus | "down";
   version?: string;
   pid?: number;
 }
@@ -71,12 +81,14 @@ function MetricBar({
 
 interface ServerHealthProps {
   metrics: HealthMetrics | null;
+  history?: ServerHealthSnapshot[];
   loading?: boolean;
   error?: string | null;
 }
 
 export default function ServerHealth({
   metrics,
+  history,
   loading,
   error,
 }: ServerHealthProps) {
@@ -101,6 +113,27 @@ export default function ServerHealth({
   }
 
   const memPct = (metrics.memory_used_mb / metrics.memory_total_mb) * 100;
+
+  const hasDisk =
+    metrics.disk_used_gb != null && metrics.disk_total_gb != null;
+  const diskPct = hasDisk
+    ? (metrics.disk_used_gb! / metrics.disk_total_gb!) * 100
+    : 0;
+
+  // Build sparkline data arrays from history (oldest first)
+  const cpuHistory = history?.map((s) => s.cpu_percent ?? 0) ?? [];
+  const memHistory = history?.map((s) =>
+    s.memory_total_mb && s.memory_total_mb > 0
+      ? ((s.memory_used_mb ?? 0) / s.memory_total_mb) * 100
+      : 0,
+  ) ?? [];
+  const diskHistory = history?.map((s) =>
+    s.disk_total_gb && s.disk_total_gb > 0
+      ? ((s.disk_used_gb ?? 0) / s.disk_total_gb) * 100
+      : 0,
+  ) ?? [];
+
+  const showCharts = history && history.length > 1;
 
   return (
     <div className="p-5 rounded-cosmic border border-cosmic-border bg-cosmic-surface space-y-5">
@@ -133,22 +166,76 @@ export default function ServerHealth({
 
       {/* Metrics */}
       <div className="space-y-4">
-        <MetricBar
-          icon={Cpu}
-          label="CPU"
-          value={metrics.cpu_percent}
-          max={100}
-          unit="%"
-          warn={70}
-        />
-        <MetricBar
-          icon={MemoryStick}
-          label="Memory"
-          value={metrics.memory_used_mb}
-          max={metrics.memory_total_mb}
-          unit=" MB"
-          warn={80}
-        />
+        <div>
+          <MetricBar
+            icon={Cpu}
+            label="CPU"
+            value={metrics.cpu_percent}
+            max={100}
+            unit="%"
+            warn={70}
+          />
+          {showCharts && cpuHistory.length > 1 && (
+            <div className="mt-1.5 opacity-70">
+              <MiniChart
+                data={cpuHistory}
+                width={240}
+                height={28}
+                warnThreshold={70}
+                critThreshold={90}
+                maxValue={100}
+              />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <MetricBar
+            icon={MemoryStick}
+            label="Memory"
+            value={metrics.memory_used_mb}
+            max={metrics.memory_total_mb}
+            unit=" MB"
+            warn={80}
+          />
+          {showCharts && memHistory.length > 1 && (
+            <div className="mt-1.5 opacity-70">
+              <MiniChart
+                data={memHistory}
+                width={240}
+                height={28}
+                warnThreshold={80}
+                critThreshold={90}
+                maxValue={100}
+              />
+            </div>
+          )}
+        </div>
+
+        {hasDisk && (
+          <div>
+            <MetricBar
+              icon={HardDrive}
+              label="Disk"
+              value={metrics.disk_used_gb!}
+              max={metrics.disk_total_gb!}
+              unit=" GB"
+              warn={80}
+            />
+            {showCharts && diskHistory.length > 1 && (
+              <div className="mt-1.5 opacity-70">
+                <MiniChart
+                  data={diskHistory}
+                  width={240}
+                  height={28}
+                  warnThreshold={80}
+                  critThreshold={90}
+                  maxValue={100}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Info row */}
@@ -162,6 +249,40 @@ export default function ServerHealth({
           {metrics.memory_total_mb.toFixed(0)} MB ({memPct.toFixed(0)}%)
         </div>
       </div>
+
+      {/* Load average row */}
+      {(metrics.load_avg_1m != null || metrics.load_avg_5m != null) && (
+        <div className="flex items-center gap-4 text-xs text-cosmic-muted font-mono">
+          <div className="flex items-center gap-1.5">
+            <Activity size={12} />
+            <span>Load</span>
+          </div>
+          {metrics.load_avg_1m != null && (
+            <span>
+              1m <span className="text-cosmic-text">{metrics.load_avg_1m.toFixed(2)}</span>
+            </span>
+          )}
+          {metrics.load_avg_5m != null && (
+            <span>
+              5m <span className="text-cosmic-text">{metrics.load_avg_5m.toFixed(2)}</span>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Disk usage summary */}
+      {hasDisk && (
+        <div className="flex items-center justify-between text-xs text-cosmic-muted font-mono">
+          <div className="flex items-center gap-1.5">
+            <HardDrive size={12} />
+            <span>Disk</span>
+          </div>
+          <span>
+            {metrics.disk_used_gb!.toFixed(1)} /{" "}
+            {metrics.disk_total_gb!.toFixed(1)} GB ({diskPct.toFixed(0)}%)
+          </span>
+        </div>
+      )}
 
       {/* Version / PID */}
       {(metrics.version ?? metrics.pid) && (

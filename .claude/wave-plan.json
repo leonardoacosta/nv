@@ -1,425 +1,74 @@
 {
-  "generated_at": "2026-03-24T14:20:00-05:00",
+  "generated_at": "2026-03-24T17:30:00-05:00",
   "generated_by": "plan:roadmap",
   "project": "nv",
   "stack": "rust",
-  "git_sha": "690e610",
-  "status": "completed",
+  "git_sha": "eb342806",
+  "status": "pending",
   "spec_names": [
-    "add-sentry-tools",
-    "add-stripe-tools",
-    "add-neon-tools",
-    "rewrite-mobile-friendly-formatters",
-    "jira-integration-mvp-original",
-    "refactor-orchestrator-pattern",
-    "nexus-integration-mvp-original",
-    "fix-chat-bugs",
-    "telegram-channel-mvp-original",
-    "harden-telegram-nexus",
-    "add-ado-list-projects",
-    "add-ado-tools",
-    "add-aggregation-layer",
-    "add-bootstrap-soul",
-    "add-github-tools",
-    "add-ha-tools",
-    "add-neon-management-tools",
-    "add-plaid-tools",
-    "add-posthog-tools",
-    "add-resend-tools",
-    "add-upstash-tools",
-    "add-vercel-tools",
-    "add-telegram-commands",
-    "harden-jira-integration",
-    "fix-jql-limit-syntax",
-    "fix-deploy-watcher-test",
-    "fix-conversation-amnesia",
-    "add-sqlite-migrations",
-    "add-obligation-store",
-    "add-obligation-detection",
-    "add-obligation-telegram-ux",
-    "complete-service-diagnostics",
-    "add-server-health-metrics",
-    "improve-dashboard-monitoring"
+    "nv-tools-scaffold",
+    "nv-tools-extract-wave-a",
+    "nv-tools-extract-wave-b",
+    "nv-tools-extract-wave-c",
+    "nv-tools-shared-deps",
+    "nv-tools-integration-test"
   ],
   "waves": [
     {
       "wave": 1,
-      "phase": 1,
-      "label": "Spec Debt: Code Tasks",
+      "label": "MCP Scaffold + ToolDefinition Migration",
       "specs": [
-        {
-          "name": "add-sentry-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-stripe-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-neon-tools",
-          "type": "existing"
-        },
-        {
-          "name": "rewrite-mobile-friendly-formatters",
-          "type": "existing"
-        }
+        {"name": "nv-tools-scaffold", "type": "new"}
       ]
     },
     {
       "wave": 2,
-      "phase": 1,
-      "label": "Spec Debt: Deferred Implementation",
+      "label": "Extract HTTP Tools (stripe, vercel, sentry, resend, upstash)",
       "specs": [
-        {
-          "name": "jira-integration-mvp-original",
-          "type": "existing"
-        },
-        {
-          "name": "refactor-orchestrator-pattern",
-          "type": "existing"
-        },
-        {
-          "name": "nexus-integration-mvp-original",
-          "type": "existing"
-        },
-        {
-          "name": "fix-chat-bugs",
-          "type": "existing"
-        }
+        {"name": "nv-tools-extract-wave-a", "type": "new"}
       ]
     },
     {
       "wave": 3,
-      "phase": 1,
-      "label": "Spec Debt: Integration Tests",
+      "label": "Extract HTTP Tools (ha, ado, plaid, doppler, cloudflare, posthog, neon)",
       "specs": [
-        {
-          "name": "telegram-channel-mvp-original",
-          "type": "existing"
-        },
-        {
-          "name": "harden-telegram-nexus",
-          "type": "existing"
-        }
+        {"name": "nv-tools-extract-wave-b", "type": "new"}
       ]
     },
     {
       "wave": 4,
-      "phase": 1,
-      "label": "Spec Debt: User Verification",
+      "label": "Extract Process Tools (docker, github, web, calendar, tailscale)",
       "specs": [
-        {
-          "name": "add-ado-list-projects",
-          "type": "existing"
-        },
-        {
-          "name": "add-ado-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-aggregation-layer",
-          "type": "existing"
-        },
-        {
-          "name": "add-bootstrap-soul",
-          "type": "existing"
-        },
-        {
-          "name": "add-github-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-ha-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-neon-management-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-plaid-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-posthog-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-resend-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-upstash-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-vercel-tools",
-          "type": "existing"
-        },
-        {
-          "name": "add-telegram-commands",
-          "type": "existing"
-        },
-        {
-          "name": "harden-jira-integration",
-          "type": "existing"
-        }
+        {"name": "nv-tools-extract-wave-c", "type": "new"}
       ]
     },
     {
       "wave": 5,
-      "phase": 2,
-      "label": "Bug Fixes",
+      "label": "SharedDeps Wiring (jira, teams, schedule, reminders, memory, nexus, etc.)",
       "specs": [
-        {
-          "name": "fix-jql-limit-syntax",
-          "type": "new"
-        },
-        {
-          "name": "fix-deploy-watcher-test",
-          "type": "new"
-        }
+        {"name": "nv-tools-shared-deps", "type": "new"}
       ]
     },
     {
       "wave": 6,
-      "phase": 3,
-      "label": "Amnesia: Conversation Persistence",
+      "label": "Integration Test + Claude Code Verification",
       "specs": [
-        {
-          "name": "fix-conversation-amnesia",
-          "type": "new"
-        }
-      ]
-    },
-    {
-      "wave": 7,
-      "phase": 4,
-      "label": "Proactive: SQLite Migrations",
-      "specs": [
-        {
-          "name": "add-sqlite-migrations",
-          "type": "new"
-        }
-      ]
-    },
-    {
-      "wave": 8,
-      "phase": 4,
-      "label": "Proactive: Obligation Store",
-      "specs": [
-        {
-          "name": "add-obligation-store",
-          "type": "new"
-        }
-      ]
-    },
-    {
-      "wave": 9,
-      "phase": 4,
-      "label": "Proactive: Obligation Detection",
-      "specs": [
-        {
-          "name": "add-obligation-detection",
-          "type": "new"
-        }
-      ]
-    },
-    {
-      "wave": 10,
-      "phase": 4,
-      "label": "Proactive: Obligation Telegram UX",
-      "specs": [
-        {
-          "name": "add-obligation-telegram-ux",
-          "type": "new"
-        }
-      ]
-    },
-    {
-      "wave": 11,
-      "phase": 5,
-      "label": "Tools: Service Diagnostics",
-      "specs": [
-        {
-          "name": "complete-service-diagnostics",
-          "type": "new"
-        }
-      ]
-    },
-    {
-      "wave": 12,
-      "phase": 6,
-      "label": "Monitoring: Health + Dashboard",
-      "specs": [
-        {
-          "name": "add-server-health-metrics",
-          "type": "new"
-        },
-        {
-          "name": "improve-dashboard-monitoring",
-          "type": "new"
-        }
+        {"name": "nv-tools-integration-test", "type": "new"}
       ]
     }
   ],
   "dependency_map": {
-    "add-obligation-store": [
-      "add-sqlite-migrations"
-    ],
-    "add-obligation-detection": [
-      "add-obligation-store"
-    ],
-    "add-obligation-telegram-ux": [
-      "add-obligation-detection"
-    ],
-    "add-server-health-metrics": [
-      "add-sqlite-migrations"
-    ],
-    "improve-dashboard-monitoring": [
-      "add-server-health-metrics"
-    ]
+    "nv-tools-extract-wave-a": ["nv-tools-scaffold"],
+    "nv-tools-extract-wave-b": ["nv-tools-extract-wave-a"],
+    "nv-tools-extract-wave-c": ["nv-tools-extract-wave-b"],
+    "nv-tools-shared-deps": ["nv-tools-extract-wave-c"],
+    "nv-tools-integration-test": ["nv-tools-shared-deps"]
   },
   "conflict_map": {
-    "main.rs": [
-      "add-sentry-tools",
-      "add-stripe-tools",
-      "fix-conversation-amnesia",
-      "complete-service-diagnostics"
-    ],
-    "messages.rs": [
-      "add-sqlite-migrations",
-      "add-obligation-store",
-      "add-server-health-metrics"
-    ],
-    "orchestrator.rs": [
-      "add-obligation-detection",
-      "add-obligation-telegram-ux"
-    ],
-    "worker.rs": [
-      "fix-conversation-amnesia",
-      "refactor-orchestrator-pattern"
-    ],
-    "http.rs": [
-      "add-server-health-metrics",
-      "improve-dashboard-monitoring"
+    "crates/nv-daemon/src/tools/mod.rs": [
+      "nv-tools-scaffold", "nv-tools-extract-wave-a", "nv-tools-extract-wave-b",
+      "nv-tools-extract-wave-c", "nv-tools-shared-deps"
     ]
   },
-  "decisions": [
-    {
-      "date": "2026-03-24",
-      "decision": "Archive waves 1-4 specs as complete \u2014 only [user] manual tests and [deferred] items remain",
-      "rationale": "All code tasks done. Manual tests can happen ad-hoc. Deferred tasks become standalone beads issues.",
-      "source": "user",
-      "affected_waves": [
-        1,
-        2,
-        3,
-        4
-      ],
-      "affected_specs": []
-    },
-    {
-      "date": "2026-03-24",
-      "decision": "Execute waves 6-11 via sequential /apply instead of /apply:all",
-      "rationale": "Single-spec waves have zero parallelism benefit. Dependency order: 7->8->9->10, then 6 and 11 independently.",
-      "source": "guardrail",
-      "affected_waves": [
-        6,
-        7,
-        8,
-        9,
-        10,
-        11
-      ],
-      "affected_specs": [
-        "fix-conversation-amnesia",
-        "add-sqlite-migrations",
-        "add-obligation-store",
-        "add-obligation-detection",
-        "add-obligation-telegram-ux",
-        "complete-service-diagnostics"
-      ]
-    },
-    {
-      "date": "2026-03-24",
-      "decision": "Archive all 14 wave-4 specs \u2014 code complete, only manual tests remain",
-      "rationale": "All 14 tool integration specs have code done. Manual Telegram tests are ad-hoc.",
-      "source": "user",
-      "affected_waves": [
-        4
-      ],
-      "affected_specs": [
-        "add-ado-list-projects",
-        "add-ado-tools",
-        "add-aggregation-layer",
-        "add-bootstrap-soul",
-        "add-github-tools",
-        "add-ha-tools",
-        "add-neon-management-tools",
-        "add-plaid-tools",
-        "add-posthog-tools",
-        "add-resend-tools",
-        "add-upstash-tools",
-        "add-vercel-tools",
-        "add-telegram-commands",
-        "harden-jira-integration"
-      ]
-    }
-  ],
-  "started_at": "2026-03-24T15:38:39.288231",
-  "current_wave": null,
-  "completed_waves": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12
-  ],
-  "completed_specs": [
-    "add-sentry-tools",
-    "add-stripe-tools",
-    "add-neon-tools",
-    "rewrite-mobile-friendly-formatters",
-    "jira-integration-mvp-original",
-    "refactor-orchestrator-pattern",
-    "nexus-integration-mvp-original",
-    "fix-chat-bugs",
-    "telegram-channel-mvp-original",
-    "harden-telegram-nexus",
-    "add-ado-list-projects",
-    "add-ado-tools",
-    "add-aggregation-layer",
-    "add-bootstrap-soul",
-    "add-github-tools",
-    "add-ha-tools",
-    "add-neon-management-tools",
-    "add-plaid-tools",
-    "add-posthog-tools",
-    "add-resend-tools",
-    "add-upstash-tools",
-    "add-vercel-tools",
-    "add-telegram-commands",
-    "harden-jira-integration",
-    "fix-jql-limit-syntax",
-    "fix-deploy-watcher-test",
-    "fix-conversation-amnesia",
-    "add-sqlite-migrations",
-    "add-obligation-store",
-    "add-obligation-detection",
-    "add-obligation-telegram-ux",
-    "complete-service-diagnostics",
-    "add-server-health-metrics",
-    "improve-dashboard-monitoring"
-  ],
-  "failed_specs": [],
-  "pre_audit_sha": "8bb37e0",
-  "completed_at": "2026-03-24T16:27:18.297291"
+  "decisions": []
 }

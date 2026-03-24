@@ -185,12 +185,48 @@ mod tests {
     /// `ObligationStore`.  The `NamedTempFile` is returned so the caller can
     /// keep it alive for the duration of the test.
     ///
-    /// Open order matters: `ObligationStore` applies v1+v2 migrations, then
-    /// `AlertRuleStore` applies v1+v2+v3 (the `IF NOT EXISTS` guards make the
-    /// first two idempotent).  Reversing the order would leave the DB at v3
-    /// and make `ObligationStore`'s migration runner error on version mismatch.
+    /// Both tables (`alert_rules` and `obligations`) are created manually via a
+    /// raw `rusqlite::Connection` before constructing the typed stores.  This
+    /// mirrors the pattern used in `watchers/mod.rs::temp_stores()` and avoids
+    /// any dependency on `MessageStore` migrations.
     fn temp_db() -> (AlertRuleStore, ObligationStore, NamedTempFile) {
+        use rusqlite::Connection;
+
         let file = NamedTempFile::new().expect("temp db file");
+
+        // Create both schemas manually so neither store needs MessageStore::init.
+        {
+            let conn = Connection::open(file.path()).expect("conn");
+            conn.execute_batch("PRAGMA journal_mode=WAL;").expect("wal");
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS alert_rules (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    rule_type TEXT NOT NULL,
+                    config TEXT,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    last_triggered_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_alert_rules_name ON alert_rules(name);
+                CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);
+                CREATE TABLE IF NOT EXISTS obligations (
+                    id TEXT PRIMARY KEY,
+                    source_channel TEXT,
+                    source_message TEXT,
+                    detected_action TEXT,
+                    project_code TEXT,
+                    priority INTEGER,
+                    status TEXT NOT NULL DEFAULT 'open',
+                    owner TEXT,
+                    owner_reason TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );",
+            )
+            .expect("schema");
+        }
+
         let obligations = ObligationStore::new(file.path()).expect("ObligationStore init");
         let rules = AlertRuleStore::new(file.path()).expect("AlertRuleStore init");
         (rules, obligations, file)

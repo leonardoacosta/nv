@@ -16,7 +16,7 @@ pub fn jira_tool_definitions() -> Vec<ToolDefinition> {
                 "properties": {
                     "jql": {
                         "type": "string",
-                        "description": "JQL query string"
+                        "description": "JQL query string. Do NOT use LIMIT — result count is controlled automatically (max 50). Example: project = OO AND status != Done ORDER BY created DESC"
                     }
                 },
                 "required": ["jql"]

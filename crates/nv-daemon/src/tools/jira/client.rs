@@ -193,15 +193,24 @@ impl JiraClient {
     // ── Read Operations (immediate, with retry) ───────────────────
 
     /// Search for issues using JQL.
+    ///
+    /// Automatically strips any trailing `LIMIT N` clause from the JQL string
+    /// (Claude sometimes appends these, which Jira rejects). The extracted limit
+    /// is used as `maxResults` (capped at 100); if absent, defaults to 50.
     pub async fn search(&self, jql: &str) -> Result<Vec<JiraIssue>> {
+        let (clean_jql, extracted_limit) = sanitize_jql(jql);
+        let max_results = extracted_limit
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| "50".to_string());
+
         self.request_with_retry(DEFAULT_MAX_RETRIES, || async {
             let url = format!("{}/rest/api/3/search/jql", self.base_url);
             let resp = self
                 .http
                 .get(&url)
                 .query(&[
-                    ("jql", jql),
-                    ("maxResults", "50"),
+                    ("jql", clean_jql.as_str()),
+                    ("maxResults", max_results.as_str()),
                     (
                         "fields",
                         "summary,status,assignee,priority,issuetype,project,labels,created,updated,description",
@@ -457,6 +466,77 @@ impl JiraClient {
     }
 }
 
+// ── JQL Sanitizer ─────────────────────────────────────────────────
+
+/// Strip a trailing `LIMIT N` clause from a JQL query string.
+///
+/// JQL does not support `LIMIT` — Claude sometimes appends it anyway.
+/// This function removes the clause and returns both the cleaned JQL and the
+/// optional extracted limit value, capped at 100.
+///
+/// The match is case-insensitive and matches the last occurrence of
+/// `LIMIT <digits>` at the end of the string (ignoring trailing whitespace).
+///
+/// # Examples
+///
+/// ```
+/// # use nv_daemon::tools::jira::client::sanitize_jql;
+/// let (jql, limit) = sanitize_jql("project = OO LIMIT 10");
+/// assert_eq!(jql, "project = OO");
+/// assert_eq!(limit, Some(10));
+/// ```
+pub fn sanitize_jql(jql: &str) -> (String, Option<u32>) {
+    // Work on the trimmed input to simplify suffix matching.
+    let trimmed = jql.trim_end();
+    let lower = trimmed.to_lowercase();
+
+    // Find the last occurrence of " limit " (or "limit " at start) followed by digits.
+    // Pattern: optional whitespace + "limit" + whitespace + digits at end of string.
+    let mut found_pos: Option<usize> = None;
+    let mut found_limit: Option<u32> = None;
+
+    // Walk backwards through the string looking for a LIMIT clause at the tail.
+    // We search for "limit" in the lowercased version, then verify the suffix is digits.
+    let limit_keyword = "limit";
+    let mut search_start = 0;
+    while search_start < lower.len() {
+        if let Some(pos) = lower[search_start..].find(limit_keyword) {
+            let abs_pos = search_start + pos;
+
+            // Everything after "limit" + the keyword length must be whitespace + digits only.
+            let after_keyword = trimmed[abs_pos + limit_keyword.len()..].trim_start();
+            if !after_keyword.is_empty() && after_keyword.chars().all(|c| c.is_ascii_digit()) {
+                // Only treat it as a LIMIT clause if it occurs at a word boundary
+                // (preceded by whitespace or is at the start).
+                let at_boundary = abs_pos == 0
+                    || trimmed
+                        .as_bytes()
+                        .get(abs_pos - 1)
+                        .map(|b| b.is_ascii_whitespace())
+                        .unwrap_or(false);
+
+                if at_boundary {
+                    let value: u32 = after_keyword.parse().unwrap_or(0).min(100);
+                    found_pos = Some(abs_pos);
+                    found_limit = Some(value);
+                    // Don't break — keep scanning to find the last occurrence.
+                }
+            }
+            search_start = abs_pos + 1;
+        } else {
+            break;
+        }
+    }
+
+    match found_pos {
+        Some(pos) => {
+            let clean = trimmed[..pos].trim_end().to_string();
+            (clean, found_limit)
+        }
+        None => (trimmed.to_string(), None),
+    }
+}
+
 // ── Retryable Error Detection ─────────────────────────────────────
 
 /// Check whether an error is retryable (transient).
@@ -544,5 +624,42 @@ mod tests {
         assert!(!is_retryable(&anyhow::anyhow!("Jira auth failed -- check API token. 401")));
         assert!(!is_retryable(&anyhow::anyhow!("Jira permission denied. 403")));
         assert!(!is_retryable(&anyhow::anyhow!("Jira resource not found. 404")));
+    }
+
+    // ── sanitize_jql ──────────────────────────────────────────────────
+
+    #[test]
+    fn sanitize_jql_strips_limit_with_value() {
+        let (jql, limit) = sanitize_jql("project = OO LIMIT 10");
+        assert_eq!(jql, "project = OO");
+        assert_eq!(limit, Some(10));
+    }
+
+    #[test]
+    fn sanitize_jql_strips_limit_after_order_by() {
+        let (jql, limit) = sanitize_jql("project = OO ORDER BY created DESC LIMIT 25");
+        assert_eq!(jql, "project = OO ORDER BY created DESC");
+        assert_eq!(limit, Some(25));
+    }
+
+    #[test]
+    fn sanitize_jql_case_insensitive() {
+        let (jql, limit) = sanitize_jql("project = OO ORDER BY created DESC limit 5");
+        assert_eq!(jql, "project = OO ORDER BY created DESC");
+        assert_eq!(limit, Some(5));
+    }
+
+    #[test]
+    fn sanitize_jql_no_limit_passes_through() {
+        let (jql, limit) = sanitize_jql("project = OO");
+        assert_eq!(jql, "project = OO");
+        assert_eq!(limit, None);
+    }
+
+    #[test]
+    fn sanitize_jql_caps_at_100() {
+        let (jql, limit) = sanitize_jql("project = OO LIMIT 999");
+        assert_eq!(jql, "project = OO");
+        assert_eq!(limit, Some(100));
     }
 }

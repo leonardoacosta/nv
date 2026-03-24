@@ -4,6 +4,7 @@ import IntegrationCard, {
   type Integration,
 } from "@/components/IntegrationCard";
 import ConfigureModal from "@/components/ConfigureModal";
+import type { PutConfigRequest } from "@/types/api";
 
 const CATEGORY_LABELS: Record<Integration["category"], string> = {
   channels: "Channels",
@@ -50,7 +51,7 @@ export default function IntegrationsPage() {
     const res = await fetch(`/api/config`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ integration_id: id, config }),
+      body: JSON.stringify({ fields: config } satisfies PutConfigRequest),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     void fetchIntegrations();

@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import type { PutConfigRequest } from "@/types/api";
 
 type ConfigValue = string | number | boolean | null | ConfigObject;
 type ConfigObject = { [key: string]: ConfigValue };
@@ -210,7 +211,7 @@ export default function SettingsPage() {
       const res = await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ fields: config } satisfies PutConfigRequest),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setOriginal(config);

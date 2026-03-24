@@ -5,7 +5,8 @@ export interface HealthMetrics {
   memory_used_mb: number;
   memory_total_mb: number;
   uptime_seconds: number;
-  status: "ok" | "degraded" | "down";
+  /** Supports both frontend display values ("ok"/"down") and backend enum values ("healthy"/"critical"). */
+  status: "ok" | "healthy" | "degraded" | "critical" | "down";
   version?: string;
   pid?: number;
 }
@@ -106,7 +107,7 @@ export default function ServerHealth({
       {/* Status header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {metrics.status === "ok" ? (
+          {metrics.status === "ok" || metrics.status === "healthy" ? (
             <Wifi size={16} className="text-emerald-400" />
           ) : metrics.status === "degraded" ? (
             <Wifi size={16} className="text-[#F97316]" />
@@ -119,7 +120,7 @@ export default function ServerHealth({
         </div>
         <span
           className={`text-xs px-2 py-0.5 rounded font-mono ${
-            metrics.status === "ok"
+            metrics.status === "ok" || metrics.status === "healthy"
               ? "bg-emerald-500/20 text-emerald-400"
               : metrics.status === "degraded"
                 ? "bg-[#F97316]/20 text-[#F97316]"

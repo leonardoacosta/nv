@@ -4,28 +4,13 @@ import ActiveSession, {
   type ActiveSessionData,
 } from "@/components/ActiveSession";
 import ServerHealth, { type HealthMetrics } from "@/components/ServerHealth";
+import type {
+  SessionsGetResponse,
+  ServerHealthGetResponse,
+} from "@/types/api";
 
 // Shape returned by the Nexus-backed /api/sessions endpoint
-interface NexusSessionRaw {
-  id: string;
-  project?: string;
-  status: string;
-  agent_name: string;
-  started_at?: string;
-  duration_display: string;
-  branch?: string;
-  spec?: string;
-  progress?: {
-    workflow: string;
-    phase: string;
-    progress_pct: number;
-    phase_label: string;
-  };
-}
-
-interface SessionsApiResponse {
-  sessions: NexusSessionRaw[];
-}
+type NexusSessionRaw = SessionsGetResponse["sessions"][number];
 
 function mapStatus(raw: string): ActiveSessionData["status"] {
   if (raw === "active") return "active";
@@ -61,11 +46,8 @@ export default function NexusPage() {
     try {
       const res = await fetch("/api/sessions");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as SessionsApiResponse | ActiveSessionData[];
-      // Handle both the new Nexus-backed shape and the legacy channel-proxy shape
-      if (Array.isArray(data)) {
-        setSessions(data);
-      } else if (data.sessions && Array.isArray(data.sessions)) {
+      const data = (await res.json()) as SessionsGetResponse;
+      if (data.sessions && Array.isArray(data.sessions)) {
         // Check whether sessions look like Nexus sessions (have agent_name) or channel proxies
         const first = data.sessions[0] as NexusSessionRaw | undefined;
         if (first && "agent_name" in first) {

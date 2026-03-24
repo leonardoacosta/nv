@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
 import { Brain, AlertCircle, RefreshCw, Search, FileText } from "lucide-react";
 import MemoryPreview, { type MemoryFile } from "@/components/MemoryPreview";
-
-interface MemoryApiResponse {
-  files?: MemoryFile[];
-  topics?: string[];
-  [key: string]: unknown;
-}
+import type { MemoryListResponse } from "@/types/api";
 
 export default function MemoryPage() {
   const [files, setFiles] = useState<MemoryFile[]>([]);
@@ -21,19 +16,16 @@ export default function MemoryPage() {
     try {
       const res = await fetch("/api/memory");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = (await res.json()) as MemoryApiResponse | MemoryFile[];
+      const raw = (await res.json()) as MemoryListResponse;
 
       let parsed: MemoryFile[] = [];
-      if (Array.isArray(raw)) {
-        parsed = raw as MemoryFile[];
-      } else if (raw.files && Array.isArray(raw.files)) {
-        parsed = raw.files;
-      } else {
-        // Treat object keys as file entries
-        parsed = Object.entries(raw).map(([name, content]) => ({
-          name,
-          path: name,
-          content: typeof content === "string" ? content : JSON.stringify(content, null, 2),
+      if (Array.isArray(raw.topics)) {
+        // Backend returns { topics: string[] } — map each topic name to a MemoryFile.
+        // Content is empty until a specific topic is fetched via ?topic=<name>.
+        parsed = raw.topics.map((topic) => ({
+          name: topic,
+          path: topic,
+          content: "",
         }));
       }
 
@@ -56,7 +48,7 @@ export default function MemoryPage() {
     const res = await fetch("/api/memory", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path, content }),
+      body: JSON.stringify({ topic: path, content }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 

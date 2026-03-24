@@ -10,6 +10,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import SessionCard, { type Session } from "@/components/SessionCard";
+import type { ProjectsGetResponse, SessionsGetResponse } from "@/types/api";
 
 interface SummaryData {
   obligations_count: number;
@@ -23,11 +24,6 @@ interface SummaryData {
 interface ApiObligation {
   id: string;
   title: string;
-}
-
-interface ApiProject {
-  id: string;
-  name: string;
 }
 
 function StatCard({
@@ -86,12 +82,12 @@ export default function DashboardPage() {
 
       const projectsCount =
         projRes.status === "fulfilled" && projRes.value.ok
-          ? ((await projRes.value.json()) as ApiProject[]).length
+          ? ((await projRes.value.json()) as ProjectsGetResponse).projects.length
           : 0;
 
       const sessData: Session[] =
         sessRes.status === "fulfilled" && sessRes.value.ok
-          ? ((await sessRes.value.json()) as Session[])
+          ? ((await sessRes.value.json()) as SessionsGetResponse).sessions as unknown as Session[]
           : [];
 
       setSessions(sessData);

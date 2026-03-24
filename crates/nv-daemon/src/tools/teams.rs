@@ -462,3 +462,57 @@ mod tests {
         assert_eq!(output, "sarah@civalent.com: Available — InACall");
     }
 }
+
+// ── TeamsCheck wrapper ───────────────────────────────────────────────
+
+/// Zero-arg probe struct for `nv check`.
+///
+/// Validates all three MS Graph credentials by acquiring an OAuth token
+/// via the client credentials flow.
+#[allow(dead_code)]
+pub struct TeamsCheck;
+
+// ── Checkable ────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for TeamsCheck {
+    fn name(&self) -> &str {
+        "teams"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+
+        // Check all three required env vars; return Missing on the first absent one.
+        for var in &[
+            "MS_GRAPH_CLIENT_ID",
+            "MS_GRAPH_CLIENT_SECRET",
+            "MS_GRAPH_TENANT_ID",
+        ] {
+            if std::env::var(var).is_err() {
+                return crate::tools::CheckResult::Missing {
+                    env_var: (*var).into(),
+                };
+            }
+        }
+
+        // All vars present — safe to unwrap.
+        let client_id = std::env::var("MS_GRAPH_CLIENT_ID").unwrap();
+        let client_secret = std::env::var("MS_GRAPH_CLIENT_SECRET").unwrap();
+        let tenant_id = std::env::var("MS_GRAPH_TENANT_ID").unwrap();
+
+        let auth = MsGraphAuth::new(&tenant_id, &client_id, &client_secret);
+
+        let (latency, result) = timed(|| async { auth.authenticate().await }).await;
+
+        match result {
+            Ok(()) => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "OAuth token acquired".into(),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}

@@ -92,6 +92,9 @@ pub async fn run(json: bool, read_only: bool, service_filter: Option<&str>) {
     // Plaid — zero-arg constructor
     services.push(Box::new(tools::plaid::PlaidClient));
 
+    // Teams / MS Graph — zero-arg constructor
+    services.push(Box::new(tools::teams::TeamsCheck));
+
     // ── Apply service filter ─────────────────────────────────────────
     let filtered: Vec<&dyn Checkable> = if let Some(filter) = service_filter {
         services

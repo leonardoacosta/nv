@@ -16,7 +16,7 @@ Environment=HOME=%h
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 LimitNOFILE=4096
 MemoryMax=2G
-TasksMax=128
+TasksMax=512
 
 [Install]
 WantedBy=default.target

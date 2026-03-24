@@ -357,3 +357,77 @@ spec-23 (telegram-ux, needs spec-5)
 | `agent.rs` | session-stability, memory-consistency |
 
 These conflicts are resolved by wave ordering -- conflicting specs never run in the same wave.
+
+---
+
+## Execution Reconciliation
+
+**0 of 25 planned specs were delivered under their planned names.** The nova-v4 phase pivoted from
+the planned dashboard/obligation focus to hardening, tooling, and infrastructure work driven by
+real-world operational needs.
+
+### Planned But Not Delivered (25 specs)
+
+Carry forward to nova-v5 as scope candidates:
+
+- `add-sqlite-migrations` -- versioned migration system for SQLite databases
+- `migrate-tailscale-native` -- move Tailscale from Docker to native
+- `harden-session-stability` -- session timeout, retry, reconnection
+- `add-obligation-store` -- obligations table and CRUD
+- `add-obligation-detection` -- Claude-powered obligation classification
+- `add-alert-rules` -- deploy failure, sentry spike, stale ticket rules
+- `add-proactive-watchers` -- cron-triggered watcher evaluation
+- `add-dashboard-scaffold` -- React SPA with Vite (partially delivered -- dashboard exists)
+- `add-dashboard-api` -- REST API endpoints (partially delivered -- API exists)
+- `add-dashboard-page-dashboard` through `add-dashboard-page-settings` (8 pages -- partially delivered)
+- `add-nexus-context-injection` -- "Solve with Nexus" flow
+- `add-nexus-session-progress` -- workflow progress tracking
+- `add-server-health-metrics` -- health snapshots table
+- `add-crash-detection` -- uptime decrease detection
+- `add-dashboard-nova-mark` -- brand mark integration (already done)
+- `add-obligation-telegram-ux` -- obligation inline keyboard
+- `fix-memory-consistency` -- system prompt memory injection
+- `add-dashboard-sidebar-sparkline` -- usage sparkline in sidebar
+
+### Unplanned Additions (36 specs delivered)
+
+Specs added mid-phase that were not in the original roadmap:
+
+- `add-ado-list-projects` -- Azure DevOps project listing tool
+- `add-calendar-integration` -- Google Calendar read-only tools
+- `add-cloudflare-dns-tools` -- Cloudflare DNS zone and record tools
+- `add-cron-self-management` -- schedule CRUD tools for self-managed crons
+- `add-cross-channel-routing` -- send_to_channel and list_channels tools
+- `add-deploy-hooks` -- pre-push/post-merge git hooks for deployment
+- `add-doppler-tools` -- Doppler secrets inspection tools
+- `add-github-deeper-tools` -- extended GitHub read-only tools
+- `add-hardening-v3` -- Jira key validation, JQL limits, tool empty-check
+- `add-multi-instance-services` -- generic multi-instance service config
+- `add-neon-management-tools` -- Neon REST API tools (projects, branches, compute)
+- `add-nexus-session-watchdog` -- background Nexus health monitoring
+- `add-photo-audio-receiving` -- Telegram photo/audio reception with vision and STT
+- `add-reminders-system` -- user-facing reminder/timer system
+- `add-service-diagnostics` -- Checkable trait, ServiceRegistry, nv check CLI
+- `add-teams-graph-tools` -- Microsoft Graph API tools for Teams
+- `add-test-ping-endpoint` -- GET /test/ping e2e pipeline smoke test
+- `add-tool-emoji-indicators` -- real-time emoji tool status in Telegram
+- `add-web-fetch-tools` -- fetch_url, search_web, extract_links tools
+- `fix-agent-cold-start` -- six cold-start bugs (multi-tool parser, JSON streaming)
+- `fix-channel-safety` -- 11 channel defects (UTF-8 panics, Teams clientState, Discord resume)
+- `fix-dashboard-contracts` -- 8 API/frontend contract mismatches in dashboard
+- `fix-infra-health` -- 11 audit findings (channel status, systemd, deploy hooks)
+- `fix-nexus-stability` -- 8 Nexus correctness fixes (double counters, zombie sessions)
+- `fix-persistent-claude-subprocess` -- CC v2.1.81 stream-json regressions
+- `fix-prompt-bloat` -- stop embedding full system prompt in every Claude call
+- `fix-tool-result-strip` -- harden tool artifact cleanup in worker
+- `fix-tools-registry` -- 8 tool registry correctness issues
+- `fix-watcher-reliability` -- 7 watcher defects (obligation flooding, stale tickers)
+- `improve-tool-logging` -- structured tracing at execute_tool entry/exit
+- `jira-default-project-fallback` -- fallback to default_project when Claude omits field
+- `migrate-secrets-to-doppler` -- replace ~/.nv/env with Doppler
+- `rewrite-mobile-friendly-formatters` -- mobile-optimized Telegram formatting
+- `sync-nexus-proto` -- align nexus.proto with upstream
+- `wire-digest-pipeline` -- connect gather/synthesize/format/actions digest modules
+- `wire-ha-service-call` -- connect ha_service_call tool to Home Assistant API
+
+Total: 36 unplanned specs delivered alongside 0 of 25 planned.

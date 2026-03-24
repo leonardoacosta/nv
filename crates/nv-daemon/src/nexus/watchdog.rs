@@ -241,7 +241,7 @@ async fn handle_reconnect_success(
     stream_handles: &mut [tokio::task::JoinHandle<()>],
     trigger_tx: &tokio::sync::mpsc::UnboundedSender<nv_core::types::Trigger>,
     health_state: &Arc<HealthState>,
-    channels: &HashMap<String, Arc<dyn nv_core::channel::Channel>>,
+    _channels: &HashMap<String, Arc<dyn nv_core::channel::Channel>>,
     agent_mutex: &Arc<Mutex<NexusAgentConnection>>,
 ) {
     tracing::info!(agent = %agent_name, "watchdog: agent reconnected");
@@ -271,26 +271,12 @@ async fn handle_reconnect_success(
     // That capture happens in process_agent / run_event_stream before invoking
     // this helper; the captured value is threaded in via `disconnected_since`.
     if conn.disconnect_notified {
-        let downtime_display = if let Some(since) = conn.disconnected_since {
-            // disconnected_since may still be set if connect() was not yet called
-            // (split-phase reconnect); if it's already been cleared use "unknown".
-            let elapsed = since.elapsed();
-            let secs = elapsed.as_secs();
-            if secs < 60 {
-                format!("{secs}s")
-            } else if secs < 3600 {
-                format!("{}m", secs / 60)
-            } else {
-                format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
-            }
-        } else {
-            "unknown".to_string()
-        };
-        send_telegram_message(
-            channels,
-            format!("Nexus agent '{agent_name}' reconnected (was down {downtime_display})"),
-        )
-        .await;
+        // Log reconnect but don't spam Telegram — routine disconnect/reconnect
+        // cycles are noise.  Only Failed sessions warrant user notification.
+        tracing::info!(
+            agent = %agent_name,
+            "nexus: agent reconnected (suppressed Telegram notification)"
+        );
         conn.disconnect_notified = false;
     }
 }
@@ -299,7 +285,7 @@ async fn handle_reconnect_success(
 /// elapsed and we haven't already notified for this outage.
 async fn maybe_send_disconnect_notification(
     conn: &mut NexusAgentConnection,
-    channels: &HashMap<String, Arc<dyn nv_core::channel::Channel>>,
+    _channels: &HashMap<String, Arc<dyn nv_core::channel::Channel>>,
 ) {
     if conn.disconnect_notified {
         return;
@@ -310,16 +296,18 @@ async fn maybe_send_disconnect_notification(
     };
 
     if since.elapsed() >= Duration::from_secs(30) {
-        send_telegram_message(
-            channels,
-            format!("Nexus agent '{}' disconnected", conn.name),
-        )
-        .await;
+        // Log disconnect but don't spam Telegram — routine disconnects are noise.
+        tracing::warn!(
+            agent = %conn.name,
+            failures = conn.consecutive_failures,
+            "nexus: agent disconnected (suppressed Telegram notification)"
+        );
         conn.disconnect_notified = true;
     }
 }
 
 /// Send a plain text message to the Telegram channel if it is registered.
+#[allow(dead_code)] // Kept for future use when user opts into verbose notifications
 async fn send_telegram_message(
     channels: &HashMap<String, Arc<dyn nv_core::channel::Channel>>,
     content: String,

@@ -1,0 +1,160 @@
+{
+  "generated_at": "2026-03-24T14:20:00-05:00",
+  "generated_by": "plan:roadmap",
+  "project": "nv",
+  "stack": "rust",
+  "git_sha": "690e610",
+  "status": "pending",
+  "spec_names": [
+    "add-sentry-tools", "add-stripe-tools", "add-neon-tools", "rewrite-mobile-friendly-formatters",
+    "jira-integration-mvp-original", "refactor-orchestrator-pattern", "nexus-integration-mvp-original", "fix-chat-bugs",
+    "telegram-channel-mvp-original", "harden-telegram-nexus",
+    "add-ado-list-projects", "add-ado-tools", "add-aggregation-layer", "add-bootstrap-soul",
+    "add-github-tools", "add-ha-tools", "add-neon-management-tools", "add-plaid-tools",
+    "add-posthog-tools", "add-resend-tools", "add-upstash-tools", "add-vercel-tools",
+    "add-telegram-commands", "harden-jira-integration",
+    "fix-jql-limit-syntax", "fix-deploy-watcher-test",
+    "fix-conversation-amnesia",
+    "add-sqlite-migrations",
+    "add-obligation-store",
+    "add-obligation-detection",
+    "add-obligation-telegram-ux",
+    "complete-service-diagnostics",
+    "add-server-health-metrics",
+    "improve-dashboard-monitoring"
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "phase": 1,
+      "label": "Spec Debt: Code Tasks",
+      "specs": [
+        {"name": "add-sentry-tools", "type": "existing"},
+        {"name": "add-stripe-tools", "type": "existing"},
+        {"name": "add-neon-tools", "type": "existing"},
+        {"name": "rewrite-mobile-friendly-formatters", "type": "existing"}
+      ]
+    },
+    {
+      "wave": 2,
+      "phase": 1,
+      "label": "Spec Debt: Deferred Implementation",
+      "specs": [
+        {"name": "jira-integration-mvp-original", "type": "existing"},
+        {"name": "refactor-orchestrator-pattern", "type": "existing"},
+        {"name": "nexus-integration-mvp-original", "type": "existing"},
+        {"name": "fix-chat-bugs", "type": "existing"}
+      ]
+    },
+    {
+      "wave": 3,
+      "phase": 1,
+      "label": "Spec Debt: Integration Tests",
+      "specs": [
+        {"name": "telegram-channel-mvp-original", "type": "existing"},
+        {"name": "harden-telegram-nexus", "type": "existing"}
+      ]
+    },
+    {
+      "wave": 4,
+      "phase": 1,
+      "label": "Spec Debt: User Verification",
+      "specs": [
+        {"name": "add-ado-list-projects", "type": "existing"},
+        {"name": "add-ado-tools", "type": "existing"},
+        {"name": "add-aggregation-layer", "type": "existing"},
+        {"name": "add-bootstrap-soul", "type": "existing"},
+        {"name": "add-github-tools", "type": "existing"},
+        {"name": "add-ha-tools", "type": "existing"},
+        {"name": "add-neon-management-tools", "type": "existing"},
+        {"name": "add-plaid-tools", "type": "existing"},
+        {"name": "add-posthog-tools", "type": "existing"},
+        {"name": "add-resend-tools", "type": "existing"},
+        {"name": "add-upstash-tools", "type": "existing"},
+        {"name": "add-vercel-tools", "type": "existing"},
+        {"name": "add-telegram-commands", "type": "existing"},
+        {"name": "harden-jira-integration", "type": "existing"}
+      ]
+    },
+    {
+      "wave": 5,
+      "phase": 2,
+      "label": "Bug Fixes",
+      "specs": [
+        {"name": "fix-jql-limit-syntax", "type": "new"},
+        {"name": "fix-deploy-watcher-test", "type": "new"}
+      ]
+    },
+    {
+      "wave": 6,
+      "phase": 3,
+      "label": "Amnesia: Conversation Persistence",
+      "specs": [
+        {"name": "fix-conversation-amnesia", "type": "new"}
+      ]
+    },
+    {
+      "wave": 7,
+      "phase": 4,
+      "label": "Proactive: SQLite Migrations",
+      "specs": [
+        {"name": "add-sqlite-migrations", "type": "new"}
+      ]
+    },
+    {
+      "wave": 8,
+      "phase": 4,
+      "label": "Proactive: Obligation Store",
+      "specs": [
+        {"name": "add-obligation-store", "type": "new"}
+      ]
+    },
+    {
+      "wave": 9,
+      "phase": 4,
+      "label": "Proactive: Obligation Detection",
+      "specs": [
+        {"name": "add-obligation-detection", "type": "new"}
+      ]
+    },
+    {
+      "wave": 10,
+      "phase": 4,
+      "label": "Proactive: Obligation Telegram UX",
+      "specs": [
+        {"name": "add-obligation-telegram-ux", "type": "new"}
+      ]
+    },
+    {
+      "wave": 11,
+      "phase": 5,
+      "label": "Tools: Service Diagnostics",
+      "specs": [
+        {"name": "complete-service-diagnostics", "type": "new"}
+      ]
+    },
+    {
+      "wave": 12,
+      "phase": 6,
+      "label": "Monitoring: Health + Dashboard",
+      "specs": [
+        {"name": "add-server-health-metrics", "type": "new"},
+        {"name": "improve-dashboard-monitoring", "type": "new"}
+      ]
+    }
+  ],
+  "dependency_map": {
+    "add-obligation-store": ["add-sqlite-migrations"],
+    "add-obligation-detection": ["add-obligation-store"],
+    "add-obligation-telegram-ux": ["add-obligation-detection"],
+    "add-server-health-metrics": ["add-sqlite-migrations"],
+    "improve-dashboard-monitoring": ["add-server-health-metrics"]
+  },
+  "conflict_map": {
+    "main.rs": ["add-sentry-tools", "add-stripe-tools", "fix-conversation-amnesia", "complete-service-diagnostics"],
+    "messages.rs": ["add-sqlite-migrations", "add-obligation-store", "add-server-health-metrics"],
+    "orchestrator.rs": ["add-obligation-detection", "add-obligation-telegram-ux"],
+    "worker.rs": ["fix-conversation-amnesia", "refactor-orchestrator-pattern"],
+    "http.rs": ["add-server-health-metrics", "improve-dashboard-monitoring"]
+  }
+}

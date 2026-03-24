@@ -66,7 +66,7 @@ pub fn build_dashboard_router(state: DashboardState) -> Router {
     Router::new()
         // P-1 endpoints
         .route("/api/obligations", get(get_obligations))
-        .route("/api/obligations/:id", patch(patch_obligation))
+        .route("/api/obligations/{id}", patch(patch_obligation))
         .route("/api/projects", get(get_projects))
         .route("/api/sessions", get(get_sessions))
         .route("/api/solve", post(post_solve))

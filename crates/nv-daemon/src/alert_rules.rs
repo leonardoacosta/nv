@@ -13,7 +13,6 @@ use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
-use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 
 use crate::obligation_store::NewObligation;
@@ -96,74 +95,19 @@ pub trait RuleEvaluator {
 /// migration v3 that creates the `alert_rules` table is run by `MessageStore::init`.
 /// `AlertRuleStore::new` mirrors the migration so it can open the DB independently.
 pub struct AlertRuleStore {
-    conn: Connection,
-}
-
-/// Minimal migrations for `AlertRuleStore` to allow standalone DB access.
-///
-/// Mirrors only the tables this store directly needs. The full migration
-/// history is authoritative in `messages.rs`.
-fn alert_rule_migrations() -> Migrations<'static> {
-    Migrations::new(vec![
-        // v1 — messages skeleton (dependency for FK-free operation)
-        M::up(
-            "CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                direction TEXT NOT NULL,
-                channel TEXT NOT NULL,
-                sender TEXT,
-                content TEXT NOT NULL,
-                telegram_message_id INTEGER,
-                trigger_type TEXT,
-                response_time_ms INTEGER,
-                tokens_in INTEGER,
-                tokens_out INTEGER
-            );",
-        ),
-        // v2 — obligations (for cross-table queries if needed later)
-        M::up(
-            "CREATE TABLE IF NOT EXISTS obligations (
-                id TEXT PRIMARY KEY,
-                source_channel TEXT NOT NULL,
-                source_message TEXT,
-                detected_action TEXT NOT NULL,
-                project_code TEXT,
-                priority INTEGER NOT NULL DEFAULT 2,
-                status TEXT NOT NULL DEFAULT 'open',
-                owner TEXT NOT NULL DEFAULT 'nova',
-                owner_reason TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );",
-        ),
-        // v3 — alert_rules
-        M::up(
-            "CREATE TABLE IF NOT EXISTS alert_rules (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL UNIQUE,
-                rule_type TEXT NOT NULL,
-                config TEXT,
-                enabled INTEGER NOT NULL DEFAULT 1,
-                last_triggered_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_alert_rules_name ON alert_rules(name);
-            CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);",
-        ),
-    ])
+    pub(crate) conn: Connection,
 }
 
 impl AlertRuleStore {
-    /// Open (or create) the SQLite database and ensure the alert_rules schema exists.
+    /// Open the SQLite database.
+    ///
+    /// Schema migrations are managed exclusively by `MessageStore`. Callers must
+    /// ensure `MessageStore::init` has been called before constructing an
+    /// `AlertRuleStore` against the same `messages.db` path.
     pub fn new(db_path: &Path) -> Result<Self> {
-        let mut conn = Connection::open(db_path)?;
+        let conn = Connection::open(db_path)?;
 
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-
-        alert_rule_migrations()
-            .to_latest(&mut conn)
-            .map_err(|e| anyhow::anyhow!("failed to run alert_rule migrations: {e}"))?;
 
         Ok(Self { conn })
     }
@@ -280,6 +224,23 @@ mod tests {
     fn temp_store() -> (AlertRuleStore, NamedTempFile) {
         let file = NamedTempFile::new().expect("temp file");
         let store = AlertRuleStore::new(file.path()).expect("store init");
+
+        // Apply the alert_rules schema directly — MessageStore owns migrations in
+        // production, but tests use a fresh temp DB with no MessageStore.
+        store.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS alert_rules (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                rule_type TEXT NOT NULL,
+                config TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_triggered_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_alert_rules_name ON alert_rules(name);
+            CREATE INDEX IF NOT EXISTS idx_alert_rules_enabled ON alert_rules(enabled);"
+        ).expect("test schema setup");
+
         (store, file)
     }
 

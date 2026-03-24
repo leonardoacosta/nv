@@ -10,7 +10,6 @@ use std::str::FromStr;
 use anyhow::Result;
 use nv_core::types::{Obligation, ObligationOwner, ObligationStatus};
 use rusqlite::{params, Connection};
-use rusqlite_migration::{Migrations, M};
 
 // ── Input Type ───────────────────────────────────────────────────────
 
@@ -43,65 +42,19 @@ pub struct NewObligation {
 /// `MessageStore::init`, so callers must ensure `MessageStore::init` has been
 /// called before constructing `ObligationStore`.
 pub struct ObligationStore {
-    conn: Connection,
-}
-
-/// Migrations for the obligations table.
-///
-/// This mirrors the v2 migration in `messages.rs` so `ObligationStore` can
-/// open messages.db independently (e.g., in tests) without going through
-/// `MessageStore`. When opened via `MessageStore`, the migration has already
-/// been applied and `to_latest` is a no-op.
-fn obligation_migrations() -> Migrations<'static> {
-    Migrations::new(vec![
-        M::up(
-            "CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                direction TEXT NOT NULL,
-                channel TEXT NOT NULL,
-                sender TEXT,
-                content TEXT NOT NULL,
-                telegram_message_id INTEGER,
-                trigger_type TEXT,
-                response_time_ms INTEGER,
-                tokens_in INTEGER,
-                tokens_out INTEGER
-            );",
-        ),
-        M::up(
-            "CREATE TABLE IF NOT EXISTS obligations (
-                id TEXT PRIMARY KEY,
-                source_channel TEXT NOT NULL,
-                source_message TEXT,
-                detected_action TEXT NOT NULL,
-                project_code TEXT,
-                priority INTEGER NOT NULL DEFAULT 2,
-                status TEXT NOT NULL DEFAULT 'open',
-                owner TEXT NOT NULL DEFAULT 'nova',
-                owner_reason TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
-            CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
-            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);",
-        ),
-    ])
+    pub(crate) conn: Connection,
 }
 
 impl ObligationStore {
-    /// Open (or create) the SQLite database and ensure the obligations schema exists.
+    /// Open the SQLite database.
     ///
-    /// Typically called with the same `messages.db` path as `MessageStore`.
+    /// Schema migrations are managed exclusively by `MessageStore`. Callers must
+    /// ensure `MessageStore::init` has been called before constructing an
+    /// `ObligationStore` against the same `messages.db` path.
     pub fn new(db_path: &Path) -> Result<Self> {
-        let mut conn = Connection::open(db_path)?;
+        let conn = Connection::open(db_path)?;
 
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
-
-        obligation_migrations()
-            .to_latest(&mut conn)
-            .map_err(|e| anyhow::anyhow!("failed to run obligation migrations: {e}"))?;
 
         Ok(Self { conn })
     }
@@ -324,6 +277,28 @@ mod tests {
     fn temp_store() -> (ObligationStore, NamedTempFile) {
         let file = NamedTempFile::new().expect("temp file");
         let store = ObligationStore::new(file.path()).expect("store init");
+
+        // Apply the obligations schema directly — MessageStore owns migrations in
+        // production, but tests use a fresh temp DB with no MessageStore.
+        store.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS obligations (
+                id TEXT PRIMARY KEY,
+                source_channel TEXT NOT NULL,
+                source_message TEXT,
+                detected_action TEXT NOT NULL,
+                project_code TEXT,
+                priority INTEGER NOT NULL DEFAULT 2,
+                status TEXT NOT NULL DEFAULT 'open',
+                owner TEXT NOT NULL DEFAULT 'nova',
+                owner_reason TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
+            CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
+            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);"
+        ).expect("test schema setup");
+
         (store, file)
     }
 

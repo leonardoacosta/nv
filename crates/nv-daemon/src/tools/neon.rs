@@ -187,7 +187,14 @@ fn resolve_connection_url(project: &str) -> Result<String> {
 
 /// Connect to a project's Neon database with TLS via rustls.
 async fn connect(project: &str) -> Result<tokio_postgres::Client> {
-    let url = resolve_connection_url(project)?;
+    let mut url = resolve_connection_url(project)?;
+
+    // Strip channel_binding param — tokio-postgres + rustls doesn't support
+    // SCRAM channel binding. Neon's dashboard includes it by default.
+    url = url
+        .replace("&channel_binding=require", "")
+        .replace("channel_binding=require&", "")
+        .replace("?channel_binding=require", "?");
 
     // Build rustls TLS connector with webpki root certificates
     let mut root_store = rustls::RootCertStore::empty();

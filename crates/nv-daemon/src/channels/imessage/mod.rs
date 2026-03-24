@@ -87,6 +87,15 @@ impl Channel for IMessageChannel {
             .filter(|m| !m.is_from_me)
             // Skip messages with no text content (attachment-only)
             .filter(|m| m.text.as_ref().map(|t| !t.is_empty()).unwrap_or(false))
+            // Apply sender allowlist: when allowed_chat_guids is non-empty, only
+            // accept messages from chats in the list. When empty, allow all.
+            .filter(|m| {
+                if self.config.allowed_chat_guids.is_empty() {
+                    return true;
+                }
+                let chat_guid = m.chats.first().map(|c| c.guid.as_str()).unwrap_or("");
+                self.config.allowed_chat_guids.iter().any(|g| g == chat_guid)
+            })
             .map(|m| {
                 let sender = m
                     .handle

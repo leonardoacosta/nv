@@ -209,6 +209,9 @@ pub struct SharedDeps {
     pub cloudflare_registry: Option<crate::tools::ServiceRegistry<crate::tools::cloudflare::CloudflareClient>>,
     /// Doppler client registry.
     pub doppler_registry: Option<crate::tools::ServiceRegistry<crate::tools::doppler::DopplerClient>>,
+    /// HTTP health-server port (from `daemon.health_port`, default 8400).
+    /// Used by `cmd_digest()` in the orchestrator to avoid hardcoding 8400.
+    pub health_port: u16,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────
@@ -283,7 +286,6 @@ impl WorkerPool {
         let client = self.client_template.clone();
         let tg_client = self.telegram_client.clone();
         let tg_chat_id = self.telegram_chat_id;
-        let max_concurrent = self.max_concurrent;
         let client_template = self.client_template.clone();
         let worker_timeout_secs = deps.worker_timeout_secs;
 
@@ -351,51 +353,90 @@ impl WorkerPool {
                 }
             }
 
-            // Release slot
-            active.fetch_sub(1, Ordering::Relaxed);
-
-            // Check queue for next task
+            // Atomically release this slot and claim the next queued task (if any).
+            //
+            // Both operations happen under the queue lock so no concurrent worker
+            // can observe `active < max_concurrent` and also pop between the sub
+            // and the add (the dequeue race described in Req-2).
             let next = {
                 let mut q = queue.lock().unwrap();
-                q.pop().map(|p| p.0)
-            };
-            if let Some(next_task) = next {
-                let current_active = active.load(Ordering::Relaxed);
-                if current_active < max_concurrent {
+                if let Some(next_task) = q.pop().map(|p| p.0) {
+                    // Claim a slot for the next task before releasing the current one.
+                    // Net change to `active` is zero: -1 (release) +1 (claim) = 0.
+                    // We release after the lock drop so the add is already visible.
                     active.fetch_add(1, Ordering::Relaxed);
-                    let next_client = client_template;
-                    let next_active = Arc::clone(&active);
-                    tokio::spawn(async move {
-                        let next_timeout_dur = Duration::from_secs(worker_timeout_secs);
-                        let result = tokio::time::timeout(
-                            next_timeout_dur,
-                            Worker::run(
-                                next_task,
-                                deps,
-                                next_client,
-                                tg_client,
-                                tg_chat_id,
-                            ),
-                        )
-                        .await;
-                        match result {
-                            Ok(Ok(())) => {}
-                            Ok(Err(e)) => {
-                                tracing::error!(error = %e, "queued worker failed");
-                            }
-                            Err(_elapsed) => {
-                                tracing::warn!(
-                                    timeout_secs = worker_timeout_secs,
-                                    "queued worker session timed out"
-                                );
+                    active.fetch_sub(1, Ordering::Relaxed);
+                    Some(next_task)
+                } else {
+                    // Queue empty — just release the slot.
+                    active.fetch_sub(1, Ordering::Relaxed);
+                    None
+                }
+            };
+
+            if let Some(next_task) = next {
+                let next_task_id = next_task.id;
+                let next_task_tg_chat_id = next_task.telegram_chat_id.or(tg_chat_id);
+                let next_client = client_template;
+                let next_active = Arc::clone(&active);
+                tokio::spawn(async move {
+                    tracing::info!(
+                        worker_task = %next_task_id,
+                        priority = ?next_task.priority,
+                        "queued worker started"
+                    );
+                    let next_timeout_dur = Duration::from_secs(worker_timeout_secs);
+                    let result = tokio::time::timeout(
+                        next_timeout_dur,
+                        Worker::run(
+                            next_task,
+                            Arc::clone(&deps),
+                            next_client,
+                            tg_client.clone(),
+                            tg_chat_id,
+                        ),
+                    )
+                    .await;
+                    match result {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            tracing::error!(worker_task = %next_task_id, error = %e, "queued worker failed");
+                        }
+                        Err(_elapsed) => {
+                            // Mirror the primary timeout branch: emit error event + notify user.
+                            tracing::warn!(
+                                worker_task = %next_task_id,
+                                timeout_secs = worker_timeout_secs,
+                                "queued worker session timed out"
+                            );
+                            let _ = deps.event_tx.send(WorkerEvent::Error {
+                                worker_id: next_task_id,
+                                error: format!("Worker timed out after {worker_timeout_secs}s"),
+                            });
+                            if let Some(chat_id) = next_task_tg_chat_id {
+                                if let Some(channel) = deps.channels.get("telegram") {
+                                    let msg = nv_core::types::OutboundMessage {
+                                        channel: "telegram".into(),
+                                        content: format!(
+                                            "\u{26A0} Request timed out after {worker_timeout_secs}s. \
+                                             Try again or simplify the request."
+                                        ),
+                                        reply_to: None,
+                                        keyboard: None,
+                                    };
+                                    let channel = channel.clone();
+                                    let _ = chat_id; // chat_id is in msg routing
+                                    tokio::spawn(async move {
+                                        if let Err(e) = channel.send_message(msg).await {
+                                            tracing::warn!(error = %e, "failed to send queued timeout error to Telegram");
+                                        }
+                                    });
+                                }
                             }
                         }
-                        next_active.fetch_sub(1, Ordering::Relaxed);
-                    });
-                } else {
-                    // Put it back
-                    queue.lock().unwrap().push(PrioritizedTask(next_task));
-                }
+                    }
+                    next_active.fetch_sub(1, Ordering::Relaxed);
+                });
             }
         });
     }

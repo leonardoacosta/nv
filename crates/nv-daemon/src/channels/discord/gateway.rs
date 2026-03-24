@@ -174,10 +174,13 @@ impl GatewayConnection {
 
         // Step 5: Spawn event listener — clears is_connected on exit
         let ev_sequence = Arc::clone(&self.sequence);
+        let ev_session_id = Arc::clone(&self.session_id);
         let ev_buffer = Arc::clone(&self.message_buffer);
+        let ev_sink = Arc::clone(&self.ws_sink);
+        let ev_token = self.token.clone();
         let ev_connected = Arc::clone(&self.is_connected);
         tokio::spawn(async move {
-            event_loop(stream, ev_sequence, ev_buffer).await;
+            event_loop(stream, ev_sequence, ev_session_id, ev_buffer, ev_sink, ev_token).await;
             ev_connected.store(false, Ordering::Relaxed);
         });
 
@@ -249,13 +252,17 @@ async fn heartbeat_loop(
     }
 }
 
-/// Read gateway events, buffer MESSAGE_CREATE, handle heartbeat ACKs.
+/// Read gateway events, buffer MESSAGE_CREATE, handle heartbeat ACKs, and
+/// send Resume payloads on Reconnect / resumable InvalidSession.
 async fn event_loop(
     mut stream: futures_util::stream::SplitStream<
         WebSocketStream<MaybeTlsStream<TcpStream>>,
     >,
     sequence: Arc<Mutex<Option<u64>>>,
+    session_id: Arc<Mutex<Option<String>>>,
     buffer: Arc<Mutex<VecDeque<Message>>>,
+    sink: Arc<Mutex<Option<WsSink>>>,
+    token: String,
 ) {
     while let Some(msg_result) = stream.next().await {
         let msg = match msg_result {
@@ -315,11 +322,35 @@ async fn event_loop(
                 tracing::trace!("heartbeat ACK received");
             }
             Some(GatewayOpcode::Reconnect) => {
-                tracing::warn!("gateway requested reconnect");
+                // Resumable reconnect: send Resume if we have a session.
+                tracing::warn!("gateway requested reconnect — attempting Resume");
+                if send_resume(&sink, &session_id, &sequence, &token).await {
+                    tracing::info!("Resume sent after gateway Reconnect");
+                    // Continue the event loop — gateway will replay missed events.
+                    continue;
+                }
+                // Could not resume (no session) — fall back to Identify on reconnect.
                 break;
             }
             Some(GatewayOpcode::InvalidSession) => {
-                tracing::warn!("gateway: invalid session");
+                // d=true means the session is resumable; d=false means it is not.
+                let resumable = payload
+                    .d
+                    .as_ref()
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if resumable {
+                    tracing::warn!("gateway: invalid session (resumable) — attempting Resume");
+                    if send_resume(&sink, &session_id, &sequence, &token).await {
+                        tracing::info!("Resume sent after resumable InvalidSession");
+                        continue;
+                    }
+                } else {
+                    // Non-resumable: clear stored session so the next connect() Identifies fresh.
+                    *session_id.lock().await = None;
+                    *sequence.lock().await = None;
+                    tracing::warn!("gateway: invalid session (non-resumable) — will re-Identify");
+                }
                 break;
             }
             _ => {
@@ -329,6 +360,63 @@ async fn event_loop(
     }
 
     tracing::warn!("gateway event loop ended");
+}
+
+/// Attempt to send a Resume payload to the gateway.
+///
+/// Returns `true` if the payload was sent successfully, `false` if the session
+/// or sequence is unavailable (caller should fall back to a fresh Identify).
+async fn send_resume(
+    sink: &Arc<Mutex<Option<WsSink>>>,
+    session_id: &Arc<Mutex<Option<String>>>,
+    sequence: &Arc<Mutex<Option<u64>>>,
+    token: &str,
+) -> bool {
+    use super::types::{ResumeData, ResumePayload};
+
+    let sid = match &*session_id.lock().await {
+        Some(s) => s.clone(),
+        None => {
+            tracing::warn!("send_resume: no session_id available");
+            return false;
+        }
+    };
+    let seq = match *sequence.lock().await {
+        Some(s) => s,
+        None => {
+            tracing::warn!("send_resume: no sequence available");
+            return false;
+        }
+    };
+
+    let payload = ResumePayload {
+        op: GatewayOpcode::Resume as u8,
+        d: ResumeData {
+            token: token.to_string(),
+            session_id: sid,
+            seq,
+        },
+    };
+
+    let json = match serde_json::to_string(&payload) {
+        Ok(j) => j,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to serialize Resume payload");
+            return false;
+        }
+    };
+
+    let mut guard = sink.lock().await;
+    if let Some(ref mut s) = *guard {
+        if let Err(e) = s.send(WsMessage::Text(json.into())).await {
+            tracing::error!(error = %e, "failed to send Resume payload");
+            return false;
+        }
+        true
+    } else {
+        tracing::warn!("send_resume: ws sink not available");
+        false
+    }
 }
 
 #[cfg(test)]

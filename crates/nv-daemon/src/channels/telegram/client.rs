@@ -11,6 +11,16 @@ const TELEGRAM_MAX_MESSAGE_LEN: usize = 4096;
 
 /// Convert common Markdown patterns from Claude's output to Telegram HTML.
 fn markdown_to_html(text: &str) -> String {
+    // If text already contains HTML tags, assume it's pre-formatted and skip conversion.
+    if text.contains("<b>")
+        || text.contains("<i>")
+        || text.contains("<pre>")
+        || text.contains("<code>")
+        || text.contains("<a ")
+    {
+        return text.to_string();
+    }
+
     let mut result = String::with_capacity(text.len());
     let lines: Vec<&str> = text.lines().collect();
     let mut i = 0;
@@ -328,7 +338,7 @@ impl TelegramClient {
     ) -> anyhow::Result<()> {
         let url = format!("{}/editMessageText", self.base_url);
         let html_text = markdown_to_html(text);
-        let truncated = &html_text[..html_text.len().min(TELEGRAM_MAX_MESSAGE_LEN)];
+        let truncated = crate::channels::util::safe_truncate(&html_text, TELEGRAM_MAX_MESSAGE_LEN);
         let mut body = serde_json::json!({
             "chat_id": chat_id,
             "message_id": message_id,
@@ -563,101 +573,12 @@ impl TelegramClient {
     }
 }
 
-/// Split a message into chunks that fit within `max_len`.
-///
-/// Prefers splitting at paragraph boundaries (`\n\n`), then line boundaries
-/// (`\n`), and falls back to a hard cut at `max_len`.
-pub fn chunk_message(text: &str, max_len: usize) -> Vec<String> {
-    if text.len() <= max_len {
-        return vec![text.to_string()];
-    }
-
-    let mut chunks = Vec::new();
-    let mut remaining = text;
-
-    while !remaining.is_empty() {
-        if remaining.len() <= max_len {
-            chunks.push(remaining.to_string());
-            break;
-        }
-
-        // Find split point: prefer paragraph break, then line break, then hard cut
-        let split_at = remaining[..max_len]
-            .rfind("\n\n")
-            .or_else(|| remaining[..max_len].rfind('\n'))
-            .unwrap_or(max_len);
-
-        // Avoid zero-length splits
-        let split_at = if split_at == 0 { max_len } else { split_at };
-
-        chunks.push(remaining[..split_at].to_string());
-        remaining = remaining[split_at..].trim_start();
-    }
-
-    chunks
-}
+/// Re-export the canonical chunk_message from the shared util module.
+pub use crate::channels::util::chunk_message;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn chunk_short_message_single_chunk() {
-        let text = "Hello, world!";
-        let chunks = chunk_message(text, 4096);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0], text);
-    }
-
-    #[test]
-    fn chunk_long_message_splits_at_paragraph() {
-        let para1 = "A".repeat(50);
-        let para2 = "B".repeat(50);
-        let text = format!("{para1}\n\n{para2}");
-        let chunks = chunk_message(&text, 60);
-
-        assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0], para1);
-        assert_eq!(chunks[1], para2);
-    }
-
-    #[test]
-    fn chunk_long_message_splits_at_line() {
-        let line1 = "A".repeat(50);
-        let line2 = "B".repeat(50);
-        let text = format!("{line1}\n{line2}");
-        let chunks = chunk_message(&text, 60);
-
-        assert_eq!(chunks.len(), 2);
-        assert_eq!(chunks[0], line1);
-        assert_eq!(chunks[1], line2);
-    }
-
-    #[test]
-    fn chunk_long_message_hard_cut() {
-        let text = "A".repeat(100);
-        let chunks = chunk_message(&text, 40);
-
-        assert_eq!(chunks.len(), 3);
-        assert_eq!(chunks[0].len(), 40);
-        assert_eq!(chunks[1].len(), 40);
-        assert_eq!(chunks[2].len(), 20);
-    }
-
-    #[test]
-    fn chunk_exact_max_len() {
-        let text = "A".repeat(4096);
-        let chunks = chunk_message(&text, 4096);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].len(), 4096);
-    }
-
-    #[test]
-    fn chunk_empty_message() {
-        let chunks = chunk_message("", 4096);
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0], "");
-    }
 
     // ── markdown_to_html table tests ────────────────────────────────
 
@@ -717,5 +638,19 @@ mod tests {
         assert!(is_table_separator("|:---:|:---:|"));
         assert!(!is_table_separator("| data | here |"));
         assert!(!is_table_separator("no pipes here"));
+    }
+
+    // ── HTML passthrough tests ───────────────────────────────────────
+
+    #[test]
+    fn markdown_to_html_passes_through_preformatted_html() {
+        let input = "<b>Hello</b>";
+        assert_eq!(markdown_to_html(input), "<b>Hello</b>");
+    }
+
+    #[test]
+    fn markdown_to_html_passes_through_complex_html() {
+        let input = "<b>Good morning. Daily briefing:</b>\n\n<i>Weather:</i> Sunny";
+        assert_eq!(markdown_to_html(input), input);
     }
 }

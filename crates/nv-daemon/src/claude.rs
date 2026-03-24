@@ -1178,37 +1178,70 @@ fn build_prompt(system: &str, messages: &[Message], tools: &[ToolDefinition]) ->
 
 /// Parse Claude's response text for tool call requests.
 ///
-/// If the response contains a ```tool_call JSON block, extract it as a
-/// ContentBlock::ToolUse. Otherwise, return as plain text.
+/// Collects ALL ` ```tool_call ` blocks in the response (not just the first).
+/// Interleaved text blocks before each tool call are preserved in document
+/// order. Returns `StopReason::ToolUse` if at least one valid tool call was
+/// found; otherwise returns the full text as a single `ContentBlock::Text`
+/// with `StopReason::EndTurn`.
 fn parse_tool_calls(result: &str) -> (Vec<ContentBlock>, StopReason) {
-    // Look for tool call blocks
-    if let Some(start) = result.find("```tool_call") {
-        let after_marker = &result[start + "```tool_call".len()..];
-        if let Some(end) = after_marker.find("```") {
-            let json_str = after_marker[..end].trim();
-            if let Ok(call) = serde_json::from_str::<ToolCall>(json_str) {
-                let mut content = Vec::new();
+    const MARKER: &str = "```tool_call";
+    const CLOSE: &str = "```";
 
-                // Include any text before the tool call
-                let text_before = result[..start].trim();
-                if !text_before.is_empty() {
-                    content.push(ContentBlock::Text {
-                        text: text_before.to_string(),
-                    });
-                }
+    let mut content: Vec<ContentBlock> = Vec::new();
+    let mut found_any = false;
+    // `cursor` tracks our position inside `result` as a byte offset.
+    let mut cursor = 0usize;
 
-                content.push(ContentBlock::ToolUse {
-                    id: format!("cli-{}", uuid::Uuid::new_v4()),
-                    name: call.tool,
-                    input: call.input,
-                });
+    while cursor < result.len() {
+        // Find the next opening marker from the current cursor position.
+        let Some(rel_start) = result[cursor..].find(MARKER) else {
+            break;
+        };
+        let abs_start = cursor + rel_start;
 
-                return (content, StopReason::ToolUse);
-            }
+        // Capture any interleaved text before this tool call block.
+        let text_before = result[cursor..abs_start].trim();
+        if !text_before.is_empty() {
+            content.push(ContentBlock::Text {
+                text: text_before.to_string(),
+            });
         }
+
+        // Advance past the opening marker to the JSON body.
+        let json_start = abs_start + MARKER.len();
+
+        // Find the closing ``` that ends this block.
+        let Some(rel_end) = result[json_start..].find(CLOSE) else {
+            // Unclosed block — treat the rest as text and stop.
+            break;
+        };
+        let abs_end = json_start + rel_end;
+
+        let json_str = result[json_start..abs_end].trim();
+        if let Ok(call) = serde_json::from_str::<ToolCall>(json_str) {
+            content.push(ContentBlock::ToolUse {
+                id: format!("cli-{}", uuid::Uuid::new_v4()),
+                name: call.tool,
+                input: call.input,
+            });
+            found_any = true;
+        }
+        // Advance past the closing ``` (length 3) to continue scanning.
+        cursor = abs_end + CLOSE.len();
     }
 
-    // No tool call — plain text response
+    if found_any {
+        // Capture any trailing text after the last tool call block.
+        let tail = result[cursor..].trim();
+        if !tail.is_empty() {
+            content.push(ContentBlock::Text {
+                text: tail.to_string(),
+            });
+        }
+        return (content, StopReason::ToolUse);
+    }
+
+    // No tool calls found — plain text response.
     let content = if result.is_empty() {
         vec![]
     } else {

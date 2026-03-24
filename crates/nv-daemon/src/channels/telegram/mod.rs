@@ -253,6 +253,21 @@ async fn handle_photo_message(
 
     tracing::info!(path = %tmp_path, "photo saved to temp file");
 
+    // Schedule deferred deletion as a safety net. The worker cleans up the file
+    // after Claude processes it; this task fires after 10 minutes to handle cases
+    // where the worker fails before reaching its cleanup path.
+    let cleanup_path = tmp_path.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+        if std::path::Path::new(&cleanup_path).exists() {
+            if let Err(e) = std::fs::remove_file(&cleanup_path) {
+                tracing::warn!(path = %cleanup_path, error = %e, "deferred photo cleanup failed");
+            } else {
+                tracing::debug!(path = %cleanup_path, "deferred photo cleanup complete");
+            }
+        }
+    });
+
     // Add image_path to metadata
     let mut metadata = msg.metadata.clone();
     metadata["image_path"] = serde_json::Value::String(tmp_path);

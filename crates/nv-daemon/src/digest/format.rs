@@ -29,11 +29,11 @@ fn truncate_for_telegram(text: &str) -> String {
 
     // Leave room for truncation indicator
     let budget = TELEGRAM_CHAR_LIMIT - 30;
-    let truncated = &text[..budget];
+    let truncated = crate::channels::util::safe_truncate(text, budget);
 
     // Cut at the last newline to preserve complete lines
     if let Some(last_newline) = truncated.rfind('\n') {
-        format!("{}\n\n[... truncated]", &text[..last_newline])
+        format!("{}\n\n[... truncated]", &truncated[..last_newline])
     } else {
         format!("{}\n\n[... truncated]", truncated)
     }

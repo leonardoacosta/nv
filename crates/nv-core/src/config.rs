@@ -185,6 +185,13 @@ pub struct IMessageConfig {
     /// Polling interval in seconds (default: 10).
     #[serde(default = "default_imessage_poll_interval")]
     pub poll_interval_secs: u64,
+    /// Optional allowlist of chat GUIDs to accept inbound messages from.
+    ///
+    /// When non-empty, only messages whose `chat_guid` matches an entry in
+    /// this list are forwarded to the agent. When empty (the default), all
+    /// non-self messages pass through unchanged.
+    #[serde(default)]
+    pub allowed_chat_guids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

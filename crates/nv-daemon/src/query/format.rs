@@ -11,7 +11,7 @@ pub fn format_query_for_telegram(answer_text: &str) -> String {
     }
 
     // Truncate to fit, preserving as much of the answer as possible
-    let truncated = &answer_text[..TELEGRAM_MAX_CHARS - 30];
+    let truncated = crate::channels::util::safe_truncate(answer_text, TELEGRAM_MAX_CHARS - 30);
     // Find last newline to avoid cutting mid-line
     if let Some(pos) = truncated.rfind('\n') {
         format!("{}\n\n[Answer truncated]", &truncated[..pos])

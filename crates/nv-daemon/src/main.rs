@@ -392,6 +392,7 @@ async fn main() -> anyhow::Result<()> {
         std::sync::Arc<tokio::sync::Mutex<std::collections::VecDeque<channels::teams::types::ChatMessage>>>,
     > = None;
     let mut teams_client_for_http: Option<std::sync::Arc<channels::teams::client::TeamsClient>> = None;
+    let mut teams_client_state_for_http: Option<String> = None;
 
     if let (Some(teams_config), Some(client_id), Some(client_secret)) = (
         &config.teams,
@@ -432,6 +433,9 @@ async fn main() -> anyhow::Result<()> {
         // Share the message buffer with the HTTP server for webhook delivery
         let buffer = std::sync::Arc::clone(&teams_channel.message_buffer);
         teams_message_buffer = Some(buffer);
+
+        // Capture clientState secret for webhook validation in the HTTP handler
+        teams_client_state_for_http = Some(teams_channel.client_state.clone());
 
         // Create an Arc-wrapped TeamsClient for the HTTP webhook handler
         let auth_for_http =
@@ -836,6 +840,7 @@ async fn main() -> anyhow::Result<()> {
             http_nv_base,
             config_json,
             http_nexus_client,
+            teams_client_state_for_http,
         )
         .await
         {
@@ -1006,6 +1011,11 @@ async fn main() -> anyhow::Result<()> {
             .as_ref()
             .map(|d| d.timezone.clone())
             .unwrap_or_else(|| "America/Chicago".to_string()),
+        health_port: config
+            .daemon
+            .as_ref()
+            .map(|d| d.health_port)
+            .unwrap_or(8400),
         stripe_registry,
         vercel_registry,
         sentry_registry,

@@ -42,6 +42,8 @@ pub struct HttpState {
     pub config_json: Arc<serde_json::Value>,
     /// Nexus client for dashboard session queries. None if Nexus not configured.
     pub nexus_client: Option<Arc<NexusClient>>,
+    /// Teams clientState secret for webhook notification validation. None if Teams is not configured.
+    pub teams_client_state: Option<String>,
 }
 
 /// Request body for POST /ask.
@@ -142,6 +144,26 @@ async fn teams_webhook_handler(
             return StatusCode::OK.into_response();
         }
     };
+
+    // Validate clientState on every notification (fail-closed).
+    if let Some(expected) = &state.teams_client_state {
+        for notification in &notifications.value {
+            match &notification.client_state {
+                Some(received) if received == expected => {}
+                Some(received) => {
+                    tracing::warn!(
+                        received = %received,
+                        "Teams webhook clientState mismatch — rejecting notification"
+                    );
+                    return StatusCode::UNAUTHORIZED.into_response();
+                }
+                None => {
+                    tracing::warn!("Teams webhook notification missing clientState — rejecting");
+                    return StatusCode::UNAUTHORIZED.into_response();
+                }
+            }
+        }
+    }
 
     for notification in &notifications.value {
         // Fetch the full message content via MS Graph API
@@ -353,6 +375,7 @@ pub async fn run_http_server(
     nv_base: PathBuf,
     config_json: Arc<serde_json::Value>,
     nexus_client: Option<Arc<NexusClient>>,
+    teams_client_state: Option<String>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -366,6 +389,7 @@ pub async fn run_http_server(
         nv_base,
         config_json,
         nexus_client,
+        teams_client_state,
     });
     let app = build_router(state);
 
@@ -404,6 +428,7 @@ mod tests {
             nv_base: tmp.path().to_path_buf(),
             config_json: Arc::new(serde_json::json!({})),
             nexus_client: None,
+            teams_client_state: None,
         });
         (state, rx, tmp)
     }

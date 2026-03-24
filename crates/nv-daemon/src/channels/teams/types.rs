@@ -267,6 +267,9 @@ impl ChatMessage {
 }
 
 /// Naive HTML tag stripper (sufficient for Teams message bodies).
+///
+/// Strips `<tag>` elements then decodes the five standard HTML entities:
+/// `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&nbsp;`.
 fn strip_html_tags(html: &str) -> String {
     let mut result = String::with_capacity(html.len());
     let mut in_tag = false;
@@ -278,7 +281,14 @@ fn strip_html_tags(html: &str) -> String {
             _ => {}
         }
     }
-    result.trim().to_string()
+    // Decode standard HTML entities (no external crate needed for these five).
+    result
+        .trim()
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&nbsp;", " ")
 }
 
 // ── Tests ────────────────────────────────────────────────────────

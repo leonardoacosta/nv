@@ -34,7 +34,7 @@ pub struct TeamsChannel {
     /// Active subscription IDs (for cleanup on disconnect).
     subscription_ids: Mutex<Vec<String>>,
     /// Client state secret for validating webhook notifications.
-    client_state: String,
+    pub client_state: String,
 }
 
 impl TeamsChannel {
@@ -117,6 +117,10 @@ impl Channel for TeamsChannel {
 
         // Step 2: Register webhook subscriptions
         self.register_subscriptions().await?;
+
+        // Step 3: Spawn background renewal task so subscriptions don't expire after 60 min
+        let sub_ids = self.subscription_ids.lock().await.clone();
+        spawn_subscription_renewal(&self.client, Arc::clone(&self.auth), sub_ids);
 
         tracing::info!("Teams channel connected");
         Ok(())
@@ -201,8 +205,7 @@ impl Channel for TeamsChannel {
 /// Spawn a background task that renews the Teams subscription before expiry.
 ///
 /// MS Graph channel message subscriptions expire after 60 minutes max.
-/// This task renews 5 minutes before expiry.
-#[allow(dead_code)]
+/// This task renews every 50 minutes (subscription max is 60 min).
 pub fn spawn_subscription_renewal(
     _client: &TeamsClient,
     auth: Arc<MsGraphAuth>,

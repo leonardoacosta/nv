@@ -29,7 +29,7 @@ const POLL_INTERVAL: Duration = Duration::from_secs(30);
 ///
 /// Supports common US timezones. Defaults to 0 (UTC) for unknown zones.
 /// DST detection: picks standard/daylight offset based on current month.
-fn tz_offset_seconds(tz_name: &str) -> i32 {
+pub fn tz_offset_seconds(tz_name: &str) -> i32 {
     let now = Utc::now();
     let month = now.month();
     // Simple DST approximation: Mar–Nov is daylight time in most US zones

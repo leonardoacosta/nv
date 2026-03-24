@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Discord → Nova relay bot.
+"""Discord -> Nova relay bot.
 
 Listens for DMs and mentions in configured channels, forwards to Nova's
-Telegram bot as [Discord: #channel — @user] prefixed messages.
+Telegram bot as [Discord: #channel -- @user] prefixed messages.
 
 Config via environment variables:
-  DISCORD_BOT_TOKEN    — Discord bot token
-  TELEGRAM_BOT_TOKEN   — Nova's Telegram bot token
-  TELEGRAM_CHAT_ID     — Leo's Telegram chat ID
-  DISCORD_CHANNELS     — Comma-separated channel IDs to watch (optional, watches all if empty)
+  DISCORD_BOT_TOKEN    -- Discord bot token
+  TELEGRAM_BOT_TOKEN   -- Nova's Telegram bot token
+  TELEGRAM_CHAT_ID     -- Leo's Telegram chat ID
+  DISCORD_CHANNELS     -- Comma-separated channel IDs to watch (optional, watches all if empty)
 """
 
 import os
@@ -33,20 +33,30 @@ intents.message_content = True
 intents.dm_messages = True
 client = discord.Client(intents=intents)
 
+# Shared aiohttp session — created once in on_ready, closed on shutdown.
+# Reusing the session preserves the TCP connection pool and avoids the per-message
+# TLS handshake overhead that occurred when opening a new ClientSession per call.
+_http_session: aiohttp.ClientSession | None = None
+
 
 async def forward_to_telegram(text: str) -> None:
     """Send a message to Nova via Telegram Bot API."""
+    global _http_session
+    if _http_session is None or _http_session.closed:
+        _http_session = aiohttp.ClientSession()
     url = TELEGRAM_API.format(token=TG_TOKEN)
-    async with aiohttp.ClientSession() as session:
-        await session.post(url, json={
-            "chat_id": TG_CHAT_ID,
-            "text": text,
-            "parse_mode": "HTML",
-        })
+    await _http_session.post(url, json={
+        "chat_id": TG_CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+    })
 
 
 @client.event
 async def on_ready():
+    global _http_session
+    # Create the shared session on first connect so the event loop is already running.
+    _http_session = aiohttp.ClientSession()
     print(f"Discord relay connected as {client.user}")
     if WATCH_CHANNELS:
         print(f"Watching channels: {WATCH_CHANNELS}")
@@ -55,18 +65,26 @@ async def on_ready():
 
 
 @client.event
+async def on_close():
+    global _http_session
+    if _http_session and not _http_session.closed:
+        await _http_session.close()
+        _http_session = None
+
+
+@client.event
 async def on_message(message: discord.Message):
     # Skip own messages
     if message.author == client.user:
         return
 
-    # DMs — always forward
+    # DMs -- always forward
     if isinstance(message.channel, discord.DMChannel):
-        text = f"[Discord DM — @{message.author.name}]\n{message.content}"
+        text = f"[Discord DM -- @{message.author.name}]\n{message.content}"
         await forward_to_telegram(text)
         return
 
-    # Channel messages — check if we're watching this channel
+    # Channel messages -- check if we're watching this channel
     if WATCH_CHANNELS and message.channel.id not in WATCH_CHANNELS:
         return
 
@@ -78,7 +96,7 @@ async def on_message(message: discord.Message):
         channel_name = getattr(message.channel, "name", "unknown")
         guild_name = getattr(message.guild, "name", "DM")
         text = (
-            f"[Discord: {guild_name}/#{channel_name} — @{message.author.name}]\n"
+            f"[Discord: {guild_name}/#{channel_name} -- @{message.author.name}]\n"
             f"{message.content}"
         )
         await forward_to_telegram(text)

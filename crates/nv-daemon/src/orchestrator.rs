@@ -220,6 +220,12 @@ pub struct Orchestrator {
     worker_thinking_msgs: std::collections::HashMap<Uuid, (i64, i64)>,
     /// Maps worker_id → last thinking-message edit timestamp (for debounce).
     worker_thinking_last_edit: std::collections::HashMap<Uuid, Instant>,
+    // ── Deferred StageComplete removal ──
+    /// Worker IDs whose StageComplete event is pending deferred removal from
+    /// `worker_stage_started`. An entry is cleared if a `ToolCalled` event
+    /// arrives before the next `check_inactivity` tick; otherwise the
+    /// `check_inactivity` tick removes the entry.
+    worker_stage_pending_removal: std::collections::HashSet<Uuid>,
 }
 
 impl Orchestrator {
@@ -261,6 +267,7 @@ impl Orchestrator {
             error_count: 0,
             worker_thinking_msgs: std::collections::HashMap::new(),
             worker_thinking_last_edit: std::collections::HashMap::new(),
+            worker_stage_pending_removal: std::collections::HashSet::new(),
         }
     }
 
@@ -391,7 +398,7 @@ impl Orchestrator {
             }
             TriggerClass::NexusEvent => {
                 // Suppress nexus event notifications during quiet hours
-                if is_quiet_hours(self.quiet_start, self.quiet_end) {
+                if is_quiet_hours(self.quiet_start, self.quiet_end, &self.deps.timezone) {
                     tracing::debug!("suppressing nexus event during quiet hours");
                     return;
                 }
@@ -421,7 +428,7 @@ impl Orchestrator {
 
         // Quiet hours gate: suppress non-P0 (non-High priority) dispatch
         let priority = class_to_priority(primary_class);
-        if priority != Priority::High && is_quiet_hours(self.quiet_start, self.quiet_end) {
+        if priority != Priority::High && is_quiet_hours(self.quiet_start, self.quiet_end, &self.deps.timezone) {
             tracing::info!(
                 class = ?primary_class,
                 "suppressing non-P0 trigger during quiet hours"
@@ -608,6 +615,10 @@ impl Orchestrator {
                     tool = %tool,
                     "worker tool called"
                 );
+                // Cancel any pending deferred removal for this worker — a new
+                // tool call means the stage is still active.
+                self.worker_stage_pending_removal.remove(worker_id);
+
                 // Update stage description with human-readable tool name
                 let (emoji, description) = humanize_tool(tool);
                 let stage_label = format!("{emoji} {description}");
@@ -657,7 +668,10 @@ impl Orchestrator {
                     duration_ms,
                     "worker stage complete"
                 );
-                self.worker_stage_started.remove(worker_id);
+                // Defer removal: a ToolCalled event may arrive immediately after
+                // StageComplete (the agent is mid-tool-call). The pending set is
+                // flushed by the next check_inactivity tick if no ToolCalled cancels it.
+                self.worker_stage_pending_removal.insert(*worker_id);
             }
             WorkerEvent::Complete {
                 worker_id,
@@ -670,6 +684,7 @@ impl Orchestrator {
                 );
                 // Clean up stage tracking and thinking message state
                 self.worker_stage_started.remove(worker_id);
+                self.worker_stage_pending_removal.remove(worker_id);
                 self.worker_thinking_msgs.remove(worker_id);
                 self.worker_thinking_last_edit.remove(worker_id);
             }
@@ -680,6 +695,7 @@ impl Orchestrator {
                     "worker error"
                 );
                 self.worker_stage_started.remove(worker_id);
+                self.worker_stage_pending_removal.remove(worker_id);
                 self.worker_thinking_msgs.remove(worker_id);
                 self.worker_thinking_last_edit.remove(worker_id);
             }
@@ -689,6 +705,15 @@ impl Orchestrator {
     /// Check for active workers and refresh the Telegram typing indicator.
     /// Status details go to debug log only — never sent as messages.
     async fn check_inactivity(&mut self, _threshold: Duration) {
+        // Flush deferred StageComplete removals. Workers that sent StageComplete
+        // but no subsequent ToolCalled before this tick are no longer tracking
+        // an active stage and should be removed.
+        if !self.worker_stage_pending_removal.is_empty() {
+            for worker_id in self.worker_stage_pending_removal.drain() {
+                self.worker_stage_started.remove(&worker_id);
+            }
+        }
+
         if self.worker_stage_started.is_empty() {
             return;
         }
@@ -1006,7 +1031,7 @@ impl Orchestrator {
         // hold a sender. Instead, use the deps' channels to route a message
         // that the orchestrator will pick up as a digest.
         // For now, send a direct HTTP request to the local health endpoint.
-        let port = 8400; // default health port
+        let port = self.deps.health_port;
         let client = reqwest::Client::new();
         match client
             .post(format!("http://127.0.0.1:{port}/digest"))
@@ -1761,18 +1786,26 @@ fn estimate_task_complexity(triggers: &[Trigger]) -> Option<LongTaskEstimate> {
 
 // ── Quiet Hours ────────────────────────────────────────────────────
 
-/// Check if the current local time falls within the quiet window.
+/// Check if the current time in the user's configured timezone falls within
+/// the quiet window.
 ///
 /// Handles overnight windows (e.g., 23:00 → 07:00) correctly.
 /// Returns `false` if either bound is `None` (no quiet window configured).
+///
+/// `tz_name` is an IANA timezone name (e.g., `"America/Chicago"`). The offset
+/// is resolved via `reminders::tz_offset_seconds()`.
 pub fn is_quiet_hours(
     quiet_start: Option<chrono::NaiveTime>,
     quiet_end: Option<chrono::NaiveTime>,
+    tz_name: &str,
 ) -> bool {
     let (Some(start), Some(end)) = (quiet_start, quiet_end) else {
         return false;
     };
-    let now = chrono::Local::now().time();
+    // Convert UTC now to the user's local time using the configured timezone offset.
+    let offset_secs = crate::reminders::tz_offset_seconds(tz_name);
+    let offset = chrono::FixedOffset::east_opt(offset_secs).unwrap_or(chrono::FixedOffset::east_opt(0).unwrap());
+    let now = chrono::Utc::now().with_timezone(&offset).time();
     if start <= end {
         // Same-day window (e.g., 01:00 → 05:00)
         now >= start && now < end
@@ -2000,14 +2033,16 @@ mod tests {
 
     #[test]
     fn quiet_hours_none_returns_false() {
-        assert!(!is_quiet_hours(None, None));
+        assert!(!is_quiet_hours(None, None, "UTC"));
         assert!(!is_quiet_hours(
             Some(chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap()),
             None,
+            "UTC",
         ));
         assert!(!is_quiet_hours(
             None,
             Some(chrono::NaiveTime::from_hms_opt(7, 0, 0).unwrap()),
+            "UTC",
         ));
     }
 
@@ -2017,9 +2052,9 @@ mod tests {
         let start = Some(chrono::NaiveTime::from_hms_opt(23, 0, 0).unwrap());
         let end = Some(chrono::NaiveTime::from_hms_opt(7, 0, 0).unwrap());
 
-        // We can't control chrono::Local::now() in tests, but we can
-        // verify the function doesn't panic and returns a bool.
-        let _ = is_quiet_hours(start, end);
+        // We can't control time in tests, but we can verify the function
+        // doesn't panic and returns a bool.
+        let _ = is_quiet_hours(start, end, "America/Chicago");
     }
 
     #[test]
@@ -2028,7 +2063,7 @@ mod tests {
         let start = Some(chrono::NaiveTime::from_hms_opt(1, 0, 0).unwrap());
         let end = Some(chrono::NaiveTime::from_hms_opt(5, 0, 0).unwrap());
 
-        let _ = is_quiet_hours(start, end);
+        let _ = is_quiet_hours(start, end, "America/Chicago");
     }
 
     // ── Bot Command Parsing Tests ───────────────────────────────────

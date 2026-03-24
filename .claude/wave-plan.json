@@ -4,7 +4,7 @@
   "project": "nv",
   "stack": "rust",
   "git_sha": "eb342806",
-  "status": "pending",
+  "status": "in_progress",
   "spec_names": [
     "nv-tools-scaffold",
     "nv-tools-extract-wave-a",
@@ -124,5 +124,12 @@
         "nv-tools-integration-test"
       ]
     }
-  ]
+  ],
+  "completed_waves": [
+    1
+  ],
+  "completed_specs": [
+    "nv-tools-scaffold"
+  ],
+  "current_wave": 2
 }

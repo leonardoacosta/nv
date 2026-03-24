@@ -82,6 +82,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/health", get(health_handler))
         .route("/ask", post(ask_handler))
         .route("/digest", post(digest_handler))
+        .route("/test/ping", get(test_ping_handler))
         .route("/stats", get(stats_handler))
         .route("/webhooks/teams", post(teams_webhook_handler));
 
@@ -287,6 +288,106 @@ async fn digest_handler(
             message: "Digest triggered. It will arrive on Telegram shortly.".into(),
         }),
     )
+}
+
+/// Response body for GET /test/ping.
+#[derive(Debug, Serialize)]
+pub struct TestPingResponse {
+    pub ok: bool,
+    pub elapsed_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_preview: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Concurrency guard for /test/ping — only one test at a time.
+static TEST_PING_LOCK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// GET /test/ping — e2e pipeline smoke test.
+///
+/// Injects a synthetic "ping" message into the worker pipeline via CliCommand::Ask,
+/// waits up to 60s for the response, and returns pass/fail with timing metrics.
+/// Only one test ping can run at a time (returns 429 if busy).
+async fn test_ping_handler(
+    State(state): State<Arc<HttpState>>,
+) -> impl IntoResponse {
+    // Concurrency guard — reject if another test is in progress
+    if TEST_PING_LOCK.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(TestPingResponse {
+                ok: false,
+                elapsed_ms: 0,
+                response_preview: None,
+                error: Some("test already in progress".into()),
+            }),
+        );
+    }
+
+    let start = std::time::Instant::now();
+    let (response_tx, response_rx) = oneshot::channel::<String>();
+
+    let trigger = Trigger::CliCommand(CliRequest {
+        command: CliCommand::Ask("ping".into()),
+        response_tx: Some(response_tx),
+    });
+
+    if state.trigger_tx.send(trigger).is_err() {
+        TEST_PING_LOCK.store(false, std::sync::atomic::Ordering::SeqCst);
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(TestPingResponse {
+                ok: false,
+                elapsed_ms: start.elapsed().as_millis() as u64,
+                response_preview: None,
+                error: Some("agent loop is not running".into()),
+            }),
+        );
+    }
+
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), response_rx).await;
+    TEST_PING_LOCK.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    let elapsed_ms = start.elapsed().as_millis() as u64;
+
+    match result {
+        Ok(Ok(answer)) => {
+            let preview = if answer.len() > 200 {
+                format!("{}...", &answer[..200])
+            } else {
+                answer.clone()
+            };
+            tracing::info!(elapsed_ms, response_len = answer.len(), "test/ping: ok");
+            (
+                StatusCode::OK,
+                Json(TestPingResponse {
+                    ok: true,
+                    elapsed_ms,
+                    response_preview: Some(preview),
+                    error: None,
+                }),
+            )
+        }
+        Ok(Err(_)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(TestPingResponse {
+                ok: false,
+                elapsed_ms,
+                response_preview: None,
+                error: Some("response channel closed".into()),
+            }),
+        ),
+        Err(_) => (
+            StatusCode::GATEWAY_TIMEOUT,
+            Json(TestPingResponse {
+                ok: false,
+                elapsed_ms,
+                response_preview: None,
+                error: Some("timeout".into()),
+            }),
+        ),
+    }
 }
 
 /// GET /stats — returns message store statistics as JSON.

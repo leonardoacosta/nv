@@ -368,13 +368,16 @@
     }
   ],
   "started_at": "2026-03-24T15:38:39.288231",
-  "current_wave": 6,
+  "current_wave": 9,
   "completed_waves": [
     1,
     2,
     3,
     4,
-    5
+    5,
+    6,
+    7,
+    8
   ],
   "completed_specs": [
     "add-sentry-tools",
@@ -402,7 +405,10 @@
     "add-telegram-commands",
     "harden-jira-integration",
     "fix-jql-limit-syntax",
-    "fix-deploy-watcher-test"
+    "fix-deploy-watcher-test",
+    "fix-conversation-amnesia",
+    "add-sqlite-migrations",
+    "add-obligation-store"
   ],
   "failed_specs": [],
   "pre_audit_sha": "8bb37e0"

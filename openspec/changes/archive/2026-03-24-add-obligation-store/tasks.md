@@ -48,12 +48,12 @@
 
 ### Remaining Tests
 
-- [ ] [6.1] Unit test: `update_status_and_owner` -- create obligation with owner=Nova, call update_status_and_owner to set status=InProgress and owner=Leo, verify both fields changed and updated_at is newer than created_at [owner:api-engineer]
-- [ ] [6.2] Unit test: `count_open_by_priority` -- create obligations at priorities 0, 1, 2 (multiple at P2), close one P2, verify grouped counts match expected values [owner:api-engineer]
-- [ ] [6.3] Unit test: `list_all` -- create mix of open/done/dismissed obligations, verify list_all returns all regardless of status, ordered by priority ASC [owner:api-engineer]
+- [x] [6.1] Unit test: `update_status_and_owner` -- create obligation with owner=Nova, call update_status_and_owner to set status=InProgress and owner=Leo, verify both fields changed and updated_at is newer than created_at [owner:api-engineer]
+- [x] [6.2] Unit test: `count_open_by_priority` -- create obligations at priorities 0, 1, 2 (multiple at P2), close one P2, verify grouped counts match expected values [owner:api-engineer]
+- [x] [6.3] Unit test: `list_all` -- create mix of open/done/dismissed obligations, verify list_all returns all regardless of status, ordered by priority ASC [owner:api-engineer]
 
 ### Verify
 
-- [ ] [7.1] `cargo build` passes for all workspace members [owner:api-engineer]
-- [ ] [7.2] `cargo test -p nv-daemon` -- all obligation_store tests pass [owner:api-engineer]
-- [ ] [7.3] `cargo clippy -- -D warnings` passes [owner:api-engineer]
+- [x] [7.1] `cargo build` passes for all workspace members [owner:api-engineer]
+- [x] [7.2] `cargo test -p nv-daemon` -- all obligation_store tests pass [owner:api-engineer]
+- [x] [7.3] `cargo clippy -- -D warnings` passes [owner:api-engineer]

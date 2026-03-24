@@ -651,6 +651,7 @@ pub struct BranchSummary {
     #[serde(default)]
     pub parent_id: String,
     #[serde(default)]
+    #[allow(dead_code)] // part of Neon API response; reserved for future branch age checks
     pub created_at: String,
     #[serde(default)]
     pub current_state: String,

@@ -109,7 +109,7 @@ pub fn spawn_scheduler(
 
                     // Fire once per day when the clock passes MORNING_BRIEFING_HOUR
                     if current_hour >= MORNING_BRIEFING_HOUR
-                        && last_briefing_date.map_or(true, |d| d < today)
+                        && last_briefing_date.is_none_or(|d| d < today)
                     {
                         last_briefing_date = Some(today);
                         tracing::info!(hour = current_hour, "scheduler: morning briefing tick");

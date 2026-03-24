@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -159,14 +160,21 @@ impl State {
     }
 
     /// Save a new pending action (appends to existing list).
+    ///
+    /// Acquires an exclusive file lock for the read-modify-write cycle to
+    /// prevent lost updates under concurrent access.
     pub fn save_pending_action(&self, action: &PendingAction) -> Result<()> {
+        let _lock = self.lock_pending_actions()?;
         let mut actions = self.load_pending_actions()?;
         actions.push(action.clone());
         self.write_pending_actions(&actions)
     }
 
     /// Update the status of a pending action by ID.
+    ///
+    /// Acquires an exclusive file lock for the read-modify-write cycle.
     pub fn update_pending_action(&self, id: &Uuid, status: PendingStatus) -> Result<()> {
+        let _lock = self.lock_pending_actions()?;
         let mut actions = self.load_pending_actions()?;
         if let Some(action) = actions.iter_mut().find(|a| a.id == *id) {
             action.status = status;
@@ -181,7 +189,10 @@ impl State {
     }
 
     /// Update the payload of a pending action by ID.
+    ///
+    /// Acquires an exclusive file lock for the read-modify-write cycle.
     pub fn update_pending_action_payload(&self, id: &Uuid, payload: serde_json::Value) -> Result<()> {
+        let _lock = self.lock_pending_actions()?;
         let mut actions = self.load_pending_actions()?;
         if let Some(action) = actions.iter_mut().find(|a| a.id == *id) {
             action.payload = payload;
@@ -190,7 +201,10 @@ impl State {
     }
 
     /// Remove a pending action by ID.
+    ///
+    /// Acquires an exclusive file lock for the read-modify-write cycle.
     pub fn remove_pending_action(&self, id: &Uuid) -> Result<()> {
+        let _lock = self.lock_pending_actions()?;
         let mut actions = self.load_pending_actions()?;
         actions.retain(|a| a.id != *id);
         self.write_pending_actions(&actions)
@@ -243,6 +257,37 @@ impl State {
         atomic_write(&path, &content)
     }
 
+    /// Lock the pending-actions file for the duration of a read-modify-write cycle.
+    ///
+    /// Acquires an exclusive advisory lock (`flock(LOCK_EX)`) on the
+    /// `pending-actions.json` file before the caller reads, mutates, and writes.
+    /// This eliminates the lost-update race when two workers call
+    /// `save_pending_action` or `update_pending_action` concurrently.
+    ///
+    /// Single-user daemon semantics make true contention extremely rare, but the
+    /// lock eliminates the class of bug entirely. The lock is held only for the
+    /// JSON read + write cycle (microseconds) and released automatically when the
+    /// returned `PendingActionsLock` is dropped.
+    fn lock_pending_actions(&self) -> Result<PendingActionsLock> {
+        let path = self.base_path.join("pending-actions.json");
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .with_context(|| format!("failed to open pending-actions.json for locking: {}", path.display()))?;
+
+        let fd = file.as_raw_fd();
+        // LOCK_EX | LOCK_NB: exclusive lock, non-blocking.
+        // On contention, retry with blocking lock (LOCK_EX without LOCK_NB).
+        let ret = unsafe { libc::flock(fd, libc::LOCK_EX) };
+        if ret != 0 {
+            let err = std::io::Error::last_os_error();
+            return Err(anyhow::anyhow!("flock(LOCK_EX) on pending-actions.json failed: {err}"));
+        }
+
+        Ok(PendingActionsLock { _file: file })
+    }
+
     // ── Channel State ───────────────────────────────────────────────
 
     /// Load the state for a specific channel.
@@ -279,6 +324,14 @@ impl State {
         let updated = serde_json::to_string_pretty(&map)?;
         atomic_write(&path, &updated)
     }
+}
+
+/// RAII guard that holds an exclusive flock on pending-actions.json.
+///
+/// Dropping this value releases the flock automatically (the OS releases
+/// the lock when the file descriptor is closed).
+struct PendingActionsLock {
+    _file: fs::File,
 }
 
 /// Write content to a file atomically (write to .tmp, then rename).

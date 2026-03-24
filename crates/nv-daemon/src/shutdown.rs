@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use tokio::signal::unix::{signal, SignalKind};
 
 /// Wait for a shutdown signal (SIGTERM or Ctrl+C).
@@ -31,67 +29,7 @@ pub async fn wait_for_shutdown_signal() {
     }
 }
 
-/// Drain remaining items from an mpsc receiver with a timeout.
-///
-/// Returns the number of items drained.
-#[allow(dead_code)]
-pub async fn drain_with_timeout<T>(
-    rx: &mut tokio::sync::mpsc::UnboundedReceiver<T>,
-    timeout: Duration,
-) -> usize {
-    let mut count = 0;
-    let deadline = tokio::time::sleep(timeout);
-    tokio::pin!(deadline);
-
-    loop {
-        tokio::select! {
-            item = rx.recv() => {
-                match item {
-                    Some(_) => count += 1,
-                    None => break, // channel closed
-                }
-            }
-            () = &mut deadline => {
-                tracing::warn!(drained = count, "drain timeout reached");
-                break;
-            }
-        }
-    }
-
-    count
-}
-
-// ── Tests ───────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::sync::mpsc;
-
-    #[tokio::test]
-    async fn drain_with_timeout_empty_channel() {
-        let (_tx, mut rx) = mpsc::unbounded_channel::<u32>();
-        drop(_tx); // close the channel
-        let count = drain_with_timeout(&mut rx, Duration::from_millis(100)).await;
-        assert_eq!(count, 0);
-    }
-
-    #[tokio::test]
-    async fn drain_with_timeout_some_items() {
-        let (tx, mut rx) = mpsc::unbounded_channel::<u32>();
-        tx.send(1).unwrap();
-        tx.send(2).unwrap();
-        tx.send(3).unwrap();
-        drop(tx);
-        let count = drain_with_timeout(&mut rx, Duration::from_millis(100)).await;
-        assert_eq!(count, 3);
-    }
-
-    #[tokio::test]
-    async fn drain_with_timeout_hits_timeout() {
-        // Channel stays open (sender not dropped), so drain should hit timeout
-        let (_tx, mut rx) = mpsc::unbounded_channel::<u32>();
-        let count = drain_with_timeout(&mut rx, Duration::from_millis(50)).await;
-        assert_eq!(count, 0);
-    }
-}
+// drain_with_timeout was removed: no mpsc channel is in scope at the shutdown
+// callsite in main.rs — the orchestrator handles its own channel draining.
+// If a trigger channel is added to the shutdown path in future, this utility
+// can be reinstated from git history.

@@ -134,6 +134,7 @@ impl ServerHealthStore {
     }
 
     /// Return the second-most-recent snapshot (used for uptime comparison).
+    #[allow(dead_code)] // reserved for uptime delta calculation in future health poller
     pub fn previous(&self) -> Result<Option<ServerHealthSnapshot>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, timestamp, cpu_percent, memory_used_mb, memory_total_mb,
@@ -166,7 +167,7 @@ impl ServerHealthStore {
                 rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                    Box::new(std::io::Error::other(e.to_string())),
                 )
             })
         })?;
@@ -213,7 +214,7 @@ mod tests {
     /// manually so we don't depend on MessageStore.
     fn temp_store() -> (ServerHealthStore, NamedTempFile) {
         let file = NamedTempFile::new().expect("temp file");
-        let mut conn = Connection::open(file.path()).unwrap();
+        let conn = Connection::open(file.path()).unwrap();
         conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS server_health (

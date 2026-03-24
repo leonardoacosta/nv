@@ -685,7 +685,7 @@ impl Worker {
                         let reset_info = error_str
                             .split("resets ")
                             .nth(1)
-                            .map(|s| s.trim_end_matches(|c: char| c == ')' || c == '.'))
+                            .map(|s| s.trim_end_matches([')', '.']))
                             .map(|s| format!(" Resets at {s}."))
                             .unwrap_or_default();
                         format!("\u{23F8}\u{FE0F} I've hit my usage limit for now.{reset_info} I'll be back shortly — try again later.")

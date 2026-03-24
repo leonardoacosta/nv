@@ -31,6 +31,7 @@ pub struct HAEntity {
     pub state: String,
     pub attributes: serde_json::Value,
     pub last_changed: Option<String>,
+    #[allow(dead_code)] // part of HA API response; reserved for future anomaly detection
     pub last_updated: Option<String>,
 }
 

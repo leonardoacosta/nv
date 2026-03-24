@@ -75,15 +75,23 @@ impl RuleEvaluator for SentryWatcher {
             }
         };
 
-        // Find issues with count above threshold
+        // Find issues with count above threshold.
+        // Log a debug message when parse fails so unexpected count formats are visible.
         let spiked: Vec<String> = issues
             .iter()
             .filter(|issue| {
-                issue
-                    .count
-                    .parse::<u64>()
-                    .map(|c| c >= threshold)
-                    .unwrap_or(false)
+                match issue.count.parse::<u64>() {
+                    Ok(c) => c >= threshold,
+                    Err(_) => {
+                        tracing::debug!(
+                            rule = %rule.name,
+                            issue_title = %issue.title,
+                            raw_count = %issue.count,
+                            "sentry_watcher: failed to parse issue count, treating as non-spiked"
+                        );
+                        false
+                    }
+                }
             })
             .map(|issue| {
                 format!(

@@ -73,7 +73,7 @@ async fn main() {
         Commands::Ask { query, json } => {
             ask_question(&query, json).await;
         }
-        Commands::Config => println!("not implemented yet"),
+        Commands::Config => show_config(),
         Commands::Stats => {
             fetch_stats().await;
         }
@@ -81,7 +81,7 @@ async fn main() {
             if now {
                 trigger_digest_now().await;
             } else {
-                println!("not implemented yet: show last digest");
+                show_last_digest(get_health_port()).await;
             }
         }
         Commands::Check {
@@ -90,6 +90,85 @@ async fn main() {
             service,
         } => {
             commands::check::run(json, read_only, service.as_deref()).await;
+        }
+    }
+}
+
+/// Display the current configuration file contents.
+///
+/// Validates the config by calling `nv_core::Config::load()` (which runs all
+/// parse-time checks including quiet-hours validation), then reads and prints
+/// the raw `~/.nv/nv.toml` file. Exits with status 1 if the config is invalid
+/// or the file cannot be read.
+fn show_config() {
+    // Validate config first (catches bad quiet_start/end, missing fields, etc.)
+    if let Err(e) = nv_core::Config::load() {
+        eprintln!("Config error: {e}");
+        std::process::exit(1);
+    }
+
+    // Print the raw config file for human inspection.
+    match nv_core::Config::default_path() {
+        Ok(path) => {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => print!("{content}"),
+                Err(e) => {
+                    eprintln!("Failed to read config file {}: {e}", path.display());
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to resolve config path: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Fetch the last digest timestamp from the daemon's /health endpoint and print it.
+///
+/// Connects to the daemon at `http://127.0.0.1:{port}/health` and displays
+/// the `last_digest_at` field. If no digest has occurred yet, reports that.
+async fn show_last_digest(port: u16) {
+    let url = format!("http://127.0.0.1:{port}/health");
+
+    /// Minimal shape we need from the health response.
+    #[derive(serde::Deserialize)]
+    struct HealthResp {
+        last_digest_at: Option<chrono::DateTime<chrono::Utc>>,
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .expect("failed to create HTTP client");
+
+    match client.get(&url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            match resp.json::<HealthResp>().await {
+                Ok(health) => {
+                    match health.last_digest_at {
+                        Some(ts) => println!("Last digest: {ts}"),
+                        None => println!("No digest has occurred yet."),
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse health response: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Ok(resp) => {
+            eprintln!("Daemon returned HTTP {}", resp.status());
+            std::process::exit(1);
+        }
+        Err(e) => {
+            if e.is_connect() {
+                eprintln!("Cannot connect to NV daemon at {url}. Is it running?");
+            } else {
+                eprintln!("Failed to connect to daemon: {e}");
+            }
+            std::process::exit(1);
         }
     }
 }

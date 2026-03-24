@@ -120,7 +120,7 @@ impl ObligationStore {
                 rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                    Box::new(std::io::Error::other(e.to_string())),
                 )
             })
         })?;
@@ -146,7 +146,7 @@ impl ObligationStore {
                 rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                    Box::new(std::io::Error::other(e.to_string())),
                 )
             })
         })?;
@@ -169,7 +169,7 @@ impl ObligationStore {
                 rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                    Box::new(std::io::Error::other(e.to_string())),
                 )
             })
         })?;
@@ -232,6 +232,7 @@ impl ObligationStore {
     }
 
     /// Count obligations that are currently open.
+    #[allow(dead_code)] // reserved for future dashboard/API exposure
     pub fn count_open(&self) -> Result<i64> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM obligations WHERE status = 'open'",

@@ -338,18 +338,6 @@ impl JiraConfig {
 
 // ── Generic ServiceConfig (flat vs multi-instance) ───────────────────
 
-/// Inner struct for a named-instance service configuration.
-///
-/// All services that support multi-instance use this as the `instances` value
-/// in `ServiceMultiConfig`. The key is the instance name (e.g. `"personal"`,
-/// `"llc"`).
-#[derive(Debug, Clone, Deserialize)]
-pub struct ServiceInstanceConfig {
-    // Currently a marker type — individual services embed this in their own
-    // instance configs. This exists so the generic `ServiceConfig<T>` enum
-    // can be parameterized by the service-specific instance type.
-}
-
 /// Named-instance service config with optional project-to-instance routing.
 ///
 /// Used as the `Multi` variant of `ServiceConfig<T>`.
@@ -592,7 +580,42 @@ impl Config {
             })
             .collect();
 
+        // Validate quiet_start and quiet_end at parse time.
+        if let Some(ref daemon) = config.daemon {
+            if let Some(ref qs) = daemon.quiet_start {
+                Self::validate_hhmm(qs)
+                    .with_context(|| format!("invalid quiet_start '{qs}': expected HH:MM format (e.g. \"23:00\")"))?;
+            }
+            if let Some(ref qe) = daemon.quiet_end {
+                Self::validate_hhmm(qe)
+                    .with_context(|| format!("invalid quiet_end '{qe}': expected HH:MM format (e.g. \"07:00\")"))?;
+            }
+        }
+
         Ok(config)
+    }
+
+    /// Validate a `HH:MM` time string.
+    ///
+    /// Accepts `00:00`–`23:59`. Returns `Ok(())` on success, `Err` on invalid format.
+    fn validate_hhmm(s: &str) -> anyhow::Result<()> {
+        let parts: Vec<&str> = s.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            anyhow::bail!("expected HH:MM, got '{s}'");
+        }
+        let hours: u32 = parts[0]
+            .parse()
+            .map_err(|_| anyhow::anyhow!("hours component is not a number in '{s}'"))?;
+        let minutes: u32 = parts[1]
+            .parse()
+            .map_err(|_| anyhow::anyhow!("minutes component is not a number in '{s}'"))?;
+        if hours > 23 {
+            anyhow::bail!("hours must be 0–23, got {hours} in '{s}'");
+        }
+        if minutes > 59 {
+            anyhow::bail!("minutes must be 0–59, got {minutes} in '{s}'");
+        }
+        Ok(())
     }
 
     /// Expand `~` prefix to the current user's home directory.
@@ -1345,5 +1368,111 @@ url = "https://main.example.com"
             }
             ServiceConfig::Flat(_) => panic!("expected Multi"),
         }
+    }
+
+    // ── Quiet hours validation ────────────────────────────────────────
+
+    #[test]
+    fn validate_hhmm_accepts_valid_times() {
+        assert!(Config::validate_hhmm("23:00").is_ok());
+        assert!(Config::validate_hhmm("07:00").is_ok());
+        assert!(Config::validate_hhmm("00:00").is_ok());
+        assert!(Config::validate_hhmm("23:59").is_ok());
+        assert!(Config::validate_hhmm("12:30").is_ok());
+    }
+
+    #[test]
+    fn validate_hhmm_rejects_invalid_hours() {
+        let err = Config::validate_hhmm("25:99");
+        assert!(err.is_err(), "25:99 should fail validation");
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("hours"), "error should mention hours: {msg}");
+    }
+
+    #[test]
+    fn validate_hhmm_rejects_invalid_minutes() {
+        let err = Config::validate_hhmm("10:60");
+        assert!(err.is_err(), "10:60 should fail validation");
+        let msg = err.unwrap_err().to_string();
+        assert!(msg.contains("minutes"), "error should mention minutes: {msg}");
+    }
+
+    #[test]
+    fn validate_hhmm_rejects_non_time_strings() {
+        assert!(Config::validate_hhmm("not-a-time").is_err());
+        assert!(Config::validate_hhmm("").is_err());
+        assert!(Config::validate_hhmm("99:99").is_err());
+    }
+
+    #[test]
+    fn load_from_rejects_invalid_quiet_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nv.toml");
+        std::fs::write(
+            &path,
+            r#"
+[agent]
+model = "test-model"
+
+[daemon]
+quiet_start = "25:99"
+quiet_end = "07:00"
+"#,
+        )
+        .unwrap();
+        let result = Config::load_from(path);
+        assert!(result.is_err(), "expected error for invalid quiet_start");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("quiet_start") || msg.contains("25:99"),
+            "error should mention quiet_start or the invalid value: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_from_rejects_invalid_quiet_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nv.toml");
+        std::fs::write(
+            &path,
+            r#"
+[agent]
+model = "test-model"
+
+[daemon]
+quiet_start = "23:00"
+quiet_end = "not-a-time"
+"#,
+        )
+        .unwrap();
+        let result = Config::load_from(path);
+        assert!(result.is_err(), "expected error for invalid quiet_end");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("quiet_end") || msg.contains("not-a-time"),
+            "error should mention quiet_end or the invalid value: {msg}"
+        );
+    }
+
+    #[test]
+    fn load_from_accepts_valid_quiet_hours() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nv.toml");
+        std::fs::write(
+            &path,
+            r#"
+[agent]
+model = "test-model"
+
+[daemon]
+quiet_start = "23:00"
+quiet_end = "07:00"
+"#,
+        )
+        .unwrap();
+        let config = Config::load_from(path).unwrap();
+        let daemon = config.daemon.unwrap();
+        assert_eq!(daemon.quiet_start.as_deref(), Some("23:00"));
+        assert_eq!(daemon.quiet_end.as_deref(), Some("07:00"));
     }
 }

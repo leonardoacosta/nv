@@ -724,12 +724,20 @@ async fn main() -> anyhow::Result<()> {
             let watcher_db = nv_base.join("messages.db");
             let watcher_ob = Arc::clone(ob_store);
             let watcher_interval = ar_config.interval_secs;
-            watchers::spawn_watchers(watcher_db, watcher_ob, watcher_interval);
+            let watcher_handle = watchers::spawn_watchers(watcher_db, watcher_ob, watcher_interval);
             tracing::info!(
                 interval_secs = ar_config.interval_secs,
                 rules = ar_config.rules.len(),
                 "proactive watchers started"
             );
+
+            // Abort the watcher task on shutdown so in-flight cycles are cancelled cleanly.
+            // We store the handle in a tokio task that awaits the shutdown signal, then aborts.
+            tokio::spawn(async move {
+                shutdown::wait_for_shutdown_signal().await;
+                tracing::info!("shutdown: aborting watcher task");
+                watcher_handle.abort();
+            });
         } else {
             tracing::warn!("alert_rules configured but obligation store unavailable — watchers disabled");
         }

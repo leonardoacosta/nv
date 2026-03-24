@@ -8,6 +8,7 @@
 //! single-turn classification. Results are stored via `ObligationStore`.
 
 use std::process::Stdio;
+use std::time::Duration;
 
 use anyhow::Result;
 use serde::Deserialize;
@@ -128,10 +129,12 @@ pub async fn detect_obligation(
         "Channel: {channel}\nMessage: {message_content}"
     );
 
-    // Resolve HOME for the subprocess environment
+    // Resolve HOME for the subprocess environment.
+    // Return a hard error if neither REAL_HOME nor HOME is set — the subprocess
+    // cannot be configured correctly without a home directory.
     let real_home = std::env::var("REAL_HOME")
         .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| "/home/nyaptor".into());
+        .map_err(|_| anyhow::anyhow!("HOME env var not set — cannot spawn obligation detector"))?;
 
     let mut child = Command::new("claude")
         .args([
@@ -159,7 +162,19 @@ pub async fn detect_obligation(
         stdin.write_all(prompt.as_bytes()).await?;
     }
 
-    let output = child.wait_with_output().await?;
+    // Wait for the subprocess to finish with a 30-second timeout.
+    // A hung Claude CLI process would otherwise block the detection path indefinitely.
+    let output = match tokio::time::timeout(Duration::from_secs(30), child.wait_with_output()).await {
+        Ok(Ok(out)) => out,
+        Ok(Err(e)) => {
+            return Err(anyhow::anyhow!("obligation detector subprocess error: {e}"));
+        }
+        Err(_elapsed) => {
+            return Err(anyhow::anyhow!(
+                "obligation detector subprocess timed out after 30s"
+            ));
+        }
+    };
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
@@ -294,5 +309,45 @@ mod tests {
         let raw = -5i32;
         let clamped = raw.clamp(0, 4);
         assert_eq!(clamped, 0);
+    }
+
+    /// Verify that detect_obligation returns Err when both HOME and REAL_HOME are absent.
+    ///
+    /// We temporarily remove both env vars, call detect_obligation, and assert
+    /// the result is an Err containing "HOME".
+    ///
+    /// Note: this test mutates process env vars and is therefore not safe to run
+    /// in parallel with other tests that read HOME. It is marked `#[serial]`
+    /// logically but we rely on Rust's single-threaded default test runner for
+    /// unit tests in this module.
+    #[tokio::test]
+    async fn detect_obligation_returns_err_when_home_unset() {
+        // Save original values
+        let saved_home = std::env::var("HOME").ok();
+        let saved_real_home = std::env::var("REAL_HOME").ok();
+
+        unsafe {
+            std::env::remove_var("HOME");
+            std::env::remove_var("REAL_HOME");
+        }
+
+        let result = detect_obligation("test message", "telegram").await;
+
+        // Restore env vars before any assertions (so other tests are not affected)
+        unsafe {
+            if let Some(h) = saved_home {
+                std::env::set_var("HOME", h);
+            }
+            if let Some(rh) = saved_real_home {
+                std::env::set_var("REAL_HOME", rh);
+            }
+        }
+
+        assert!(result.is_err(), "expected Err when HOME is unset");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("HOME"),
+            "error message should mention HOME, got: {msg}"
+        );
     }
 }

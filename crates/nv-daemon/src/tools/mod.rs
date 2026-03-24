@@ -232,7 +232,7 @@ fn parse_iso8601_to_epoch(s: &str) -> Option<u64> {
     let month: i64 = parts[1].parse().ok()?;
     let day: i64 = parts[2].parse().ok()?;
 
-    if year < 1970 || month < 1 || month > 12 || day < 1 || day > 31 {
+    if year < 1970 || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
 
@@ -282,7 +282,7 @@ fn days_since_epoch(year: i64, month: i64, day: i64) -> Option<i64> {
     // Cumulative days at the start of each month (non-leap year)
     const MONTH_DAYS: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 
-    if month < 1 || month > 12 {
+    if !(1..=12).contains(&month) {
         return None;
     }
 

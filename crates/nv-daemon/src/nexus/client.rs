@@ -680,7 +680,7 @@ mod tests {
         // - RPC Ok → found = true
         // - stream drains with zero Text chunks
         // - found == true → return Ok(output) where output == ""
-        let mut found = true;
+        let found = true;
         let output = String::new();
 
         // Stream drained cleanly with no text chunks and found is still true.

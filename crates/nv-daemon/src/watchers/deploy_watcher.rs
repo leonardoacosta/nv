@@ -51,12 +51,11 @@ impl RuleEvaluator for DeployWatcher {
         let cutoff_ms = (chrono::Utc::now() - chrono::Duration::minutes(window_minutes))
             .timestamp_millis() as u64;
 
-        // If no projects configured, we can't enumerate them from the API alone.
-        // Attempt a known fallback or skip with a debug log.
+        // If no projects configured, we can't enumerate deployments.
         if projects.is_empty() {
-            tracing::debug!(
+            tracing::warn!(
                 rule = %rule.name,
-                "deploy_watcher: no projects configured in rule config, skipping"
+                "deploy_watcher: no 'projects' configured in rule config — add {{\"projects\": [\"my-project\"]}} to rule config"
             );
             return None;
         }

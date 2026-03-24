@@ -9,7 +9,7 @@ NotifyAccess=all
 ExecStart=%h/.local/bin/doppler run --fallback=true --project nova --config prd -- %h/.local/bin/nv-daemon
 Restart=on-failure
 RestartSec=5s
-WatchdogSec=60
+WatchdogSec=120
 TimeoutStopSec=30
 Environment=RUST_LOG=info
 Environment=HOME=%h

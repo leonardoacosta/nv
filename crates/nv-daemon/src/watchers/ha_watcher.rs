@@ -75,11 +75,28 @@ impl RuleEvaluator for HaWatcher {
                     .collect()
             });
 
+        // Fetch all entity states in a single bulk request instead of N+1 serial calls.
+        let all_states = match client.states().await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    rule = %rule.name,
+                    error = %e,
+                    "ha_watcher: failed to fetch bulk entity states"
+                );
+                return None;
+            }
+        };
+
+        // Index by entity_id for O(1) lookup.
+        let state_map: std::collections::HashMap<&str, &crate::tools::ha::HAEntity> =
+            all_states.iter().map(|e| (e.entity_id.as_str(), e)).collect();
+
         let mut anomalies: Vec<String> = Vec::new();
 
         for entity_id in &entities {
-            match client.entity(entity_id).await {
-                Ok(entity) => {
+            match state_map.get(entity_id.as_str()) {
+                Some(entity) => {
                     let state_lower = entity.state.to_lowercase();
                     let is_anomalous = anomaly_states
                         .iter()
@@ -96,12 +113,11 @@ impl RuleEvaluator for HaWatcher {
                         ));
                     }
                 }
-                Err(e) => {
+                None => {
                     tracing::warn!(
                         rule = %rule.name,
                         entity = %entity_id,
-                        error = %e,
-                        "ha_watcher: failed to get entity state"
+                        "ha_watcher: configured entity not found in bulk states response"
                     );
                 }
             }

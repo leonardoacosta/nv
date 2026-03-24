@@ -741,10 +741,8 @@ fn json_to_toml(val: &serde_json::Value) -> Option<toml::Value> {
         serde_json::Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Some(toml::Value::Integer(i))
-            } else if let Some(f) = n.as_f64() {
-                Some(toml::Value::Float(f))
             } else {
-                None
+                n.as_f64().map(toml::Value::Float)
             }
         }
         serde_json::Value::Bool(b) => Some(toml::Value::Boolean(*b)),
@@ -774,7 +772,7 @@ async fn get_server_health(State(state): State<DashboardState>) -> impl IntoResp
             let latest = store.latest().unwrap_or(None);
             let status = latest
                 .as_ref()
-                .map(|s| HealthStatus::from_metrics(s))
+                .map(HealthStatus::from_metrics)
                 .unwrap_or(HealthStatus::Healthy);
             let history = store.history_24h(1440).unwrap_or_default();
             (latest, status, history)

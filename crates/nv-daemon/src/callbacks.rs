@@ -125,11 +125,15 @@ async fn execute_nexus_start_session(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("missing 'command' in payload"))?;
 
-    // Resolve project path from registry
+    // Resolve project path from registry.
+    // Fall back to $HOME/dev/{project} when not in the registry.
     let cwd = project_registry
         .get(project)
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| format!("/home/nyaptor/dev/{project}"));
+        .unwrap_or_else(|| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            format!("{home}/dev/{project}")
+        });
 
     let agent = payload["agent"].as_str();
 

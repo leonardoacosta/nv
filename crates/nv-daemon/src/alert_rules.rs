@@ -60,6 +60,7 @@ impl AlertRuleType {
 
 /// A persisted alert rule row from the `alert_rules` table.
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // fields read via pattern matching and tests
 pub struct AlertRule {
     pub id: String,
     pub name: String,
@@ -161,7 +162,7 @@ impl AlertRuleStore {
                 rusqlite::Error::FromSqlConversionFailure(
                     0,
                     rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
+                    Box::new(std::io::Error::other(e.to_string())),
                 )
             })
         })?;
@@ -187,6 +188,7 @@ impl AlertRuleStore {
     /// Enable or disable a rule by name.
     ///
     /// Returns `true` if a row was updated.
+    #[allow(dead_code)] // reserved for future API/CLI use
     pub fn set_enabled(&self, name: &str, enabled: bool) -> Result<bool> {
         let rows_changed = self.conn.execute(
             "UPDATE alert_rules SET enabled = ?1 WHERE name = ?2",

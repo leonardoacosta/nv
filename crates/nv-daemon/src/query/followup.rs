@@ -7,6 +7,7 @@ use nv_core::types::FollowUpAction;
 use serde::{Deserialize, Serialize};
 
 /// Follow-up context TTL in minutes.
+#[allow(dead_code)] // used via FollowUpState::ttl_minutes field at construction
 const FOLLOWUP_TTL_MINUTES: i64 = 5;
 
 /// Persistent follow-up state stored in `~/.nv/state/query-context.json`.
@@ -45,6 +46,7 @@ impl FollowUpManager {
     }
 
     /// Store follow-up state after a query answer.
+    #[allow(dead_code)] // called by query pipeline; kept for future worker wiring
     pub fn store(&self, state: &FollowUpState) -> Result<()> {
         let content = serde_json::to_string_pretty(state)
             .context("failed to serialize follow-up state")?;

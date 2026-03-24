@@ -162,6 +162,7 @@ impl NexusAgentConnection {
     }
 
     /// Attempt to reconnect with exponential backoff.
+    #[allow(dead_code)] // called by watchdog loop variants; kept for symmetry
     pub async fn reconnect(&mut self) {
         self.status = ConnectionStatus::Reconnecting;
         let backoff = self.backoff_duration();

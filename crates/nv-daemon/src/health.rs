@@ -81,12 +81,23 @@ impl HealthState {
     }
 
     /// Build a serializable health response (shallow — no tool probes).
+    ///
+    /// Returns `"degraded"` if any channel is `Disconnected`, `"ok"` otherwise.
     pub async fn to_health_response(&self) -> HealthResponse {
         let channels = self.channel_status.read().await.clone();
         let last_digest_at = *self.last_digest_at.read().await;
 
+        let status = if channels
+            .values()
+            .any(|s| *s == ChannelStatus::Disconnected)
+        {
+            "degraded".into()
+        } else {
+            "ok".into()
+        };
+
         HealthResponse {
-            status: "ok".into(),
+            status,
             uptime_secs: self.started_at.elapsed().as_secs(),
             version: env!("CARGO_PKG_VERSION").into(),
             channels,
@@ -122,7 +133,7 @@ impl HealthState {
         }
 
         use crate::tools::{ado, cloudflare, doppler, ha, neon, posthog, resend, sentry, stripe, upstash, vercel};
-        use crate::tools::{docker, github, plaid};
+        use crate::tools::{docker, github, plaid, teams};
 
         push_env!(stripe::StripeClient::from_env(), "stripe", "STRIPE_SECRET_KEY");
         push_env!(vercel::VercelClient::from_env(), "vercel", "VERCEL_API_TOKEN");
@@ -140,6 +151,8 @@ impl HealthState {
         owned.push(Box::new(github::GithubClient));
         owned.push(Box::new(docker::DockerClient));
         owned.push(Box::new(plaid::PlaidClient));
+        // Teams — zero-arg constructor, matches CLI check_services() inventory
+        owned.push(Box::new(teams::TeamsCheck));
 
         let refs: Vec<&dyn Checkable> = owned.iter().map(|s| s.as_ref()).collect();
         // Read-only for the health endpoint — write probes are too expensive for a heartbeat
@@ -171,6 +184,40 @@ mod tests {
         assert_eq!(resp.status, "ok");
         assert!(resp.channels.is_empty());
         assert!(resp.last_digest_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn status_ok_when_all_channels_connected() {
+        let state = HealthState::new();
+        state.update_channel("telegram", ChannelStatus::Connected).await;
+        state.update_channel("discord", ChannelStatus::Connected).await;
+        let resp = state.to_health_response().await;
+        assert_eq!(resp.status, "ok");
+    }
+
+    #[tokio::test]
+    async fn status_degraded_when_any_channel_disconnected() {
+        let state = HealthState::new();
+        state.update_channel("telegram", ChannelStatus::Connected).await;
+        state.update_channel("nexus", ChannelStatus::Disconnected).await;
+        let resp = state.to_health_response().await;
+        assert_eq!(resp.status, "degraded");
+    }
+
+    #[tokio::test]
+    async fn status_degraded_when_all_channels_disconnected() {
+        let state = HealthState::new();
+        state.update_channel("telegram", ChannelStatus::Disconnected).await;
+        state.update_channel("nexus", ChannelStatus::Disconnected).await;
+        let resp = state.to_health_response().await;
+        assert_eq!(resp.status, "degraded");
+    }
+
+    #[tokio::test]
+    async fn status_ok_when_no_channels_registered() {
+        let state = HealthState::new();
+        let resp = state.to_health_response().await;
+        assert_eq!(resp.status, "ok");
     }
 
     #[tokio::test]

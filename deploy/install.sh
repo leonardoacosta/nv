@@ -107,13 +107,12 @@ else
     echo "    Discord relay: skipped (add DISCORD_BOT_TOKEN to ~/.nv/env)"
 fi
 
-if grep -q "TEAMS_WEBHOOK_SECRET\|TEAMS_WEBHOOK_PORT" "$NV_DIR/env" 2>/dev/null; then
+if grep -q "TEAMS_WEBHOOK_SECRET" "$NV_DIR/env" 2>/dev/null || [ -n "${TEAMS_WEBHOOK_SECRET:-}" ]; then
     systemctl --user enable --now nv-teams-relay.service
-    echo "    Teams relay: enabled"
+    echo "    Teams relay: enabled (TEAMS_WEBHOOK_SECRET found)"
 else
-    # Teams relay doesn't strictly need a secret — enable if env file exists
-    systemctl --user enable --now nv-teams-relay.service 2>/dev/null || true
-    echo "    Teams relay: enabled (port ${TEAMS_WEBHOOK_PORT:-8401})"
+    systemctl --user disable nv-teams-relay.service 2>/dev/null || true
+    echo "    Teams relay: skipped (add TEAMS_WEBHOOK_SECRET to ~/.nv/env to enable)"
 fi
 
 echo "==> Restarting NV service..."

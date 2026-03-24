@@ -252,7 +252,11 @@ impl SpawnConfig {
     fn new(model: &str) -> Self {
         let real_home = std::env::var("REAL_HOME")
             .or_else(|_| std::env::var("HOME"))
-            .unwrap_or_else(|_| "/home/nyaptor".into());
+            .unwrap_or_else(|_| {
+                // Neither REAL_HOME nor HOME is set — the daemon cannot operate without a home
+                // directory. Panic with a clear message rather than silently using a wrong path.
+                panic!("Neither REAL_HOME nor HOME env var is set — cannot determine home directory for Claude subprocess");
+            });
         let sandbox_home = format!("{real_home}/.nv/claude-sandbox");
         Self {
             model: model.to_string(),

@@ -1,0 +1,97 @@
+---
+title: Nova — Claude Code Architecture (Current)
+---
+flowchart TB
+    subgraph TRIGGERS["Inbound Triggers"]
+        TG["Telegram Message"]
+        CRON["Cron / Digest"]
+        NEXUS["Nexus Event"]
+        PHOTO["Photo / Image"]
+    end
+
+    subgraph ORCH["Orchestrator (no AI, fast path)"]
+        CLASS{"Classify Trigger"}
+        DISPATCH["WorkerPool.dispatch()"]
+    end
+
+    TG --> CLASS
+    CRON --> CLASS
+    NEXUS --> CLASS
+    PHOTO --> CLASS
+    CLASS -->|"Command/Query/Chat"| DISPATCH
+    CLASS -->|"Digest"| DIGEST_GATHER
+    CLASS -->|"Callback/BotCmd"| INLINE["Handle inline<br/>no worker needed"]
+
+    DISPATCH --> WORKER
+
+    subgraph WORKER["Worker (1 of max_workers=3)"]
+        direction TB
+        W_DESC["Clones ClaudeClient template<br/>Builds system context<br/>Loads conversation history<br/>20 turns / 50K chars / 10min timeout<br/>Tool loop: max 10 iterations"]
+        W_CHECK{"image_path<br/>in trigger?"}
+    end
+
+    W_CHECK -->|No| SEND_MSG
+    W_CHECK -->|Yes| SEND_IMG
+
+    SEND_MSG["client.send_messages()"] --> TRY_PERSIST
+    SEND_IMG["client.send_messages_with_image()"] --> COLD_IMG
+
+    TRY_PERSIST{"Persistent<br/>session alive?"} -->|Yes| PERSISTENT
+    TRY_PERSIST -->|No, fallback| COLD
+
+    subgraph PERSISTENT["Mode 1: Persistent Subprocess"]
+        direction TB
+        P_ROLE["ROLE: Primary conversational path<br/>Long-lived process reused across turns"]
+        P_ARGS["claude<br/>  --dangerously-skip-permissions<br/>  -p --verbose<br/>  --input-format stream-json<br/>  --output-format stream-json<br/>  --model claude-sonnet-4-6<br/>  --no-session-persistence<br/>  --tools Read,Glob,Grep,Bash git:star"]
+        P_ENV["HOME = ~/.nv/claude-sandbox<br/>cwd = ~/dev"]
+        P_LIMITS["No --system-prompt flag<br/>No --strict-mcp-config<br/>System prompt piped via stream-json"]
+    end
+
+    subgraph COLD["Mode 2: Cold-Start Fallback"]
+        direction TB
+        C_ROLE["ROLE: Fallback when persistent dies<br/>Also used by digest + memory summarize<br/>Fresh process per turn"]
+        C_ARGS["claude<br/>  --dangerously-skip-permissions<br/>  -p<br/>  --output-format json<br/>  --model claude-sonnet-4-6<br/>  --no-session-persistence<br/>  --tools Read,Glob,Grep,Bash git:star<br/>  --system-prompt system<br/>  --strict-mcp-config"]
+        C_ENV["HOME = ~ real<br/>cwd = ~/dev"]
+        C_LIMITS["Stdin closed after prompt<br/>Retries once on parse failure<br/>Different HOME than persistent"]
+    end
+
+    subgraph COLD_IMG["Mode 3: Cold-Start + Attachment"]
+        direction TB
+        I_ROLE["ROLE: Vision / photo analysis<br/>Only path that supports --attachment<br/>Fresh process per turn"]
+        I_ARGS["claude<br/>  --dangerously-skip-permissions<br/>  -p<br/>  --output-format json<br/>  --model claude-sonnet-4-6<br/>  --no-session-persistence<br/>  --tools Read,Glob,Grep,Bash git:star<br/>  --system-prompt system<br/>  --attachment path/to/image"]
+        I_ENV["HOME = ~ real<br/>cwd = ~/dev"]
+        I_LIMITS["--strict-mcp-config REMOVED<br/>caused hangs with failing MCP<br/>Retries once on parse failure"]
+    end
+
+    subgraph DIGEST_PATH["Digest Pipeline (separate caller)"]
+        DIGEST_GATHER["gather context<br/>Jira + Nexus + Memory"]
+        DIGEST_SYNTH["synthesize_digest()<br/>calls client.send_messages()<br/>No tools, text-only<br/>Own system prompt"]
+    end
+    DIGEST_GATHER --> DIGEST_SYNTH
+    DIGEST_SYNTH --> TRY_PERSIST
+
+    subgraph MEM_PATH["Memory Summarizer (separate caller)"]
+        MEM_SUM["memory.summarize()<br/>calls client.send_messages()<br/>No tools, text-only<br/>Own system prompt"]
+    end
+    MEM_SUM --> TRY_PERSIST
+
+    subgraph PROBLEMS["Inconsistencies"]
+        direction TB
+        P1["Persistent HOME = sandbox<br/>Cold-start HOME = real<br/>Different config/MCP/CLAUDE.md"]
+        P2["3 code paths doing<br/>the same thing with<br/>slightly different args"]
+        P3["All share 1 ClaudeClient<br/>but no shared session state<br/>Digest/Memory have no tools<br/>but get tool-capable subprocess"]
+        P4["Conversation history is in-process<br/>20 turns / 50K chars<br/>Lost on restart"]
+    end
+
+    style TRIGGERS fill:#2d2d3f,stroke:#888,color:#eee
+    style ORCH fill:#1a1a2e,stroke:#e94560,color:#eee
+    style WORKER fill:#1a1a2e,stroke:#e94560,color:#eee
+    style PERSISTENT fill:#0f3460,stroke:#53a8b6,color:#eee
+    style COLD fill:#0f3460,stroke:#53a8b6,color:#eee
+    style COLD_IMG fill:#0f3460,stroke:#53a8b6,color:#eee
+    style DIGEST_PATH fill:#1b2838,stroke:#f0a500,color:#eee
+    style MEM_PATH fill:#1b2838,stroke:#f0a500,color:#eee
+    style PROBLEMS fill:#3d1c1c,stroke:#e94560,color:#eee
+    style CLASS fill:#e94560,stroke:#e94560,color:#fff
+    style TRY_PERSIST fill:#e94560,stroke:#e94560,color:#fff
+    style W_CHECK fill:#e94560,stroke:#e94560,color:#fff

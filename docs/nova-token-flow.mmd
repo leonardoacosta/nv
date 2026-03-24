@@ -1,0 +1,64 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1a1a2e', 'primaryTextColor': '#e0e0e0', 'lineColor': '#f59e0b', 'secondaryColor': '#16213e'}}}%%
+flowchart TD
+    subgraph MSG["User Message Arrives"]
+        U1["Hey Nova, what's the status<br/>of my projects?"]
+    end
+
+    subgraph CS["Cold Start #1 — 14K-43K input tokens"]
+        CS1["System Prompt<br/>identity.md + soul.md + user.md<br/>~3-5K tokens"]
+        CS2["87 Tool Schemas<br/>JSON definitions for all tools<br/>~8-15K tokens"]
+        CS3["Conversation History<br/>prior turns from ConversationStore<br/>~0.5-10K tokens"]
+        CS4["Memory Search<br/>projects.md, tasks.md, etc.<br/>~2-8K tokens"]
+        CS5["Recent Messages<br/>last 20 from message_store<br/>~1-5K tokens"]
+        CS6["User Message<br/>~200-500 tokens"]
+        CS1 --> CALL1
+        CS2 --> CALL1
+        CS3 --> CALL1
+        CS4 --> CALL1
+        CS5 --> CALL1
+        CS6 --> CALL1
+    end
+
+    CALL1["claude -p prompt --output-format json<br/>Subprocess spawns, runs, exits<br/>~3-10 seconds"]
+
+    CALL1 --> R1{"Response:<br/>tool_use?"}
+
+    R1 -->|"read_memory(projects)"| TOOL1["Execute Tool<br/>~50ms"]
+    TOOL1 --> CS2_1["Cold Start #2<br/>Same context + assistant turn + tool result<br/>~16K-46K tokens"]
+    CS2_1 --> CALL2["claude -p prompt --output-format json<br/>New subprocess<br/>~3-10 seconds"]
+    CALL2 --> R2{"Response:<br/>tool_use?"}
+
+    R2 -->|"jira_search(OO)"| TOOL2["Execute Tool<br/>~500ms"]
+    TOOL2 --> CS3_1["Cold Start #3<br/>Growing context + 2 tool results<br/>~18K-50K tokens"]
+    CS3_1 --> CALL3["claude -p prompt --output-format json<br/>New subprocess<br/>~3-10 seconds"]
+    CALL3 --> R3{"Response:<br/>tool_use?"}
+
+    R3 -->|No — EndTurn| FINAL["Final Text Response<br/>~500-2K output tokens"]
+
+    FINAL --> TG["Edit thinking msg in Telegram<br/>with formatted response"]
+    TG --> LOG["Log to SQLite<br/>api_usage + tool_usage"]
+
+    subgraph COST["Token Cost Summary"]
+        direction LR
+        T1["Cold Start 1<br/>~25K in / 1K out"]
+        T2["Cold Start 2<br/>~28K in / 1K out"]
+        T3["Cold Start 3<br/>~31K in / 2K out"]
+        T4["TOTAL<br/>~84K in / 4K out<br/>~$0.05-0.12"]
+    end
+
+    subgraph FUTURE["With Persistent Session (future)"]
+        direction LR
+        F1["Turn 1<br/>~25K in / 1K out"]
+        F2["Turn 2<br/>~3K in / 1K out"]
+        F3["Turn 3<br/>~3K in / 2K out"]
+        F4["TOTAL<br/>~31K in / 4K out<br/>~$0.02-0.04"]
+    end
+
+    style MSG fill:#1a2e1a,stroke:#4ade80
+    style CS fill:#2e2a1a,stroke:#fbbf24
+    style COST fill:#2e1a1a,stroke:#f87171
+    style FUTURE fill:#1a2e1a,stroke:#4ade80
+    style CALL1 fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style CALL2 fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style CALL3 fill:#7c3aed,stroke:#a78bfa,color:#fff
+    style FINAL fill:#059669,stroke:#34d399,color:#fff

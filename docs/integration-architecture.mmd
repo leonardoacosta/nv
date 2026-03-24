@@ -1,0 +1,175 @@
+flowchart TB
+
+    %% ============================================================
+    %% CURRENT ARCHITECTURE
+    %% ============================================================
+    subgraph CURRENT["Current Architecture -- Coupled Email to Teams"]
+        direction TB
+
+        subgraph AzureAD_Current["Azure AD App Registration<br/>(single app)"]
+            PERMS_CURR["Permissions:<br/>Mail.Read (granted)<br/>ChannelMessage.Read.All (admin consent)"]
+        end
+
+        subgraph Creds_Current["Shared Credentials"]
+            ENV_CURR["MS_GRAPH_CLIENT_ID<br/>MS_GRAPH_CLIENT_SECRET<br/>MS_GRAPH_TENANT_ID"]
+        end
+
+        subgraph TeamsModule["channels/teams/"]
+            OAUTH["oauth.rs<br/>MsGraphAuth"]
+            TEAMS_CLIENT["client.rs<br/>TeamsClient"]
+        end
+
+        subgraph EmailModule["channels/email/"]
+            EMAIL_CLIENT["client.rs<br/>EmailClient"]
+            EMAIL_MOD["mod.rs<br/>EmailChannel"]
+        end
+
+        subgraph AdoModule["tools/ado.rs"]
+            ADO_CLIENT["Basic Auth<br/>ADO_PAT + ADO_ORG"]
+        end
+
+        AzureAD_Current --> ENV_CURR
+        ENV_CURR --> OAUTH
+        OAUTH --> TEAMS_CLIENT
+        EMAIL_CLIENT -->|"use crate::channels::teams::oauth::MsGraphAuth"| OAUTH
+        OAUTH --> EMAIL_CLIENT
+        EMAIL_MOD --> EMAIL_CLIENT
+        ADO_CLIENT -->|"dev.azure.com REST API"| ADO_API_CURR["dev.azure.com"]
+        TEAMS_CLIENT -->|"graph.microsoft.com"| GRAPH_CURR["MS Graph API"]
+        EMAIL_CLIENT -->|"graph.microsoft.com"| GRAPH_CURR
+    end
+
+    %% ============================================================
+    %% OPTION B: EXTRACT SHARED AUTH
+    %% ============================================================
+    subgraph OPTION_B["Option B -- Extract Shared Auth Module"]
+        direction TB
+
+        subgraph AzureAD_B["Azure AD App Registration<br/>(single app)"]
+            PERMS_B["Permissions:<br/>Mail.Read (granted)<br/>ChannelMessage.Read.All (admin consent)"]
+        end
+
+        subgraph Creds_B["Shared Credentials"]
+            ENV_B["MS_GRAPH_CLIENT_ID<br/>MS_GRAPH_CLIENT_SECRET<br/>MS_GRAPH_TENANT_ID"]
+        end
+
+        subgraph SharedAuth["channels/auth/msgraph.rs"]
+            OAUTH_B["MsGraphAuth<br/>(extracted, shared)"]
+        end
+
+        subgraph TeamsModule_B["channels/teams/"]
+            TEAMS_CLIENT_B["client.rs<br/>TeamsClient"]
+        end
+
+        subgraph EmailModule_B["channels/email/"]
+            EMAIL_CLIENT_B["client.rs<br/>EmailClient"]
+        end
+
+        subgraph AdoModule_B["tools/ado.rs"]
+            ADO_CLIENT_B["Basic Auth<br/>ADO_PAT + ADO_ORG"]
+        end
+
+        AzureAD_B --> ENV_B
+        ENV_B --> OAUTH_B
+        OAUTH_B --> TEAMS_CLIENT_B
+        OAUTH_B --> EMAIL_CLIENT_B
+        ADO_CLIENT_B -->|"dev.azure.com REST API"| ADO_API_B["dev.azure.com"]
+        TEAMS_CLIENT_B -->|"graph.microsoft.com"| GRAPH_B["MS Graph API"]
+        EMAIL_CLIENT_B -->|"graph.microsoft.com"| GRAPH_B
+    end
+
+    %% ============================================================
+    %% OPTION C: SEPARATE AZURE AD APPS
+    %% ============================================================
+    subgraph OPTION_C["Option C -- Separate Azure AD Apps"]
+        direction TB
+
+        subgraph EmailApp["Azure AD App: Email"]
+            PERMS_EMAIL["Permissions:<br/>Mail.Read<br/>Mail.Read.Shared<br/>offline_access<br/>(no admin consent)"]
+        end
+
+        subgraph TeamsApp["Azure AD App: Teams"]
+            PERMS_TEAMS["Permissions:<br/>ChannelMessage.Read.All<br/>Chat.ReadWrite.All<br/>(admin consent required)"]
+        end
+
+        subgraph EmailCreds["Email Credentials"]
+            ENV_EMAIL["EMAIL_GRAPH_CLIENT_ID<br/>EMAIL_GRAPH_CLIENT_SECRET<br/>EMAIL_GRAPH_TENANT_ID"]
+        end
+
+        subgraph TeamsCreds["Teams Credentials"]
+            ENV_TEAMS["TEAMS_GRAPH_CLIENT_ID<br/>TEAMS_GRAPH_CLIENT_SECRET<br/>TEAMS_GRAPH_TENANT_ID"]
+        end
+
+        subgraph TeamsModule_C["channels/teams/"]
+            OAUTH_TEAMS["oauth.rs<br/>MsGraphAuth"]
+            TEAMS_CLIENT_C["client.rs<br/>TeamsClient"]
+        end
+
+        subgraph EmailModule_C["channels/email/"]
+            OAUTH_EMAIL["oauth.rs<br/>MsGraphAuth"]
+            EMAIL_CLIENT_C["client.rs<br/>EmailClient"]
+        end
+
+        subgraph AdoModule_C["tools/ado.rs"]
+            ADO_CLIENT_C["Basic Auth<br/>ADO_PAT + ADO_ORG"]
+        end
+
+        EmailApp --> ENV_EMAIL
+        TeamsApp --> ENV_TEAMS
+        ENV_EMAIL --> OAUTH_EMAIL
+        ENV_TEAMS --> OAUTH_TEAMS
+        OAUTH_TEAMS --> TEAMS_CLIENT_C
+        OAUTH_EMAIL --> EMAIL_CLIENT_C
+        ADO_CLIENT_C -->|"dev.azure.com REST API"| ADO_API_C["dev.azure.com"]
+        TEAMS_CLIENT_C -->|"graph.microsoft.com"| GRAPH_C["MS Graph API"]
+        EMAIL_CLIENT_C -->|"graph.microsoft.com"| GRAPH_C
+    end
+
+    %% Force vertical stacking
+    CURRENT ~~~ OPTION_B
+    OPTION_B ~~~ OPTION_C
+
+    %% ============================================================
+    %% STYLES
+    %% ============================================================
+
+    %% Section headers
+    style CURRENT fill:#1a1a2e,stroke:#e94560,stroke-width:3px,color:#fff
+    style OPTION_B fill:#1a1a2e,stroke:#0f3460,stroke-width:3px,color:#fff
+    style OPTION_C fill:#1a1a2e,stroke:#16213e,stroke-width:3px,color:#fff
+
+    %% Azure AD apps
+    style AzureAD_Current fill:#2d1b69,stroke:#7c3aed,stroke-width:2px,color:#fff
+    style AzureAD_B fill:#2d1b69,stroke:#7c3aed,stroke-width:2px,color:#fff
+    style EmailApp fill:#2d1b69,stroke:#7c3aed,stroke-width:2px,color:#fff
+    style TeamsApp fill:#2d1b69,stroke:#7c3aed,stroke-width:2px,color:#fff
+
+    %% Credentials
+    style Creds_Current fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff
+    style Creds_B fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff
+    style EmailCreds fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff
+    style TeamsCreds fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff
+
+    %% Teams modules (blue-green)
+    style TeamsModule fill:#0d3b66,stroke:#14b8a6,stroke-width:2px,color:#fff
+    style TeamsModule_B fill:#0d3b66,stroke:#14b8a6,stroke-width:2px,color:#fff
+    style TeamsModule_C fill:#0d3b66,stroke:#14b8a6,stroke-width:2px,color:#fff
+
+    %% Email modules (amber)
+    style EmailModule fill:#3d2b1f,stroke:#f59e0b,stroke-width:2px,color:#fff
+    style EmailModule_B fill:#3d2b1f,stroke:#f59e0b,stroke-width:2px,color:#fff
+    style EmailModule_C fill:#3d2b1f,stroke:#f59e0b,stroke-width:2px,color:#fff
+
+    %% Shared auth (green)
+    style SharedAuth fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff
+
+    %% ADO modules (gray)
+    style AdoModule fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#fff
+    style AdoModule_B fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#fff
+    style AdoModule_C fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#fff
+
+    %% Permissions
+    style PERMS_CURR fill:#3b0764,stroke:#a855f7,color:#fff
+    style PERMS_B fill:#3b0764,stroke:#a855f7,color:#fff
+    style PERMS_EMAIL fill:#3b0764,stroke:#a855f7,color:#fff
+    style PERMS_TEAMS fill:#3b0764,stroke:#a855f7,color:#fff

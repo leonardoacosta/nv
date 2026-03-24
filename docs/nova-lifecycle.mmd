@@ -1,0 +1,84 @@
+%%{init: {'theme': 'dark', 'themeVariables': {'primaryColor': '#1a1a2e', 'primaryTextColor': '#e0e0e0', 'lineColor': '#7c3aed', 'secondaryColor': '#16213e'}}}%%
+flowchart TD
+    subgraph INIT["Daemon Startup"]
+        M1[main.rs] --> M2[Load config + secrets]
+        M2 --> M3[Init Memory + SQLite + Diary]
+        M3 --> M4[Start Channel Listeners]
+        M4 --> M5[Init Service Registries<br/>Jira, Stripe, Sentry, etc.]
+        M5 --> M6[Create WorkerPool<br/>max_workers=3]
+        M6 --> M7[Start Orchestrator Loop]
+        M7 --> M8[Start Cron + Reminder Schedulers]
+    end
+
+    subgraph CHANNELS["Channel Listeners"]
+        C1[Telegram Poll Loop<br/>getUpdates every 30s]
+        C2[Discord Poll Loop]
+        C3[Teams Webhook :8401]
+        C4[Email Poll]
+        C5[iMessage Poll]
+    end
+
+    subgraph INBOUND["Message Inbound"]
+        I1[poll_messages] --> I2{Voice?}
+        I2 -->|Yes| I3[Download OGG<br/>ElevenLabs STT]
+        I2 -->|No| I4{Photo?}
+        I4 -->|Yes| I5[Download image<br/>Save to /tmp]
+        I4 -->|No| I6[Text message]
+        I3 --> I7[InboundMessage]
+        I5 --> I7
+        I6 --> I7
+        I7 --> I8[Trigger::Message<br/>via mpsc channel]
+    end
+
+    subgraph ORCH["Orchestrator"]
+        O1[drain_triggers<br/>batch all pending] --> O2{classify_trigger}
+        O2 -->|Callback| O3[Handle inline<br/>approve/edit/cancel]
+        O2 -->|BotCommand| O4[Handle /status<br/>/digest /health etc.]
+        O2 -->|NexusEvent| O5[Forward notification]
+        O2 -->|Query/Chat| O6[Create WorkerTask]
+        O2 -->|Cron| O7[Create DigestTask]
+        O6 --> O8{Pool full?}
+        O7 --> O8
+        O8 -->|No| O9[Spawn Worker]
+        O8 -->|Yes| O10[Enqueue<br/>priority heap]
+    end
+
+    subgraph WORKER["Worker Execution"]
+        W1[Worker::run] --> W2[Send ... thinking indicator]
+        W2 --> W3[Build Context]
+        W3 --> W4[Cold-Start: spawn<br/>claude -p prompt<br/>--output-format json]
+        W4 --> W5[Read JSON response]
+        W5 --> W6{tool_use?}
+        W6 -->|Yes| W7[Execute tool<br/>30s read / 60s write]
+        W7 --> W8[Collect tool result]
+        W8 --> W9[Spawn new claude -p<br/>with tool results]
+        W9 --> W5
+        W6 -->|No / max 10| W10[Final response]
+        W10 --> W11[Edit thinking msg<br/>with response]
+        W11 --> W12[Log API + tool usage]
+        W12 --> W13[Push to ConversationStore]
+        W13 --> W14[Worker exits]
+    end
+
+    subgraph CONTEXT["Context Build ~14K-43K tokens"]
+        X1[System Prompt<br/>2-5K tokens] --> X6[Combined Prompt]
+        X2[Tool Definitions<br/>8-15K tokens<br/>87 tools] --> X6
+        X3[Conversation History<br/>0.5-10K tokens] --> X6
+        X4[Memory Context<br/>2-8K tokens<br/>semantic search] --> X6
+        X5[Recent Messages<br/>1-5K tokens<br/>last 20 msgs] --> X6
+        X6 --> X7[Trigger Text<br/>200-500 tokens]
+    end
+
+    C1 --> I1
+    C2 --> I1
+    C3 --> I1
+    I8 --> O1
+    O9 --> W1
+    W3 --> X1
+
+    style INIT fill:#1a1a2e,stroke:#7c3aed
+    style CHANNELS fill:#16213e,stroke:#4a9eff
+    style INBOUND fill:#1a2e1a,stroke:#4ade80
+    style ORCH fill:#2e1a1a,stroke:#f87171
+    style WORKER fill:#1a1a2e,stroke:#a78bfa
+    style CONTEXT fill:#2e2a1a,stroke:#fbbf24

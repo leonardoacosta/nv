@@ -9,6 +9,7 @@ use crate::tools::jira::types::JiraCreateParams;
 /// Format a session completed event into a Telegram notification.
 ///
 /// Informational only — no action buttons needed.
+#[allow(dead_code)] // Kept for future opt-in verbose mode
 pub fn format_session_completed(event: &SessionEvent) -> OutboundMessage {
     let details = event
         .details
@@ -81,9 +82,18 @@ pub fn format_nexus_notification(
     event_id: Option<&str>,
 ) -> Option<OutboundMessage> {
     match event.event_type {
-        SessionEventType::Completed => Some(format_session_completed(event)),
         SessionEventType::Failed => Some(format_session_error(event, event_id)),
-        // Started and Progress are informational — no notification
+        // Completed, Started, and Progress are informational — log only, no Telegram.
+        // Completed events were spamming Telegram with "Session completed on omarchy"
+        // for every CC session that ended normally.
+        SessionEventType::Completed => {
+            tracing::debug!(
+                agent = %event.agent_name,
+                session = %event.session_id,
+                "nexus: session completed (suppressed notification)"
+            );
+            None
+        }
         SessionEventType::Started | SessionEventType::Progress => None,
     }
 }
@@ -249,10 +259,10 @@ mod tests {
     }
 
     #[test]
-    fn format_nexus_notification_completed() {
+    fn format_nexus_notification_completed_suppressed() {
         let event = make_event(SessionEventType::Completed, None);
         let msg = format_nexus_notification(&event, None);
-        assert!(msg.is_some());
+        assert!(msg.is_none(), "completed events should be suppressed");
     }
 
     #[test]

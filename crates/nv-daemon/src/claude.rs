@@ -481,7 +481,11 @@ impl PersistentSession {
                 config,
                 backoff: BackoffState::new(),
                 // Persistent mode enabled — format mismatch fixed in 37c200f.
-                fallback_only: false,
+                // Persistent mode disabled: the CC CLI stream-json subprocess
+                // never sends response data back (likely a CC 2.1.81 bug with
+                // stream-json + hooks).  Cold-start mode works reliably (~8s).
+                // Re-enable once the root cause is identified.
+                fallback_only: true,
                 last_failure_at: None,
             }),
         }
@@ -1259,7 +1263,10 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
     let mut stop_reason = StopReason::EndTurn;
     let mut line = String::new();
 
-    let timeout = Duration::from_secs(300);
+    // 60s timeout per line — must be well under the worker's 300s total timeout
+    // so cold-start fallback has time to execute if persistent mode hangs.
+    let timeout = Duration::from_secs(60);
+    let response_start = Instant::now();
 
     loop {
         line.clear();
@@ -1267,6 +1274,10 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
 
         match read_result {
             Err(_) => {
+                tracing::warn!(
+                    elapsed_ms = response_start.elapsed().as_millis() as u64,
+                    "persistent: read_line timed out after 60s — no data received from subprocess"
+                );
                 return Err(ApiError::CliError {
                     message: "Timeout waiting for persistent subprocess response".into(),
                 }
@@ -1290,11 +1301,20 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
                     continue;
                 }
 
+                // Log every received line at debug (first 200 chars) for diagnostics
+                tracing::debug!(
+                    bytes = trimmed.len(),
+                    preview = %&trimmed[..trimmed.len().min(200)],
+                    elapsed_ms = response_start.elapsed().as_millis() as u64,
+                    "persistent: received stream line"
+                );
+
                 let event: StreamJsonEvent = match serde_json::from_str(trimmed) {
                     Ok(e) => e,
                     Err(e) => {
-                        tracing::debug!(
-                            line = %trimmed,
+                        tracing::warn!(
+                            line_len = trimmed.len(),
+                            preview = %&trimmed[..trimmed.len().min(200)],
                             error = %e,
                             "skipping unparseable stream-json line"
                         );

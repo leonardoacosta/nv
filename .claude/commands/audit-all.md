@@ -18,30 +18,33 @@ Run all 8 domain audits with parallel agent dispatch, progressive collection, an
 
 ## Domains
 
-| Domain | Agent Model | Key Modules | Command |
-|--------|-------------|-------------|---------|
-| agent | single | orchestrator, worker, claude, conversation | `/audit:agent` |
-| channels | single | telegram, discord, teams, email, imessage | `/audit:channels` |
-| tools | single | 20 service integrations | `/audit:tools` |
-| dashboard | single | React SPA + axum API (11 endpoints) | `/audit:dashboard` |
-| digest | single | gather, synthesize, format, scheduler | `/audit:digest` |
-| watchers | single | 4 watchers, alert rules, obligations | `/audit:watchers` |
-| nexus | single | gRPC client, query, notifications | `/audit:nexus` |
-| infra | single | health, CLI, config, memory, state, deploy | `/audit:infra` |
+| Domain    | Agent Model | Key Modules                                | Command            |
+| --------- | ----------- | ------------------------------------------ | ------------------ |
+| agent     | single      | orchestrator, worker, claude, conversation | `/audit:agent`     |
+| channels  | single      | telegram, discord, teams, email, imessage  | `/audit:channels`  |
+| tools     | single      | 20 service integrations                    | `/audit:tools`     |
+| dashboard | single      | React SPA + axum API (11 endpoints)        | `/audit:dashboard` |
+| digest    | single      | gather, synthesize, format, scheduler      | `/audit:digest`    |
+| watchers  | single      | 4 watchers, alert rules, obligations       | `/audit:watchers`  |
+| nexus     | single      | gRPC client, query, notifications          | `/audit:nexus`     |
+| infra     | single      | health, CLI, config, memory, state, deploy | `/audit:infra`     |
 
 ## Execution Plan
 
 ### Wave 1 — Core (parallel)
+
 - agent (orchestrator, worker pool, Claude API)
 - channels (5 messaging platforms)
 - tools (20 service integrations)
 
 ### Wave 2 — Features (parallel)
+
 - dashboard (React SPA + API)
 - digest (briefing system)
 - watchers (proactive monitoring)
 
 ### Wave 3 — Infrastructure (parallel)
+
 - nexus (remote agent sessions)
 - infra (health, CLI, config, deploy)
 

@@ -1,6 +1,6 @@
 use std::process::Stdio;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -451,9 +451,15 @@ struct SessionInner {
     process: Option<PersistentProcess>,
     config: SpawnConfig,
     backoff: BackoffState,
-    /// True when persistent mode has been permanently disabled (5 consecutive failures).
+    /// True when persistent mode has been temporarily disabled (5 consecutive failures).
+    /// Resets to false after `FALLBACK_RESET_DURATION` elapses since the last failure.
     fallback_only: bool,
+    /// When the last persistent-mode failure occurred, used for time-based fallback reset.
+    last_failure_at: Option<Instant>,
 }
+
+/// How long to wait after the last failure before retrying persistent mode.
+const FALLBACK_RESET_DURATION: Duration = Duration::from_secs(5 * 60);
 
 /// A persistent Claude CLI session that keeps the subprocess alive between turns.
 ///
@@ -470,10 +476,9 @@ impl PersistentSession {
                 process: None,
                 config,
                 backoff: BackoffState::new(),
-                // CC 2.1.81 stream-json stdin is broken — force cold-start until fixed.
-                // The persistent subprocess path spawns but CC ignores piped input.
-                // Cold-start via `claude -p "prompt"` works correctly.
-                fallback_only: true,
+                // Persistent mode enabled — format mismatch fixed in 37c200f.
+                fallback_only: false,
+                last_failure_at: None,
             }),
         }
     }
@@ -481,7 +486,19 @@ impl PersistentSession {
     /// Ensure the subprocess is alive, spawning or restarting as needed.
     async fn ensure_alive(inner: &mut SessionInner) -> bool {
         if inner.fallback_only {
-            return false;
+            // Time-based reset: retry persistent mode after FALLBACK_RESET_DURATION
+            let should_reset = inner
+                .last_failure_at
+                .map(|t| t.elapsed() >= FALLBACK_RESET_DURATION)
+                .unwrap_or(false);
+            if should_reset {
+                tracing::info!("resetting persistent mode after fallback cooldown");
+                inner.fallback_only = false;
+                inner.backoff = BackoffState::new();
+                inner.last_failure_at = None;
+            } else {
+                return false;
+            }
         }
 
         // Check if existing process is still alive
@@ -529,6 +546,7 @@ impl PersistentSession {
                         inner.backoff.consecutive_failures
                     );
                     inner.fallback_only = true;
+                    inner.last_failure_at = Some(Instant::now());
                 }
                 false
             }
@@ -585,6 +603,7 @@ impl PersistentSession {
             inner.backoff.record_failure();
             if inner.backoff.should_fallback() {
                 inner.fallback_only = true;
+                inner.last_failure_at = Some(Instant::now());
             }
             return None;
         }
@@ -594,6 +613,7 @@ impl PersistentSession {
             inner.backoff.record_failure();
             if inner.backoff.should_fallback() {
                 inner.fallback_only = true;
+                inner.last_failure_at = Some(Instant::now());
             }
             return None;
         }
@@ -603,6 +623,7 @@ impl PersistentSession {
             inner.backoff.record_failure();
             if inner.backoff.should_fallback() {
                 inner.fallback_only = true;
+                inner.last_failure_at = Some(Instant::now());
             }
             return None;
         }
@@ -622,6 +643,7 @@ impl PersistentSession {
                 inner.backoff.record_failure();
                 if inner.backoff.should_fallback() {
                     inner.fallback_only = true;
+                    inner.last_failure_at = Some(Instant::now());
                 }
                 return None;
             }

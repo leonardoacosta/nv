@@ -8,6 +8,10 @@ use super::state::{DigestActionStatus, DigestStateManager, SuggestedAction};
 ///
 /// Loads the current digest state, finds the matching action, marks it
 /// as completed, and returns the action details for execution.
+///
+/// NOTE: called by the Telegram callback router (digest_act: prefix) — wired
+/// in the Telegram inline-keyboard spec (out of scope for wire-digest-pipeline).
+#[allow(dead_code)]
 pub fn handle_digest_action(
     state_mgr: &DigestStateManager,
     action_id: &str,
@@ -17,27 +21,42 @@ pub fn handle_digest_action(
 
 /// Handle the "Dismiss All" callback.
 ///
-/// Marks all pending actions as dismissed.
+/// Marks all pending actions as dismissed in a single load/mutate/save pass.
+/// This replaces the previous N-cycle loop that called update_action_status()
+/// once per action, which issued N load+save round-trips to disk.
+///
+/// NOTE: called by the Telegram callback router (digest_dismiss) — wired
+/// in the Telegram inline-keyboard spec (out of scope for wire-digest-pipeline).
+#[allow(dead_code)]
 pub fn dismiss_all_actions(state_mgr: &DigestStateManager) -> Result<u32> {
-    let state = state_mgr.load()?;
+    let mut state = state_mgr.load()?;
     let mut dismissed_count = 0;
 
-    for action in &state.suggested_actions {
+    for action in state.suggested_actions.iter_mut() {
         if action.status == DigestActionStatus::Pending {
-            state_mgr.update_action_status(&action.id, DigestActionStatus::Dismissed)?;
+            action.status = DigestActionStatus::Dismissed;
             dismissed_count += 1;
         }
     }
 
+    state_mgr.save(&state)?;
     Ok(dismissed_count)
 }
 
 /// Check if a callback_data string is a digest action.
+///
+/// NOTE: called by the Telegram callback router — wired in the
+/// inline-keyboard spec (out of scope for wire-digest-pipeline).
+#[allow(dead_code)]
 pub fn is_digest_callback(callback_data: &str) -> bool {
     callback_data.starts_with("digest_act:") || callback_data == "digest_dismiss"
 }
 
 /// Extract the action ID from a "digest_act:ACTION_ID" callback.
+///
+/// NOTE: called by the Telegram callback router — wired in the
+/// inline-keyboard spec (out of scope for wire-digest-pipeline).
+#[allow(dead_code)]
 pub fn extract_action_id(callback_data: &str) -> Option<&str> {
     callback_data.strip_prefix("digest_act:")
 }

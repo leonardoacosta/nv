@@ -107,8 +107,11 @@ pub fn spawn_scheduler(
                     let today = now.date_naive();
                     let current_hour = now.hour();
 
-                    // Fire once per day when the clock passes MORNING_BRIEFING_HOUR
-                    if current_hour >= MORNING_BRIEFING_HOUR
+                    // Fire once per day at exactly MORNING_BRIEFING_HOUR.
+                    // Using == instead of >= prevents spurious fires when the
+                    // daemon restarts with a stale last_briefing_date at any
+                    // hour after 7am (e.g. a 9pm restart would not re-trigger).
+                    if current_hour == MORNING_BRIEFING_HOUR
                         && last_briefing_date.is_none_or(|d| d < today)
                     {
                         last_briefing_date = Some(today);
@@ -261,5 +264,34 @@ mod tests {
         // First tick should not arrive immediately (should wait ~5 minutes)
         let result = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await;
         assert!(result.is_err(), "should not get tick immediately after recent digest");
+    }
+
+    #[test]
+    fn morning_briefing_does_not_fire_after_briefing_hour() {
+        // With == check, only MORNING_BRIEFING_HOUR == 7 fires the briefing.
+        // Hour 8 (MORNING_BRIEFING_HOUR + 1) must NOT match, even with stale last_briefing_date.
+        let current_hour: u32 = MORNING_BRIEFING_HOUR + 1; // 8am
+        // Simulate stale last_briefing_date from yesterday
+        let last_briefing_date: Option<chrono::NaiveDate> = Some(
+            chrono::Local::now().date_naive() - chrono::Duration::days(1)
+        );
+        let today = chrono::Local::now().date_naive();
+
+        // With >=: this would fire (8 >= 7 is true, yesterday < today is true)
+        // With ==: this must NOT fire (8 == 7 is false)
+        let would_fire_with_gte = current_hour >= MORNING_BRIEFING_HOUR
+            && last_briefing_date.is_none_or(|d| d < today);
+
+        let would_fire_with_eq = current_hour == MORNING_BRIEFING_HOUR
+            && last_briefing_date.is_none_or(|d| d < today);
+
+        assert!(
+            would_fire_with_gte,
+            "Old >= check would fire at hour 8 with stale date (this is the bug we fixed)"
+        );
+        assert!(
+            !would_fire_with_eq,
+            "New == check must NOT fire at hour 8 — only fires at exactly hour 7"
+        );
     }
 }

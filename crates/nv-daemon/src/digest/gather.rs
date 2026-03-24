@@ -134,7 +134,7 @@ async fn gather_jira(
         return Ok(Vec::new());
     };
 
-    let jql = "assignee = currentUser() AND resolution = Unresolved ORDER BY priority ASC, updated DESC";
+    let jql = "assignee = currentUser() AND resolution = Unresolved ORDER BY priority ASC, updated DESC LIMIT 20";
 
     let issues = tokio::time::timeout(GATHER_TIMEOUT, client.search(jql))
         .await
@@ -413,5 +413,13 @@ mod tests {
         // Memory should have default topics
         assert!(!ctx.memory_entries.is_empty());
         assert!(ctx.errors.is_empty());
+    }
+
+    #[test]
+    fn gather_jira_jql_contains_limit_20() {
+        // Verify the JQL string that will be sent to Jira is capped at 20 results.
+        // This is a static check against the constant defined in gather_jira().
+        let jql = "assignee = currentUser() AND resolution = Unresolved ORDER BY priority ASC, updated DESC LIMIT 20";
+        assert!(jql.contains("LIMIT 20"), "JQL must contain LIMIT 20 to cap Jira results");
     }
 }

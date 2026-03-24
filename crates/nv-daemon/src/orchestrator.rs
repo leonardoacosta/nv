@@ -14,6 +14,10 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::agent::ChannelRegistry;
+use crate::digest::format::format_digest;
+use crate::digest::gather::gather_context;
+use crate::digest::state::{content_hash, DigestStateManager};
+use crate::digest::synthesize::{inject_budget_warning, synthesize_digest, synthesize_digest_fallback};
 use crate::nexus;
 use crate::obligation_detector;
 use crate::obligation_store::NewObligation;
@@ -415,10 +419,16 @@ impl Orchestrator {
             }
             TriggerClass::Digest => {
                 // MorningBriefing is handled inline — no worker needed.
-                // Regular Digest falls through to worker dispatch.
                 for trigger in triggers.iter() {
                     if let Trigger::Cron(nv_core::types::CronEvent::MorningBriefing) = trigger {
                         self.send_morning_briefing().await;
+                        return;
+                    }
+                }
+                // CronEvent::Digest runs the full gather → synthesize → send pipeline inline.
+                for trigger in triggers.iter() {
+                    if let Trigger::Cron(nv_core::types::CronEvent::Digest) = trigger {
+                        self.run_digest_pipeline().await;
                         return;
                     }
                 }
@@ -1303,6 +1313,111 @@ impl Orchestrator {
         }
     }
 
+    // ── Digest Pipeline ─────────────────────────────────────────────
+
+    /// Run the full digest pipeline: gather → synthesize → should_send → send → record_sent.
+    ///
+    /// Uses `synthesize_digest_fallback()` when Claude is unavailable.
+    /// All errors are logged; none panic or bubble up to the caller.
+    async fn run_digest_pipeline(&self) {
+        tracing::info!("digest: starting pipeline");
+
+        let jira_client = self.deps.jira_registry.as_ref().and_then(|r| r.default_client());
+        let nexus_client = self.deps.nexus_client.as_ref();
+        let memory = &self.deps.memory;
+        let calendar_credentials = self.deps.calendar_credentials.as_deref();
+        let calendar_id = &self.deps.calendar_id;
+
+        // Step 1: gather context from all sources
+        let context = gather_context(jira_client, memory, nexus_client, calendar_credentials, calendar_id).await;
+        tracing::info!(
+            jira_issues = context.jira_issues.len(),
+            nexus_sessions = context.nexus_sessions.len(),
+            memory_entries = context.memory_entries.len(),
+            calendar_events = context.calendar_events.len(),
+            gather_errors = context.errors.len(),
+            "digest: gather complete"
+        );
+
+        // Step 2: synthesize via Claude (fallback to template on error)
+        let mut result = match synthesize_digest(&self.deps.claude_client, &context).await {
+            Ok(r) => {
+                tracing::info!("digest: synthesis complete");
+                r
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "digest: synthesis failed — using fallback");
+                synthesize_digest_fallback(&context)
+            }
+        };
+
+        // Step 3: inject budget warning if threshold exceeded
+        {
+            let store = self.deps.message_store.lock().unwrap();
+            if let Ok(budget) = store.usage_budget_status(self.deps.weekly_budget_usd) {
+                let threshold = self.deps.alert_threshold_pct as f64;
+                if budget.pct_used >= threshold {
+                    let budget_line = format!(
+                        "[Budget] ${:.2} / ${:.2} this week ({:.0}%)",
+                        budget.rolling_7d_cost, budget.weekly_budget, budget.pct_used
+                    );
+                    inject_budget_warning(&mut result, &budget_line);
+                    tracing::info!(pct = budget.pct_used, "digest: budget warning injected");
+                }
+            }
+        }
+
+        // Step 4: check whether we should send (dedup by hash and interval)
+        let state_mgr = DigestStateManager::new(&self.deps.nv_base_path);
+        let hash = content_hash(&result.content);
+        // Use 60-minute minimum interval for dedup; 0 means "always send on hash change"
+        let should_send = state_mgr.should_send(60, Some(&hash)).unwrap_or(true);
+        if !should_send {
+            tracing::info!("digest: skipped — content unchanged and interval not elapsed");
+            return;
+        }
+
+        // Step 5: format and send to Telegram
+        let (text, keyboard) = format_digest(&result);
+        if let Some(channel) = self.channels.get("telegram") {
+            let msg = OutboundMessage {
+                channel: "telegram".into(),
+                content: text,
+                reply_to: None,
+                keyboard,
+            };
+            if let Err(e) = channel.send_message(msg).await {
+                tracing::warn!(error = %e, "digest: failed to send to Telegram");
+                return;
+            }
+            tracing::info!("digest: sent to Telegram");
+        } else {
+            tracing::warn!("digest: no telegram channel configured — digest not delivered");
+        }
+
+        // Step 6: record sent state
+        let sources = {
+            let mut m = std::collections::HashMap::new();
+            if !context.jira_issues.is_empty() {
+                m.insert("jira".to_string(), "ok".to_string());
+            }
+            if !context.nexus_sessions.is_empty() {
+                m.insert("nexus".to_string(), "ok".to_string());
+            }
+            if !context.memory_entries.is_empty() {
+                m.insert("memory".to_string(), "ok".to_string());
+            }
+            for err in &context.errors {
+                let source = err.split(':').next().unwrap_or("unknown").to_lowercase();
+                m.insert(source, "error".to_string());
+            }
+            m
+        };
+        if let Err(e) = state_mgr.record_sent(&hash, result.suggested_actions, sources) {
+            tracing::warn!(error = %e, "digest: failed to record sent state");
+        }
+    }
+
     // ── Nexus Error Handlers ────────────────────────────────────────
 
     async fn handle_nexus_view_error(&mut self, session_id: &str) {
@@ -1925,10 +2040,10 @@ mod tests {
     }
 
     #[test]
-    fn estimate_complexity_digest_cron_returns_estimate() {
+    fn estimate_complexity_digest_cron_returns_none() {
+        // Digest now runs the pipeline inline — no worker pool, no long-task announcement.
         let triggers = vec![Trigger::Cron(CronEvent::Digest)];
-        let est = estimate_task_complexity(&triggers).expect("should detect digest");
-        assert_eq!(est.estimated_minutes, 2);
+        assert!(estimate_task_complexity(&triggers).is_none());
     }
 
     #[test]

@@ -70,7 +70,7 @@ pub async fn synthesize_digest(
     let tools: Vec<ToolDefinition> = vec![]; // No tools needed for digest synthesis
 
     let response = client
-        .send_messages(DIGEST_SYSTEM_PROMPT, &messages, &tools)
+        .send_messages_with_options(DIGEST_SYSTEM_PROMPT, &messages, &tools, Some(1024))
         .await?;
 
     let content = extract_text_content(&response);

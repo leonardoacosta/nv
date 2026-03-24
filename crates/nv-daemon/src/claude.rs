@@ -774,6 +774,30 @@ impl ClaudeClient {
             .await
     }
 
+    /// Send a messages request with optional per-call overrides.
+    ///
+    /// `max_tokens` caps the response length. Because the underlying transport
+    /// is the Claude CLI (which does not accept `--max-tokens`), this limit is
+    /// enforced by appending an instruction to the system prompt rather than
+    /// at the API layer. The hard system-prompt guard is the mechanism; callers
+    /// should also constrain scope via system prompt wording.
+    pub async fn send_messages_with_options(
+        &self,
+        system: &str,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        max_tokens: Option<u32>,
+    ) -> Result<ApiResponse> {
+        if let Some(limit) = max_tokens {
+            let augmented = format!(
+                "{system}\n\nIMPORTANT: Limit your entire response to at most {limit} tokens."
+            );
+            self.send_messages_with_image(&augmented, messages, tools, None).await
+        } else {
+            self.send_messages_with_image(system, messages, tools, None).await
+        }
+    }
+
     /// Cold-start fallback: spawn a fresh `claude -p` subprocess per turn.
     /// This is the original implementation, kept as a reference; prefer
     /// `send_messages_cold_start_with_image` which supersedes this.

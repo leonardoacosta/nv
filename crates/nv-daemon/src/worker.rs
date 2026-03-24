@@ -214,6 +214,10 @@ pub struct SharedDeps {
     /// HTTP health-server port (from `daemon.health_port`, default 8400).
     /// Used by `cmd_digest()` in the orchestrator to avoid hardcoding 8400.
     pub health_port: u16,
+    /// ClaudeClient for direct pipeline calls (e.g. digest synthesis).
+    /// Workers each clone the `client_template` in `WorkerPool`; this field
+    /// allows the orchestrator to invoke Claude outside of the worker loop.
+    pub claude_client: ClaudeClient,
 }
 
 // ── Worker Pool ─────────────────────────────────────────────────────

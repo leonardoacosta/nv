@@ -1036,6 +1036,7 @@ async fn main() -> anyhow::Result<()> {
         cloudflare_registry,
         doppler_registry,
         teams_client: teams_client_for_workers,
+        claude_client: client.clone(),
     });
 
     // Extract Telegram client and chat_id for reactions

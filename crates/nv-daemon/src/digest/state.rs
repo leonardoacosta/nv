@@ -141,6 +141,10 @@ impl DigestStateManager {
     }
 
     /// Mark a suggested action as completed or dismissed.
+    ///
+    /// NOTE: called by `handle_digest_action()` in actions.rs — wired in the
+    /// Telegram inline-keyboard spec (out of scope for wire-digest-pipeline).
+    #[allow(dead_code)]
     pub fn update_action_status(&self, action_id: &str, status: DigestActionStatus) -> Result<Option<SuggestedAction>> {
         let mut state = self.load()?;
         let action = state

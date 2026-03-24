@@ -1,0 +1,64 @@
+{
+  "version": 2,
+  "generated_at": "2026-03-24T00:29:33.603662Z",
+  "generator": "audit:init (manual \u2014 Rust project)",
+  "project": "nv",
+  "project_path": "/home/nyaptor/nv",
+  "discovery_hash": "674e54cc7632",
+  "domains": {
+    "agent": {
+      "routes_hash": "6e5d09f66a4c",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-agent.md",
+      "memory_file": ".claude/audit/memory/agent-memory.md"
+    },
+    "channels": {
+      "routes_hash": "ca49595cdcab",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-channels.md",
+      "memory_file": ".claude/audit/memory/channels-memory.md"
+    },
+    "tools": {
+      "routes_hash": "e3b0c44298fc",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-tools.md",
+      "memory_file": ".claude/audit/memory/tools-memory.md"
+    },
+    "dashboard": {
+      "routes_hash": "f9682967c938",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-dashboard.md",
+      "memory_file": ".claude/audit/memory/dashboard-memory.md"
+    },
+    "digest": {
+      "routes_hash": "100131d0c250",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-digest.md",
+      "memory_file": ".claude/audit/memory/digest-memory.md"
+    },
+    "watchers": {
+      "routes_hash": "e3b0c44298fc",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-watchers.md",
+      "memory_file": ".claude/audit/memory/watchers-memory.md"
+    },
+    "nexus": {
+      "routes_hash": "e3b0c44298fc",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-nexus.md",
+      "memory_file": ".claude/audit/memory/nexus-memory.md"
+    },
+    "infra": {
+      "routes_hash": "07d813a245a3",
+      "agent_model": "single",
+      "command_file": ".claude/commands/audit-infra.md",
+      "memory_file": ".claude/audit/memory/infra-memory.md"
+    }
+  },
+  "personas_file": ".claude/audit/personas.json",
+  "global_files": [
+    ".claude/commands/audit-all.md",
+    ".claude/commands/audit-waves.md",
+    ".claude/commands/audit-diff.md"
+  ]
+}

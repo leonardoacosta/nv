@@ -1,0 +1,22 @@
+{
+  "personas": [
+    {
+      "name": "operator",
+      "display_name": "Operator (Leo)",
+      "email": "leo@test.com",
+      "password": "from Doppler or .env",
+      "roles": ["operator"],
+      "domains": ["agent", "channels", "dashboard", "digest", "watchers", "nexus", "infra"],
+      "notes": "Primary operator — interacts via Telegram, CLI, and dashboard. All domains."
+    },
+    {
+      "name": "nova",
+      "display_name": "Nova (AI Agent)",
+      "email": null,
+      "password": null,
+      "roles": ["agent"],
+      "domains": ["agent", "tools", "digest", "watchers", "nexus"],
+      "notes": "AI agent persona — executes tool calls, generates digests, creates obligations"
+    }
+  ]
+}

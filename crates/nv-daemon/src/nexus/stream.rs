@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nv_core::types::{SessionEvent as NvSessionEvent, SessionEventType, Trigger};
 use tokio::sync::{mpsc, Mutex};
 
-use super::connection::NexusAgentConnection;
+use super::connection::{ConnectionStatus, NexusAgentConnection};
 use super::proto::{self, session_event, EventFilter, EventType};
 
 /// Spawn event stream tasks for all connected agents.
@@ -54,6 +54,8 @@ pub async fn run_event_stream(
                     event_types: vec![
                         EventType::StatusChanged as i32,
                         EventType::SessionStopped as i32,
+                        EventType::SessionStarted as i32,
+                        EventType::HeartbeatReceived as i32,
                     ],
                     initial_snapshot: true,
                 })
@@ -67,11 +69,26 @@ pub async fn run_event_stream(
                         "failed to subscribe to StreamEvents"
                     );
                     conn.mark_disconnected();
+
+                    // ── Split-phase reconnect ──────────────────────────────
+                    // Phase 1: compute backoff, mark reconnecting, drop lock.
+                    let backoff = conn.backoff_duration();
+                    conn.status = ConnectionStatus::Reconnecting;
                     drop(conn);
 
-                    // Attempt reconnect
+                    // Phase 2: sleep outside the lock.
+                    tokio::time::sleep(backoff).await;
+
+                    // Phase 3: re-acquire and call connect() directly.
                     let mut conn = agent.lock().await;
-                    conn.reconnect().await;
+                    if let Err(ce) = conn.connect().await {
+                        tracing::warn!(
+                            agent = %name,
+                            error = %ce,
+                            "stream reconnect failed"
+                        );
+                        conn.mark_disconnected();
+                    }
                     continue;
                 }
             }
@@ -105,11 +122,31 @@ pub async fn run_event_stream(
             }
         }
 
-        // Stream ended or errored — reconnect
-        {
+        // Stream ended or errored — reconnect using split-phase pattern to avoid
+        // holding the mutex lock across the exponential backoff sleep.
+
+        // Phase 1: lock, mark disconnected, compute backoff, drop lock.
+        let backoff = {
             let mut conn = agent.lock().await;
             conn.mark_disconnected();
-            conn.reconnect().await;
+            let b = conn.backoff_duration();
+            conn.status = ConnectionStatus::Reconnecting;
+            b
+        };
+
+        // Phase 2: sleep the backoff outside the lock.
+        tokio::time::sleep(backoff).await;
+
+        // Phase 3: re-acquire and call connect() directly.
+        {
+            let mut conn = agent.lock().await;
+            if let Err(e) = conn.connect().await {
+                tracing::warn!(
+                    error = %e,
+                    "event stream reconnect failed"
+                );
+                conn.mark_disconnected();
+            }
         }
     }
 }
@@ -281,14 +318,21 @@ mod tests {
     }
 
     #[test]
-    fn event_filter_uses_status_changed_and_session_stopped() {
-        // The filter constructed in run_event_stream must contain exactly
-        // STATUS_CHANGED and SESSION_STOPPED.  Assert the i32 values match.
-        let expected = vec![
+    fn event_filter_uses_status_changed_session_stopped_started_heartbeat() {
+        // The filter constructed in run_event_stream must contain
+        // STATUS_CHANGED, SESSION_STOPPED, SESSION_STARTED, and HEARTBEAT_RECEIVED so
+        // that the Started and Heartbeat match arms in map_event_to_trigger are
+        // reachable (Req-5).
+        let filter_types = vec![
             EventType::StatusChanged as i32,
             EventType::SessionStopped as i32,
+            EventType::SessionStarted as i32,
+            EventType::HeartbeatReceived as i32,
         ];
-        assert_eq!(expected, vec![3, 4]);
+        assert!(filter_types.contains(&(EventType::StatusChanged as i32)));
+        assert!(filter_types.contains(&(EventType::SessionStopped as i32)));
+        assert!(filter_types.contains(&(EventType::SessionStarted as i32)));
+        assert!(filter_types.contains(&(EventType::HeartbeatReceived as i32)));
     }
 
     #[test]

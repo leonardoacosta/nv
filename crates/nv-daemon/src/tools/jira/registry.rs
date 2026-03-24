@@ -161,6 +161,86 @@ impl JiraRegistry {
     }
 }
 
+// ── Checkable impl ───────────────────────────────────────────────────
+
+/// Zero-arg Checkable wrapper — uses the default Jira client to probe
+/// `GET /rest/api/3/myself`, the canonical lightweight connectivity check.
+pub struct JiraCheck;
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for JiraCheck {
+    fn name(&self) -> &str {
+        "jira"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+
+        // Resolve credentials from environment (same path as the live client).
+        let token = match std::env::var("JIRA_API_TOKEN")
+            .or_else(|_| std::env::var("JIRA_TOKEN"))
+        {
+            Ok(t) => t,
+            Err(_) => {
+                return crate::tools::CheckResult::Missing {
+                    env_var: "JIRA_API_TOKEN".into(),
+                };
+            }
+        };
+
+        let instance = match std::env::var("JIRA_INSTANCE") {
+            Ok(i) => format!("https://{}", i.trim_start_matches("https://")),
+            Err(_) => {
+                return crate::tools::CheckResult::Missing {
+                    env_var: "JIRA_INSTANCE".into(),
+                };
+            }
+        };
+
+        let email = std::env::var("JIRA_EMAIL")
+            .or_else(|_| std::env::var("JIRA_USERNAME"))
+            .unwrap_or_default();
+
+        let url = format!("{}/rest/api/3/myself", instance.trim_end_matches('/'));
+
+        let http = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                return crate::tools::CheckResult::Unhealthy {
+                    error: format!("http client build failed: {e}"),
+                };
+            }
+        };
+
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
+            http.get(&url)
+                .basic_auth(&email, Some(&token))
+                .send()
+                .await
+        })
+        .await;
+
+        match result {
+            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
+                latency_ms: latency,
+                detail: "myself endpoint reachable".into(),
+            },
+            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
+                error: "invalid credentials (401) — check JIRA_API_TOKEN and JIRA_EMAIL".into(),
+            },
+            Ok(resp) => crate::tools::CheckResult::Unhealthy {
+                error: format!("HTTP {}", resp.status()),
+            },
+            Err(e) => crate::tools::CheckResult::Unhealthy {
+                error: e.to_string(),
+            },
+        }
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]

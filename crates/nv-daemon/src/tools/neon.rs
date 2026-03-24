@@ -921,7 +921,7 @@ impl crate::tools::Checkable for NeonClient {
         }
 
         let project = self.project.clone();
-        let (latency, result) = timed(|| async { connect(&project).await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { connect(&project).await }).await;
 
         match result {
             Ok(client) => {

@@ -321,6 +321,7 @@ fn month_day_from_iso(s: &str) -> Option<String> {
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use nv_core::channel::Channel;
@@ -337,7 +338,6 @@ use crate::claude::ToolDefinition;
 use self::docker as docker_tools;
 use self::ha as ha_tools;
 use crate::memory::Memory;
-use crate::messages::MessageStore;
 use self::neon as neon_tools;
 use crate::nexus;
 use self::plaid as plaid_tools;
@@ -351,6 +351,14 @@ use crate::tailscale;
 use self::teams as teams_tools;
 use self::upstash as upstash_tools;
 use self::vercel as vercel_tools;
+
+// ── Dispatch timeouts ────────────────────────────────────────────────
+
+/// Maximum execution budget for read-class tools (no state mutation).
+const TOOL_TIMEOUT_READ: Duration = Duration::from_secs(30);
+
+/// Maximum execution budget for write-class tools (state mutation / external calls).
+const TOOL_TIMEOUT_WRITE: Duration = Duration::from_secs(60);
 
 /// Register all available tool definitions for the Anthropic API.
 ///
@@ -425,33 +433,6 @@ pub fn register_tools() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["session_id"]
-            }),
-        },
-        ToolDefinition {
-            name: "query_nexus_health".into(),
-            description: "Get health status of all Nexus agents. Returns CPU, memory, disk, load, Docker containers, rate limits, and uptime per agent.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "query_nexus_projects".into(),
-            description: "List all projects known to connected Nexus agents. Returns deduplicated, sorted project names.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "query_nexus_agents".into(),
-            description: "List all configured Nexus agents with their connection status, endpoint, and last-seen time.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
             }),
         },
         ToolDefinition {
@@ -1470,6 +1451,28 @@ pub struct ServiceRegistries<'a> {
     pub ado: Option<&'a ServiceRegistry<ado::AdoClient>>,
     pub cloudflare: Option<&'a ServiceRegistry<cloudflare::CloudflareClient>>,
     pub doppler: Option<&'a ServiceRegistry<doppler::DopplerClient>>,
+    /// Cached Teams client — avoids rebuilding OAuth token state on every tool call.
+    pub teams: Option<&'a crate::channels::teams::client::TeamsClient>,
+}
+
+/// Returns `true` for tools that mutate state or send external messages.
+/// These get the longer `TOOL_TIMEOUT_WRITE` budget (60 s).
+fn is_write_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "write_memory"
+            | "jira_create"
+            | "jira_transition"
+            | "jira_assign"
+            | "jira_comment"
+            | "start_session"
+            | "stop_session"
+            | "ha_service_call"
+            | "send_to_channel"
+            | "teams_send"
+            | "complete_bootstrap"
+            | "update_soul"
+    )
 }
 
 /// `search_messages`, schedule tools, and reminder tools must be handled by the caller
@@ -1487,7 +1490,13 @@ pub async fn execute_tool_send(
     calendar_id: &str,
     service_registries: &ServiceRegistries<'_>,
 ) -> Result<ToolResult> {
-    match name {
+    let budget = if is_write_tool(name) {
+        TOOL_TIMEOUT_WRITE
+    } else {
+        TOOL_TIMEOUT_READ
+    };
+    let dispatch = async {
+        match name {
         "read_memory" => {
             let topic = input["topic"].as_str().ok_or_else(|| anyhow!("missing 'topic' parameter"))?;
             memory.read(topic).map(ToolResult::Immediate)
@@ -1959,15 +1968,17 @@ pub async fn execute_tool_send(
 
         // ── Cross-Channel Routing ─────────────────────────────────
         "list_channels" => {
-            if channels.is_empty() {
-                return Ok(ToolResult::Immediate("No channels configured.".into()));
-            }
-            let mut lines = vec!["Available channels:".to_string()];
-            let mut names: Vec<&String> = channels.keys().collect();
-            names.sort();
-            for name in names {
-                lines.push(format!("- {name} (connected)"));
-            }
+            let lines = if channels.is_empty() {
+                vec!["No channels configured.".to_string()]
+            } else {
+                let mut l = vec!["Available channels:".to_string()];
+                let mut names: Vec<&String> = channels.keys().collect();
+                names.sort();
+                for ch_name in names {
+                    l.push(format!("- {ch_name} (connected)"));
+                }
+                l
+            };
             Ok(ToolResult::Immediate(lines.join("\n")))
         }
         "send_to_channel" => {
@@ -2036,19 +2047,33 @@ pub async fn execute_tool_send(
 
         // ── Teams Tools ───────────────────────────────────────────────
         "teams_channels" => {
-            let secrets = nv_core::config::Secrets::from_env()?;
-            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
             let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
             let team_id = input["team_id"]
                 .as_str()
                 .or(env_team_id.as_deref())
                 .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
-            let output = teams_tools::teams_channels(&client, team_id).await?;
+            let output = teams_tools::teams_channels(client, team_id).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_messages" => {
-            let secrets = nv_core::config::Secrets::from_env()?;
-            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
             let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
             let team_id = input["team_id"]
                 .as_str()
@@ -2057,7 +2082,7 @@ pub async fn execute_tool_send(
             let channel_id = input["channel_id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
-            let output = teams_tools::teams_messages(&client, team_id, channel_id).await?;
+            let output = teams_tools::teams_messages(client, team_id, channel_id).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_send" => {
@@ -2093,12 +2118,19 @@ pub async fn execute_tool_send(
             })
         }
         "teams_presence" => {
-            let secrets = nv_core::config::Secrets::from_env()?;
-            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
             let user = input["user"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'user' parameter"))?;
-            let output = teams_tools::teams_presence(&client, user).await?;
+            let output = teams_tools::teams_presence(client, user).await?;
             Ok(ToolResult::Immediate(output))
         }
 
@@ -2138,8 +2170,14 @@ pub async fn execute_tool_send(
             let environment = input["environment"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'environment' parameter"))?;
-            let client = doppler_tools::DopplerClient::from_env()?;
-            let output = doppler_tools::doppler_secrets(&client, project, environment, None).await?;
+            let _owned_doppler;
+            let client = if let Some(reg) = service_registries.doppler {
+                reg.default().ok_or_else(|| anyhow!("Doppler registry empty"))?
+            } else {
+                _owned_doppler = doppler_tools::DopplerClient::from_env()?;
+                &_owned_doppler
+            };
+            let output = doppler_tools::doppler_secrets(client, project, environment, None).await?;
             Ok(ToolResult::Immediate(output))
         }
         "doppler_compare" => {
@@ -2152,8 +2190,14 @@ pub async fn execute_tool_send(
             let env_b = input["env_b"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'env_b' parameter"))?;
-            let client = doppler_tools::DopplerClient::from_env()?;
-            let output = doppler_tools::doppler_compare(&client, project, env_a, env_b, None).await?;
+            let _owned_doppler;
+            let client = if let Some(reg) = service_registries.doppler {
+                reg.default().ok_or_else(|| anyhow!("Doppler registry empty"))?
+            } else {
+                _owned_doppler = doppler_tools::DopplerClient::from_env()?;
+                &_owned_doppler
+            };
+            let output = doppler_tools::doppler_compare(client, project, env_a, env_b, None).await?;
             Ok(ToolResult::Immediate(output))
         }
         "doppler_activity" => {
@@ -2161,15 +2205,27 @@ pub async fn execute_tool_send(
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
             let count = input["count"].as_u64();
-            let client = doppler_tools::DopplerClient::from_env()?;
-            let output = doppler_tools::doppler_activity(&client, project, count, None).await?;
+            let _owned_doppler;
+            let client = if let Some(reg) = service_registries.doppler {
+                reg.default().ok_or_else(|| anyhow!("Doppler registry empty"))?
+            } else {
+                _owned_doppler = doppler_tools::DopplerClient::from_env()?;
+                &_owned_doppler
+            };
+            let output = doppler_tools::doppler_activity(client, project, count, None).await?;
             Ok(ToolResult::Immediate(output))
         }
 
         // ── Cloudflare DNS Tools ───────────────────────────────────────
         "cf_zones" => {
-            let client = cloudflare_tools::CloudflareClient::from_env()?;
-            let output = cloudflare_tools::cf_zones(&client).await?;
+            let _owned_cf;
+            let client = if let Some(reg) = service_registries.cloudflare {
+                reg.default().ok_or_else(|| anyhow!("Cloudflare registry empty"))?
+            } else {
+                _owned_cf = cloudflare_tools::CloudflareClient::from_env()?;
+                &_owned_cf
+            };
+            let output = cloudflare_tools::cf_zones(client).await?;
             Ok(ToolResult::Immediate(output))
         }
         "cf_dns_records" => {
@@ -2177,16 +2233,28 @@ pub async fn execute_tool_send(
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
             let record_type = input["record_type"].as_str();
-            let client = cloudflare_tools::CloudflareClient::from_env()?;
-            let output = cloudflare_tools::cf_dns_records(&client, domain, record_type).await?;
+            let _owned_cf;
+            let client = if let Some(reg) = service_registries.cloudflare {
+                reg.default().ok_or_else(|| anyhow!("Cloudflare registry empty"))?
+            } else {
+                _owned_cf = cloudflare_tools::CloudflareClient::from_env()?;
+                &_owned_cf
+            };
+            let output = cloudflare_tools::cf_dns_records(client, domain, record_type).await?;
             Ok(ToolResult::Immediate(output))
         }
         "cf_domain_status" => {
             let domain = input["domain"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
-            let client = cloudflare_tools::CloudflareClient::from_env()?;
-            let output = cloudflare_tools::cf_domain_status(&client, domain).await?;
+            let _owned_cf;
+            let client = if let Some(reg) = service_registries.cloudflare {
+                reg.default().ok_or_else(|| anyhow!("Cloudflare registry empty"))?
+            } else {
+                _owned_cf = cloudflare_tools::CloudflareClient::from_env()?;
+                &_owned_cf
+            };
+            let output = cloudflare_tools::cf_domain_status(client, domain).await?;
             Ok(ToolResult::Immediate(output))
         }
 
@@ -2215,20 +2283,25 @@ pub async fn execute_tool_send(
             }
 
             push_env!(stripe::StripeClient::from_env(), "stripe", "STRIPE_SECRET_KEY");
-            push_env!(vercel::VercelClient::from_env(), "vercel", "VERCEL_API_TOKEN");
+            push_env!(vercel::VercelClient::from_env(), "vercel", "VERCEL_TOKEN");
             push_env!(sentry::SentryClient::from_env(), "sentry", "SENTRY_AUTH_TOKEN");
             push_env!(resend::ResendClient::from_env(), "resend", "RESEND_API_KEY");
             push_env!(ha::HAClient::from_env(), "ha", "HA_TOKEN");
             push_env!(upstash::UpstashClient::from_env(), "upstash", "UPSTASH_REDIS_REST_URL");
             push_env!(ado::AdoClient::from_env(), "ado", "ADO_PAT");
             push_env!(cloudflare::CloudflareClient::from_env(), "cloudflare", "CLOUDFLARE_API_TOKEN");
-            push_env!(doppler::DopplerClient::from_env(), "doppler", "DOPPLER_TOKEN");
+            push_env!(doppler::DopplerClient::from_env(), "doppler", "DOPPLER_API_TOKEN");
 
             // Zero-arg constructors (check_read resolves credentials internally)
             owned.push(Box::new(posthog::PosthogClient));
             owned.push(Box::new(github::GithubClient));
             owned.push(Box::new(docker::DockerClient));
             owned.push(Box::new(plaid::PlaidClient));
+            owned.push(Box::new(teams::TeamsCheck));
+            owned.push(Box::new(jira::JiraCheck));
+
+            // Calendar uses env-based construction
+            push_env!(calendar::from_env(), "calendar", "GOOGLE_CALENDAR_CREDENTIALS");
 
             // Neon uses a project-specific URL; use "default" project as the probe target
             owned.push(Box::new(neon::NeonClient::new("default")));
@@ -2253,17 +2326,20 @@ pub async fn execute_tool_send(
         }
 
         _ => Err(anyhow!("unknown tool: {name}")),
+        }
+    };
+    match tokio::time::timeout(budget, dispatch).await {
+        Ok(result) => result,
+        Err(_elapsed) => Ok(ToolResult::Immediate(format!(
+            "Tool timed out after {}s",
+            budget.as_secs()
+        ))),
     }
 }
 
-/// Execute a tool by name with the given input parameters.
-///
-/// Memory tools are synchronous. Jira read tools are async. Jira write
-/// tools return a PendingAction instead of executing immediately.
-///
-/// NOTE: This function takes `Option<&MessageStore>`, making the resulting
-/// future `!Send`. For use in `tokio::spawn`, use `execute_tool_send` instead.
-#[allow(dead_code, clippy::too_many_arguments)]
+// execute_tool (the !Send MessageStore variant) has been deleted.
+// Use execute_tool_send instead; the worker handles get_recent_messages directly.
+#[cfg(any())]
 pub async fn execute_tool(
     name: &str,
     input: &serde_json::Value,
@@ -2870,19 +2946,33 @@ pub async fn execute_tool(
 
         // ── Teams Tools ───────────────────────────────────────────────
         "teams_channels" => {
-            let secrets = nv_core::config::Secrets::from_env()?;
-            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
             let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
             let team_id = input["team_id"]
                 .as_str()
                 .or(env_team_id.as_deref())
                 .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
-            let output = teams_tools::teams_channels(&client, team_id).await?;
+            let output = teams_tools::teams_channels(client, team_id).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_messages" => {
-            let secrets = nv_core::config::Secrets::from_env()?;
-            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
             let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
             let team_id = input["team_id"]
                 .as_str()
@@ -2891,7 +2981,7 @@ pub async fn execute_tool(
             let channel_id = input["channel_id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
-            let output = teams_tools::teams_messages(&client, team_id, channel_id).await?;
+            let output = teams_tools::teams_messages(client, team_id, channel_id).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_send" => {
@@ -2927,12 +3017,19 @@ pub async fn execute_tool(
             })
         }
         "teams_presence" => {
-            let secrets = nv_core::config::Secrets::from_env()?;
-            let client = teams_tools::build_teams_client(&secrets, None)?;
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
             let user = input["user"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'user' parameter"))?;
-            let output = teams_tools::teams_presence(&client, user).await?;
+            let output = teams_tools::teams_presence(client, user).await?;
             Ok(ToolResult::Immediate(output))
         }
 
@@ -3237,6 +3334,7 @@ mod tests {
             ado: None,
             cloudflare: None,
             doppler: None,
+            teams: None,
         }
     }
 
@@ -3258,8 +3356,8 @@ mod tests {
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
         // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
-        // = 98
-        assert_eq!(tools.len(), 98);
+        // = 98 - 3 (removed duplicate query_nexus_health/projects/agents) = 95
+        assert_eq!(tools.len(), 95);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -3390,11 +3488,10 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_returns_content() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "read_memory",
             &serde_json::json!({"topic": "tasks"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3414,11 +3511,10 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_nonexistent() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "read_memory",
             &serde_json::json!({"topic": "nonexistent"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3440,11 +3536,10 @@ mod tests {
         let (_dir, memory) = setup();
         memory.write("decisions", "Stripe fee is 5%").unwrap();
 
-        let result = execute_tool(
+        let result = execute_tool_send(
             "search_memory",
             &serde_json::json!({"query": "Stripe"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3467,11 +3562,10 @@ mod tests {
     #[tokio::test]
     async fn execute_search_memory_no_results() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "search_memory",
             &serde_json::json!({"query": "xyznonexistent"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3491,11 +3585,10 @@ mod tests {
     #[tokio::test]
     async fn execute_write_memory_creates_topic() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "write_memory",
             &serde_json::json!({"topic": "notes", "content": "hello world"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3515,11 +3608,10 @@ mod tests {
         }
 
         // Verify it was written
-        let read_result = execute_tool(
+        let read_result = execute_tool_send(
             "read_memory",
             &serde_json::json!({"topic": "notes"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3539,11 +3631,10 @@ mod tests {
     #[tokio::test]
     async fn execute_jira_search_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "jira_search",
             &serde_json::json!({"jql": "project = NV"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3587,7 +3678,7 @@ mod tests {
     async fn execute_jira_create_returns_pending_action() {
         let (_dir, memory) = setup();
         let registry = make_test_registry();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "jira_create",
             &serde_json::json!({
                 "project": "OO",
@@ -3596,7 +3687,6 @@ mod tests {
             }),
             &memory,
             Some(&registry),
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3626,7 +3716,7 @@ mod tests {
     async fn execute_jira_transition_returns_pending_action() {
         let (_dir, memory) = setup();
         let registry = make_test_registry();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "jira_transition",
             &serde_json::json!({
                 "issue_key": "OO-42",
@@ -3634,7 +3724,6 @@ mod tests {
             }),
             &memory,
             Some(&registry),
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3665,7 +3754,7 @@ mod tests {
     async fn execute_jira_comment_returns_pending_action() {
         let (_dir, memory) = setup();
         let registry = make_test_registry();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "jira_comment",
             &serde_json::json!({
                 "issue_key": "OO-42",
@@ -3673,7 +3762,6 @@ mod tests {
             }),
             &memory,
             Some(&registry),
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3731,7 +3819,7 @@ mod tests {
     #[tokio::test]
     async fn execute_query_nexus_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
+        let result = execute_tool_send("query_nexus", &serde_json::json!({}), &memory, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
@@ -3745,7 +3833,7 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 7400,
         }]);
-        let result = execute_tool("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
+        let result = execute_tool_send("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
             .await
             .unwrap();
         match result {
@@ -3759,11 +3847,10 @@ mod tests {
     #[tokio::test]
     async fn execute_query_session_without_client_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "query_session",
             &serde_json::json!({"session_id": "s-1"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3781,13 +3868,12 @@ mod tests {
     async fn execute_query_session_missing_param() {
         let (_dir, memory) = setup();
         let client = nexus::client::NexusClient::new(&[]);
-        let result = execute_tool(
+        let result = execute_tool_send(
             "query_session",
             &serde_json::json!({}),
             &memory,
             None,
             Some(&client),
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3802,7 +3888,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool("nonexistent_tool", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
+        let result = execute_tool_send("nonexistent_tool", &serde_json::json!({}), &memory, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -3812,7 +3898,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool("read_memory", &serde_json::json!({}), &memory, None, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
+        let result = execute_tool_send("read_memory", &serde_json::json!({}), &memory, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -3820,11 +3906,10 @@ mod tests {
     #[tokio::test]
     async fn execute_write_memory_missing_content() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "write_memory",
             &serde_json::json!({"topic": "x"}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3847,11 +3932,10 @@ mod tests {
         std::fs::create_dir_all(&nv_dir).unwrap();
         std::env::set_var("HOME", tmp.path());
 
-        let result = execute_tool(
+        let result = execute_tool_send(
             "complete_bootstrap",
             &serde_json::json!({}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3887,11 +3971,10 @@ mod tests {
         std::env::set_var("HOME", tmp.path());
 
         let new_soul = "# Nova — Soul\n\nUpdated personality.";
-        let result = execute_tool(
+        let result = execute_tool_send(
             "update_soul",
             &serde_json::json!({"content": new_soul}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3919,11 +4002,10 @@ mod tests {
     #[tokio::test]
     async fn execute_update_soul_missing_content() {
         let (_dir, memory) = setup();
-        let result = execute_tool(
+        let result = execute_tool_send(
             "update_soul",
             &serde_json::json!({}),
             &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -3969,74 +4051,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn execute_get_recent_messages_empty_store() {
+    async fn execute_get_recent_messages_requires_worker_handling() {
+        // execute_tool_send deliberately rejects get_recent_messages — the worker
+        // must handle it directly because MessageStore (!Send) cannot cross spawn boundaries.
         let (_dir, memory) = setup();
-        let tmp = TempDir::new().unwrap();
-        let db_path = tmp.path().join("messages.db");
-        let store = crate::messages::MessageStore::init(&db_path).unwrap();
-
-        let result = execute_tool(
+        let result = execute_tool_send(
             "get_recent_messages",
             &serde_json::json!({}),
             &memory,
-            None,
-            None,
-            Some(&store),
-            &empty_registry(),
-            &empty_channels(),
-            None,
-            "primary",
-            &empty_service_registries(),
-        )
-        .await
-        .unwrap();
-        match result {
-            ToolResult::Immediate(s) => assert!(s.contains("No messages")),
-            _ => panic!("expected Immediate"),
-        }
-    }
-
-    #[tokio::test]
-    async fn execute_get_recent_messages_with_data() {
-        let (_dir, memory) = setup();
-        let tmp = TempDir::new().unwrap();
-        let db_path = tmp.path().join("messages.db");
-        let store = crate::messages::MessageStore::init(&db_path).unwrap();
-        store.log_inbound("telegram", "leo", "test message", "message").unwrap();
-        store.log_outbound("telegram", "test response", None, Some(500), Some(10), Some(5)).unwrap();
-
-        let result = execute_tool(
-            "get_recent_messages",
-            &serde_json::json!({"count": 10}),
-            &memory,
-            None,
-            None,
-            Some(&store),
-            &empty_registry(),
-            &empty_channels(),
-            None,
-            "primary",
-            &empty_service_registries(),
-        )
-        .await
-        .unwrap();
-        match result {
-            ToolResult::Immediate(s) => {
-                assert!(s.contains("leo: test message"));
-                assert!(s.contains("Nova: test response"));
-            }
-            _ => panic!("expected Immediate"),
-        }
-    }
-
-    #[tokio::test]
-    async fn execute_get_recent_messages_without_store() {
-        let (_dir, memory) = setup();
-        let result = execute_tool(
-            "get_recent_messages",
-            &serde_json::json!({}),
-            &memory,
-            None,
             None,
             None,
             &empty_registry(),
@@ -4047,7 +4069,10 @@ mod tests {
         )
         .await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Message store not available"));
+        assert!(
+            result.unwrap_err().to_string().contains("must be handled by the worker"),
+            "expected worker-handling error"
+        );
     }
 
     // ── ServiceRegistry<T> tests ─────────────────────────────────────
@@ -4250,6 +4275,61 @@ mod tests {
     fn relative_time_december_date() {
         let result = super::relative_time("2020-12-25T00:00:00Z");
         assert_eq!(result, "Dec 25");
+    }
+
+    // ── spec verification tests ──────────────────────────────────────
+
+    #[test]
+    fn tool_definitions_have_no_duplicate_names() {
+        let tools = register_tools();
+        let total = tools.len();
+        let unique: std::collections::HashSet<&str> =
+            tools.iter().map(|t| t.name.as_str()).collect();
+        assert_eq!(
+            unique.len(),
+            total,
+            "found {} duplicate tool name(s)",
+            total - unique.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn check_services_output_includes_teams_calendar_jira() {
+        let (_dir, memory) = setup();
+        // No env vars are set in the test environment, so all services will return
+        // CheckResult::Missing — but each name still appears in the serialized JSON.
+        let result = execute_tool_send(
+            "check_services",
+            &serde_json::json!({"read_only": true}),
+            &memory,
+            None,
+            None,
+            &empty_registry(),
+            &empty_channels(),
+            None,
+            "primary",
+            &empty_service_registries(),
+        )
+        .await
+        .unwrap();
+
+        match result {
+            ToolResult::Immediate(json_str) => {
+                assert!(
+                    json_str.contains("\"teams\""),
+                    "expected 'teams' in check_services output, got: {json_str}"
+                );
+                assert!(
+                    json_str.contains("\"calendar\""),
+                    "expected 'calendar' in check_services output, got: {json_str}"
+                );
+                assert!(
+                    json_str.contains("\"jira\""),
+                    "expected 'jira' in check_services output, got: {json_str}"
+                );
+            }
+            _ => panic!("expected Immediate result from check_services"),
+        }
     }
 
     /// Helper: convert epoch seconds to "YYYY-MM-DDTHH:MM:SSZ" for test use.

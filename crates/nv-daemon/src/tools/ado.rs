@@ -461,7 +461,7 @@ impl crate::tools::Checkable for AdoClient {
         // GET /_apis/projects — list projects at the org level
         let url = format!("{}/_apis/projects?api-version=7.1", self.org_url);
         let (latency, result) =
-            timed(|| async { self.http.get(&url).send().await }).await;
+            timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
         match result {
             Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,

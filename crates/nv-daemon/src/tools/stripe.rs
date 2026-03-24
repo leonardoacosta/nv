@@ -165,7 +165,7 @@ impl crate::tools::Checkable for StripeClient {
 
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
-        let (latency, result) = timed(|| async {
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
             self.http
                 .get(format!("{STRIPE_BASE_URL}/balance"))
                 .send()
@@ -192,7 +192,7 @@ impl crate::tools::Checkable for StripeClient {
     async fn check_write(&self) -> Option<crate::tools::CheckResult> {
         use crate::tools::check::timed;
         // POST /v1/invoices with no body — expect 400 (missing required fields), not 2xx
-        let (latency, result) = timed(|| async {
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
             self.http
                 .post(format!("{STRIPE_BASE_URL}/invoices"))
                 .send()

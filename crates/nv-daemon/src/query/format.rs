@@ -52,4 +52,25 @@ mod tests {
         let formatted = format_query_for_cli(text);
         assert_eq!(formatted, text);
     }
+
+    /// Verify that format_query_for_telegram does not panic when the truncation
+    /// point (TELEGRAM_MAX_CHARS - 30 = 4066 bytes) falls inside a multi-byte
+    /// UTF-8 sequence.  Before safe_truncate was used, a raw byte slice
+    /// `&answer_text[..4066]` would panic on a character boundary violation.
+    #[test]
+    fn format_telegram_does_not_panic_on_multibyte_cut_point() {
+        // Each '中' is 3 UTF-8 bytes. Craft a string whose byte length exceeds
+        // TELEGRAM_MAX_CHARS so truncation is needed, and arrange for the
+        // cut point to fall inside a 3-byte sequence.
+        //
+        // Strategy: fill up to just past 4066 bytes with 3-byte chars so the
+        // naive byte slice at 4066 would land mid-character.
+        let repeat = 4096 / "中".len() + 10; // more than enough
+        let text = "中".repeat(repeat);
+        assert!(text.len() > TELEGRAM_MAX_CHARS, "test setup: text must exceed limit");
+
+        // Must not panic.
+        let result = format_query_for_telegram(&text);
+        assert!(result.len() <= TELEGRAM_MAX_CHARS + 30, "result must fit within telegram limit (plus truncation suffix)");
+    }
 }

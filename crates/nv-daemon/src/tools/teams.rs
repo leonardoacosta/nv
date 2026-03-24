@@ -503,7 +503,7 @@ impl crate::tools::Checkable for TeamsCheck {
 
         let auth = MsGraphAuth::new(&tenant_id, &client_id, &client_secret);
 
-        let (latency, result) = timed(|| async { auth.authenticate().await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { auth.authenticate().await }).await;
 
         match result {
             Ok(()) => crate::tools::CheckResult::Healthy {

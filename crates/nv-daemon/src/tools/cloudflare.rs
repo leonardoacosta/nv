@@ -531,7 +531,7 @@ impl crate::tools::Checkable for CloudflareClient {
         use crate::tools::check::timed;
         let url = format!("{CF_API}/user/tokens/verify");
         let (latency, result) =
-            timed(|| async { self.get(&url).send().await }).await;
+            timed(std::time::Duration::from_secs(15), || async { self.get(&url).send().await }).await;
         match result {
             Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,

@@ -598,6 +598,71 @@ pub fn build_client(
     Ok(CalendarClient::new(creds, calendar_id))
 }
 
+/// Construct a CalendarClient from environment variables.
+///
+/// Reads `GOOGLE_CALENDAR_CREDENTIALS` (base64-encoded service account JSON)
+/// and `GOOGLE_CALENDAR_ID` (calendar ID, defaults to `"primary"`).
+///
+/// Returns `Err` if `GOOGLE_CALENDAR_CREDENTIALS` is not set.
+pub fn from_env() -> Result<CalendarClient> {
+    let creds = std::env::var("GOOGLE_CALENDAR_CREDENTIALS")
+        .map_err(|_| anyhow!("GOOGLE_CALENDAR_CREDENTIALS not set"))?;
+    let calendar_id = std::env::var("GOOGLE_CALENDAR_ID")
+        .unwrap_or_else(|_| "primary".to_string());
+    Ok(CalendarClient::new(creds, calendar_id))
+}
+
+// ── Checkable impl ───────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl crate::tools::Checkable for CalendarClient {
+    fn name(&self) -> &str {
+        "calendar"
+    }
+
+    async fn check_read(&self) -> crate::tools::CheckResult {
+        use crate::tools::check::timed;
+
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
+            // List the next event as the read probe — lightweight and representative.
+            let now = chrono::Utc::now();
+            let time_min = now.to_rfc3339();
+            self.query_events(&[
+                ("timeMin", time_min.as_str()),
+                ("singleEvents", "true"),
+                ("orderBy", "startTime"),
+                ("maxResults", "1"),
+            ])
+            .await
+        })
+        .await;
+
+        match result {
+            Ok(events) => {
+                let detail = if events.is_empty() {
+                    "no upcoming events".to_string()
+                } else {
+                    events
+                        .first()
+                        .and_then(|e| e.summary.clone())
+                        .unwrap_or_else(|| "next event found".to_string())
+                };
+                crate::tools::CheckResult::Healthy { latency_ms: latency, detail }
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("not configured") || msg.contains("not set") {
+                    crate::tools::CheckResult::Missing {
+                        env_var: "GOOGLE_CALENDAR_CREDENTIALS".into(),
+                    }
+                } else {
+                    crate::tools::CheckResult::Unhealthy { error: msg }
+                }
+            }
+        }
+    }
+}
+
 // ── Digest Helpers ───────────────────────────────────────────────────
 
 /// Lightweight event summary for the daily digest.

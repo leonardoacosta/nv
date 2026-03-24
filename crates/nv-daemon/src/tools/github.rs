@@ -1414,7 +1414,7 @@ impl crate::tools::Checkable for GithubClient {
 
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
-        let (latency, result) = timed(|| async {
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
             tokio::time::timeout(GH_TIMEOUT, async {
                 Command::new("gh")
                     .args(["auth", "status"])

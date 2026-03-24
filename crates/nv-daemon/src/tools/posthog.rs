@@ -487,7 +487,7 @@ impl crate::tools::Checkable for PosthogClient {
             }
         };
 
-        let (latency, result) = timed(|| async { client.get(&url).send().await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { client.get(&url).send().await }).await;
         match result {
             Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,

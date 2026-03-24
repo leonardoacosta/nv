@@ -532,7 +532,7 @@ impl crate::tools::Checkable for UpstashClient {
 
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
-        let (latency, result) = timed(|| async { self.execute_command(&["INFO"]).await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.execute_command(&["INFO"]).await }).await;
         match result {
             Ok(_) => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,

@@ -826,6 +826,8 @@ async fn main() -> anyhow::Result<()> {
         .as_ref()
         .map(|c| std::sync::Arc::new(c.clone()));
 
+    // Clone teams client before the async move so SharedDeps can hold its own reference.
+    let teams_client_for_workers = teams_client_for_http.clone();
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -1025,6 +1027,7 @@ async fn main() -> anyhow::Result<()> {
         ado_registry,
         cloudflare_registry,
         doppler_registry,
+        teams_client: teams_client_for_workers,
     });
 
     // Extract Telegram client and chat_id for reactions

@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 pub mod followup;
 #[allow(dead_code)]
 pub mod format;

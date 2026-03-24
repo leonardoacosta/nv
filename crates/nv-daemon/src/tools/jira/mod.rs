@@ -7,7 +7,7 @@ pub mod types;
 pub mod webhooks;
 
 pub use client::JiraClient;
-pub use registry::JiraRegistry;
+pub use registry::{JiraCheck, JiraRegistry};
 pub use tools::{
     describe_pending_action, format_issue_for_claude, format_issues_for_claude,
     jira_tool_definitions,

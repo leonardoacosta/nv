@@ -19,7 +19,7 @@ use crate::claude::ToolDefinition;
 // ── Constants ────────────────────────────────────────────────────────
 
 const DEFAULT_HA_URL: &str = "http://localhost:8123";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_RECENT_ENTITIES: usize = 20;
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ impl crate::tools::Checkable for HAClient {
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
         let url = format!("{}/api/", self.base_url);
-        let (latency, result) = timed(|| async { self.http.get(&url).send().await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
         match result {
             Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,
@@ -442,7 +442,7 @@ impl crate::tools::Checkable for HAClient {
         use crate::tools::check::timed;
         // POST /api/services/light/turn_on with empty body — expect 200 or 400
         let url = format!("{}/api/services/light/turn_on", self.base_url);
-        let (latency, result) = timed(|| async {
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
             self.http.post(&url).json(&serde_json::json!({})).send().await
         })
         .await;

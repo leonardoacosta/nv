@@ -209,6 +209,8 @@ pub struct SharedDeps {
     pub cloudflare_registry: Option<crate::tools::ServiceRegistry<crate::tools::cloudflare::CloudflareClient>>,
     /// Doppler client registry.
     pub doppler_registry: Option<crate::tools::ServiceRegistry<crate::tools::doppler::DopplerClient>>,
+    /// Cached Teams client — avoids rebuilding OAuth token state on every tool call.
+    pub teams_client: Option<std::sync::Arc<crate::channels::teams::client::TeamsClient>>,
     /// HTTP health-server port (from `daemon.health_port`, default 8400).
     /// Used by `cmd_digest()` in the orchestrator to avoid hardcoding 8400.
     pub health_port: u16,
@@ -1132,6 +1134,7 @@ impl Worker {
                         ado: deps.ado_registry.as_ref(),
                         cloudflare: deps.cloudflare_registry.as_ref(),
                         doppler: deps.doppler_registry.as_ref(),
+                        teams: deps.teams_client.as_deref(),
                     };
                     match tokio::time::timeout(
                         timeout_dur,

@@ -792,7 +792,7 @@ impl crate::tools::Checkable for SentryClient {
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
         let url = format!("{SENTRY_BASE_URL}/organizations/{}/", self.org);
-        let (latency, result) = timed(|| async { self.http.get(&url).send().await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
         match result {
             Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,

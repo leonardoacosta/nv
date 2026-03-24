@@ -289,7 +289,7 @@ impl crate::tools::Checkable for DockerClient {
 
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
-        let (latency, result) = timed(|| async {
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
             tokio::time::timeout(DOCKER_TIMEOUT, async {
                 Command::new("docker")
                     .arg("info")

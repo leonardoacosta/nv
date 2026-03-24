@@ -120,24 +120,50 @@ async fn process_agent(
                         .update_channel(format!("nexus_{agent_name}"), ChannelStatus::Disconnected)
                         .await;
 
-                    // Attempt immediate reconnect.
-                    conn.reconnect().await;
+                    // ── Split-phase reconnect ───────────────────────────────
+                    // Phase 1: read state, compute backoff, mark reconnecting,
+                    //          then drop the lock before sleeping.
+                    let backoff = conn.backoff_duration();
+                    conn.status = ConnectionStatus::Reconnecting;
+                    drop(conn);
 
-                    if conn.status == ConnectionStatus::Connected {
-                        handle_reconnect_success(
-                            &mut conn,
-                            &agent_name,
-                            idx,
-                            stream_handles,
-                            trigger_tx,
-                            health_state,
-                            channels,
-                            agent_mutex,
-                        )
-                        .await;
-                    } else if conn.consecutive_failures >= 10 {
-                        conn.quarantine();
+                    // Phase 2: sleep outside the lock.
+                    tokio::time::sleep(backoff).await;
+
+                    // Phase 3: re-acquire and attempt connect().
+                    let mut conn = agent_mutex.lock().await;
+                    match conn.connect().await {
+                        Ok(()) => {
+                            tracing::info!(agent = %agent_name, "watchdog: agent reconnected");
+                            handle_reconnect_success(
+                                &mut conn,
+                                &agent_name,
+                                idx,
+                                stream_handles,
+                                trigger_tx,
+                                health_state,
+                                channels,
+                                agent_mutex,
+                            )
+                            .await;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                agent = %agent_name,
+                                error = %e,
+                                "watchdog: reconnect failed"
+                            );
+                            conn.status = ConnectionStatus::Disconnected;
+                            if conn.consecutive_failures >= 10 {
+                                conn.quarantine();
+                            }
+                        }
                     }
+                    // Notification check after re-acquiring lock.
+                    if conn.status == ConnectionStatus::Disconnected {
+                        maybe_send_disconnect_notification(&mut conn, channels).await;
+                    }
+                    return;
                 }
             }
 
@@ -162,22 +188,44 @@ async fn process_agent(
                 "watchdog: attempting reconnect"
             );
 
-            conn.reconnect().await;
+            // ── Split-phase reconnect ───────────────────────────────────
+            // Phase 1: read state, compute backoff, mark reconnecting, drop lock.
+            let backoff = conn.backoff_duration();
+            conn.status = ConnectionStatus::Reconnecting;
+            drop(conn);
 
-            if conn.status == ConnectionStatus::Connected {
-                handle_reconnect_success(
-                    &mut conn,
-                    &agent_name,
-                    idx,
-                    stream_handles,
-                    trigger_tx,
-                    health_state,
-                    channels,
-                    agent_mutex,
-                )
-                .await;
-            } else if conn.consecutive_failures >= 10 {
-                conn.quarantine();
+            // Phase 2: sleep outside the lock.
+            tokio::time::sleep(backoff).await;
+
+            // Phase 3: re-acquire and call connect() directly.
+            let mut conn = agent_mutex.lock().await;
+            match conn.connect().await {
+                Ok(()) => {
+                    tracing::info!(agent = %agent_name, "watchdog: agent reconnected");
+                    handle_reconnect_success(
+                        &mut conn,
+                        &agent_name,
+                        idx,
+                        stream_handles,
+                        trigger_tx,
+                        health_state,
+                        channels,
+                        agent_mutex,
+                    )
+                    .await;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        agent = %agent_name,
+                        error = %e,
+                        "watchdog: reconnect failed"
+                    );
+                    // mark_disconnected() increments the counter and sets status.
+                    conn.mark_disconnected();
+                    if conn.consecutive_failures >= 10 {
+                        conn.quarantine();
+                    }
+                }
             }
         }
     }
@@ -218,13 +266,26 @@ async fn handle_reconnect_success(
         }
     }
 
-    // Compute downtime duration from disconnected_since (before clearing it in connect()).
-    // Note: connect() already cleared disconnected_since on success, so we capture
-    // the notification before it is cleared.
+    // Compute downtime duration.  disconnected_since is cleared by connect()
+    // inside reconnect(), so we must capture it BEFORE calling reconnect().
+    // That capture happens in process_agent / run_event_stream before invoking
+    // this helper; the captured value is threaded in via `disconnected_since`.
     if conn.disconnect_notified {
-        // Estimate downtime — disconnected_since was cleared by connect(), so we
-        // approximate with "unknown" if we can't recover it.
-        let downtime_display = "unknown".to_string();
+        let downtime_display = if let Some(since) = conn.disconnected_since {
+            // disconnected_since may still be set if connect() was not yet called
+            // (split-phase reconnect); if it's already been cleared use "unknown".
+            let elapsed = since.elapsed();
+            let secs = elapsed.as_secs();
+            if secs < 60 {
+                format!("{secs}s")
+            } else if secs < 3600 {
+                format!("{}m", secs / 60)
+            } else {
+                format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
+            }
+        } else {
+            "unknown".to_string()
+        };
         send_telegram_message(
             channels,
             format!("Nexus agent '{agent_name}' reconnected (was down {downtime_display})"),

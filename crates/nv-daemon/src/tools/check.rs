@@ -360,21 +360,34 @@ pub fn format_json(report: &CheckReport) -> serde_json::Value {
 
 // ── Timing helper ─────────────────────────────────────────────────────
 
-/// Measure the elapsed time of an async operation in milliseconds.
+/// Measure the elapsed time of an async probe operation in milliseconds,
+/// enforcing a hard deadline via `tokio::time::timeout`.
 ///
 /// Intended for use inside `check_read` / `check_write` implementations:
 /// ```rust,ignore
-/// let (latency_ms, result) = timed(|| async { /* probe */ }).await;
+/// let (latency_ms, result) = timed(Duration::from_secs(15), || async { /* probe */ }).await;
 /// ```
-pub async fn timed<F, Fut, T>(f: F) -> (u64, T)
+///
+/// On timeout, returns `(elapsed_ms, Err(anyhow!("probe timed out after {deadline:?}")))`.
+/// On success, flattens `Ok(inner_result)` so callers receive `anyhow::Result<T>` directly.
+/// On inner error, maps `Err(e)` through `Into<anyhow::Error>`.
+pub async fn timed<F, Fut, T, E>(deadline: std::time::Duration, f: F) -> (u64, anyhow::Result<T>)
 where
     F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = T>,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    E: Into<anyhow::Error>,
 {
     let start = Instant::now();
-    let result = f().await;
+    let result = tokio::time::timeout(deadline, f()).await;
     let latency_ms = start.elapsed().as_millis() as u64;
-    (latency_ms, result)
+    match result {
+        Ok(Ok(val)) => (latency_ms, Ok(val)),
+        Ok(Err(e)) => (latency_ms, Err(e.into())),
+        Err(_elapsed) => (
+            latency_ms,
+            Err(anyhow::anyhow!("probe timed out after {:?}", deadline)),
+        ),
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -542,13 +555,43 @@ mod tests {
 
     #[tokio::test]
     async fn timed_measures_duration() {
-        let (ms, val) = timed(|| async {
+        let deadline = std::time::Duration::from_secs(5);
+        let (ms, result) = timed(deadline, || async {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            42u32
+            Ok::<u32, anyhow::Error>(42)
         })
         .await;
-        assert_eq!(val, 42);
+        assert_eq!(result.unwrap(), 42);
         assert!(ms >= 10, "expected at least 10ms, got {ms}ms");
+    }
+
+    /// Verify timed() returns Err when the probe exceeds the deadline.
+    #[tokio::test]
+    async fn timed_returns_err_on_timeout() {
+        let deadline = std::time::Duration::from_millis(10);
+        let (_ms, result) = timed(deadline, || async {
+            // Probe sleeps 200ms — far exceeds 10ms deadline.
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            Ok::<(), anyhow::Error>(())
+        })
+        .await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("timed out"), "expected timeout message, got: {msg}");
+    }
+
+    /// Verify timed() returns Ok and measured latency when probe finishes in time.
+    #[tokio::test]
+    async fn timed_returns_ok_when_within_deadline() {
+        let deadline = std::time::Duration::from_secs(5);
+        let (ms, result) = timed(deadline, || async {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            Ok::<&str, anyhow::Error>("done")
+        })
+        .await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "done");
+        assert!(ms < 1000, "should complete quickly, got {ms}ms");
     }
 
     // ── [5.3] Extended check_all tests ───────────────────────────────

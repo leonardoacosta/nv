@@ -556,7 +556,7 @@ impl crate::tools::Checkable for DopplerClient {
     async fn check_read(&self) -> crate::tools::CheckResult {
         use crate::tools::check::timed;
         let url = format!("{DOPPLER_API}/v3/me");
-        let (latency, result) = timed(|| async { self.get(&url).send().await }).await;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.get(&url).send().await }).await;
         match result {
             Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
                 latency_ms: latency,

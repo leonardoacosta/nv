@@ -855,55 +855,55 @@ impl AgentLoop {
             // Execute each tool and collect results
             let mut tool_results = Vec::new();
             for (id, name, input) in &tool_uses {
-                // Determine timeout based on tool category
-                let timeout_secs = if crate::worker::WRITE_TOOLS.contains(&name.as_str()) {
-                    crate::worker::TOOL_TIMEOUT_WRITE
-                } else {
-                    crate::worker::TOOL_TIMEOUT_READ
-                };
-                let timeout_dur = std::time::Duration::from_secs(timeout_secs);
-
                 let tool_start = Instant::now();
-                let empty_regs = tools::ServiceRegistries {
-                    stripe: None,
-                    vercel: None,
-                    sentry: None,
-                    resend: None,
-                    ha: None,
-                    upstash: None,
-                    ado: None,
-                    cloudflare: None,
-                    doppler: None,
-                };
-                let result = match tokio::time::timeout(
-                    timeout_dur,
-                    tools::execute_tool(
+                // Handle get_recent_messages synchronously — MessageStore is !Send
+                // and cannot be passed into execute_tool_send.
+                let result: anyhow::Result<tools::ToolResult> = if name == "get_recent_messages" {
+                    let count = input["count"].as_u64().unwrap_or(20).min(100) as usize;
+                    match self.message_store.recent(count) {
+                        Ok(msgs) if msgs.is_empty() => {
+                            Ok(tools::ToolResult::Immediate("No messages in history.".into()))
+                        }
+                        Ok(msgs) => {
+                            let lines: Vec<String> = msgs.iter().map(|m| {
+                                let sender = if m.direction == "inbound" {
+                                    if m.sender.is_empty() { "unknown" } else { &m.sender }
+                                } else {
+                                    "Nova"
+                                };
+                                format!("{}: {}", sender, m.content)
+                            }).collect();
+                            Ok(tools::ToolResult::Immediate(lines.join("\n")))
+                        }
+                        Err(e) => Err(anyhow::anyhow!("failed to read messages: {e}")),
+                    }
+                } else {
+                    let empty_regs = tools::ServiceRegistries {
+                        stripe: None,
+                        vercel: None,
+                        sentry: None,
+                        resend: None,
+                        ha: None,
+                        upstash: None,
+                        ado: None,
+                        cloudflare: None,
+                        doppler: None,
+                        teams: None,
+                    };
+                    // execute_tool_send has built-in per-tool timeout; no outer wrapper needed.
+                    tools::execute_tool_send(
                         name,
                         input,
                         &self.memory,
                         self.jira_registry.as_ref(),
                         self.nexus_client.as_ref(),
-                        Some(&self.message_store),
                         &self.project_registry,
                         &self.channels,
                         None,
                         "primary",
                         &empty_regs,
-                    ),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_elapsed) => {
-                        tracing::warn!(
-                            tool = %name,
-                            timeout_secs,
-                            "tool execution timed out"
-                        );
-                        Err(anyhow::anyhow!(
-                            "Tool timed out after {timeout_secs}s"
-                        ))
-                    }
+                    )
+                    .await
                 };
                 let tool_duration_ms = tool_start.elapsed().as_millis() as i64;
 

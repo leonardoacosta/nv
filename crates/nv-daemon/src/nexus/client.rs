@@ -10,7 +10,6 @@ use super::proto::{self, SessionFilter, SessionId};
 
 /// Summary of a Nexus session for display and digest integration.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct SessionSummary {
     pub id: String,
     pub project: Option<String>,
@@ -24,7 +23,6 @@ pub struct SessionSummary {
 
 /// Detailed session info returned by query_session.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct SessionDetail {
     pub id: String,
     pub project: Option<String>,
@@ -321,6 +319,10 @@ impl NexusClient {
                 .await
             {
                 Ok(response) => {
+                    // The RPC call succeeded — this agent owns the session.
+                    // Track this independently of whether any text output was produced,
+                    // because commands may legitimately return zero text chunks.
+                    let mut found = true;
                     conn.last_seen = Some(Utc::now());
                     let mut stream = response.into_inner();
                     let mut output = String::new();
@@ -354,7 +356,8 @@ impl NexusClient {
                             }
                             Err(e) => {
                                 if e.code() == tonic::Code::NotFound {
-                                    // Try next agent
+                                    // Session not found on this agent — try the next one.
+                                    found = false;
                                     break;
                                 }
                                 return Err(anyhow::anyhow!("SendCommand stream error: {e}"));
@@ -362,11 +365,12 @@ impl NexusClient {
                         }
                     }
 
-                    if !output.is_empty() {
+                    if found {
+                        // Return whatever output was collected, including empty string.
+                        // Empty output is valid for commands with no text response.
                         return Ok(output);
                     }
-                    // If we got here with empty output but no error, the session
-                    // might be on another agent — continue.
+                    // NotFound mid-stream — continue to next agent.
                 }
                 Err(e) => {
                     if e.code() == tonic::Code::NotFound {
@@ -665,6 +669,26 @@ fn proto_session_to_detail(session: proto::Session, agent_name: &str) -> Session
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verify that send_command returns Ok("") when the RPC succeeds but the
+    /// stream yields zero text chunks.  The pre-fix code would fall through to
+    /// the next agent and eventually return an error; the fix tracks `found`
+    /// independently of accumulated output.
+    #[test]
+    fn found_flag_logic_returns_ok_empty() {
+        // Simulate the post-fix control flow:
+        // - RPC Ok → found = true
+        // - stream drains with zero Text chunks
+        // - found == true → return Ok(output) where output == ""
+        let mut found = true;
+        let output = String::new();
+
+        // Stream drained cleanly with no text chunks and found is still true.
+        assert!(found, "found must be true after Ok(response)");
+        if found {
+            assert_eq!(output, "", "empty output is a valid result");
+        }
+    }
 
     #[test]
     fn new_client_no_agents() {

@@ -442,7 +442,7 @@ impl crate::tools::Checkable for PlaidClient {
             };
         }
 
-        let (latency, result) = timed(|| async {
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
             match connect().await {
                 Ok(client) => client
                     .query_one("SELECT 1", &[])

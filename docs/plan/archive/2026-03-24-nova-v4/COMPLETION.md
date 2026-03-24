@@ -63,7 +63,7 @@ Digest pipeline wiring, HA service call wiring
 
 - LOC: 54,439 (Rust + TypeScript + Python)
 - Tests: 1,056 (1,012 nv-daemon + 37 nv-core + 7 other)
-- Specs archived: 84 total (48 pre-v4 + 36 nova-v4)
+- Specs archived: 60 fully complete (24 with open tasks restored to changes/)
 - Beads: 135 total (60 closed, 74 open, 1 in-progress)
 
 ## Lessons

@@ -140,12 +140,8 @@ pub struct Usage {
 }
 
 /// Tool definition in the Anthropic API format.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub input_schema: serde_json::Value,
-}
+/// Re-exported from nv-core so existing `crate::claude::ToolDefinition` imports still work.
+pub use nv_core::ToolDefinition;
 
 // ── CLI JSON Response Types (cold-start fallback) ───────────────────
 

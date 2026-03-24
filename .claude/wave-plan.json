@@ -18,57 +18,111 @@
       "wave": 1,
       "label": "MCP Scaffold + ToolDefinition Migration",
       "specs": [
-        {"name": "nv-tools-scaffold", "type": "new"}
+        {
+          "name": "nv-tools-scaffold",
+          "type": "new"
+        }
       ]
     },
     {
       "wave": 2,
       "label": "Extract HTTP Tools (stripe, vercel, sentry, resend, upstash)",
       "specs": [
-        {"name": "nv-tools-extract-wave-a", "type": "new"}
+        {
+          "name": "nv-tools-extract-wave-a",
+          "type": "new"
+        }
       ]
     },
     {
       "wave": 3,
       "label": "Extract HTTP Tools (ha, ado, plaid, doppler, cloudflare, posthog, neon)",
       "specs": [
-        {"name": "nv-tools-extract-wave-b", "type": "new"}
+        {
+          "name": "nv-tools-extract-wave-b",
+          "type": "new"
+        }
       ]
     },
     {
       "wave": 4,
       "label": "Extract Process Tools (docker, github, web, calendar, tailscale)",
       "specs": [
-        {"name": "nv-tools-extract-wave-c", "type": "new"}
+        {
+          "name": "nv-tools-extract-wave-c",
+          "type": "new"
+        }
       ]
     },
     {
       "wave": 5,
       "label": "SharedDeps Wiring (jira, teams, schedule, reminders, memory, nexus, etc.)",
       "specs": [
-        {"name": "nv-tools-shared-deps", "type": "new"}
+        {
+          "name": "nv-tools-shared-deps",
+          "type": "new"
+        }
       ]
     },
     {
       "wave": 6,
       "label": "Integration Test + Claude Code Verification",
       "specs": [
-        {"name": "nv-tools-integration-test", "type": "new"}
+        {
+          "name": "nv-tools-integration-test",
+          "type": "new"
+        }
       ]
     }
   ],
   "dependency_map": {
-    "nv-tools-extract-wave-a": ["nv-tools-scaffold"],
-    "nv-tools-extract-wave-b": ["nv-tools-extract-wave-a"],
-    "nv-tools-extract-wave-c": ["nv-tools-extract-wave-b"],
-    "nv-tools-shared-deps": ["nv-tools-extract-wave-c"],
-    "nv-tools-integration-test": ["nv-tools-shared-deps"]
+    "nv-tools-extract-wave-a": [
+      "nv-tools-scaffold"
+    ],
+    "nv-tools-extract-wave-b": [
+      "nv-tools-extract-wave-a"
+    ],
+    "nv-tools-extract-wave-c": [
+      "nv-tools-extract-wave-b"
+    ],
+    "nv-tools-shared-deps": [
+      "nv-tools-extract-wave-c"
+    ],
+    "nv-tools-integration-test": [
+      "nv-tools-shared-deps"
+    ]
   },
   "conflict_map": {
     "crates/nv-daemon/src/tools/mod.rs": [
-      "nv-tools-scaffold", "nv-tools-extract-wave-a", "nv-tools-extract-wave-b",
-      "nv-tools-extract-wave-c", "nv-tools-shared-deps"
+      "nv-tools-scaffold",
+      "nv-tools-extract-wave-a",
+      "nv-tools-extract-wave-b",
+      "nv-tools-extract-wave-c",
+      "nv-tools-shared-deps"
     ]
   },
-  "decisions": []
+  "decisions": [
+    {
+      "date": "2026-03-24",
+      "decision": "Execute all 6 waves via sequential /apply instead of /apply:all",
+      "rationale": "All waves are single-spec (tools/mod.rs conflict). Zero parallelism benefit from consolidation.",
+      "source": "guardrail",
+      "affected_waves": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "affected_specs": [
+        "nv-tools-scaffold",
+        "nv-tools-extract-wave-a",
+        "nv-tools-extract-wave-b",
+        "nv-tools-extract-wave-c",
+        "nv-tools-shared-deps",
+        "nv-tools-integration-test"
+      ]
+    }
+  ]
 }

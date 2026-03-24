@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/nv-core", "crates/nv-daemon", "crates/nv-cli"]
+members = ["crates/nv-core", "crates/nv-daemon", "crates/nv-cli", "crates/nv-tools"]
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }

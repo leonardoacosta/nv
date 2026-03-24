@@ -34,12 +34,12 @@
 
 ### Remaining Tests
 
-- [ ] [4.1] Unit test: `ClassifierJson` with missing optional fields -- deserialize JSON with no `project_code` and no `owner_reason`, verify defaults to None/empty [owner:api-engineer]
-- [ ] [4.2] Unit test: unknown owner value handling -- simulate classifier returning `owner: "unknown_entity"`, verify detection logic would default to "nova" (test the match arm in detect_obligation) [owner:api-engineer]
-- [ ] [4.3] Unit test: empty detected_action with is_obligation=true -- verify the validation check returns None (not a valid obligation without an action description) [owner:api-engineer]
+- [x] [4.1] Unit test: `ClassifierJson` with missing optional fields -- deserialize JSON with no `project_code` and no `owner_reason`, verify defaults to None/empty [owner:api-engineer]
+- [x] [4.2] Unit test: unknown owner value handling -- simulate classifier returning `owner: "unknown_entity"`, verify detection logic would default to "nova" (test the match arm in detect_obligation) [owner:api-engineer]
+- [x] [4.3] Unit test: empty detected_action with is_obligation=true -- verify the validation check returns None (not a valid obligation without an action description) [owner:api-engineer]
 
 ### Verify
 
-- [ ] [5.1] `cargo build` passes for all workspace members [owner:api-engineer]
-- [ ] [5.2] `cargo test -p nv-daemon` -- all obligation_detector tests pass [owner:api-engineer]
-- [ ] [5.3] `cargo clippy -- -D warnings` passes [owner:api-engineer]
+- [x] [5.1] `cargo build` passes for all workspace members [owner:api-engineer]
+- [x] [5.2] `cargo test -p nv-daemon` -- all obligation_detector tests pass [owner:api-engineer]
+- [x] [5.3] `cargo clippy -- -D warnings` passes [owner:api-engineer]

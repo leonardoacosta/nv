@@ -239,6 +239,45 @@ impl ObligationStore {
         Ok(rows_changed > 0)
     }
 
+    /// Update both the status and owner of an obligation and touch `updated_at`.
+    ///
+    /// Used when a Telegram inline keyboard action changes who owns the obligation
+    /// (e.g. "Handle" sets owner=Leo, "Delegate to Nova" sets owner=Nova).
+    ///
+    /// Returns `true` if a row was updated, `false` if the id was not found.
+    pub fn update_status_and_owner(
+        &self,
+        id: &str,
+        new_status: &ObligationStatus,
+        new_owner: &ObligationOwner,
+    ) -> Result<bool> {
+        let rows_changed = self.conn.execute(
+            "UPDATE obligations
+             SET status = ?1, owner = ?2, updated_at = datetime('now')
+             WHERE id = ?3",
+            params![new_status.as_str(), new_owner.as_str(), id],
+        )?;
+
+        Ok(rows_changed > 0)
+    }
+
+    /// Count open obligations grouped by priority.
+    ///
+    /// Returns a `Vec<(priority, count)>` ordered by priority ASC.
+    pub fn count_open_by_priority(&self) -> Result<Vec<(i32, i64)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT priority, COUNT(*) FROM obligations
+             WHERE status = 'open'
+             GROUP BY priority
+             ORDER BY priority ASC",
+        )?;
+
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, i32>(0)?, row.get::<_, i64>(1)?)))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("count_open_by_priority failed: {e}"))
+    }
+
     /// Count obligations that are currently open.
     pub fn count_open(&self) -> Result<i64> {
         let count: i64 = self.conn.query_row(

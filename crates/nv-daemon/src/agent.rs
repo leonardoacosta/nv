@@ -112,6 +112,9 @@ pub fn check_bootstrap_state() -> bool {
 /// Build the full system context by concatenating the system prompt
 /// with identity/soul/user files (normal mode) or bootstrap instructions
 /// (first-run mode).
+///
+/// Also injects a listing of available memory files so Nova always knows
+/// what context files exist before calling `read_memory`.
 pub fn build_system_context() -> String {
     let mut context = load_system_prompt();
 
@@ -129,6 +132,15 @@ pub fn build_system_context() -> String {
             context.push_str("\n\n");
             context.push_str(&user);
         }
+
+        // Inject available memory file listing for reliable memory reads
+        let memory_listing = list_memory_files();
+        if !memory_listing.is_empty() {
+            context.push_str("\n\n## Available Memory Files\n\n");
+            context.push_str("The following files are available in `~/.nv/memory/`. ");
+            context.push_str("Use `read_memory` or `search_memory` to access them:\n\n");
+            context.push_str(&memory_listing);
+        }
     } else {
         // Bootstrap mode — load bootstrap instructions instead
         if let Some(bootstrap) = load_file_optional("bootstrap.md") {
@@ -138,6 +150,44 @@ pub fn build_system_context() -> String {
     }
 
     context
+}
+
+/// List available memory files in `~/.nv/memory/`, formatted as a bullet list.
+///
+/// Returns a markdown bullet list of filenames (`.md` files only), or an
+/// empty string if the directory is missing or contains no markdown files.
+fn list_memory_files() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let memory_dir = std::path::Path::new(&home).join(".nv").join("memory");
+
+    let entries = match std::fs::read_dir(&memory_dir) {
+        Ok(e) => e,
+        Err(_) => return String::new(),
+    };
+
+    let mut files: Vec<String> = entries
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().into_string().ok()?;
+            if name.ends_with(".md") {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if files.is_empty() {
+        return String::new();
+    }
+
+    files.sort();
+
+    files
+        .iter()
+        .map(|f| format!("- `{f}`"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ── Channel Registry ────────────────────────────────────────────────

@@ -118,6 +118,8 @@ pub enum Trigger {
 pub enum CronEvent {
     Digest,
     MemoryCleanup,
+    /// 7am daily morning briefing: open obligation summary.
+    MorningBriefing,
     /// A user-created recurring schedule fired from the scheduler loop.
     UserSchedule { name: String, action: String },
 }

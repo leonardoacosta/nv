@@ -406,6 +406,16 @@ impl Orchestrator {
                 self.handle_bot_commands(triggers).await;
                 return;
             }
+            TriggerClass::Digest => {
+                // MorningBriefing is handled inline — no worker needed.
+                // Regular Digest falls through to worker dispatch.
+                for trigger in triggers.iter() {
+                    if let Trigger::Cron(nv_core::types::CronEvent::MorningBriefing) = trigger {
+                        self.send_morning_briefing().await;
+                        return;
+                    }
+                }
+            }
             _ => {}
         }
 
@@ -531,29 +541,16 @@ impl Orchestrator {
                         };
                         // MutexGuard is dropped above; now safe to await.
 
-                        // Notify via Telegram for P0-P1 obligations
+                        // Notify via Telegram for P0-P1 obligations with card + keyboard
                         if let Some(ob) = store_result {
                             if ob.priority <= 1 {
                                 if let (Some(tg), Some(chat_id)) =
                                     (telegram_client, telegram_chat_id)
                                 {
-                                    let priority_label = if ob.priority == 0 {
-                                        "CRITICAL"
-                                    } else {
-                                        "HIGH"
-                                    };
-                                    let notification = format!(
-                                        "[P{priority} {priority_label}] New obligation detected\n\
-                                         Channel: {channel}\n\
-                                         Owner: {owner}\n\
-                                         Action: {action}",
-                                        priority = ob.priority,
-                                        channel = msg_channel,
-                                        owner = ob.owner,
-                                        action = ob.detected_action,
-                                    );
+                                    let card = format_obligation_card(&ob, &msg_channel);
+                                    let keyboard = obligation_keyboard(&ob.id);
                                     if let Err(e) = tg
-                                        .send_message(chat_id, &notification, None, None)
+                                        .send_message(chat_id, &card, None, Some(&keyboard))
                                         .await
                                     {
                                         tracing::warn!(
@@ -753,6 +750,39 @@ impl Orchestrator {
                     // Session error create-bug callback (stub — routing via nexus_err:bug:)
                     if let Some(_event_id) = data.strip_prefix("bug:") {
                         tracing::debug!("bug callback (not yet implemented)");
+                        continue;
+                    }
+
+                    // Obligation action callbacks
+                    if let Some(ob_id) = data.strip_prefix("ob_handle:") {
+                        self.handle_obligation_callback(
+                            ob_id,
+                            nv_core::types::ObligationStatus::InProgress,
+                            Some(nv_core::types::ObligationOwner::Leo),
+                            tg_chat_id,
+                            original_msg_id,
+                            "Obligation assigned to Leo.",
+                        ).await;
+                        continue;
+                    } else if let Some(ob_id) = data.strip_prefix("ob_delegate:") {
+                        self.handle_obligation_callback(
+                            ob_id,
+                            nv_core::types::ObligationStatus::InProgress,
+                            Some(nv_core::types::ObligationOwner::Nova),
+                            tg_chat_id,
+                            original_msg_id,
+                            "Obligation delegated to Nova.",
+                        ).await;
+                        continue;
+                    } else if let Some(ob_id) = data.strip_prefix("ob_dismiss:") {
+                        self.handle_obligation_callback(
+                            ob_id,
+                            nv_core::types::ObligationStatus::Dismissed,
+                            None,
+                            tg_chat_id,
+                            original_msg_id,
+                            "Obligation dismissed.",
+                        ).await;
                         continue;
                     }
 
@@ -1140,6 +1170,114 @@ impl Orchestrator {
         )
     }
 
+    // ── Obligation Callback Handler ─────────────────────────────────
+
+    /// Handle an obligation inline keyboard callback (Handle / Delegate / Dismiss).
+    ///
+    /// Updates the obligation's status (and optionally owner) in the store,
+    /// then edits the original Telegram message to confirm the action.
+    async fn handle_obligation_callback(
+        &self,
+        obligation_id: &str,
+        new_status: nv_core::types::ObligationStatus,
+        new_owner: Option<nv_core::types::ObligationOwner>,
+        tg_chat_id: Option<i64>,
+        original_msg_id: Option<i64>,
+        confirmation_text: &str,
+    ) {
+        let Some(store_arc) = &self.deps.obligation_store else {
+            tracing::warn!("obligation callback but no obligation store configured");
+            return;
+        };
+
+        let updated = match store_arc.lock() {
+            Ok(store) => {
+                let result = if let Some(ref owner) = new_owner {
+                    store.update_status_and_owner(obligation_id, &new_status, owner)
+                } else {
+                    store.update_status(obligation_id, &new_status)
+                };
+                match result {
+                    Ok(changed) => changed,
+                    Err(e) => {
+                        tracing::warn!(error = %e, id = obligation_id, "obligation callback: store update failed");
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "obligation callback: store mutex poisoned");
+                false
+            }
+        };
+
+        if !updated {
+            tracing::warn!(id = obligation_id, "obligation callback: obligation not found");
+        }
+
+        // Edit the original Telegram message to confirm
+        if let (Some(tg_channel), Some(chat_id), Some(msg_id)) = (
+            self.channels
+                .get("telegram")
+                .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+            tg_chat_id.or(self.telegram_chat_id),
+            original_msg_id,
+        ) {
+            if let Err(e) = tg_channel
+                .client
+                .edit_message(chat_id, msg_id, confirmation_text, None)
+                .await
+            {
+                tracing::warn!(error = %e, "obligation callback: failed to edit Telegram message");
+            }
+        }
+
+        tracing::info!(
+            id = obligation_id,
+            status = %new_status,
+            owner = ?new_owner.as_ref().map(|o| o.as_str()),
+            "obligation updated via Telegram callback"
+        );
+    }
+
+    // ── Morning Briefing Handler ────────────────────────────────────
+
+    /// Send the morning briefing digest — open obligation summary via Telegram.
+    async fn send_morning_briefing(&self) {
+        let Some(store_arc) = &self.deps.obligation_store else {
+            tracing::debug!("morning briefing: no obligation store configured");
+            return;
+        };
+
+        let (by_priority, total_open) = match store_arc.lock() {
+            Ok(store) => {
+                let by_priority = store.count_open_by_priority().unwrap_or_default();
+                let total_open = by_priority.iter().map(|(_, c)| c).sum::<i64>();
+                (by_priority, total_open)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "morning briefing: store mutex poisoned");
+                return;
+            }
+        };
+
+        let message = format_morning_briefing(&by_priority, total_open);
+
+        if let Some(channel) = self.channels.get("telegram") {
+            let msg = OutboundMessage {
+                channel: "telegram".into(),
+                content: message,
+                reply_to: None,
+                keyboard: None,
+            };
+            if let Err(e) = channel.send_message(msg).await {
+                tracing::warn!(error = %e, "morning briefing: failed to send Telegram message");
+            } else {
+                tracing::info!(total_open, "morning briefing sent");
+            }
+        }
+    }
+
     // ── Nexus Error Handlers ────────────────────────────────────────
 
     async fn handle_nexus_view_error(&mut self, session_id: &str) {
@@ -1420,6 +1558,104 @@ fn humanize_tool(tool: &str) -> (String, String) {
         desc.to_string()
     };
     (emoji.to_string(), description)
+}
+
+// ── Obligation Telegram Helpers ─────────────────────────────────────
+
+/// Format a detected obligation as a Telegram HTML card.
+///
+/// Uses HTML parse mode. Bold title with priority badge, source channel,
+/// project code (if present), detected action, and owner with reason.
+fn format_obligation_card(ob: &nv_core::types::Obligation, source_channel: &str) -> String {
+    let priority_label = match ob.priority {
+        0 => "P0 CRITICAL",
+        1 => "P1 HIGH",
+        2 => "P2 IMPORTANT",
+        3 => "P3 MINOR",
+        _ => "P4 BACKLOG",
+    };
+
+    let mut lines = Vec::new();
+    lines.push(format!("<b>[{priority_label}] New Obligation</b>"));
+    lines.push(format!("Channel: <code>{}</code>", escape_html_plain(source_channel)));
+
+    if let Some(ref code) = ob.project_code {
+        lines.push(format!("Project: <code>{}</code>", escape_html_plain(code)));
+    }
+
+    lines.push(format!("Action: {}", escape_html_plain(&ob.detected_action)));
+    lines.push(format!("Owner: <b>{}</b>", escape_html_plain(ob.owner.as_str())));
+
+    if let Some(ref reason) = ob.owner_reason {
+        lines.push(format!("<i>{}</i>", escape_html_plain(reason)));
+    }
+
+    lines.join("\n")
+}
+
+/// Build the obligation action inline keyboard.
+///
+/// Three buttons in a single row:
+/// - "Handle" → `ob_handle:{id}` (sets owner=Leo, status=in_progress)
+/// - "Delegate to Nova" → `ob_delegate:{id}` (sets owner=Nova, status=in_progress)
+/// - "Dismiss" → `ob_dismiss:{id}` (sets status=dismissed)
+fn obligation_keyboard(obligation_id: &str) -> nv_core::types::InlineKeyboard {
+    nv_core::types::InlineKeyboard {
+        rows: vec![vec![
+            nv_core::types::InlineButton {
+                text: "Handle".to_string(),
+                callback_data: format!("ob_handle:{obligation_id}"),
+            },
+            nv_core::types::InlineButton {
+                text: "Delegate to Nova".to_string(),
+                callback_data: format!("ob_delegate:{obligation_id}"),
+            },
+            nv_core::types::InlineButton {
+                text: "Dismiss".to_string(),
+                callback_data: format!("ob_dismiss:{obligation_id}"),
+            },
+        ]],
+    }
+}
+
+/// Escape HTML special characters for Telegram HTML parse mode.
+fn escape_html_plain(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Format the morning briefing digest message.
+///
+/// Counts open obligations by priority and summarises active sessions.
+fn format_morning_briefing(
+    open_obligations: &[(i32, i64)],
+    total_open: i64,
+) -> String {
+    let mut lines = Vec::new();
+    lines.push("<b>Good morning. Daily briefing:</b>".to_string());
+    lines.push(String::new());
+
+    if total_open == 0 {
+        lines.push("No open obligations.".to_string());
+    } else {
+        lines.push(format!(
+            "<b>Open obligations:</b> {} total",
+            total_open
+        ));
+        for (priority, count) in open_obligations {
+            let label = match priority {
+                0 => "P0 Critical",
+                1 => "P1 High",
+                2 => "P2 Important",
+                3 => "P3 Minor",
+                _ => "P4 Backlog",
+            };
+            lines.push(format!("  {label}: {count}"));
+        }
+    }
+
+    lines.join("\n")
 }
 
 fn strip_ansi_codes(s: &str) -> String {

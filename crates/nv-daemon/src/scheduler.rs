@@ -2,6 +2,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use chrono::Timelike;
 use nv_core::types::{CronEvent, Trigger};
 use tokio::sync::mpsc;
 
@@ -13,6 +14,13 @@ const MIN_INTERVAL_MINUTES: u64 = 5;
 
 /// How often to poll user schedules for missed fires (seconds).
 const USER_SCHEDULE_POLL_SECS: u64 = 60;
+
+/// How often to poll for morning briefing fires (seconds).
+/// We check every 60 seconds — same cadence as user schedules.
+const MORNING_BRIEFING_POLL_SECS: u64 = 60;
+
+/// Hour (24-hour, local time) at which the morning briefing fires.
+const MORNING_BRIEFING_HOUR: u32 = 7;
 
 /// Spawn the cron scheduler task.
 ///
@@ -72,6 +80,14 @@ pub fn spawn_scheduler(
         // Skip the immediate first tick (allow init to settle)
         user_sched_interval.tick().await;
 
+        // Morning briefing poll interval (60 seconds)
+        let mut morning_briefing_interval =
+            tokio::time::interval(Duration::from_secs(MORNING_BRIEFING_POLL_SECS));
+        morning_briefing_interval.tick().await;
+
+        // Track the last date we sent a morning briefing to prevent duplicate fires.
+        let mut last_briefing_date: Option<chrono::NaiveDate> = None;
+
         loop {
             tokio::select! {
                 _ = digest_interval.tick() => {
@@ -84,6 +100,23 @@ pub fn spawn_scheduler(
                 _ = user_sched_interval.tick() => {
                     if let Some(ref store_arc) = schedule_store {
                         poll_user_schedules(store_arc, &trigger_tx);
+                    }
+                }
+                _ = morning_briefing_interval.tick() => {
+                    let now = chrono::Local::now();
+                    let today = now.date_naive();
+                    let current_hour = now.hour();
+
+                    // Fire once per day when the clock passes MORNING_BRIEFING_HOUR
+                    if current_hour >= MORNING_BRIEFING_HOUR
+                        && last_briefing_date.map_or(true, |d| d < today)
+                    {
+                        last_briefing_date = Some(today);
+                        tracing::info!(hour = current_hour, "scheduler: morning briefing tick");
+                        if trigger_tx.send(Trigger::Cron(CronEvent::MorningBriefing)).is_err() {
+                            tracing::info!("scheduler: trigger channel closed on morning briefing tick");
+                            break;
+                        }
                     }
                 }
             }

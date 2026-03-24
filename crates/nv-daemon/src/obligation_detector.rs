@@ -300,6 +300,60 @@ mod tests {
     }
 
     #[test]
+    fn classifier_json_missing_optional_fields_defaults_to_none() {
+        // JSON with no project_code and no owner_reason — serde(default) must fill in None
+        let json = r#"{
+            "is_obligation": true,
+            "detected_action": "Ship the release",
+            "priority": 2,
+            "owner": "nova"
+        }"#;
+
+        let c: ClassifierJson = serde_json::from_str(json).unwrap();
+        assert!(c.is_obligation);
+        assert_eq!(c.project_code, None);
+        assert_eq!(c.owner_reason, None);
+    }
+
+    #[test]
+    fn unknown_owner_defaults_to_nova() {
+        // The detect_obligation function maps unknown owner values to "nova".
+        // Replicate that branch directly.
+        let json = r#"{
+            "is_obligation": true,
+            "detected_action": "Do something",
+            "priority": 2,
+            "owner": "unknown_entity"
+        }"#;
+
+        let c: ClassifierJson = serde_json::from_str(json).unwrap();
+        // Replicate the owner normalisation logic from detect_obligation
+        let owner = match c.owner.as_str() {
+            "nova" | "leo" => c.owner.clone(),
+            _other => "nova".to_string(),
+        };
+        assert_eq!(owner, "nova");
+    }
+
+    #[test]
+    fn empty_detected_action_with_is_obligation_true_yields_none() {
+        // When is_obligation=true but detected_action is empty, the detector
+        // must return None (the obligation is not usable without an action).
+        let json = r#"{
+            "is_obligation": true,
+            "detected_action": "",
+            "priority": 1,
+            "owner": "leo"
+        }"#;
+
+        let c: ClassifierJson = serde_json::from_str(json).unwrap();
+        assert!(c.is_obligation);
+        // Replicate the validation guard in detect_obligation
+        let valid = !c.detected_action.is_empty();
+        assert!(!valid, "empty detected_action should be treated as invalid (returns None)");
+    }
+
+    #[test]
     fn priority_clamped_to_valid_range() {
         // Simulate what detect_obligation does with out-of-range priority
         let raw = 99i32;

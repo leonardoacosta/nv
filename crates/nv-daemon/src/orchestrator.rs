@@ -2275,4 +2275,109 @@ mod tests {
         let result = format_status_dots("oo", output);
         assert!(result.contains("\u{1F534}")); // red dot
     }
+
+    // ── Obligation Telegram Helper Tests ────────────────────────────
+
+    fn make_obligation(priority: i32, project_code: Option<&str>, owner_reason: Option<&str>) -> nv_core::types::Obligation {
+        nv_core::types::Obligation {
+            id: "ob-test-1".to_string(),
+            source_channel: "telegram".to_string(),
+            source_message: None,
+            detected_action: "Deploy the new service".to_string(),
+            project_code: project_code.map(String::from),
+            priority,
+            status: nv_core::types::ObligationStatus::Open,
+            owner: nv_core::types::ObligationOwner::Nova,
+            owner_reason: owner_reason.map(String::from),
+            created_at: "2026-03-24T00:00:00Z".to_string(),
+            updated_at: "2026-03-24T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn format_obligation_card_p0_priority() {
+        let ob = make_obligation(0, Some("NV"), None);
+        let card = format_obligation_card(&ob, "telegram");
+        assert!(card.contains("P0 CRITICAL"), "expected 'P0 CRITICAL' in card, got: {card}");
+        assert!(card.contains("<code>telegram</code>"), "expected source channel in code tags");
+        assert!(card.contains("Deploy the new service"), "expected detected action text");
+    }
+
+    #[test]
+    fn format_obligation_card_no_project_code_omits_project_line() {
+        let ob = make_obligation(2, None, None);
+        let card = format_obligation_card(&ob, "telegram");
+        assert!(!card.contains("Project:"), "project line should be omitted when project_code is None");
+    }
+
+    #[test]
+    fn format_obligation_card_with_project_code_shows_project() {
+        let ob = make_obligation(2, Some("OO"), None);
+        let card = format_obligation_card(&ob, "telegram");
+        assert!(card.contains("Project: <code>OO</code>"), "expected 'Project: OO' in card, got: {card}");
+    }
+
+    #[test]
+    fn format_obligation_card_with_owner_reason_shows_reason() {
+        let ob = make_obligation(2, None, Some("Nova can send the message autonomously."));
+        let card = format_obligation_card(&ob, "telegram");
+        assert!(
+            card.contains("Nova can send the message autonomously."),
+            "expected owner reason in card, got: {card}"
+        );
+    }
+
+    #[test]
+    fn obligation_keyboard_has_three_buttons_with_correct_prefixes() {
+        let kb = obligation_keyboard("ob-abc-123");
+        assert_eq!(kb.rows.len(), 1, "expected 1 row");
+        let row = &kb.rows[0];
+        assert_eq!(row.len(), 3, "expected 3 buttons");
+
+        let handle = row.iter().find(|b| b.callback_data.starts_with("ob_handle:"));
+        let delegate = row.iter().find(|b| b.callback_data.starts_with("ob_delegate:"));
+        let dismiss = row.iter().find(|b| b.callback_data.starts_with("ob_dismiss:"));
+
+        assert!(handle.is_some(), "missing ob_handle button");
+        assert!(delegate.is_some(), "missing ob_delegate button");
+        assert!(dismiss.is_some(), "missing ob_dismiss button");
+
+        // All callbacks must contain the obligation_id
+        for btn in row {
+            assert!(
+                btn.callback_data.contains("ob-abc-123"),
+                "button callback_data missing obligation_id: {}",
+                btn.callback_data
+            );
+        }
+    }
+
+    #[test]
+    fn format_morning_briefing_zero_obligations() {
+        let result = format_morning_briefing(&[], 0);
+        assert!(result.contains("No open obligations."), "expected 'No open obligations.' in briefing, got: {result}");
+    }
+
+    #[test]
+    fn format_morning_briefing_mixed_priorities_shows_counts_and_total() {
+        let open_obligations = vec![(0i32, 1i64), (2i32, 3i64), (4i32, 2i64)];
+        let total = 6i64;
+        let result = format_morning_briefing(&open_obligations, total);
+        assert!(result.contains("6 total"), "expected total count, got: {result}");
+        assert!(result.contains('1'), "expected P0 count");
+        assert!(result.contains('3'), "expected P2 count");
+        assert!(result.contains('2'), "expected P4 count");
+    }
+
+    #[test]
+    fn format_morning_briefing_html_structure() {
+        let open_obligations = vec![(0i32, 1i64), (1i32, 2i64), (2i32, 3i64), (3i32, 1i64), (4i32, 0i64)];
+        let result = format_morning_briefing(&open_obligations, 7);
+        assert!(result.contains("<b>"), "expected <b> tag in briefing");
+        assert!(result.contains("P0 Critical"), "expected P0 label");
+        assert!(result.contains("P1 High"), "expected P1 label");
+        assert!(result.contains("P2 Important"), "expected P2 label");
+        assert!(result.contains("P3 Minor"), "expected P3 label");
+        assert!(result.contains("P4 Backlog"), "expected P4 label");
+    }
 }

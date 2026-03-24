@@ -77,7 +77,7 @@ export type ConfigGetResponse = Record<string, unknown>;
 // ── PUT /api/config ────────────────────────────────────────────────────────
 
 export interface PutConfigRequest {
-  fields: Record<string, string | number | boolean>;
+  fields: Record<string, unknown>;
 }
 
 export interface PutConfigResponse {

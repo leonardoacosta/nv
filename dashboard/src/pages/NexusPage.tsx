@@ -73,8 +73,28 @@ export default function NexusPage() {
     try {
       const res = await fetch("/api/server-health");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as HealthMetrics;
-      setHealth(data);
+      const data = (await res.json()) as ServerHealthGetResponse;
+
+      // Map backend status strings to the HealthMetrics union
+      const mapBackendStatus = (
+        s: ServerHealthGetResponse["status"],
+      ): HealthMetrics["status"] => {
+        if (s === "healthy") return "ok";
+        if (s === "critical") return "down";
+        return s; // "degraded" maps directly
+      };
+
+      if (data.latest) {
+        setHealth({
+          cpu_percent: data.latest.cpu_percent ?? 0,
+          memory_used_mb: data.latest.memory_used_mb ?? 0,
+          memory_total_mb: data.latest.memory_total_mb ?? 0,
+          uptime_seconds: data.latest.uptime_seconds ?? 0,
+          status: mapBackendStatus(data.status),
+        });
+      } else {
+        setHealth(null);
+      }
     } catch (err) {
       setHealthError(
         err instanceof Error ? err.message : "Failed to load health metrics"

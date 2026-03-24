@@ -9,6 +9,7 @@ import {
   Key,
   TrendingUp,
 } from "lucide-react";
+import type { StatsGetResponse } from "@/types/api";
 
 interface ToolUsage {
   name: string;
@@ -90,26 +91,17 @@ export default function UsagePage() {
     setLoading(true);
     setError(null);
     try {
-      // Try dedicated usage endpoint, fall back to sessions for tool data
-      const res = await fetch("/api/sessions");
+      const res = await fetch("/stats");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const sessions = (await res.json()) as Array<{
-        messages?: number;
-        tools_executed?: number;
-        tool_stats?: ToolUsage[];
-      }>;
+      const stats = (await res.json()) as StatsGetResponse;
 
-      const tools: ToolUsage[] = sessions
-        .flatMap((s) => s.tool_stats ?? [])
-        .reduce<ToolUsage[]>((acc, t) => {
-          const existing = acc.find((x) => x.name === t.name);
-          if (existing) {
-            existing.count += t.count;
-          } else {
-            acc.push({ ...t });
-          }
-          return acc;
-        }, [])
+      const tools: ToolUsage[] = (stats.tool_usage?.per_tool ?? [])
+        .map((t) => ({
+          name: t.name,
+          count: t.count,
+          avg_duration_ms: t.avg_duration_ms ?? 0,
+          success_rate: t.count > 0 ? t.success_count / t.count : 0,
+        }))
         .sort((a, b) => b.count - a.count);
 
       setData({

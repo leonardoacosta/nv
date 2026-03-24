@@ -45,7 +45,7 @@ export default function IntegrationsPage() {
   }, []);
 
   const handleSave = async (
-    id: string,
+    _id: string,
     config: Record<string, string>
   ): Promise<void> => {
     const res = await fetch(`/api/config`, {

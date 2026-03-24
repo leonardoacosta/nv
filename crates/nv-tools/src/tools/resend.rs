@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 use serde::Deserialize;
 
-use crate::claude::ToolDefinition;
+use nv_core::ToolDefinition;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ pub struct EmailsResponse {
 /// HTTP client for the Resend REST API.
 #[derive(Debug)]
 pub struct ResendClient {
-    http: reqwest::Client,
+    pub http: reqwest::Client,
 }
 
 impl ResendClient {
@@ -233,36 +233,6 @@ pub fn resend_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
     ]
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for ResendClient {
-    fn name(&self) -> &str {
-        "resend"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let url = format!("{RESEND_BASE_URL}/domains");
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: "domains endpoint reachable".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "API key invalid (401) — check RESEND_API_KEY".into(),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────

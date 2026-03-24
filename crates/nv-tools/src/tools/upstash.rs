@@ -11,7 +11,7 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 use serde::Deserialize;
 
-use crate::claude::ToolDefinition;
+use nv_core::ToolDefinition;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -80,7 +80,7 @@ impl UpstashClient {
     /// Execute a Redis command via the Upstash REST API.
     ///
     /// Sends a POST with a JSON array body `["COMMAND", "arg1", ...]`.
-    async fn execute_command(&self, args: &[&str]) -> Result<serde_json::Value> {
+    pub async fn execute_command(&self, args: &[&str]) -> Result<serde_json::Value> {
         let resp = self
             .http
             .post(&self.rest_url)
@@ -202,7 +202,6 @@ fn parse_info(info_str: &str) -> UpstashInfo {
 
 /// Format Redis INFO for Telegram output.
 pub fn format_info(info: &UpstashInfo) -> String {
-    // Build summary line components
     let keys_str = info.total_keys.as_deref().unwrap_or("?");
     let mem_str = info.used_memory_human.as_deref().unwrap_or("?");
 
@@ -308,29 +307,6 @@ pub fn upstash_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
     ]
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for UpstashClient {
-    fn name(&self) -> &str {
-        "upstash"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.execute_command(&["INFO"]).await }).await;
-        match result {
-            Ok(_) => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: "INFO command succeeded".into(),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -523,7 +499,6 @@ db0:keys=42,expires=10,avg_ttl=0\r\n";
             .unwrap_err()
             .to_string()
             .contains("UPSTASH_REDIS_REST_TOKEN"));
-        // Restore
         if let Some(val) = saved_url {
             std::env::set_var("UPSTASH_REDIS_REST_URL", val);
         } else {

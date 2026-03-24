@@ -12,7 +12,7 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 use serde::Deserialize;
 
-use crate::claude::ToolDefinition;
+use nv_core::ToolDefinition;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -98,8 +98,8 @@ pub struct EventEntryData {
 // ── Client ───────────────────────────────────────────────────────────
 
 pub struct SentryClient {
-    http: reqwest::Client,
-    org: String,
+    pub http: reqwest::Client,
+    pub org: String,
 }
 
 impl SentryClient {
@@ -314,7 +314,7 @@ impl SentryIssueSummary {
             .culprit
             .as_deref()
             .unwrap_or("unknown");
-        let last = super::relative_time(&self.last_seen);
+        let last = crate::tools::relative_time(&self.last_seen);
         let when = if last.is_empty() { short_timestamp(&self.last_seen).to_string() } else { last };
         format!(
             "🐛 {icon} **#{}** {} — {} events\n   {} · {when}",
@@ -330,8 +330,8 @@ impl SentryIssueDetail {
             .culprit
             .as_deref()
             .unwrap_or("unknown");
-        let first = super::relative_time(&self.first_seen);
-        let last = super::relative_time(&self.last_seen);
+        let first = crate::tools::relative_time(&self.first_seen);
+        let last = crate::tools::relative_time(&self.last_seen);
         let first_str = if first.is_empty() { short_timestamp(&self.first_seen).to_string() } else { first };
         let last_str = if last.is_empty() { short_timestamp(&self.last_seen).to_string() } else { last };
         let mut out = format!(
@@ -370,9 +370,6 @@ fn short_timestamp(ts: &str) -> &str {
 // ── Public Tool Handlers ─────────────────────────────────────────────
 
 /// List unresolved Sentry issues for a project.
-///
-/// Uses a pre-initialized client (from the service registry) when provided,
-/// otherwise constructs one from environment variables on demand.
 pub async fn sentry_issues(client: &SentryClient, project: &str) -> Result<String> {
     validate_project_slug(project)?;
     let issues = client.list_issues(project).await?;
@@ -389,9 +386,6 @@ pub async fn sentry_issues(client: &SentryClient, project: &str) -> Result<Strin
 }
 
 /// Get details and stack trace for a specific Sentry issue.
-///
-/// Uses a pre-initialized client (from the service registry) when provided,
-/// otherwise constructs one from environment variables on demand.
 pub async fn sentry_issue(client: &SentryClient, issue_id: &str) -> Result<String> {
     validate_issue_id(issue_id)?;
     let detail = client.get_issue(issue_id).await?;
@@ -443,39 +437,6 @@ pub fn sentry_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
     ]
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for SentryClient {
-    fn name(&self) -> &str {
-        "sentry"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let url = format!("{SENTRY_BASE_URL}/organizations/{}/", self.org);
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async { self.http.get(&url).send().await }).await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: format!("org: {}", self.org),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "token invalid or expired (401) — check SENTRY_AUTH_TOKEN".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 403 => crate::tools::CheckResult::Unhealthy {
-                error: format!("access denied (403) to org '{}' — check token scopes", self.org),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -615,9 +576,7 @@ mod tests {
 
         let result = format_stack_trace(&event).unwrap();
         assert!(result.contains("TypeError: Cannot read 'x'"));
-        // Should skip node_modules frame
         assert!(!result.contains("node_modules"));
-        // Should contain application frames (reversed — top-down)
         assert!(result.contains("src/utils.ts:15 in validate"));
         assert!(result.contains("src/auth.ts:42 in handleLogin"));
     }
@@ -658,7 +617,6 @@ mod tests {
                 }),
             }]),
         };
-        // Only vendor frames — should return None (no useful frames to show)
         assert!(format_stack_trace(&event).is_none());
     }
 

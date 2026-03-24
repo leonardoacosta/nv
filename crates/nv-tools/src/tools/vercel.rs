@@ -13,7 +13,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Result};
 use serde::Deserialize;
 
-use crate::claude::ToolDefinition;
+use nv_core::ToolDefinition;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -110,7 +110,7 @@ impl VercelClient {
     }
 
     /// Build a GET request with Bearer auth header.
-    fn get(&self, url: &str) -> reqwest::RequestBuilder {
+    pub fn get(&self, url: &str) -> reqwest::RequestBuilder {
         self.http
             .get(url)
             .header("Authorization", format!("Bearer {}", self.token))
@@ -277,10 +277,8 @@ impl DeploymentSummary {
         let age = self
             .created_at
             .map(|ms| {
-                // Convert ms to an ISO-8601-like string for relative_time
                 let secs = ms / 1000;
                 let rt = format_age(ms);
-                // format_age already gives "5m ago" etc. — reuse it
                 let _ = secs;
                 rt
             })
@@ -430,38 +428,6 @@ pub fn vercel_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
     ]
-}
-
-// ── Checkable ────────────────────────────────────────────────────────
-
-#[async_trait::async_trait]
-impl crate::tools::Checkable for VercelClient {
-    fn name(&self) -> &str {
-        "vercel"
-    }
-
-    async fn check_read(&self) -> crate::tools::CheckResult {
-        use crate::tools::check::timed;
-        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
-            self.get(&format!("{VERCEL_API}/v2/user")).send().await
-        })
-        .await;
-        match result {
-            Ok(resp) if resp.status().is_success() => crate::tools::CheckResult::Healthy {
-                latency_ms: latency,
-                detail: "user endpoint reachable".into(),
-            },
-            Ok(resp) if resp.status().as_u16() == 401 => crate::tools::CheckResult::Unhealthy {
-                error: "token expired or invalid (401) — check VERCEL_TOKEN".into(),
-            },
-            Ok(resp) => crate::tools::CheckResult::Unhealthy {
-                error: format!("HTTP {}", resp.status()),
-            },
-            Err(e) => crate::tools::CheckResult::Unhealthy {
-                error: e.to_string(),
-            },
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -632,7 +598,6 @@ mod tests {
         };
         let formatted = d.format_for_telegram();
         assert!(formatted.contains("..."));
-        // Truncated to 57 chars + "..."
         assert!(formatted.len() < 200);
     }
 
@@ -776,7 +741,6 @@ mod tests {
 
     #[test]
     fn client_from_env_fails_without_token() {
-        // Temporarily unset VERCEL_TOKEN if it's set
         let saved = std::env::var("VERCEL_TOKEN").ok();
         std::env::remove_var("VERCEL_TOKEN");
         let result = VercelClient::from_env();
@@ -785,7 +749,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("VERCEL_TOKEN env var not set"));
-        // Restore
         if let Some(val) = saved {
             std::env::set_var("VERCEL_TOKEN", val);
         }

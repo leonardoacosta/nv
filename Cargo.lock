@@ -1482,6 +1482,7 @@ dependencies = [
  "libc",
  "mime_guess",
  "nv-core",
+ "nv-tools",
  "prost",
  "prost-types",
  "reqwest",
@@ -1517,7 +1518,9 @@ name = "nv-tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "nv-core",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

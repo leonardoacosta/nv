@@ -7,6 +7,10 @@ edition = "2021"
 name = "nv-tools"
 path = "src/main.rs"
 
+[lib]
+name = "nv_tools"
+path = "src/lib.rs"
+
 [dependencies]
 nv-core = { path = "../nv-core" }
 tokio = { workspace = true }
@@ -15,3 +19,5 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+reqwest = { workspace = true }
+chrono = { workspace = true }

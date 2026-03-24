@@ -1,6 +1,7 @@
 pub mod ado;
 pub mod calendar;
 pub mod check;
+pub mod checkable_impls;
 pub mod cloudflare;
 pub mod docker;
 pub mod doppler;
@@ -10,13 +11,13 @@ pub mod jira;
 pub mod neon;
 pub mod plaid;
 pub mod posthog;
-pub mod resend;
+pub use nv_tools::tools::resend;
 pub mod schedule;
-pub mod sentry;
-pub mod stripe;
+pub use nv_tools::tools::sentry;
+pub use nv_tools::tools::stripe;
 pub mod teams;
-pub mod upstash;
-pub mod vercel;
+pub use nv_tools::tools::upstash;
+pub use nv_tools::tools::vercel;
 pub mod web;
 
 // ── Checkable trait ─────────────────────────────────────────────────

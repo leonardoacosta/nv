@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 nv-core = { path = "../nv-core" }
+nv-tools = { path = "../nv-tools" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

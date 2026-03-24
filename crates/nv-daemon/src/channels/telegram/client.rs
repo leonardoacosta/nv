@@ -371,6 +371,8 @@ impl TelegramClient {
     }
 
     /// Send a "thinking" indicator, returns the message ID for later editing.
+    // Wiring point for future typing-indicator replacement via message edit.
+    #[allow(dead_code)]
     pub async fn send_thinking(&self, chat_id: i64) -> anyhow::Result<i64> {
         self.send_message(chat_id, "...", None, None).await
     }

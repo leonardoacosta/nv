@@ -19,7 +19,7 @@ use crate::agent::{
     build_system_context, check_bootstrap_state, ChannelRegistry,
 };
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
-use crate::conversation::{ConversationStore, MAX_HISTORY_CHARS, MAX_HISTORY_TURNS};
+use crate::conversation::ConversationStore;
 use crate::diary::{DiaryEntry, DiaryWriter};
 use crate::tools::jira;
 use crate::memory::Memory;
@@ -1307,7 +1307,7 @@ impl Worker {
             conversation_history
                 .push(Message::tool_results(tool_results));
 
-            truncate_history(conversation_history);
+            crate::conversation::truncate_history(conversation_history);
 
             response = client
                 .send_messages(system_prompt, conversation_history, tool_definitions)
@@ -1674,23 +1674,6 @@ fn strip_preamble(text: &str) -> String {
     }
 
     trimmed.to_string()
-}
-
-/// Truncate conversation history to stay within context budget.
-fn truncate_history(history: &mut Vec<Message>) {
-    if history.len() > MAX_HISTORY_TURNS {
-        let drain_count = history.len() - MAX_HISTORY_TURNS;
-        history.drain(..drain_count);
-    }
-
-    let mut total_chars: usize = history.iter().map(|m| m.content_len()).sum();
-
-    while total_chars > MAX_HISTORY_CHARS && history.len() > 2 {
-        if let Some(removed) = history.first() {
-            total_chars -= removed.content_len();
-        }
-        history.remove(0);
-    }
 }
 
 /// Classify a trigger batch into (trigger_type, trigger_source).

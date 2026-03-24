@@ -148,6 +148,30 @@ fn truncate_tool_results(msg: Message) -> Message {
     }
 }
 
+// ── Context Window Management ────────────────────────────────────────
+
+/// Truncate a flat conversation history list to stay within context budget.
+///
+/// Enforces both a turn count limit and a character budget.
+/// Always keeps at least the 2 most recent turns.
+pub(crate) fn truncate_history(history: &mut Vec<Message>) {
+    // Keep at most MAX_HISTORY_TURNS turns
+    if history.len() > MAX_HISTORY_TURNS {
+        let drain_count = history.len() - MAX_HISTORY_TURNS;
+        history.drain(..drain_count);
+    }
+
+    // If still too large by character count, drop oldest turns
+    let mut total_chars: usize = history.iter().map(|m| m.content_len()).sum();
+
+    while total_chars > MAX_HISTORY_CHARS && history.len() > 2 {
+        if let Some(removed) = history.first() {
+            total_chars -= removed.content_len();
+        }
+        history.remove(0);
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]

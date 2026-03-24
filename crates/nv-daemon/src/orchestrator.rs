@@ -382,6 +382,9 @@ impl Orchestrator {
             }
         }
 
+        // Flush any pending error notification batch whose debounce window has expired
+        self.flush_error_batch_if_expired("telegram").await;
+
         // Classify the first trigger to decide routing
         let primary_class = triggers
             .first()
@@ -1564,9 +1567,8 @@ impl Orchestrator {
     }
 
     /// Flush any pending error batch if the debounce window has expired.
-    #[allow(dead_code)]
     ///
-    /// Called periodically to ensure the final batch in a sequence is always
+    /// Called on every trigger batch so the final batch in a sequence is always
     /// sent even if no new errors arrive to trigger a flush.
     async fn flush_error_batch_if_expired(&mut self, channel_name: &str) {
         let debounce = Duration::from_secs(2);

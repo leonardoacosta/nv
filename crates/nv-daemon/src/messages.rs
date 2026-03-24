@@ -759,14 +759,14 @@ mod tests {
     #[test]
     fn migrations_set_user_version() {
         // Run migrations against an in-memory database and verify that
-        // rusqlite_migration set PRAGMA user_version = 1 (one migration version).
+        // rusqlite_migration set PRAGMA user_version = 4 (four migration versions).
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         messages_migrations().to_latest(&mut conn).unwrap();
 
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1, "user_version should be 1 after v1 migration");
+        assert_eq!(version, 4, "user_version should be 4 after all migrations");
 
         // Verify all expected tables exist.
         for table in &["messages", "tool_usage", "api_usage", "budget_alert_sent"] {

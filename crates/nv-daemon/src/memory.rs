@@ -264,42 +264,6 @@ impl Memory {
         Ok(topics)
     }
 
-    /// Build a context summary from all memory files.
-    ///
-    /// Reads all topic files and truncates the total output to fit within
-    /// a character budget (~4000 chars). Returns a formatted string suitable
-    /// for injecting into Claude's context.
-    #[allow(dead_code)]
-    pub fn get_context_summary(&self) -> Result<String> {
-        let mut parts = Vec::new();
-        let mut remaining = MAX_CONTEXT_CHARS;
-
-        // Always include MEMORY.md index first (small, gives awareness)
-        let index_path = self.base_path.join("MEMORY.md");
-        if index_path.exists() {
-            let index = fs::read_to_string(&index_path)?;
-            let index_trimmed = truncate_to_chars(&index, 1000.min(remaining));
-            remaining = remaining.saturating_sub(index_trimmed.len());
-            parts.push(format!("[Memory Index]\n{index_trimmed}"));
-        }
-
-        // Load each topic file
-        let topics = self.list_topics()?;
-        for topic in &topics {
-            if remaining < 200 {
-                break;
-            }
-            let path = self.base_path.join(format!("{topic}.md"));
-            if let Ok(content) = fs::read_to_string(&path) {
-                let trimmed = truncate_to_chars(&content, remaining);
-                remaining = remaining.saturating_sub(trimmed.len());
-                parts.push(format!("[Memory: {topic}]\n{trimmed}"));
-            }
-        }
-
-        Ok(parts.join("\n\n---\n\n"))
-    }
-
     /// Build a context summary prioritized by relevance to `trigger_text`.
     ///
     /// Extracts keywords from `trigger_text`, scores each topic file by keyword
@@ -894,7 +858,7 @@ mod tests {
     fn get_context_summary_includes_index() {
         let (_dir, memory) = setup();
 
-        let summary = memory.get_context_summary().unwrap();
+        let summary = memory.get_context_summary_for("").unwrap();
         assert!(summary.contains("[Memory Index]"));
         assert!(summary.contains("NV Memory Index"));
     }
@@ -905,7 +869,7 @@ mod tests {
 
         memory.write("decisions", "Important decision here").unwrap();
 
-        let summary = memory.get_context_summary().unwrap();
+        let summary = memory.get_context_summary_for("decisions").unwrap();
         assert!(summary.contains("[Memory: decisions]"));
     }
 
@@ -921,7 +885,7 @@ mod tests {
                 .unwrap();
         }
 
-        let summary = memory.get_context_summary().unwrap();
+        let summary = memory.get_context_summary_for("").unwrap();
         assert!(summary.len() <= MAX_CONTEXT_CHARS + 500); // Allow some overhead for headers
     }
 

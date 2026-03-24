@@ -244,3 +244,90 @@ Wave 11: Service Diagnostics (independent of Waves 7-10)
 | `channels/telegram/client.rs` | add-obligation-telegram-ux |
 
 Conflicts resolved by wave ordering -- conflicting specs never run in the same wave.
+
+---
+
+## Unplanned Additions
+
+60 specs delivered alongside the 45 planned. These represent real operational needs discovered
+during execution across v3-v5 phases.
+
+### Infrastructure & Scaffold (6)
+- `cargo-workspace-scaffold` -- 3-crate workspace (nv-core, nv-daemon, nv-cli)
+- `core-types-and-config` -- Core type system, Config struct, message types
+- `systemd-deploy` -- systemd service unit + deploy hooks
+- `add-deploy-hooks` -- Pre-push/post-merge git hooks for deployment
+- `migrate-secrets-to-doppler` -- Doppler as single source of truth for secrets
+- `persistent-claude-session` -- Long-lived CLI subprocess replacing cold-start per turn
+
+### Channel Integrations (5)
+- `discord-channel` -- Native Discord gateway WebSocket + REST
+- `email-channel` -- MS Graph API Outlook adapter
+- `imessage-channel` -- BlueBubbles REST API adapter
+- `teams-channel` -- MS Graph API Teams adapter
+- `add-cross-channel-routing` -- `send_to_channel` and `list_channels` tools
+
+### Tool Integrations (14)
+- `add-calendar-integration` -- Google Calendar read-only tools
+- `add-cloudflare-dns-tools` -- Cloudflare DNS zones/records tools
+- `add-docker-tools` -- Docker container health via unix socket
+- `add-doppler-tools` -- Doppler secrets inspection tools
+- `add-github-deeper-tools` -- Extended GitHub PR/issues/releases tools
+- `add-multi-instance-services` -- Generic multi-instance config pattern
+- `add-scoped-bash-toolkit` -- Allowlisted read-only shell commands per project
+- `add-tailscale-tools` -- Tailscale network topology tools
+- `add-teams-graph-tools` -- MS Graph Teams interaction tools
+- `add-web-fetch-tools` -- URL fetch, search, check tools
+- `add-cron-self-management` -- Schedule CRUD tools
+- `add-reminders-system` -- User-facing reminder/timer system
+- `wire-ha-service-call` -- Connect ha_service_call tool
+- `jira-default-project-fallback` -- Default project when Claude omits field
+
+### Data & Memory (5)
+- `memory-system` -- Markdown-native memory at ~/.nv/memory/
+- `add-message-store` -- Persistent SQLite message log
+- `add-message-search` -- FTS5 full-text search on messages
+- `add-tool-audit-log` -- tool_usage SQLite logging
+- `add-interaction-diary` -- Daily interaction log
+
+### Agent & Worker (4)
+- `agent-loop` -- Event-driven trigger processing via mpsc
+- `add-worker-dag-events` -- Structured progress events
+- `fix-agent-cold-start` -- Six cold-start bug fixes
+- `fix-prompt-bloat` -- Stop embedding full prompt in every request
+
+### UX (5)
+- `improve-chat-ux` -- Reply threading, typing indicators
+- `add-tool-emoji-indicators` -- Real-time emoji tool status in Telegram
+- `add-photo-audio-receiving` -- Photo/audio file receiving
+- `add-voice-reply` -- TTS voice message output
+- `add-voice-to-text` -- STT voice message input via Deepgram
+
+### Bug Fixes (11)
+- `fix-channel-safety` -- 11 channel correctness/security defects
+- `fix-dashboard-contracts` -- 8 API/frontend contract mismatches
+- `fix-infra-health` -- 11 audit findings bundled
+- `fix-nexus-stability` -- 8 Nexus subsystem fixes
+- `fix-nova-amnesia` -- Populate hollow config stubs
+- `fix-persistent-claude-subprocess` -- CC v2.1.81 stream-json regression
+- `fix-tool-result-strip` -- Tool artifact cleanup hardening
+- `fix-tools-registry` -- 8 tool registry reliability issues
+- `fix-watcher-reliability` -- 7 watcher subsystem defects
+- `add-hardening-v3` -- Jira validation, error handling, test coverage
+- `improve-tool-logging` -- Structured tracing at tool entry/exit
+
+### Nexus & Digest (5)
+- `mature-nexus-integration` -- Full remote control surface
+- `add-nexus-retry` -- Inline retry/bug buttons on errors
+- `add-nexus-session-watchdog` -- Background health monitor
+- `sync-nexus-proto` -- Proto sync with upstream
+- `wire-digest-pipeline` -- Gather/synthesize/format/actions/state
+
+### Other (5)
+- `add-test-ping-endpoint` -- Synthetic message injection for testing
+- `add-service-diagnostics` -- Tools/channels module restructure
+- `jira-webhooks` -- Inbound webhook handler for bidirectional sync
+- `context-query` -- Context query tooling
+- `proactive-digest` -- Proactive digest system
+
+Total: 60 unplanned specs delivered alongside 45 planned (94 total archived).

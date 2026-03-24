@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "mode": "consolidated",
+  "status": "completed",
+  "created_at": "2026-03-23T20:35:00Z",
+  "spec_names": [
+    "fix-dashboard-contracts",
+    "fix-channel-safety",
+    "fix-agent-cold-start",
+    "fix-tools-registry",
+    "fix-nexus-stability",
+    "fix-infra-health",
+    "fix-watcher-reliability",
+    "wire-digest-pipeline",
+    "cleanup-dead-code"
+  ],
+  "waves": [
+    {
+      "wave_num": 1,
+      "status": "completed",
+      "specs": [
+        {
+          "name": "fix-dashboard-contracts",
+          "task_count": 11,
+          "batch": "UI",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T21:34:26.841226",
+          "merged_at": "2026-03-23T21:40:49.677871"
+        },
+        {
+          "name": "fix-channel-safety",
+          "task_count": 22,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T21:10:47.078359",
+          "merged_at": "2026-03-23T21:34:26.841227"
+        },
+        {
+          "name": "fix-agent-cold-start",
+          "task_count": 20,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T21:10:47.078360",
+          "merged_at": "2026-03-23T21:34:26.841228"
+        }
+      ],
+      "total_tasks": 53
+    },
+    {
+      "wave_num": 2,
+      "status": "completed",
+      "specs": [
+        {
+          "name": "fix-tools-registry",
+          "task_count": 27,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T21:40:49.677875",
+          "merged_at": "2026-03-23T22:20:02.898725"
+        },
+        {
+          "name": "fix-nexus-stability",
+          "task_count": 16,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T21:40:49.677877",
+          "merged_at": "2026-03-23T22:20:02.898733"
+        }
+      ],
+      "total_tasks": 43
+    },
+    {
+      "wave_num": 3,
+      "status": "completed",
+      "specs": [
+        {
+          "name": "fix-infra-health",
+          "task_count": 25,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T22:20:02.898737",
+          "merged_at": "2026-03-23T22:41:49.259494"
+        },
+        {
+          "name": "fix-watcher-reliability",
+          "task_count": 18,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T22:20:02.898738",
+          "merged_at": "2026-03-23T22:41:49.259501"
+        }
+      ],
+      "total_tasks": 43
+    },
+    {
+      "wave_num": 4,
+      "status": "completed",
+      "specs": [
+        {
+          "name": "wire-digest-pipeline",
+          "task_count": 17,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T22:41:49.259505",
+          "merged_at": "2026-03-23T22:52:11.792190"
+        }
+      ],
+      "total_tasks": 17
+    },
+    {
+      "wave_num": 5,
+      "status": "completed",
+      "specs": [
+        {
+          "name": "cleanup-dead-code",
+          "task_count": 17,
+          "batch": "API",
+          "status": "merged",
+          "phase": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "dispatched_at": "2026-03-23T22:52:11.792200",
+          "merged_at": "2026-03-23T23:04:56.381802"
+        }
+      ],
+      "total_tasks": 17
+    }
+  ],
+  "completed_waves": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "failed_specs": [],
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [
+      "API"
+    ],
+    "task_results": {
+      "fix-dashboard-contracts": {},
+      "fix-channel-safety": {},
+      "fix-agent-cold-start": {},
+      "fix-tools-registry": {},
+      "fix-nexus-stability": {},
+      "fix-infra-health": {},
+      "fix-watcher-reliability": {},
+      "wire-digest-pipeline": {},
+      "cleanup-dead-code": {}
+    },
+    "phase_started_at": {
+      "API": "2026-03-23T22:52:11.792198",
+      "UI": "2026-03-23T21:34:26.841224"
+    },
+    "phase_completed_at": {
+      "API": "2026-03-23T21:34:26.841219",
+      "UI": "2026-03-23T21:40:49.677862"
+    }
+  },
+  "current_wave": null,
+  "started_at": "2026-03-23T21:10:04.118201",
+  "completed_at": "2026-03-23T23:04:56.381794",
+  "completed_specs": [
+    "fix-dashboard-contracts",
+    "fix-channel-safety",
+    "fix-agent-cold-start",
+    "fix-tools-registry",
+    "fix-nexus-stability",
+    "fix-infra-health",
+    "fix-watcher-reliability",
+    "wire-digest-pipeline",
+    "cleanup-dead-code"
+  ],
+  "pre_audit_sha": "8636e9c"
+}

@@ -581,6 +581,13 @@ impl PersistentSession {
         // The system prompt is passed via --system-prompt flag at spawn time,
         // so here we only send the user turn content.
         let user_content = build_stream_input(system, messages, tools);
+        tracing::info!(
+            prompt_bytes = user_content.len(),
+            system_bytes = system.len(),
+            messages = messages.len(),
+            tools = tools.len(),
+            "persistent: turn payload size"
+        );
 
         let input = StreamJsonInput {
             message: StreamJsonMessage {
@@ -634,7 +641,14 @@ impl PersistentSession {
 
         // Read response events from stdout until we get a "result" event.
         // Pass the whole proc so any buffered_line from init drain is prepended.
+        tracing::info!("persistent: turn sent, waiting for response");
+        let turn_start = Instant::now();
         let result = read_stream_response(proc).await;
+        tracing::info!(
+            elapsed_ms = turn_start.elapsed().as_millis() as u64,
+            ok = result.is_ok(),
+            "persistent: response received"
+        );
 
         match &result {
             Ok(_) => {
@@ -676,12 +690,34 @@ async fn read_stream_response(proc: &mut PersistentProcess) -> Result<ApiRespons
 
 /// Build the user content for a stream-json turn.
 ///
-/// Since the persistent subprocess manages conversation state via the CLI,
-/// we pass the full context (system + history + tools) in each user message.
-/// This ensures every turn has the full context even though the subprocess
-/// stays alive.
-fn build_stream_input(system: &str, messages: &[Message], tools: &[ToolDefinition]) -> String {
-    build_prompt(system, messages, tools)
+/// The persistent subprocess maintains its own conversation state via
+/// `stream-json` mode.  We send ONLY the latest user message content —
+/// the system prompt was passed at spawn time via `--system-prompt`, and
+/// tool definitions are handled by the CC CLI's `--tools` flag plus the
+/// daemon's own tool execution loop.
+///
+/// Previous implementation called `build_prompt()` which embedded the full
+/// system prompt (~8 KB), all tool schemas (~40 KB), and conversation
+/// history into every turn — causing 53 KB+ payloads and 2-minute response
+/// times.
+fn build_stream_input(_system: &str, messages: &[Message], _tools: &[ToolDefinition]) -> String {
+    // Extract only the latest user message content.
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| match &m.content {
+            MessageContent::Text(text) => text.clone(),
+            MessageContent::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(|block| match block {
+                    ContentBlock::Text { text } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+        })
+        .unwrap_or_default()
 }
 
 // ── Claude CLI Client ───────────────────────────────────────────────
@@ -809,7 +845,16 @@ impl ClaudeClient {
         tools: &[ToolDefinition],
         image_path: Option<&str>,
     ) -> Result<ApiResponse> {
-        let prompt = build_prompt(system, messages, tools);
+        // Build user-content-only prompt: system prompt is passed via --system-prompt
+        // flag, tool definitions via --tools flag.  Only conversation content goes to stdin.
+        let prompt = build_conversation_prompt(messages);
+        tracing::info!(
+            prompt_bytes = prompt.len(),
+            system_bytes = system.len(),
+            messages = messages.len(),
+            tools = tools.len(),
+            "cold-start: prompt payload size"
+        );
 
         let mut base_args: Vec<String> = vec![
             "--dangerously-skip-permissions".into(),
@@ -858,7 +903,18 @@ impl ClaudeClient {
         }
 
         // Wait for completion
+        tracing::info!(
+            has_image = image_path.is_some(),
+            "cold-start: waiting for claude CLI response"
+        );
+        let cold_start = Instant::now();
         let output = child.wait_with_output().await?;
+        tracing::info!(
+            elapsed_ms = cold_start.elapsed().as_millis() as u64,
+            exit_code = output.status.code(),
+            stdout_len = output.stdout.len(),
+            "cold-start: claude CLI exited"
+        );
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
@@ -964,6 +1020,10 @@ impl ClaudeClient {
 
 /// Build a single-turn prompt that includes the system prompt, tool definitions,
 /// and the full conversation history.
+///
+/// Note: No longer called from production paths (persistent uses `build_stream_input`,
+/// cold-start uses `build_conversation_prompt`).  Retained for tests.
+#[cfg(test)]
 fn build_prompt(system: &str, messages: &[Message], tools: &[ToolDefinition]) -> String {
     let mut prompt = String::new();
 
@@ -1033,6 +1093,55 @@ fn build_prompt(system: &str, messages: &[Message], tools: &[ToolDefinition]) ->
         prompt.push_str("\n\n");
     }
 
+    prompt
+}
+
+/// Build a conversation-only prompt for cold-start mode.
+///
+/// Excludes system prompt (passed via `--system-prompt` flag) and tool
+/// definitions (handled by `--tools` flag + daemon tool loop).  Only the
+/// conversation messages are serialised so the CC CLI receives minimal
+/// stdin content.
+fn build_conversation_prompt(messages: &[Message]) -> String {
+    let mut prompt = String::new();
+    for msg in messages {
+        let role_label = if msg.role == "user" {
+            "User"
+        } else {
+            "Assistant"
+        };
+        prompt.push_str(&format!("{role_label}: "));
+        match &msg.content {
+            MessageContent::Text(text) => {
+                prompt.push_str(text);
+            }
+            MessageContent::Blocks(blocks) => {
+                for block in blocks {
+                    match block {
+                        ContentBlock::Text { text } => {
+                            prompt.push_str(text);
+                        }
+                        ContentBlock::ToolUse { name, input, .. } => {
+                            prompt.push_str(&format!(
+                                "[Called tool: {name} with {}]",
+                                serde_json::to_string(input).unwrap_or_default()
+                            ));
+                        }
+                        ContentBlock::ToolResult {
+                            content, is_error, ..
+                        } => {
+                            if *is_error {
+                                prompt.push_str(&format!("[Tool error: {content}]"));
+                            } else {
+                                prompt.push_str(&format!("[Tool result: {content}]"));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        prompt.push_str("\n\n");
+    }
     prompt
 }
 
@@ -1905,13 +2014,39 @@ mod tests {
     // ── New tests: Stream input builder ─────────────────────────────
 
     #[test]
-    fn build_stream_input_produces_prompt() {
+    fn build_stream_input_returns_only_user_content() {
         let system = "You are NV.";
         let messages = vec![Message::user("hello")];
-        let tools = vec![];
+        let tools = vec![ToolDefinition {
+            name: "read_memory".into(),
+            description: "Read a topic".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        }];
         let input = build_stream_input(system, &messages, &tools);
-        assert!(input.contains("You are NV."));
-        assert!(input.contains("User: hello"));
+        // Must contain ONLY the user message, not system prompt or tools
+        assert_eq!(input, "hello");
+        assert!(!input.contains("You are NV."), "must not contain system prompt");
+        assert!(!input.contains("read_memory"), "must not contain tool definitions");
+    }
+
+    #[test]
+    fn build_stream_input_extracts_latest_user_message() {
+        let system = "system";
+        let messages = vec![
+            Message::user("first"),
+            Message { role: "assistant".into(), content: MessageContent::Text("reply".into()) },
+            Message::user("second"),
+        ];
+        let input = build_stream_input(system, &messages, &[]);
+        assert_eq!(input, "second", "must extract only the latest user message");
+    }
+
+    #[test]
+    fn build_conversation_prompt_excludes_system_and_tools() {
+        let messages = vec![Message::user("status")];
+        let prompt = build_conversation_prompt(&messages);
+        assert!(prompt.contains("User: status"));
+        assert!(!prompt.contains("## Available Tools"));
     }
 
     // ── New tests: ClaudeClient constructor ─────────────────────────

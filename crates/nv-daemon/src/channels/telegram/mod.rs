@@ -63,6 +63,19 @@ impl Channel for TelegramChannel {
             self.offset.store(max_id + 1, Ordering::Relaxed);
         }
 
+        // Log unauthorized updates (wrong chat_id) so we know messages arrive but are filtered
+        let unauthorized = updates
+            .iter()
+            .filter(|u| u.chat_id() != Some(self.chat_id))
+            .count();
+        if unauthorized > 0 {
+            tracing::warn!(
+                unauthorized,
+                expected_chat_id = self.chat_id,
+                "telegram: filtered out {unauthorized} update(s) from unauthorized chat"
+            );
+        }
+
         // Filter by authorized chat_id and convert to InboundMessage
         let messages: Vec<InboundMessage> = updates
             .iter()
@@ -119,6 +132,13 @@ pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBo
         match channel.poll_messages().await {
             Ok(messages) => {
                 backoff = Duration::from_secs(1); // Reset on success
+                if !messages.is_empty() {
+                    tracing::info!(
+                        count = messages.len(),
+                        "telegram: received {} message(s)",
+                        messages.len()
+                    );
+                }
                 for msg in messages {
                     // Intercept /voice command — toggle voice and respond directly
                     if msg.content.trim() == "/voice" {

@@ -133,20 +133,55 @@ fn notify_stopping() {
 }
 
 /// Spawn a watchdog task that pings systemd every 30 seconds.
-fn spawn_watchdog(health: Arc<HealthState>) {
+///
+/// Also monitors cgroup PID usage to warn before hitting TasksMax.
+fn spawn_watchdog(_health: Arc<HealthState>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
         loop {
             interval.tick().await;
-            let resp = health.to_health_response().await;
-            if resp.status == "ok" {
-                if let Err(e) =
-                    sd_notify::notify(false, &[sd_notify::NotifyState::Watchdog])
-                {
-                    tracing::debug!(error = %e, "sd_notify WATCHDOG failed");
+            // Always send the watchdog ping — the process is alive and functional.
+            // A degraded health status (e.g. nexus agent down) does not mean the
+            // daemon should be killed; the nexus watchdog handles reconnection
+            // independently.  Withholding the ping caused a crash loop when any
+            // channel was disconnected (systemd SIGABRT after WatchdogSec=120).
+            if let Err(e) =
+                sd_notify::notify(false, &[sd_notify::NotifyState::Watchdog])
+            {
+                tracing::debug!(error = %e, "sd_notify WATCHDOG failed");
+            }
+
+            // Check cgroup PID usage — warn if approaching limit
+            if let (Ok(current), Ok(max)) = (
+                tokio::fs::read_to_string("/proc/self/cgroup")
+                    .await
+                    .ok()
+                    .and_then(|cg| {
+                        let slice = cg.lines().next()?.strip_prefix("0::")?;
+                        Some(format!("/sys/fs/cgroup{slice}/pids.current"))
+                    })
+                    .map(|p| std::fs::read_to_string(p))
+                    .unwrap_or(Err(std::io::Error::other("no cgroup"))),
+                tokio::fs::read_to_string("/proc/self/cgroup")
+                    .await
+                    .ok()
+                    .and_then(|cg| {
+                        let slice = cg.lines().next()?.strip_prefix("0::")?;
+                        Some(format!("/sys/fs/cgroup{slice}/pids.max"))
+                    })
+                    .map(|p| std::fs::read_to_string(p))
+                    .unwrap_or(Err(std::io::Error::other("no cgroup"))),
+            ) {
+                let cur: u64 = current.trim().parse().unwrap_or(0);
+                let mx: u64 = max.trim().parse().unwrap_or(u64::MAX);
+                if mx != u64::MAX && cur > mx * 80 / 100 {
+                    tracing::warn!(
+                        pids_current = cur,
+                        pids_max = mx,
+                        pct = cur * 100 / mx,
+                        "watchdog: cgroup PID usage above 80%"
+                    );
                 }
-            } else {
-                tracing::warn!("health check failed, skipping watchdog ping");
             }
         }
     });

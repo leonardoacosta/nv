@@ -391,7 +391,7 @@ impl Orchestrator {
             .map(classify_trigger)
             .unwrap_or(TriggerClass::Query);
 
-        tracing::debug!(
+        tracing::info!(
             class = ?primary_class,
             count = triggers.len(),
             "classified trigger batch"

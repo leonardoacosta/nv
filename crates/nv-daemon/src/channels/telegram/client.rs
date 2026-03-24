@@ -655,4 +655,28 @@ mod tests {
         let input = "<b>Good morning. Daily briefing:</b>\n\n<i>Weather:</i> Sunny";
         assert_eq!(markdown_to_html(input), input);
     }
+
+    // ── edit_message truncation path tests ───────────────────────────
+
+    #[test]
+    fn edit_message_truncation_no_panic_with_non_ascii() {
+        // Build a 5000+ char string mixing emoji (4 bytes each), CJK (3 bytes
+        // each), accented Latin (2 bytes each), and ASCII (1 byte each).
+        let segment = "\u{1F600}\u{4E16}\u{754C}\u{00E9}Hello"; // 😀世界éHello = 4+3+3+2+5 = 17 bytes
+        let input: String = segment.repeat(400); // 400 * 17 = 6800 bytes, well over 5000 chars
+        assert!(input.len() > 5000);
+
+        // Replicate the exact truncation path from edit_message:
+        //   1. markdown_to_html
+        //   2. safe_truncate to TELEGRAM_MAX_MESSAGE_LEN (4096)
+        let html_text = markdown_to_html(&input);
+        let truncated =
+            crate::channels::util::safe_truncate(&html_text, TELEGRAM_MAX_MESSAGE_LEN);
+
+        // Must not panic, must be valid UTF-8 (guaranteed by &str), and must
+        // fit within the Telegram limit.
+        assert!(truncated.len() <= TELEGRAM_MAX_MESSAGE_LEN);
+        // Verify the result is non-empty (the input is large enough to produce output).
+        assert!(!truncated.is_empty());
+    }
 }

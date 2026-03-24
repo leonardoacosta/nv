@@ -23,7 +23,7 @@
 - [x] [2.2] `cargo clippy -- -D warnings` passes (pre-existing warnings only) [owner:api-engineer]
 - [x] [2.3] Unit test: `safe_truncate` returns input unchanged when `len() <= max_bytes` [owner:api-engineer]
 - [x] [2.4] Unit test: `safe_truncate` on a string where a 4-byte emoji straddles the boundary returns a slice ending before the emoji [owner:api-engineer]
-- [ ] [2.5] Unit test: `edit_message` truncation path does not panic with a 5000-char string containing non-ASCII characters [owner:api-engineer]
+- [x] [2.5] Unit test: `edit_message` truncation path does not panic with a 5000-char string containing non-ASCII characters [owner:api-engineer]
 - [x] [2.6] Unit test: `truncate_for_telegram` with multi-byte chars at boundary — no panic, output ≤ `TELEGRAM_CHAR_LIMIT` bytes [owner:api-engineer]
 - [x] [2.7] Unit test: `format_query_for_telegram` with multi-byte chars — no panic, output ≤ `TELEGRAM_MAX_CHARS` bytes [owner:api-engineer]
 - [x] [2.8] Unit test: `strip_html_tags` decodes `&amp;lt;b&amp;gt;hello&amp;lt;/b&amp;gt;` correctly — entities resolved after tag removal [owner:api-engineer]

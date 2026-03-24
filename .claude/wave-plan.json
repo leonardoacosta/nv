@@ -4,7 +4,7 @@
   "project": "nv",
   "stack": "rust",
   "git_sha": "690e610",
-  "status": "in_progress",
+  "status": "completed",
   "spec_names": [
     "add-sentry-tools",
     "add-stripe-tools",
@@ -368,7 +368,7 @@
     }
   ],
   "started_at": "2026-03-24T15:38:39.288231",
-  "current_wave": 12,
+  "current_wave": null,
   "completed_waves": [
     1,
     2,
@@ -380,7 +380,8 @@
     8,
     9,
     10,
-    11
+    11,
+    12
   ],
   "completed_specs": [
     "add-sentry-tools",
@@ -414,8 +415,11 @@
     "add-obligation-store",
     "add-obligation-detection",
     "add-obligation-telegram-ux",
-    "complete-service-diagnostics"
+    "complete-service-diagnostics",
+    "add-server-health-metrics",
+    "improve-dashboard-monitoring"
   ],
   "failed_specs": [],
-  "pre_audit_sha": "8bb37e0"
+  "pre_audit_sha": "8bb37e0",
+  "completed_at": "2026-03-24T16:27:18.297291"
 }

@@ -368,7 +368,7 @@
     }
   ],
   "started_at": "2026-03-24T15:38:39.288231",
-  "current_wave": 11,
+  "current_wave": 12,
   "completed_waves": [
     1,
     2,
@@ -379,7 +379,8 @@
     7,
     8,
     9,
-    10
+    10,
+    11
   ],
   "completed_specs": [
     "add-sentry-tools",
@@ -412,7 +413,8 @@
     "add-sqlite-migrations",
     "add-obligation-store",
     "add-obligation-detection",
-    "add-obligation-telegram-ux"
+    "add-obligation-telegram-ux",
+    "complete-service-diagnostics"
   ],
   "failed_specs": [],
   "pre_audit_sha": "8bb37e0"

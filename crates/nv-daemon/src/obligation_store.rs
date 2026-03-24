@@ -448,4 +448,97 @@ mod tests {
         let ids: Vec<&str> = open.iter().map(|o| o.id.as_str()).collect();
         assert_eq!(ids, vec!["p0", "p1", "p3"]);
     }
+
+    #[test]
+    fn update_status_and_owner_changes_both_fields() {
+        let (store, _f) = temp_store();
+
+        // Create with default owner=Nova
+        let ob = store
+            .create(new_obligation("us1", "telegram", "coordinate deploy", 1))
+            .unwrap();
+
+        assert_eq!(ob.owner, ObligationOwner::Nova);
+        assert_eq!(ob.status, ObligationStatus::Open);
+
+        // Update status to InProgress and reassign owner to Leo
+        let updated = store
+            .update_status_and_owner("us1", &ObligationStatus::InProgress, &ObligationOwner::Leo)
+            .unwrap();
+        assert!(updated);
+
+        let fetched = store.get_by_id("us1").unwrap().unwrap();
+        assert_eq!(fetched.status, ObligationStatus::InProgress);
+        assert_eq!(fetched.owner, ObligationOwner::Leo);
+        // updated_at must be >= created_at (SQLite datetime strings sort lexicographically)
+        assert!(fetched.updated_at >= fetched.created_at);
+    }
+
+    #[test]
+    fn count_open_by_priority_groups_correctly() {
+        let (store, _f) = temp_store();
+
+        // One at P0, one at P1, three at P2
+        store
+            .create(new_obligation("cp0", "telegram", "critical task", 0))
+            .unwrap();
+        store
+            .create(new_obligation("cp1", "telegram", "high task", 1))
+            .unwrap();
+        store
+            .create(new_obligation("cp2a", "telegram", "normal task a", 2))
+            .unwrap();
+        store
+            .create(new_obligation("cp2b", "telegram", "normal task b", 2))
+            .unwrap();
+        store
+            .create(new_obligation("cp2c", "telegram", "normal task c", 2))
+            .unwrap();
+
+        // Close one P2 — should not appear in open counts
+        store
+            .update_status("cp2c", &ObligationStatus::Done)
+            .unwrap();
+
+        let counts = store.count_open_by_priority().unwrap();
+
+        // Expect [(0, 1), (1, 1), (2, 2)] — P2 count is 2 because cp2c is closed
+        assert_eq!(counts, vec![(0, 1), (1, 1), (2, 2)]);
+    }
+
+    #[test]
+    fn list_all_returns_every_status() {
+        let (store, _f) = temp_store();
+
+        store
+            .create(new_obligation("la0", "telegram", "open task", 2))
+            .unwrap();
+        store
+            .create(new_obligation("la1", "telegram", "done task", 1))
+            .unwrap();
+        store
+            .create(new_obligation("la2", "discord", "dismissed task", 3))
+            .unwrap();
+
+        // Close and dismiss two obligations
+        store
+            .update_status("la1", &ObligationStatus::Done)
+            .unwrap();
+        store
+            .update_status("la2", &ObligationStatus::Dismissed)
+            .unwrap();
+
+        let all = store.list_all().unwrap();
+        assert_eq!(all.len(), 3);
+
+        // Ordered by priority ASC: la1 (P1), la0 (P2), la2 (P3)
+        let ids: Vec<&str> = all.iter().map(|o| o.id.as_str()).collect();
+        assert_eq!(ids, vec!["la1", "la0", "la2"]);
+
+        // Verify all statuses are present
+        let statuses: Vec<&ObligationStatus> = all.iter().map(|o| &o.status).collect();
+        assert!(statuses.contains(&&ObligationStatus::Open));
+        assert!(statuses.contains(&&ObligationStatus::Done));
+        assert!(statuses.contains(&&ObligationStatus::Dismissed));
+    }
 }

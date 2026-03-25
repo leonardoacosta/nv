@@ -52,27 +52,27 @@
 
 ## UI Batch — Approval Queue Page
 
-- [ ] [7.1] [P-1] Create `apps/dashboard/src/app/(dashboard)/approvals/page.tsx` — split view layout: queue list (left) and detail panel (right), stacked on mobile, using PageShell [owner:ui-engineer]
-- [ ] [7.2] [P-1] Implement approval queue list — action type icon, title, project, created_at, urgency indicator; sorted by created_at descending [owner:ui-engineer]
-- [ ] [7.3] [P-1] Implement approval detail panel — full action description, proposed changes, context snippet, approve and dismiss buttons [owner:ui-engineer]
-- [ ] [7.4] [P-1] Wire approve button — `POST /api/approvals/:id/approve` with loading state and confirmation; dismiss button — `PATCH /api/obligations/:id` with `status: dismissed` [owner:ui-engineer]
-- [ ] [7.5] [P-2] Add approvals badge to sidebar nav item — count from `GET /api/obligations?owner=leo&status=open`, updates via WebSocket `approval.created` events [owner:ui-engineer]
-- [ ] [7.6] [P-2] Subscribe to WebSocket `approval.created` event — prepend new item to queue list in real-time [owner:ui-engineer]
+- [x] [7.1] [P-1] Create `apps/dashboard/src/app/(dashboard)/approvals/page.tsx` — split view layout: queue list (left) and detail panel (right), stacked on mobile, using PageShell [owner:ui-engineer]
+- [x] [7.2] [P-1] Implement approval queue list — action type icon, title, project, created_at, urgency indicator; sorted by created_at descending [owner:ui-engineer]
+- [x] [7.3] [P-1] Implement approval detail panel — full action description, proposed changes, context snippet, approve and dismiss buttons [owner:ui-engineer]
+- [x] [7.4] [P-1] Wire approve button — `POST /api/approvals/:id/approve` with loading state and confirmation; dismiss button — `PATCH /api/obligations/:id` with `status: dismissed` [owner:ui-engineer]
+- [x] [7.5] [P-2] Add approvals badge to sidebar nav item — count from `GET /api/obligations?owner=leo&status=open`, updates via WebSocket `approval.created` events [owner:ui-engineer]
+- [x] [7.6] [P-2] Subscribe to WebSocket `approval.created` event — prepend new item to queue list in real-time [owner:ui-engineer]
 
 ## UI Batch — Settings Page
 
-- [ ] [8.1] [P-1] Rebuild `apps/dashboard/src/app/(dashboard)/settings/page.tsx` — replace auto-inferred field discovery with explicit section schema: Daemon, Channels, Integrations, Memory [owner:ui-engineer]
-- [ ] [8.2] [P-2] Render secret fields as read-only masked values (show `••••••••`) — no input element, no edit capability [owner:ui-engineer]
-- [ ] [8.3] [P-2] Add restart notice banner — shown when a field flagged `requires_restart: true` has an unsaved change [owner:ui-engineer]
-- [ ] [8.4] [P-2] Retain unsaved-changes sticky footer from current implementation [owner:ui-engineer]
+- [x] [8.1] [P-1] Rebuild `apps/dashboard/src/app/(dashboard)/settings/page.tsx` — replace auto-inferred field discovery with explicit section schema: Daemon, Channels, Integrations, Memory [owner:ui-engineer]
+- [x] [8.2] [P-2] Render secret fields as read-only masked values (show `••••••••`) — no input element, no edit capability [owner:ui-engineer]
+- [x] [8.3] [P-2] Add restart notice banner — shown when a field flagged `requires_restart: true` has an unsaved change [owner:ui-engineer]
+- [x] [8.4] [P-2] Retain unsaved-changes sticky footer from current implementation [owner:ui-engineer]
 
 ## UI Batch — Mobile Layout
 
-- [ ] [9.1] [P-1] Rebuild sidebar for mobile — icon-only rail at ≤768px (`md:w-16`), hidden at ≤640px (`sm:hidden`) with hamburger menu toggle in a top bar [owner:ui-engineer]
-- [ ] [9.2] [P-1] Ensure all touch targets are minimum 44×44px (`min-h-11 min-w-11`) across all new components [owner:ui-engineer]
-- [ ] [9.3] [P-2] Verify main dashboard two-column grid collapses to single column at `md:` breakpoint [owner:ui-engineer]
-- [ ] [9.4] [P-2] Verify approval queue split view stacks vertically at `md:` breakpoint [owner:ui-engineer]
-- [ ] [9.5] [P-2] Add `/sessions/:id` detail route for mobile — session detail as full page instead of drawer [owner:ui-engineer]
+- [x] [9.1] [P-1] Rebuild sidebar for mobile — icon-only rail at ≤768px (`md:w-16`), hidden at ≤640px (`sm:hidden`) with hamburger menu toggle in a top bar [owner:ui-engineer]
+- [x] [9.2] [P-1] Ensure all touch targets are minimum 44×44px (`min-h-11 min-w-11`) across all new components [owner:ui-engineer]
+- [x] [9.3] [P-2] Verify main dashboard two-column grid collapses to single column at `md:` breakpoint [owner:ui-engineer]
+- [x] [9.4] [P-2] Verify approval queue split view stacks vertically at `md:` breakpoint [owner:ui-engineer]
+- [x] [9.5] [P-2] Add `/sessions/:id` detail route for mobile — session detail as full page instead of drawer [owner:ui-engineer]
 
 ## Verify
 

@@ -2,55 +2,152 @@
 
 import { useEffect, useState } from "react";
 import {
-  Settings,
   Save,
   RefreshCw,
-  AlertCircle,
   CheckCircle,
   ChevronDown,
   ChevronRight,
+  AlertTriangle,
+  Cpu,
+  Radio,
+  Plug,
+  Brain,
 } from "lucide-react";
+import PageShell from "@/components/layout/PageShell";
+import ErrorBanner from "@/components/layout/ErrorBanner";
 import type { PutConfigRequest } from "@/types/api";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 type ConfigValue = string | number | boolean | null | ConfigObject;
 type ConfigObject = { [key: string]: ConfigValue };
 
+type FieldType = "text" | "number" | "boolean" | "secret";
+
 interface FieldDef {
   key: string;
   label: string;
-  type: "text" | "number" | "boolean" | "password";
+  type: FieldType;
   description?: string;
-  section: string;
+  /** If changed, the daemon needs a restart */
+  requires_restart?: boolean;
 }
 
-function inferFields(obj: ConfigObject, prefix = "", section = "General"): FieldDef[] {
-  const fields: FieldDef[] = [];
-  for (const [key, value] of Object.entries(obj)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      fields.push(...inferFields(value as ConfigObject, fullKey, key));
+interface SectionDef {
+  id: "daemon" | "channels" | "integrations" | "memory";
+  label: string;
+  icon: React.ElementType;
+  description: string;
+  /** Keys from config object to include in this section */
+  keys: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Explicit section schema
+// ---------------------------------------------------------------------------
+
+const SECTIONS: SectionDef[] = [
+  {
+    id: "daemon",
+    label: "Daemon",
+    icon: Cpu,
+    description: "Core daemon process settings",
+    keys: ["daemon", "server", "log_level", "debug", "port", "host", "interval_ms"],
+  },
+  {
+    id: "channels",
+    label: "Channels",
+    icon: Radio,
+    description: "WebSocket and notification channel configuration",
+    keys: ["websocket", "ws", "channels", "notifications", "pubsub"],
+  },
+  {
+    id: "integrations",
+    label: "Integrations",
+    icon: Plug,
+    description: "External service integrations and API keys",
+    keys: [
+      "openai",
+      "anthropic",
+      "github",
+      "stripe",
+      "resend",
+      "sentry",
+      "posthog",
+      "integrations",
+      "api_key",
+      "token",
+      "secret",
+      "webhook",
+    ],
+  },
+  {
+    id: "memory",
+    label: "Memory",
+    icon: Brain,
+    description: "Memory and context storage settings",
+    keys: ["memory", "context", "storage", "db", "database", "cache"],
+  },
+];
+
+const SECRET_PATTERNS = [
+  "token",
+  "secret",
+  "password",
+  "key",
+  "api_key",
+  "auth",
+];
+
+function isSecret(key: string): boolean {
+  const lower = key.toLowerCase();
+  return SECRET_PATTERNS.some((p) => lower.includes(p));
+}
+
+// ---------------------------------------------------------------------------
+// Config traversal
+// ---------------------------------------------------------------------------
+
+function flattenConfig(
+  obj: ConfigObject,
+  prefix = "",
+): Array<{ key: string; value: ConfigValue; topKey: string }> {
+  const result: Array<{ key: string; value: ConfigValue; topKey: string }> = [];
+  for (const [k, v] of Object.entries(obj)) {
+    const fullKey = prefix ? `${prefix}.${k}` : k;
+    const topKey = prefix ? prefix.split(".")[0]! : k;
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      result.push(...flattenConfig(v as ConfigObject, fullKey));
     } else {
-      const isSecret =
-        key.toLowerCase().includes("token") ||
-        key.toLowerCase().includes("secret") ||
-        key.toLowerCase().includes("password") ||
-        key.toLowerCase().includes("key");
-      fields.push({
-        key: fullKey,
-        label: key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-        type:
-          typeof value === "boolean"
-            ? "boolean"
-            : typeof value === "number"
-              ? "number"
-              : isSecret
-                ? "password"
-                : "text",
-        section,
-      });
+      result.push({ key: fullKey, value: v, topKey });
     }
   }
-  return fields;
+  return result;
+}
+
+function buildField(key: string, value: ConfigValue): FieldDef {
+  const parts = key.split(".");
+  const leafKey = parts[parts.length - 1] ?? key;
+  const label = leafKey.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const secret = isSecret(leafKey);
+  const type: FieldType =
+    typeof value === "boolean"
+      ? "boolean"
+      : typeof value === "number"
+        ? "number"
+        : secret
+          ? "secret"
+          : "text";
+
+  return {
+    key,
+    label,
+    type,
+    requires_restart: key.includes("daemon") || key.includes("port") || key.includes("host"),
+  };
 }
 
 function getNestedValue(obj: ConfigObject, path: string): ConfigValue {
@@ -63,11 +160,7 @@ function getNestedValue(obj: ConfigObject, path: string): ConfigValue {
   return cur;
 }
 
-function setNestedValue(
-  obj: ConfigObject,
-  path: string,
-  value: ConfigValue
-): ConfigObject {
+function setNestedValue(obj: ConfigObject, path: string, value: ConfigValue): ConfigObject {
   const result = { ...obj };
   const parts = path.split(".");
   if (parts.length === 1) {
@@ -78,109 +171,203 @@ function setNestedValue(
   result[head!] = setNestedValue(
     (result[head!] as ConfigObject) ?? {},
     rest.join("."),
-    value
+    value,
   );
   return result;
 }
 
-interface SectionProps {
-  title: string;
+function assignFieldsToSections(
+  flat: Array<{ key: string; value: ConfigValue; topKey: string }>,
+): Map<SectionDef["id"], FieldDef[]> {
+  const map = new Map<SectionDef["id"], FieldDef[]>(
+    SECTIONS.map((s) => [s.id, []]),
+  );
+  // Fallback bucket: daemon catches anything unmatched
+  const assigned = new Set<string>();
+
+  for (const section of SECTIONS) {
+    const fields = map.get(section.id)!;
+    for (const entry of flat) {
+      const matchesSection = section.keys.some(
+        (k) =>
+          entry.topKey.toLowerCase() === k.toLowerCase() ||
+          entry.key.toLowerCase().startsWith(k.toLowerCase()),
+      );
+      if (matchesSection && !assigned.has(entry.key)) {
+        fields.push(buildField(entry.key, entry.value));
+        assigned.add(entry.key);
+      }
+    }
+  }
+
+  // Unmatched fields go into daemon section
+  for (const entry of flat) {
+    if (!assigned.has(entry.key)) {
+      map.get("daemon")!.push(buildField(entry.key, entry.value));
+    }
+  }
+
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// FieldRow — single config field
+// ---------------------------------------------------------------------------
+
+interface FieldRowProps {
+  field: FieldDef;
+  config: ConfigObject;
+  onChange: (key: string, value: ConfigValue) => void;
+}
+
+function FieldRow({ field, config, onChange }: FieldRowProps) {
+  const raw = getNestedValue(config, field.key);
+  const value = raw !== null ? raw : "";
+
+  if (field.type === "boolean") {
+    return (
+      <div className="flex items-center gap-4 px-4 py-3.5 min-h-11">
+        <div className="flex-1 min-w-0">
+          <span className="text-xs font-medium text-cosmic-text">{field.label}</span>
+          {field.requires_restart && (
+            <span className="ml-2 text-xs font-mono text-amber-400 opacity-70">
+              restart required
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={Boolean(value)}
+          onClick={() => onChange(field.key, !value)}
+          className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${
+            value ? "bg-cosmic-purple" : "bg-cosmic-border"
+          }`}
+        >
+          <span
+            className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+              value ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+    );
+  }
+
+  if (field.type === "secret") {
+    return (
+      <div className="flex items-center gap-4 px-4 py-3.5 min-h-11">
+        <div className="flex-1 min-w-0">
+          <span className="text-xs font-medium text-cosmic-text">{field.label}</span>
+        </div>
+        <div className="shrink-0 w-64">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cosmic-dark border border-cosmic-border">
+            <span className="text-sm font-mono text-cosmic-muted tracking-widest select-none">
+              {value ? "••••••••••••" : "(not set)"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-4 px-4 py-3.5 min-h-11">
+      <div className="flex-1 min-w-0">
+        <span className="text-xs font-medium text-cosmic-text">{field.label}</span>
+        {field.requires_restart && (
+          <span className="ml-2 text-xs font-mono text-amber-400 opacity-70">
+            restart required
+          </span>
+        )}
+      </div>
+      <div className="shrink-0 w-64">
+        <input
+          type={field.type === "number" ? "number" : "text"}
+          value={String(value)}
+          onChange={(e) =>
+            onChange(
+              field.key,
+              field.type === "number" ? Number(e.target.value) : e.target.value,
+            )
+          }
+          className="w-full px-3 py-1.5 rounded-lg bg-cosmic-dark border border-cosmic-border text-sm text-cosmic-text font-mono placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ConfigSection — collapsible section
+// ---------------------------------------------------------------------------
+
+interface ConfigSectionProps {
+  section: SectionDef;
   fields: FieldDef[];
   config: ConfigObject;
   onChange: (key: string, value: ConfigValue) => void;
 }
 
-function ConfigSection({ title, fields, config, onChange }: SectionProps) {
+function ConfigSection({ section, fields, config, onChange }: ConfigSectionProps) {
   const [open, setOpen] = useState(true);
+  const SectionIcon = section.icon;
+
+  if (fields.length === 0) return null;
 
   return (
     <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-cosmic-border/20 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3.5 min-h-11 hover:bg-cosmic-border/20 transition-colors text-left"
       >
-        <div className="shrink-0 text-cosmic-muted">
+        <SectionIcon size={15} className="text-cosmic-purple shrink-0" />
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold text-cosmic-text">{section.label}</h2>
+        </div>
+        <span className="text-xs font-mono text-cosmic-muted">{fields.length}</span>
+        <div className="text-cosmic-muted shrink-0">
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
-        <h2 className="text-sm font-semibold text-cosmic-text capitalize">
-          {title}
-        </h2>
-        <span className="text-xs font-mono text-cosmic-muted">{fields.length}</span>
       </button>
 
       {open && (
-        <div className="border-t border-cosmic-border divide-y divide-cosmic-border">
-          {fields.map((field) => {
-            const raw = getNestedValue(config, field.key);
-            const value = raw !== null ? raw : "";
-
-            return (
-              <div
-                key={field.key}
-                className="flex items-center gap-4 px-4 py-3"
-              >
-                <div className="flex-1 min-w-0">
-                  <label className="text-xs font-medium text-cosmic-text block mb-0.5">
-                    {field.label}
-                  </label>
-                  {field.description && (
-                    <p className="text-xs text-cosmic-muted">
-                      {field.description}
-                    </p>
-                  )}
-                </div>
-
-                <div className="shrink-0 w-64">
-                  {field.type === "boolean" ? (
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={Boolean(value)}
-                      onClick={() => onChange(field.key, !value)}
-                      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                        value ? "bg-cosmic-purple" : "bg-cosmic-border"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-                          value ? "translate-x-4.5" : "translate-x-0.5"
-                        }`}
-                      />
-                    </button>
-                  ) : (
-                    <input
-                      type={field.type}
-                      value={String(value)}
-                      onChange={(e) =>
-                        onChange(
-                          field.key,
-                          field.type === "number"
-                            ? Number(e.target.value)
-                            : e.target.value
-                        )
-                      }
-                      className="w-full px-3 py-1.5 rounded-lg bg-cosmic-dark border border-cosmic-border text-sm text-cosmic-text font-mono placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
-                    />
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="border-t border-cosmic-border divide-y divide-cosmic-border/50">
+          {fields.map((field) => (
+            <FieldRow
+              key={field.key}
+              field={field}
+              config={config}
+              onChange={onChange}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// SettingsPage
+// ---------------------------------------------------------------------------
+
 export default function SettingsPage() {
+  // 1. State
   const [config, setConfig] = useState<ConfigObject>({});
   const [original, setOriginal] = useState<ConfigObject>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [restartFields, setRestartFields] = useState<string[]>([]);
 
+  // 2. Derived
+  const hasChanges = JSON.stringify(config) !== JSON.stringify(original);
+  const flat = flattenConfig(config);
+  const sectionFields = assignFieldsToSections(flat);
+
+  // 3. Fetch
   const fetchConfig = async () => {
     setLoading(true);
     setError(null);
@@ -197,13 +384,25 @@ export default function SettingsPage() {
     }
   };
 
+  // 4. Initial load
   useEffect(() => {
     void fetchConfig();
   }, []);
 
+  // 5. Handlers
   const handleChange = (key: string, value: ConfigValue) => {
     setConfig((prev) => setNestedValue(prev, key, value));
     setSaved(false);
+    // Track restart-required fields
+    const field = flat.find((f) => f.key === key);
+    if (field) {
+      const fieldDef = buildField(field.key, field.value);
+      if (fieldDef.requires_restart) {
+        setRestartFields((prev) =>
+          prev.includes(key) ? prev : [...prev, key],
+        );
+      }
+    }
   };
 
   const handleSave = async () => {
@@ -219,6 +418,7 @@ export default function SettingsPage() {
       setOriginal(config);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      setRestartFields([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save config");
     } finally {
@@ -226,84 +426,76 @@ export default function SettingsPage() {
     }
   };
 
-  const hasChanges =
-    JSON.stringify(config) !== JSON.stringify(original);
+  const handleReset = () => {
+    setConfig(original);
+    setSaved(false);
+    setRestartFields([]);
+  };
 
-  const fields = inferFields(config);
-  const sections = [...new Set(fields.map((f) => f.section))];
+  // 6. Action slot
+  const action = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void fetchConfig()}
+        disabled={loading}
+        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+      >
+        <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+        <span className="hidden sm:inline">Reload</span>
+      </button>
+      {saved && !hasChanges && (
+        <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+          <CheckCircle size={13} />
+          Saved
+        </span>
+      )}
+    </div>
+  );
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">
-            Settings
-          </h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
-            Configure Nova daemon preferences
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void fetchConfig()}
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-            Reset
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving || !hasChanges}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-cosmic-purple text-white hover:bg-cosmic-purple/80 transition-colors disabled:opacity-50"
-          >
-            {saved ? (
-              <CheckCircle size={14} />
-            ) : (
-              <Save size={14} />
-            )}
-            {saving ? "Saving..." : saved ? "Saved!" : "Save Changes"}
-          </button>
-        </div>
-      </div>
-
+    <PageShell
+      title="Settings"
+      subtitle="Configure Nova daemon preferences"
+      action={action}
+    >
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
+        <div className="mb-4">
+          <ErrorBanner message={error} onRetry={() => void fetchConfig()} />
         </div>
       )}
 
-      {saved && !hasChanges && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
-          <CheckCircle size={16} />
-          <span className="text-sm">Settings saved successfully</span>
+      {/* Restart notice banner */}
+      {restartFields.length > 0 && (
+        <div className="mb-4 flex items-start gap-3 p-4 rounded-cosmic bg-amber-500/10 border border-amber-500/30">
+          <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-amber-400">
+              Daemon restart required
+            </p>
+            <p className="text-xs text-amber-400/70 mt-0.5">
+              Changes to daemon settings take effect after restarting the Nova daemon.
+            </p>
+          </div>
         </div>
       )}
 
       {loading ? (
         <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => (
+          {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
               className="h-40 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
             />
           ))}
         </div>
-      ) : fields.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
-          <Settings size={36} />
-          <p className="text-sm">No configuration available</p>
-        </div>
       ) : (
         <div className="space-y-4">
-          {sections.map((section) => (
+          {SECTIONS.map((section) => (
             <ConfigSection
-              key={section}
-              title={section}
-              fields={fields.filter((f) => f.section === section)}
+              key={section.id}
+              section={section}
+              fields={sectionFields.get(section.id) ?? []}
               config={config}
               onChange={handleChange}
             />
@@ -311,20 +503,31 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Unsaved-changes sticky footer */}
       {hasChanges && (
-        <div className="sticky bottom-4 flex items-center justify-between p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-purple/40 shadow-cosmic">
+        <div className="sticky bottom-4 mt-6 flex items-center justify-between gap-4 p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-purple/40 shadow-cosmic">
           <p className="text-sm text-cosmic-muted">You have unsaved changes</p>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-cosmic-purple text-white hover:bg-cosmic-purple/80 transition-colors disabled:opacity-50"
-          >
-            <Save size={14} />
-            {saving ? "Saving..." : "Save Changes"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={saving}
+              className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-lg text-sm font-medium bg-cosmic-purple text-white hover:bg-cosmic-purple/80 transition-colors disabled:opacity-50"
+            >
+              <Save size={14} />
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

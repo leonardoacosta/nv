@@ -675,3 +675,43 @@ pub async fn gather_today_for_digest(
         })
         .collect())
 }
+
+// ── Tool Definitions ─────────────────────────────────────────────────────────
+
+/// Return MCP tool definitions for the three Google Calendar tools.
+pub fn calendar_tool_definitions() -> Vec<nv_core::ToolDefinition> {
+    vec![
+        nv_core::ToolDefinition {
+            name: "calendar_today".into(),
+            description: "Get today's calendar events. Returns a formatted schedule for the current day.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        nv_core::ToolDefinition {
+            name: "calendar_upcoming".into(),
+            description: "Get calendar events for the next N days (default 7, max 30). Returns events grouped by day.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of days to look ahead (default: 7, max: 30)"
+                    }
+                },
+                "required": []
+            }),
+        },
+        nv_core::ToolDefinition {
+            name: "calendar_next".into(),
+            description: "Get the single next upcoming calendar event. Quick check for what's on deck.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+    ]
+}

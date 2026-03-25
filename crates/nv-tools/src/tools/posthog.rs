@@ -470,3 +470,47 @@ mod tests {
         std::env::remove_var("POSTHOG_HOST");
     }
 }
+
+// ── Tool Definitions ─────────────────────────────────────────────────────────
+
+/// Return MCP tool definitions for the two PostHog analytics tools.
+pub fn posthog_tool_definitions() -> Vec<nv_core::ToolDefinition> {
+    vec![
+        nv_core::ToolDefinition {
+            name: "posthog_trends".into(),
+            description: "Get event trend data from PostHog for a project over the last 7 days. \
+                Returns daily counts with totals and trend direction."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    },
+                    "event": {
+                        "type": "string",
+                        "description": "PostHog event name (e.g. '$pageview', 'signup', 'purchase')"
+                    }
+                },
+                "required": ["project", "event"]
+            }),
+        },
+        nv_core::ToolDefinition {
+            name: "posthog_flags".into(),
+            description: "List active feature flags from PostHog for a project. \
+                Returns flag keys, names, and rollout percentages."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                    }
+                },
+                "required": ["project"]
+            }),
+        },
+    ]
+}

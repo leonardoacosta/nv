@@ -1,11 +1,8 @@
-mod registry;
-mod server;
-
 use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::error;
 
-use crate::server::McpServer;
+use nv_tools::server::McpServer;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -58,7 +55,7 @@ async fn main() -> Result<()> {
             }
         };
 
-        let response = server.handle_request(request);
+        let response = server.handle_request(request).await;
         let mut response_str = serde_json::to_string(&response)?;
         response_str.push('\n');
         stdout.write_all(response_str.as_bytes()).await?;

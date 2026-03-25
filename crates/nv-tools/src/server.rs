@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use serde_json::Value;
 use tracing::warn;
 
 use crate::registry::ToolRegistry;
+use crate::shared::SharedDeps;
 
 /// MCP server that dispatches JSON-RPC requests.
 pub struct McpServer {
@@ -9,14 +12,22 @@ pub struct McpServer {
 }
 
 impl McpServer {
+    /// Create a standalone server with only stateless tools.
     pub fn new() -> Self {
         Self {
             registry: ToolRegistry::new(),
         }
     }
 
+    /// Create a server with stateless tools plus daemon-coupled tool support.
+    pub fn with_shared(shared: Arc<dyn SharedDeps>) -> Self {
+        Self {
+            registry: ToolRegistry::with_shared(shared),
+        }
+    }
+
     /// Handle a single JSON-RPC request and return the response value.
-    pub fn handle_request(&self, request: Value) -> Value {
+    pub async fn handle_request(&self, request: Value) -> Value {
         let id = request.get("id").cloned().unwrap_or(Value::Null);
         let method = request
             .get("method")
@@ -26,7 +37,7 @@ impl McpServer {
         match method {
             "initialize" => self.handle_initialize(id),
             "tools/list" => self.handle_tools_list(id),
-            "tools/call" => self.handle_tools_call(id, &request),
+            "tools/call" => self.handle_tools_call(id, &request).await,
             other => {
                 warn!(method = other, "unknown MCP method");
                 self.error_response(id, -32601, "Method not found")
@@ -64,7 +75,7 @@ impl McpServer {
         })
     }
 
-    fn handle_tools_call(&self, id: Value, request: &Value) -> Value {
+    async fn handle_tools_call(&self, id: Value, request: &Value) -> Value {
         let name = request
             .get("params")
             .and_then(|p| p.get("name"))
@@ -77,7 +88,7 @@ impl McpServer {
             .cloned()
             .unwrap_or(serde_json::json!({}));
 
-        match self.registry.call_tool(name, args) {
+        match self.registry.call_tool(name, args).await {
             Ok(result) => serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": id,

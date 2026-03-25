@@ -277,3 +277,47 @@ mod tests {
         }
     }
 }
+
+// ── Tool Definitions ─────────────────────────────────────────────────────────
+
+/// Return MCP tool definitions for the two Docker tools.
+pub fn docker_tool_definitions() -> Vec<nv_core::ToolDefinition> {
+    vec![
+        nv_core::ToolDefinition {
+            name: "docker_status".into(),
+            description: "List Docker containers with name, image, state, uptime, and ports. \
+                Returns running containers by default; pass all=true to include stopped containers."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "all": {
+                        "type": "boolean",
+                        "description": "Include stopped containers (default: false, only running)"
+                    }
+                },
+                "required": []
+            }),
+        },
+        nv_core::ToolDefinition {
+            name: "docker_logs".into(),
+            description: "Get recent log lines from a Docker container. \
+                Returns the last N lines (default 50, max 200)."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "container": {
+                        "type": "string",
+                        "description": "Container name or ID"
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "description": "Number of log lines to return (default: 50, max: 200)"
+                    }
+                },
+                "required": ["container"]
+            }),
+        },
+    ]
+}

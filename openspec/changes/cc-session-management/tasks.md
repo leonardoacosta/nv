@@ -50,9 +50,9 @@
 
 ## Verify
 
-- [ ] [6.1] cargo build passes [owner:api-engineer]
-- [ ] [6.2] cargo clippy -- -D warnings passes [owner:api-engineer]
-- [ ] [6.3] pnpm build (dashboard) passes [owner:ui-engineer]
+- [x] [6.1] cargo build passes [owner:api-engineer]
+- [x] [6.2] cargo clippy -- -D warnings passes [owner:api-engineer]
+- [x] [6.3] pnpm build (dashboard) passes [owner:ui-engineer]
 - [ ] [6.4] Unit tests: `DashboardClient::forward_message` — mock server returns 200 with reply, verify response parsing; mock returns 503, verify fallback triggers [owner:api-engineer]
 - [ ] [6.5] Unit tests: `SessionManager.getStatus()` — state transitions (starting → active → idle → error) [owner:api-engineer]
 - [ ] [6.6] Unit tests: message route validates Bearer token — missing token returns 401, wrong token returns 403 [owner:api-engineer]

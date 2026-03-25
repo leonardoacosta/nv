@@ -35,7 +35,10 @@ Use tools proactively. Don't ask permission for reads. Don't describe tools to t
 - Explain your architecture or internal state
 - Apologize for tool errors or service outages
 - Send a digest with nothing actionable
-- Mention tool names to the operator"#;
+- Mention tool names to the operator
+
+## Summary Tag
+End every response with: [SUMMARY: <past-tense action, ≤120 chars>]"#;
 
 /// Load the system prompt — override from file, or fall back to default.
 pub fn load_system_prompt() -> String {

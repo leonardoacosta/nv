@@ -489,8 +489,23 @@ impl Worker {
             stage: "context_build".into(),
         });
 
+        // Query recent outbound messages for cold-start context injection.
+        // This gives Nova memory of its own recent conversation so cold-starts
+        // are not fully amnesiac (e.g. digest follow-ups referencing "ACT-1").
+        let recent_outbound_context: Option<String> = {
+            let store = deps.message_store.lock().unwrap();
+            let msgs = store.get_recent_outbound(10);
+            let ctx = crate::messages::MessageStore::format_outbound_context(&msgs);
+            if ctx.is_empty() { None } else { Some(ctx) }
+        };
+
         // Build system context and tool definitions
-        let system_prompt = build_system_context();
+        let base_system_prompt = build_system_context();
+        let system_prompt = if let Some(ctx) = &recent_outbound_context {
+            format!("Your recent messages to Leo:\n{ctx}\n\n{base_system_prompt}")
+        } else {
+            base_system_prompt
+        };
         let bootstrapped = check_bootstrap_state();
         let tool_definitions = if bootstrapped {
             tools::register_tools()
@@ -778,7 +793,11 @@ impl Worker {
             duration_ms: tool_loop_start.elapsed().as_millis() as u64,
         });
 
-        let response_text = extract_text(&final_content);
+        let raw_response_text = extract_text(&final_content);
+
+        // Extract the [SUMMARY:] tag for the diary and produce the cleaned response
+        // that gets delivered to the channel (tag line stripped).
+        let (result_summary, response_text) = extract_summary(&raw_response_text);
 
         // Push the completed turn (user + assistant) to the conversation store
         {
@@ -849,16 +868,6 @@ impl Worker {
 
         // Write diary entry
         let (trigger_type, trigger_source) = classify_triggers(&task.triggers);
-        let result_summary = if response_text.is_empty() {
-            "empty response".to_string()
-        } else {
-            let truncated: String = response_text.chars().take(80).collect();
-            if response_text.len() > 80 {
-                format!("{truncated}...")
-            } else {
-                truncated
-            }
-        };
         let sources_checked = summarize_sources(&tool_names);
 
         let diary_entry = DiaryEntry {
@@ -1278,6 +1287,67 @@ impl Worker {
 // to keep the future Send-safe for tokio::spawn.
 
 // ── Helper Functions ────────────────────────────────────────────────
+
+/// Extract the `[SUMMARY: ...]` tag from Claude's response.
+///
+/// Returns `(summary, cleaned_response)` where:
+/// - `summary` is the narrative summary for the diary entry (≤120 chars)
+/// - `cleaned_response` is the response text with the tag line stripped
+///
+/// If no tag is found, falls back to the first sentence of the response (up to
+/// 120 chars). If the response is empty, returns `("empty response", "")`.
+pub fn extract_summary(response_text: &str) -> (String, String) {
+    if response_text.is_empty() {
+        return ("empty response".to_string(), String::new());
+    }
+
+    // Search for the last `[SUMMARY:` ... `]` occurrence.
+    // We search from the end to pick up the last tag when multiple are present.
+    const OPEN: &str = "[SUMMARY:";
+    if let Some(tag_start) = response_text.rfind(OPEN) {
+        let after_open = &response_text[tag_start + OPEN.len()..];
+        if let Some(close_offset) = after_open.find(']') {
+            let raw_summary = after_open[..close_offset].trim();
+            // Cap at 120 chars on a char boundary
+            let summary = char_truncate(raw_summary, 120).to_string();
+
+            // Strip the entire tag line from the response. Find the line that
+            // contains the tag and remove it (including its newline).
+            let tag_end = tag_start + OPEN.len() + close_offset + 1; // past `]`
+            let before_tag = &response_text[..tag_start];
+            let after_tag = &response_text[tag_end..];
+
+            // Walk backwards from tag_start to the previous newline (or start)
+            // to strip the whole line including a leading newline.
+            let line_start = before_tag.rfind('\n').map(|i| i + 1).unwrap_or(0);
+            let prefix = &response_text[..line_start];
+            // Skip any leading newline in after_tag so we don't leave a blank line
+            let suffix = after_tag.strip_prefix('\n').unwrap_or(after_tag);
+            let cleaned = format!("{prefix}{suffix}").trim_end().to_string();
+
+            return (summary, cleaned);
+        }
+    }
+
+    // Fallback: first sentence (split on `.`, `!`, `?`), trim, cap at 120 chars.
+    let first_sentence = response_text
+        .split(['.', '!', '?'])
+        .next()
+        .unwrap_or(response_text)
+        .trim();
+    let summary = char_truncate(first_sentence, 120).to_string();
+
+    (summary, response_text.to_string())
+}
+
+/// Truncate `s` to at most `max_chars` Unicode scalar values.
+fn char_truncate(s: &str, max_chars: usize) -> &str {
+    if s.chars().count() <= max_chars {
+        return s;
+    }
+    let byte_pos = s.char_indices().nth(max_chars).map(|(i, _)| i).unwrap_or(s.len());
+    &s[..byte_pos]
+}
 
 /// Extract text content from content blocks, stripping any tool call artifacts.
 fn extract_text(content: &[ContentBlock]) -> String {
@@ -2204,5 +2274,61 @@ mod tests {
         assert_eq!(events.len(), 2);
         assert!(matches!(&events[0], WorkerEvent::StageStarted { .. }));
         assert!(matches!(&events[1], WorkerEvent::Error { error, .. } if error.contains("rate limited")));
+    }
+
+    // ── extract_summary tests ─────────────────────────────────────────
+
+    #[test]
+    fn extract_summary_tag_present_at_end() {
+        let input = "I resolved the OO-142 priority mismatch and sent the Jira close request.\n[SUMMARY: Resolved OO-142 priority mismatch and sent Jira close request]";
+        let (summary, cleaned) = extract_summary(input);
+        assert_eq!(summary, "Resolved OO-142 priority mismatch and sent Jira close request");
+        assert!(!cleaned.contains("[SUMMARY:"));
+        assert!(cleaned.contains("I resolved the OO-142"));
+    }
+
+    #[test]
+    fn extract_summary_tag_absent_falls_back_to_first_sentence() {
+        let input = "Checked the board. OO-142 is a priority mismatch. Action recommended.";
+        let (summary, cleaned) = extract_summary(input);
+        // First sentence up to the first '.'
+        assert_eq!(summary, "Checked the board");
+        // cleaned is the full response (no tag to strip)
+        assert_eq!(cleaned, input);
+    }
+
+    #[test]
+    fn extract_summary_empty_response() {
+        let (summary, cleaned) = extract_summary("");
+        assert_eq!(summary, "empty response");
+        assert_eq!(cleaned, "");
+    }
+
+    #[test]
+    fn extract_summary_tag_exceeds_120_chars_truncated() {
+        let long_summary = "a".repeat(200);
+        let input = format!("Response text.\n[SUMMARY: {long_summary}]");
+        let (summary, _cleaned) = extract_summary(&input);
+        assert_eq!(summary.len(), 120);
+    }
+
+    #[test]
+    fn extract_summary_tag_mid_response_uses_last_occurrence() {
+        // Last occurrence wins — the final tag line is stripped; any mid-body tags remain.
+        let input = "First [SUMMARY: first tag] then more text.\n[SUMMARY: second tag which is the real one]";
+        let (summary, cleaned) = extract_summary(input);
+        assert_eq!(summary, "second tag which is the real one");
+        // The last [SUMMARY:] tag line is stripped from cleaned
+        assert!(!cleaned.ends_with("[SUMMARY: second tag which is the real one]"));
+        // The summary correctly reflects the LAST tag
+        assert_eq!(summary, "second tag which is the real one");
+    }
+
+    #[test]
+    fn extract_summary_cleaned_response_has_no_trailing_newline_from_tag_line() {
+        let input = "Main response text.\n[SUMMARY: did something]";
+        let (_summary, cleaned) = extract_summary(input);
+        // The tag line should be stripped; remaining text should be the first line
+        assert_eq!(cleaned, "Main response text.");
     }
 }

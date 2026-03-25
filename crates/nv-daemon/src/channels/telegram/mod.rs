@@ -87,7 +87,8 @@ impl Channel for TelegramChannel {
         for update in &updates {
             if update.chat_id() == Some(self.chat_id) {
                 if let Some(cb) = &update.callback_query {
-                    if let Err(e) = self.client.answer_callback_query(&cb.id, None).await {
+                    let label = callback_label(cb.data.as_deref());
+                    if let Err(e) = self.client.answer_callback_query(&cb.id, Some(label)).await {
                         tracing::warn!("Failed to answer callback query: {e}");
                     }
                 }
@@ -509,6 +510,27 @@ async fn transcribe_voice_message(
     })
 }
 
+// ── Callback Label Helper ──────────────────────────────────────────
+
+/// Map a callback query data prefix to a short user-visible notification text.
+///
+/// Telegram displays this as a toast when the user taps an inline button.
+/// `None` data (e.g. buttons without callback data) falls through to the default.
+pub fn callback_label(data: Option<&str>) -> &'static str {
+    let Some(data) = data else {
+        return "Got it.";
+    };
+    if data.starts_with("approve:") {
+        "Working on it..."
+    } else if data.starts_with("edit:") {
+        "Editing..."
+    } else if data.starts_with("cancel:") {
+        "Cancelled."
+    } else {
+        "Got it."
+    }
+}
+
 // ── Inline Keyboard Builders ───────────────────────────────────────
 //
 // Builder methods (confirm_action, from_actions) are defined on
@@ -594,6 +616,16 @@ mod tests {
     fn from_actions_empty_list() {
         let kb = InlineKeyboard::from_actions(&[]);
         assert!(kb.rows.is_empty());
+    }
+
+    #[test]
+    fn callback_label_maps_known_prefixes() {
+        assert_eq!(callback_label(Some("approve:abc-123")), "Working on it...");
+        assert_eq!(callback_label(Some("edit:abc-123")), "Editing...");
+        assert_eq!(callback_label(Some("cancel:abc-123")), "Cancelled.");
+        assert_eq!(callback_label(Some("action:abc-123")), "Got it.");
+        assert_eq!(callback_label(Some("unknown:xyz")), "Got it.");
+        assert_eq!(callback_label(None), "Got it.");
     }
 
     /// Integration test against real Telegram Bot API.

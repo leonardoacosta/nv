@@ -303,6 +303,11 @@ impl ReminderStore {
     ///
     /// Uses PRAGMA user_version to track schema version. Safe for ALTER TABLE
     /// changes in future migration versions.
+    ///
+    /// If the database was written by a newer daemon version (schema version ahead of
+    /// migrations), the file is deleted and recreated from scratch. A `warn!` is emitted.
+    /// This is safe because reminders are ephemeral one-shot timers with no long-term
+    /// value.
     pub fn new(db_path: &Path) -> Result<Self> {
         let mut conn = Connection::open(db_path)
             .context("failed to open reminders database")?;
@@ -310,9 +315,34 @@ impl ReminderStore {
         conn.execute_batch("PRAGMA journal_mode=WAL;")
             .context("failed to set WAL mode on reminders database")?;
 
-        reminders_migrations()
-            .to_latest(&mut conn)
-            .map_err(|e| anyhow!("failed to run reminders.db migrations: {e}"))?;
+        match reminders_migrations().to_latest(&mut conn) {
+            Ok(()) => {}
+            Err(e) if e.to_string().contains("DatabaseTooFarAhead") => {
+                // DB was written by a newer daemon version. Drop the connection,
+                // delete the file, and start fresh.
+                drop(conn);
+                match std::fs::remove_file(db_path) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => {
+                        return Err(anyhow!("failed to delete ahead-of-code reminders.db: {e}"));
+                    }
+                }
+                warn!("reminders.db was ahead of migrations — recreated from scratch");
+                let mut fresh_conn = Connection::open(db_path)
+                    .context("failed to reopen reminders database after recreation")?;
+                fresh_conn
+                    .execute_batch("PRAGMA journal_mode=WAL;")
+                    .context("failed to set WAL mode on recreated reminders database")?;
+                reminders_migrations()
+                    .to_latest(&mut fresh_conn)
+                    .map_err(|e| anyhow!("failed to run reminders.db migrations after recreation: {e}"))?;
+                return Ok(Self { conn: fresh_conn });
+            }
+            Err(e) => {
+                return Err(anyhow!("failed to run reminders.db migrations: {e}"));
+            }
+        }
 
         Ok(Self { conn })
     }
@@ -646,6 +676,49 @@ mod tests {
         let due = store.get_due_reminders().unwrap();
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].id, id_past);
+    }
+
+    #[test]
+    fn reminder_store_new_fresh_path_succeeds() {
+        // Regression guard: opening a new path still works after the recovery code.
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("fresh.db");
+        let store = ReminderStore::new(&db_path).unwrap();
+
+        // Verify the store is functional
+        let due = Utc::now() + ChronoDuration::hours(1);
+        let id = store.create_reminder("test", &due, "telegram").unwrap();
+        assert!(id > 0);
+    }
+
+    #[test]
+    fn reminder_store_recovers_from_database_too_far_ahead() {
+        // Simulate a DB that was written by a future migration version by setting
+        // PRAGMA user_version to a value beyond what reminders_migrations() knows.
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("ahead.db");
+
+        // First, create a valid DB and push its user_version far ahead.
+        {
+            let mut conn = Connection::open(&db_path).unwrap();
+            reminders_migrations().to_latest(&mut conn).unwrap();
+            conn.execute_batch("PRAGMA user_version = 99;").unwrap();
+        }
+
+        // Now opening via ReminderStore::new() should succeed despite the version mismatch.
+        let store = ReminderStore::new(&db_path).unwrap();
+
+        // Verify schema is functional (the recreated DB should accept inserts).
+        let due = Utc::now() + ChronoDuration::hours(1);
+        let id = store.create_reminder("post-recovery reminder", &due, "telegram").unwrap();
+        assert!(id > 0);
+
+        // Verify user_version was reset to 1 (one migration).
+        let version: i64 = store
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1, "user_version should be 1 after recreation");
     }
 
     #[test]

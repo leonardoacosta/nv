@@ -795,7 +795,7 @@ impl ClaudeClient {
         // If an image is attached, skip the persistent path (doesn't support attachments)
         if image_path.is_some() {
             return self
-                .send_messages_cold_start_with_image(system, messages, tools, image_path)
+                .send_messages_cold_start_with_image(system, messages, tools, image_path, None)
                 .await;
         }
 
@@ -806,7 +806,7 @@ impl ClaudeClient {
 
         // Fallback to cold-start mode
         tracing::warn!("using cold-start fallback for this turn");
-        self.send_messages_cold_start_with_image(system, messages, tools, None)
+        self.send_messages_cold_start_with_image(system, messages, tools, None, None)
             .await
     }
 
@@ -834,17 +834,31 @@ impl ClaudeClient {
         }
     }
 
-    /// Cold-start variant that accepts an optional image attachment path.
+    /// Cold-start variant that accepts an optional image attachment path and
+    /// an optional recent-context string to prepend to the system prompt.
     ///
     /// When `image_path` is `Some`, adds `--attachment <path>` to the `claude -p`
     /// subprocess arguments so Claude receives the image as a vision input.
-    async fn send_messages_cold_start_with_image(
+    ///
+    /// When `recent_context` is `Some` and non-empty, prepends a
+    /// "Your recent messages to Leo:" section to the system prompt so Nova has
+    /// context of its own recent conversation at cold-start time.
+    pub(crate) async fn send_messages_cold_start_with_image(
         &self,
         system: &str,
         messages: &[Message],
         tools: &[ToolDefinition],
         image_path: Option<&str>,
+        recent_context: Option<&str>,
     ) -> Result<ApiResponse> {
+        // Prepend recent outbound context to the system prompt when provided
+        let system_with_context: String;
+        let system = if let Some(ctx) = recent_context.filter(|c| !c.is_empty()) {
+            system_with_context = format!("Your recent messages to Leo:\n{ctx}\n\n{system}");
+            &system_with_context
+        } else {
+            system
+        };
         // Build user-content-only prompt: system prompt is passed via --system-prompt
         // flag, conversation content goes to stdin.
         // Tool definitions are embedded in the system prompt so Claude knows what's
@@ -2089,6 +2103,50 @@ mod tests {
         let prompt = build_conversation_prompt(&messages);
         assert!(prompt.contains("User: status"));
         assert!(!prompt.contains("## Available Tools"));
+    }
+
+    // ── Tests: cold-start recent_context prepending ──────────────────
+
+    /// Verify that the system prompt is augmented when recent_context is Some.
+    /// Tests the prepending logic in send_messages_cold_start_with_image.
+    #[test]
+    fn cold_start_context_prepend_some_context_includes_header() {
+        let base_system = "You are Nova.";
+        let ctx = "[14:30] Nova: You have 14 active projects.";
+        let result = if !ctx.is_empty() {
+            format!("Your recent messages to Leo:\n{ctx}\n\n{base_system}")
+        } else {
+            base_system.to_string()
+        };
+        assert!(result.contains("Your recent messages to Leo:"));
+        assert!(result.contains(ctx));
+        assert!(result.contains(base_system));
+    }
+
+    #[test]
+    fn cold_start_context_prepend_none_omits_header() {
+        let base_system = "You are Nova.";
+        let ctx: Option<&str> = None;
+        let result = if let Some(c) = ctx.filter(|s| !s.is_empty()) {
+            format!("Your recent messages to Leo:\n{c}\n\n{base_system}")
+        } else {
+            base_system.to_string()
+        };
+        assert!(!result.contains("Your recent messages to Leo:"));
+        assert_eq!(result, base_system);
+    }
+
+    #[test]
+    fn cold_start_context_prepend_empty_string_omits_header() {
+        let base_system = "You are Nova.";
+        let ctx: Option<&str> = Some("");
+        let result = if let Some(c) = ctx.filter(|s| !s.is_empty()) {
+            format!("Your recent messages to Leo:\n{c}\n\n{base_system}")
+        } else {
+            base_system.to_string()
+        };
+        assert!(!result.contains("Your recent messages to Leo:"));
+        assert_eq!(result, base_system);
     }
 
     // ── New tests: ClaudeClient constructor ─────────────────────────

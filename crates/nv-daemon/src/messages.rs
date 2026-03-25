@@ -390,6 +390,79 @@ impl MessageStore {
         Ok(lines.join("\n"))
     }
 
+    /// Return the most recent `limit` outbound messages ordered newest-first.
+    ///
+    /// Used to inject recent Nova messages into cold-start system prompts so
+    /// Nova has context of its own recent conversation.
+    pub fn get_recent_outbound(&self, limit: usize) -> Vec<StoredMessage> {
+        let mut stmt = match self.conn.prepare(
+            "SELECT id, timestamp, direction, channel, COALESCE(sender, ''), content, response_time_ms, tokens_in, tokens_out
+             FROM messages
+             WHERE direction = 'outbound'
+             ORDER BY id DESC
+             LIMIT ?1",
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = %e, "get_recent_outbound: failed to prepare query");
+                return vec![];
+            }
+        };
+
+        stmt.query_map(params![limit as i64], |row| {
+            Ok(StoredMessage {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                direction: row.get(2)?,
+                channel: row.get(3)?,
+                sender: row.get(4)?,
+                content: row.get(5)?,
+                response_time_ms: row.get(6)?,
+                tokens_in: row.get(7)?,
+                tokens_out: row.get(8)?,
+            })
+        })
+        .map(|rows| {
+            rows.filter_map(|r| r.ok()).collect()
+        })
+        .unwrap_or_default()
+    }
+
+    /// Format a slice of recent outbound messages for cold-start context injection.
+    ///
+    /// Returns one line per message: "[HH:MM] Nova: {preview}" where preview is
+    /// capped at 200 chars. Returns an empty string when the slice is empty.
+    pub fn format_outbound_context(messages: &[StoredMessage]) -> String {
+        if messages.is_empty() {
+            return String::new();
+        }
+        messages
+            .iter()
+            .map(|msg| {
+                // Extract HH:MM from timestamp (format: "YYYY-MM-DD HH:MM:SS")
+                let time_part = if msg.timestamp.len() >= 16 {
+                    &msg.timestamp[11..16]
+                } else {
+                    &msg.timestamp
+                };
+                // Cap preview at 200 chars on a char boundary
+                let content = &msg.content;
+                let preview = if content.chars().count() > 200 {
+                    let byte_end = content
+                        .char_indices()
+                        .nth(200)
+                        .map(|(i, _)| i)
+                        .unwrap_or(content.len());
+                    &content[..byte_end]
+                } else {
+                    content.as_str()
+                };
+                format!("[{time_part}] Nova: {preview}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Compute aggregate stats for the dashboard.
     pub fn stats(&self) -> Result<StatsReport> {
         let total_messages: i64 = self
@@ -1356,5 +1429,94 @@ mod tests {
             })
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    // ── get_recent_outbound tests ─────────────────────────────────────
+
+    #[test]
+    fn get_recent_outbound_empty_store_returns_empty_vec() {
+        let (_dir, store) = setup();
+        let results = store.get_recent_outbound(10);
+        assert!(results.is_empty(), "empty store should return empty vec");
+    }
+
+    #[test]
+    fn get_recent_outbound_returns_at_most_limit_rows_newest_first() {
+        let (_dir, store) = setup();
+
+        // Insert 7 outbound messages
+        for i in 0..7 {
+            store
+                .log_outbound("telegram", &format!("message {i}"), None, None, None, None)
+                .unwrap();
+        }
+
+        // Also insert an inbound message that should be excluded
+        store
+            .log_inbound("telegram", "leo", "inbound msg", "message")
+            .unwrap();
+
+        // Ask for at most 5
+        let results = store.get_recent_outbound(5);
+        assert_eq!(results.len(), 5, "should return at most 5 rows");
+
+        // All returned rows should be outbound
+        for msg in &results {
+            assert_eq!(msg.direction, "outbound");
+        }
+
+        // Results ordered newest-first: highest id should be first
+        let ids: Vec<i64> = results.iter().map(|m| m.id).collect();
+        let mut sorted_desc = ids.clone();
+        sorted_desc.sort_by(|a, b| b.cmp(a));
+        assert_eq!(ids, sorted_desc, "results should be ordered newest-first (desc id)");
+    }
+
+    // ── format_outbound_context tests ─────────────────────────────────
+
+    #[test]
+    fn format_outbound_context_empty_slice_returns_empty_string() {
+        let result = MessageStore::format_outbound_context(&[]);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn format_outbound_context_produces_timestamped_lines() {
+        let msgs = vec![
+            StoredMessage {
+                id: 1,
+                timestamp: "2026-03-25 14:30:00".to_string(),
+                direction: "outbound".to_string(),
+                channel: "telegram".to_string(),
+                sender: "nova".to_string(),
+                content: "You have 14 active projects.".to_string(),
+                response_time_ms: None,
+                tokens_in: None,
+                tokens_out: None,
+            },
+        ];
+        let result = MessageStore::format_outbound_context(&msgs);
+        assert_eq!(result, "[14:30] Nova: You have 14 active projects.");
+    }
+
+    #[test]
+    fn format_outbound_context_truncates_preview_at_200_chars() {
+        let long_content = "a".repeat(300);
+        let msgs = vec![StoredMessage {
+            id: 1,
+            timestamp: "2026-03-25 09:00:00".to_string(),
+            direction: "outbound".to_string(),
+            channel: "telegram".to_string(),
+            sender: "nova".to_string(),
+            content: long_content,
+            response_time_ms: None,
+            tokens_in: None,
+            tokens_out: None,
+        }];
+        let result = MessageStore::format_outbound_context(&msgs);
+        // "[09:00] Nova: " is 14 chars, preview should be 200 'a's
+        let expected_preview_len = 200;
+        assert!(result.ends_with(&"a".repeat(expected_preview_len)));
+        assert!(!result.ends_with(&"a".repeat(expected_preview_len + 1)));
     }
 }

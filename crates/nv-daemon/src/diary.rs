@@ -21,7 +21,7 @@ pub struct DiaryEntry {
     pub tools_called: Vec<String>,
     /// Summary of sources checked (e.g. "jira: 2 issues, memory: decisions").
     pub sources_checked: String,
-    /// Summary of the result (e.g. "sent reply", "suppressed digest", "error").
+    /// Narrative summary extracted from Claude's [SUMMARY:] tag or first sentence.
     pub result_summary: String,
     /// Input tokens from the Claude API response.
     pub tokens_in: u32,

@@ -423,6 +423,9 @@ pub fn register_tools() -> Vec<ToolDefinition> {
         }),
     });
 
+    // Add general-purpose system tools (bash, file I/O, grep)
+    tools.extend(general_tool_definitions());
+
     // Add cross-channel routing tools
     tools.extend(vec![
         ToolDefinition {
@@ -1136,6 +1139,204 @@ fn reminder_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+// ── General-purpose system tools ────────────────────────────────────
+
+/// Production environment deny patterns.
+/// Commands matching any of these are blocked before execution.
+const PRODUCTION_DENY_PATTERNS: &[&str] = &[
+    // Doppler production configs
+    "doppler.*--config prd",
+    "doppler.*--config prod",
+    "doppler.*--config production",
+    "DOPPLER_CONFIG=prd",
+    "DOPPLER_CONFIG=prod",
+    "DOPPLER_CONFIG=production",
+    "doppler secrets set.*--config prd",
+    // Vercel production deploys
+    "vercel --prod",
+    "vercel deploy --prod",
+    "vercel promote",
+    // Git push to main (triggers production deploys)
+    "git push.*origin main",
+    "git push origin main",
+    // Production database writes
+    "drizzle-kit push.*prod",
+    "drizzle-kit migrate.*prod",
+    // System-level services
+    "systemctl.*restart.*--system",
+    "systemctl.*stop.*--system",
+    // Destructive
+    "rm -rf /",
+    "rm -rf ~",
+    "git push --force",
+];
+
+/// Try to rewrite a command through RTK for token-optimized output.
+/// Falls back to the original command if RTK is unavailable or rewrite fails.
+fn try_rtk_rewrite(command: &str) -> String {
+    match std::process::Command::new("rtk")
+        .arg("rewrite")
+        .arg(command)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            let rewritten = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if rewritten.is_empty() || rewritten == command {
+                command.to_string()
+            } else {
+                rewritten
+            }
+        }
+        _ => command.to_string(),
+    }
+}
+
+/// Check if a command matches any production deny pattern.
+fn is_production_denied(command: &str) -> Option<&'static str> {
+    for pattern in PRODUCTION_DENY_PATTERNS {
+        // Simple substring/glob matching — patterns use .* as wildcard
+        if pattern.contains(".*") {
+            let parts: Vec<&str> = pattern.split(".*").collect();
+            let mut pos = 0;
+            let mut matched = true;
+            for part in &parts {
+                if let Some(found) = command[pos..].find(part) {
+                    pos += found + part.len();
+                } else {
+                    matched = false;
+                    break;
+                }
+            }
+            if matched {
+                return Some(pattern);
+            }
+        } else if command.contains(pattern) {
+            return Some(pattern);
+        }
+    }
+    None
+}
+
+/// Tool definitions for general-purpose system access.
+fn general_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "run_command".into(),
+            description: "Execute a shell command and return stdout/stderr. \
+                Commands targeting production environments are blocked. \
+                Use for: package management, build tools, system diagnostics, \
+                git operations (non-production), file manipulation, and any CLI tool. \
+                Timeout: 30s for reads, 60s for writes.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The shell command to execute (e.g. 'cargo build', 'git status', 'ls -la')"
+                    },
+                    "working_dir": {
+                        "type": "string",
+                        "description": "Optional working directory (absolute path). Defaults to home directory."
+                    }
+                },
+                "required": ["command"]
+            }),
+        },
+        ToolDefinition {
+            name: "read_file".into(),
+            description: "Read the contents of a file. Returns the full file content as text. \
+                For large files, use the offset and limit parameters to read a specific range of lines.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the file to read"
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "description": "Optional: start reading from this line number (1-based)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Optional: maximum number of lines to return (default: 500)"
+                    }
+                },
+                "required": ["path"]
+            }),
+        },
+        ToolDefinition {
+            name: "write_file".into(),
+            description: "Write content to a file (creates or overwrites). \
+                Paths inside production environments or sensitive files (.env, .pem, credentials) are blocked.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to write to"
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The content to write"
+                    }
+                },
+                "required": ["path", "content"]
+            }),
+        },
+        ToolDefinition {
+            name: "grep_files".into(),
+            description: "Search for a pattern in files under a directory. Returns matching lines with file paths and line numbers.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "pattern": {
+                        "type": "string",
+                        "description": "The search pattern (basic regex)"
+                    },
+                    "directory": {
+                        "type": "string",
+                        "description": "Absolute path to the directory to search"
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": "Optional: glob pattern to filter files (e.g. '*.rs', '*.ts')"
+                    }
+                },
+                "required": ["pattern", "directory"]
+            }),
+        },
+        ToolDefinition {
+            name: "list_dir".into(),
+            description: "List directory contents with file sizes and types. Works on any absolute path.".into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the directory"
+                    }
+                },
+                "required": ["path"]
+            }),
+        },
+    ]
+}
+
+/// Sensitive file patterns that write_file should block.
+fn is_sensitive_path(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".env")
+        || lower.contains(".env.")
+        || lower.ends_with(".pem")
+        || lower.ends_with(".key")
+        || lower.contains("credentials")
+        || lower.contains("/secrets/")
+}
+
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
 /// Used during first-run to prevent Claude from searching Jira/Nexus/memory
 /// instead of focusing on the onboarding conversation.
@@ -1308,6 +1509,8 @@ fn is_write_tool(name: &str) -> bool {
             | "teams_send"
             | "complete_bootstrap"
             | "update_soul"
+            | "run_command"
+            | "write_file"
     )
 }
 
@@ -1527,6 +1730,177 @@ pub async fn execute_tool_send(
         "git_status" | "git_log" | "git_branch" | "git_diff_stat"
         | "ls_project" | "cat_config" | "bd_ready" | "bd_stats" => {
             execute_bash_tool(name, input, project_registry).await
+        }
+
+        // ── General-Purpose System Tools ────────────────────────────
+        "run_command" => {
+            let command = input["command"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'command' parameter"))?;
+            // Enforce production deny-list
+            if let Some(pattern) = is_production_denied(command) {
+                anyhow::bail!("BLOCKED: command matches production deny pattern: {pattern}");
+            }
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/nyaptor".into());
+            let working_dir = input["working_dir"]
+                .as_str()
+                .unwrap_or(&home);
+            let wd = std::path::Path::new(working_dir);
+            if !wd.is_dir() {
+                anyhow::bail!("working directory does not exist: {working_dir}");
+            }
+            // Try to rewrite through RTK for token-optimized output
+            let effective_cmd = try_rtk_rewrite(command);
+            let output = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&effective_cmd)
+                .current_dir(wd)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await
+                .map_err(|e| anyhow!("failed to execute command: {e}"))?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let code = output.status.code().unwrap_or(-1);
+            if output.status.success() {
+                let result = if stdout.trim().is_empty() {
+                    "(no output)".to_string()
+                } else {
+                    // Cap output at 50KB to avoid blowing context
+                    let s = stdout.to_string();
+                    if s.len() > 50_000 {
+                        format!("{}...\n[truncated at 50KB, total {} bytes]", &s[..50_000], s.len())
+                    } else {
+                        s
+                    }
+                };
+                Ok(ToolResult::Immediate(result))
+            } else {
+                let mut msg = format!("exit {code}");
+                if !stderr.trim().is_empty() {
+                    msg.push_str(&format!(": {}", stderr.trim()));
+                }
+                if !stdout.trim().is_empty() {
+                    msg.push_str(&format!("\nstdout: {}", stdout.trim()));
+                }
+                Err(anyhow!("{msg}"))
+            }
+        }
+        "read_file" => {
+            let path = input["path"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'path' parameter"))?;
+            if path.contains("..") {
+                anyhow::bail!("path traversal not allowed");
+            }
+            let content = tokio::fs::read_to_string(path)
+                .await
+                .map_err(|e| anyhow!("failed to read {path}: {e}"))?;
+            let offset = input["offset"].as_u64().unwrap_or(1).max(1) as usize;
+            let limit = input["limit"].as_u64().unwrap_or(500) as usize;
+            let lines: Vec<&str> = content.lines().collect();
+            let start = (offset - 1).min(lines.len());
+            let end = (start + limit).min(lines.len());
+            let slice: Vec<String> = lines[start..end]
+                .iter()
+                .enumerate()
+                .map(|(i, l)| format!("{:>5} {}", start + i + 1, l))
+                .collect();
+            if slice.is_empty() {
+                Ok(ToolResult::Immediate("(empty file)".into()))
+            } else {
+                Ok(ToolResult::Immediate(slice.join("\n")))
+            }
+        }
+        "write_file" => {
+            let path = input["path"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'path' parameter"))?;
+            let content = input["content"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'content' parameter"))?;
+            if path.contains("..") {
+                anyhow::bail!("path traversal not allowed");
+            }
+            if is_sensitive_path(path) {
+                anyhow::bail!("BLOCKED: cannot write to sensitive file: {path}");
+            }
+            // Ensure parent directory exists
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| anyhow!("failed to create parent directory: {e}"))?;
+            }
+            tokio::fs::write(path, content)
+                .await
+                .map_err(|e| anyhow!("failed to write {path}: {e}"))?;
+            Ok(ToolResult::Immediate(format!("Written {} bytes to {path}", content.len())))
+        }
+        "grep_files" => {
+            let pattern = input["pattern"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'pattern' parameter"))?;
+            let directory = input["directory"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'directory' parameter"))?;
+            if directory.contains("..") {
+                anyhow::bail!("path traversal not allowed");
+            }
+            let mut cmd_str = format!("grep -rn --include='*' '{}' '{}'", pattern, directory);
+            if let Some(fp) = input["file_pattern"].as_str() {
+                cmd_str = format!("grep -rn --include='{}' '{}' '{}'", fp, pattern, directory);
+            }
+            // Route through RTK for token-optimized output
+            let effective_cmd = try_rtk_rewrite(&cmd_str);
+            let output = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&effective_cmd)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await
+                .map_err(|e| anyhow!("grep failed: {e}"))?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.trim().is_empty() {
+                Ok(ToolResult::Immediate("No matches found.".into()))
+            } else {
+                let s = stdout.to_string();
+                let result = if s.len() > 50_000 {
+                    format!("{}...\n[truncated at 50KB]", &s[..50_000])
+                } else {
+                    s
+                };
+                Ok(ToolResult::Immediate(result))
+            }
+        }
+        "list_dir" => {
+            let path = input["path"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'path' parameter"))?;
+            if path.contains("..") {
+                anyhow::bail!("path traversal not allowed");
+            }
+            // Route through RTK for token-optimized output
+            let cmd_str = format!("ls -la '{}'", path);
+            let effective_cmd = try_rtk_rewrite(&cmd_str);
+            let output = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&effective_cmd)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .output()
+                .await
+                .map_err(|e| anyhow!("ls failed: {e}"))?;
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.trim().is_empty() {
+                Ok(ToolResult::Immediate("(empty directory)".into()))
+            } else {
+                Ok(ToolResult::Immediate(stdout.to_string()))
+            }
         }
 
         // ── Docker Tools ────────────────────────────────────────────

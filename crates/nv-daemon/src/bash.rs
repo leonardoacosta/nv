@@ -105,9 +105,62 @@ pub fn validate_config_file(project_root: &Path, file: &str) -> Result<PathBuf> 
     Ok(full)
 }
 
+// ── RTK integration ─────────────────────────────────────────────────
+
+/// Check if `rtk` is available on PATH (cached after first check).
+fn rtk_available() -> bool {
+    use std::sync::OnceLock;
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        std::process::Command::new("rtk")
+            .arg("--version")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
+}
+
+/// Build a command that routes through RTK if available, falling back to direct execution.
+/// `base` is the program name (e.g. "git", "ls"), `args` are the arguments.
+#[allow(dead_code)]
+fn rtk_command(base: &str, args: &[&str]) -> Command {
+    if rtk_available() {
+        let mut c = Command::new("rtk");
+        c.arg(base);
+        for arg in args {
+            c.arg(arg);
+        }
+        c
+    } else {
+        let mut c = Command::new(base);
+        for arg in args {
+            c.arg(arg);
+        }
+        c
+    }
+}
+
+/// Build an RTK command with OsStr args (for paths).
+fn rtk_command_os(base: &str) -> (Command, bool) {
+    if rtk_available() {
+        let mut c = Command::new("rtk");
+        c.arg(base);
+        (c, true)
+    } else {
+        let c = Command::new(base);
+        (c, false)
+    }
+}
+
 // ── Execution ───────────────────────────────────────────────────────
 
 /// Execute an allowed command against a validated project path.
+///
+/// Routes through RTK for token-optimized output when available,
+/// falls back to direct execution otherwise.
 ///
 /// Returns the captured stdout on success, or an error with stderr/exit info.
 pub async fn execute_command(
@@ -116,7 +169,7 @@ pub async fn execute_command(
 ) -> Result<String> {
     let mut process = match cmd {
         AllowedCommand::GitStatus => {
-            let mut c = Command::new("git");
+            let (mut c, _) = rtk_command_os("git");
             c.arg("-C")
                 .arg(project_root)
                 .arg("status")
@@ -125,7 +178,7 @@ pub async fn execute_command(
         }
         AllowedCommand::GitLog { count } => {
             let n = (*count).min(MAX_GIT_LOG_COUNT);
-            let mut c = Command::new("git");
+            let (mut c, _) = rtk_command_os("git");
             c.arg("-C")
                 .arg(project_root)
                 .arg("log")
@@ -134,7 +187,7 @@ pub async fn execute_command(
             c
         }
         AllowedCommand::GitBranch => {
-            let mut c = Command::new("git");
+            let (mut c, _) = rtk_command_os("git");
             c.arg("-C")
                 .arg(project_root)
                 .arg("branch")
@@ -142,7 +195,7 @@ pub async fn execute_command(
             c
         }
         AllowedCommand::GitDiffStat => {
-            let mut c = Command::new("git");
+            let (mut c, _) = rtk_command_os("git");
             c.arg("-C")
                 .arg(project_root)
                 .arg("diff")
@@ -154,17 +207,25 @@ pub async fn execute_command(
                 Some(s) => validate_subdir(project_root, s)?,
                 None => project_root.to_path_buf(),
             };
-            let mut c = Command::new("ls");
+            let (mut c, _) = rtk_command_os("ls");
             c.arg("-1").arg(&target);
             c
         }
         AllowedCommand::CatConfig { file } => {
             let full_path = validate_config_file(project_root, file)?;
-            let mut c = Command::new("cat");
+            let (mut c, _) = rtk_command_os("read");
+            // rtk read takes a path; fallback cat takes a path — same args
+            if !rtk_available() {
+                // Fallback: use cat directly
+                let mut c = Command::new("cat");
+                c.arg(&full_path);
+                return execute_raw(&mut c).await;
+            }
             c.arg(&full_path);
             c
         }
         AllowedCommand::BdReady => {
+            // bd doesn't have an RTK proxy — run directly
             let mut c = Command::new("bd");
             c.arg("-C").arg(project_root).arg("ready").arg("--json");
             c
@@ -176,7 +237,11 @@ pub async fn execute_command(
         }
     };
 
-    // No shell invocation — stdin closed, stdout/stderr captured.
+    execute_raw(&mut process).await
+}
+
+/// Run a prepared Command with timeout, capturing stdout/stderr.
+async fn execute_raw(process: &mut Command) -> Result<String> {
     process
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

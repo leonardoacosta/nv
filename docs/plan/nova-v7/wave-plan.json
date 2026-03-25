@@ -143,16 +143,60 @@
       "label": "Wave 1a \u2014 Quick Fixes",
       "specs": [
         {
-          "name": "fix-telegram-null-callback"
+          "name": "fix-telegram-null-callback",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-25T12:01:37.637288",
+          "merged_at": "2026-03-25T12:14:51.676280"
         },
         {
-          "name": "fix-reminders-db-migration"
+          "name": "fix-reminders-db-migration",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-25T12:01:37.637290",
+          "merged_at": "2026-03-25T12:14:51.676282"
         },
         {
-          "name": "enrich-diary-narratives"
+          "name": "enrich-diary-narratives",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-25T12:01:37.637292",
+          "merged_at": "2026-03-25T12:14:51.676284"
         },
         {
-          "name": "fix-cold-start-memory"
+          "name": "fix-cold-start-memory",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-25T12:01:37.637292",
+          "merged_at": "2026-03-25T12:14:51.676284"
         }
       ],
       "task_count": 35
@@ -162,13 +206,46 @@
       "label": "Wave 1b \u2014 Complex Fixes",
       "specs": [
         {
-          "name": "improve-typing-indicators"
+          "name": "improve-typing-indicators",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
-          "name": "fix-nexus-session-dedup"
+          "name": "fix-nexus-session-dedup",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
-          "name": "investigate-300s-timeout"
+          "name": "investigate-300s-timeout",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         }
       ],
       "task_count": 52
@@ -257,5 +334,41 @@
         "fix-reminders-db-migration"
       ]
     }
-  ]
+  ],
+  "status": "in_progress",
+  "current_wave": 2,
+  "started_at": "2026-03-25T12:00:18.696682",
+  "completed_at": null,
+  "completed_waves": [
+    1
+  ],
+  "completed_specs": [
+    "fix-telegram-null-callback",
+    "fix-reminders-db-migration",
+    "enrich-diary-narratives",
+    "fix-cold-start-memory"
+  ],
+  "failed_specs": [],
+  "mode": "consolidated",
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [
+      "IMPL"
+    ],
+    "task_results": {
+      "fix-telegram-null-callback": {},
+      "fix-reminders-db-migration": {},
+      "enrich-diary-narratives": {},
+      "fix-cold-start-memory": {},
+      "improve-typing-indicators": {},
+      "fix-nexus-session-dedup": {},
+      "investigate-300s-timeout": {}
+    },
+    "phase_started_at": {
+      "IMPL": "2026-03-25T12:01:37.637279"
+    },
+    "phase_completed_at": {
+      "IMPL": "2026-03-25T12:14:51.676271"
+    }
+  }
 }

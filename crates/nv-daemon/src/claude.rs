@@ -146,14 +146,20 @@ pub use nv_core::ToolDefinition;
 // ── CLI JSON Response Types (cold-start fallback) ───────────────────
 
 /// The JSON response format from `claude -p --output-format json`.
+///
+/// Modern CLI versions (supporting `--tools-json`) emit a `content` array with
+/// typed `ContentBlock` entries. Older versions emit a plain `result` string.
+/// We prefer `content` when present; fall back to `result` for backward compat.
 #[derive(Debug, Deserialize)]
 struct CliJsonResponse {
     #[serde(default)]
     result: String,
+    /// Native content array emitted by CLI versions that support `--tools-json`.
+    #[serde(default)]
+    content: Vec<ContentBlock>,
     #[serde(default)]
     is_error: bool,
     #[serde(default)]
-    #[allow(dead_code)]
     stop_reason: String,
     #[serde(default)]
     session_id: String,
@@ -242,6 +248,8 @@ struct SpawnConfig {
     model: String,
     real_home: String,
     sandbox_home: String,
+    /// Serialized `--tools-json` value. `None` when no tools or older CLI fallback.
+    tools_json: Option<String>,
 }
 
 impl SpawnConfig {
@@ -258,6 +266,7 @@ impl SpawnConfig {
             model: model.to_string(),
             real_home,
             sandbox_home,
+            tools_json: None,
         }
     }
 }
@@ -321,21 +330,31 @@ async fn drain_init_events(
 
 /// Spawn a persistent Claude CLI subprocess with stream-json I/O.
 async fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, ApiError> {
+    let mut base_args: Vec<String> = vec![
+        "--dangerously-skip-permissions".into(),
+        "-p".into(),
+        "--verbose".into(),
+        "--input-format".into(),
+        "stream-json".into(),
+        "--output-format".into(),
+        "stream-json".into(),
+        "--model".into(),
+        config.model.clone(),
+        "--no-session-persistence".into(),
+    ];
+
+    // Use native tools-json when available; omit entirely when empty.
+    if let Some(ref tools_json) = config.tools_json {
+        base_args.push("--tools-json".into());
+        base_args.push(tools_json.clone());
+        tracing::debug!(
+            tools_json_bytes = tools_json.len(),
+            "persistent: spawning with --tools-json"
+        );
+    }
+
     let mut child = Command::new("claude")
-        .args([
-            "--dangerously-skip-permissions",
-            "-p",
-            "--verbose",
-            "--input-format",
-            "stream-json",
-            "--output-format",
-            "stream-json",
-            "--model",
-            &config.model,
-            "--no-session-persistence",
-            "--tools",
-            "Read,Glob,Grep,Bash(git:*)",
-        ])
+        .args(&base_args)
         .env("HOME", &config.sandbox_home)
         .env(
             "PATH",
@@ -469,8 +488,30 @@ pub struct PersistentSession {
 }
 
 impl PersistentSession {
-    /// Create a new persistent session (does not spawn the subprocess yet).
-    fn new(config: SpawnConfig) -> Self {
+    /// Create a new persistent session with the given tool definitions.
+    ///
+    /// Serializes `tools` to JSON for the `--tools-json` CLI flag. The
+    /// subprocess is not spawned until the first turn.
+    fn new(mut config: SpawnConfig, tools: &[ToolDefinition]) -> Self {
+        // Serialize tool definitions for --tools-json at spawn time.
+        if !tools.is_empty() {
+            let tools_array: Vec<serde_json::Value> =
+                tools.iter().map(|t| t.anthropic_json()).collect();
+            match serde_json::to_string(&tools_array) {
+                Ok(json) => {
+                    tracing::debug!(
+                        tool_count = tools.len(),
+                        json_bytes = json.len(),
+                        "persistent session: serialized tool definitions for spawn"
+                    );
+                    config.tools_json = Some(json);
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to serialize tools for persistent session");
+                }
+            }
+        }
+
         Self {
             inner: Mutex::new(SessionInner {
                 process: None,
@@ -567,9 +608,68 @@ impl PersistentSession {
     ) -> Option<Result<ApiResponse>> {
         let mut inner = self.inner.lock().await;
 
+        // Detect when the caller's tool list has changed since spawn time.
+        // If so, kill the process and force a respawn with the updated tools.
+        {
+            let caller_names: std::collections::BTreeSet<&str> =
+                tools.iter().map(|t| t.name.as_str()).collect();
+            let spawn_names: std::collections::BTreeSet<&str> = inner
+                .config
+                .tools_json
+                .as_deref()
+                .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v["name"].as_str().map(str::to_string).map(|_| ""))
+                .collect::<std::collections::BTreeSet<&str>>();
+
+            // Compare by serialized JSON of tool names
+            let caller_json = serde_json::to_string(
+                &tools.iter().map(|t| &t.name).collect::<Vec<_>>(),
+            )
+            .unwrap_or_default();
+            let spawn_tool_names: Vec<String> = inner
+                .config
+                .tools_json
+                .as_deref()
+                .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v["name"].as_str().map(ToString::to_string))
+                .collect();
+            let spawn_json = serde_json::to_string(&spawn_tool_names).unwrap_or_default();
+
+            let _ = caller_names; // suppress unused warning from first approach
+            let _ = spawn_names;
+
+            if caller_json != spawn_json {
+                tracing::warn!(
+                    caller_tools = %caller_json,
+                    spawn_tools = %spawn_json,
+                    "persistent: tool list changed since spawn — killing process for respawn"
+                );
+                inner.process = None;
+                // Update the spawn config with the new tools
+                let tools_array: Vec<serde_json::Value> =
+                    tools.iter().map(|t| t.anthropic_json()).collect();
+                if let Ok(json) = serde_json::to_string(&tools_array) {
+                    inner.config.tools_json = if tools.is_empty() { None } else { Some(json) };
+                }
+            }
+        }
+
         if !Self::ensure_alive(&mut inner).await {
             return None;
         }
+
+        // Calculate tools_registered before taking mutable borrow of process.
+        let tools_registered = inner
+            .config
+            .tools_json
+            .as_deref()
+            .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
+            .map(|v| v.len())
+            .unwrap_or(0);
 
         let proc = inner.process.as_mut()?;
 
@@ -580,12 +680,12 @@ impl PersistentSession {
         // For the stream-json format, we write a JSON object per line to stdin.
         // The system prompt is passed via --system-prompt flag at spawn time,
         // so here we only send the user turn content.
-        let user_content = build_stream_input(system, messages, tools);
+        let user_content = build_stream_input(system, messages);
         tracing::info!(
             prompt_bytes = user_content.len(),
             system_bytes = system.len(),
             messages = messages.len(),
-            tools = tools.len(),
+            tools_registered,
             "persistent: turn payload size"
         );
 
@@ -693,14 +793,13 @@ async fn read_stream_response(proc: &mut PersistentProcess) -> Result<ApiRespons
 /// The persistent subprocess maintains its own conversation state via
 /// `stream-json` mode.  We send ONLY the latest user message content —
 /// the system prompt was passed at spawn time via `--system-prompt`, and
-/// tool definitions are handled by the CC CLI's `--tools` flag plus the
-/// daemon's own tool execution loop.
+/// tool definitions are registered at spawn time via `--tools-json`.
 ///
 /// Previous implementation called `build_prompt()` which embedded the full
 /// system prompt (~8 KB), all tool schemas (~40 KB), and conversation
 /// history into every turn — causing 53 KB+ payloads and 2-minute response
 /// times.
-fn build_stream_input(_system: &str, messages: &[Message], _tools: &[ToolDefinition]) -> String {
+fn build_stream_input(_system: &str, messages: &[Message]) -> String {
     // Extract only the latest user message content.
     messages
         .iter()
@@ -733,6 +832,9 @@ pub struct ClaudeClient {
     max_tokens: u32,
     session: Arc<PersistentSession>,
     spawn_config: SpawnConfig,
+    /// When `true`, the `--tools-json` CLI flag is unavailable (older CLI) —
+    /// fall back to prose-augmented system prompt for tool descriptions.
+    fallback_prose_tools: bool,
 }
 
 // ClaudeClient needs Clone for the agent loop. The Arc<PersistentSession>
@@ -744,6 +846,62 @@ impl Clone for ClaudeClient {
             max_tokens: self.max_tokens,
             session: Arc::clone(&self.session),
             spawn_config: self.spawn_config.clone(),
+            fallback_prose_tools: self.fallback_prose_tools,
+        }
+    }
+}
+
+/// Check whether the installed `claude` CLI supports `--tools-json`.
+///
+/// Runs `claude --help` and scans stdout/stderr for the flag. Returns `true`
+/// when the flag is present (native protocol available), `false` otherwise.
+#[allow(dead_code)]
+async fn check_tools_json_support() -> bool {
+    match tokio::process::Command::new("claude")
+        .arg("--help")
+        .output()
+        .await
+    {
+        Ok(output) => {
+            let combined = [output.stdout, output.stderr].concat();
+            let text = String::from_utf8_lossy(&combined);
+            let supported = text.contains("--tools-json");
+            if !supported {
+                tracing::warn!(
+                    "--tools-json flag not found in `claude --help` output — \
+                     will use prose-augmented system prompt for tool descriptions (older CLI)"
+                );
+            } else {
+                tracing::debug!("claude CLI supports --tools-json (native tool protocol)");
+            }
+            supported
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "failed to run `claude --help` during startup validation — \
+                 assuming --tools-json is not available, using prose fallback"
+            );
+            false
+        }
+    }
+}
+
+/// Validate that all tool definitions have a well-formed `input_schema`.
+///
+/// Each schema must be a JSON object with `"type": "object"`. Logs a warning
+/// for any invalid schemas but does not panic — degrades gracefully.
+#[allow(dead_code)]
+pub fn validate_tool_definitions(tools: &[ToolDefinition]) {
+    for tool in tools {
+        let valid = tool.input_schema.is_object()
+            && tool.input_schema.get("type").and_then(|v| v.as_str()) == Some("object");
+        if !valid {
+            tracing::warn!(
+                tool_name = %tool.name,
+                schema = %tool.input_schema,
+                "tool definition has invalid input_schema — expected object with \"type\": \"object\""
+            );
         }
     }
 }
@@ -758,12 +916,42 @@ impl ClaudeClient {
     /// its own OAuth session. Kept for backward-compatible constructor signature.
     pub fn new(_api_key: String, model: String, max_tokens: u32) -> Self {
         let spawn_config = SpawnConfig::new(&model);
-        let session = Arc::new(PersistentSession::new(spawn_config.clone()));
+        // No tools at construction time — persistent session tools are registered
+        // when the first turn is sent. Use empty slice here; tools are always
+        // passed per-call to send_messages.
+        let session = Arc::new(PersistentSession::new(spawn_config.clone(), &[]));
         Self {
             model,
             max_tokens,
             session,
             spawn_config,
+            fallback_prose_tools: false,
+        }
+    }
+
+    /// Create a new client with startup validation of CLI capabilities.
+    ///
+    /// Checks for `--tools-json` support and sets the `fallback_prose_tools`
+    /// flag accordingly. Also validates tool definitions.
+    #[allow(dead_code)]
+    pub async fn new_with_validation(
+        _api_key: String,
+        model: String,
+        max_tokens: u32,
+        tools: &[ToolDefinition],
+    ) -> Self {
+        validate_tool_definitions(tools);
+        let fallback_prose_tools = !check_tools_json_support().await;
+
+        let spawn_config = SpawnConfig::new(&model);
+        let session = Arc::new(PersistentSession::new(spawn_config.clone(), tools));
+
+        Self {
+            model,
+            max_tokens,
+            session,
+            spawn_config,
+            fallback_prose_tools,
         }
     }
 
@@ -861,14 +1049,30 @@ impl ClaudeClient {
         };
         // Build user-content-only prompt: system prompt is passed via --system-prompt
         // flag, conversation content goes to stdin.
-        // Tool definitions are embedded in the system prompt so Claude knows what's
-        // available for the daemon's tool dispatch loop.
+        // Tool definitions are passed via --tools-json (native protocol) when the
+        // CLI supports it, or embedded in the system prompt (prose fallback) for
+        // older CLI versions.
         let prompt = build_conversation_prompt(messages);
 
-        // Augment system prompt with tool definitions
-        let augmented_system = if tools.is_empty() {
-            system.to_string()
+        // Serialize tools to JSON for --tools-json flag (native protocol).
+        let tools_json: Option<String> = if !tools.is_empty() && !self.fallback_prose_tools {
+            let tools_array: Vec<serde_json::Value> =
+                tools.iter().map(|t| t.anthropic_json()).collect();
+            match serde_json::to_string(&tools_array) {
+                Ok(json) => Some(json),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to serialize tools to JSON for cold-start");
+                    None
+                }
+            }
         } else {
+            None
+        };
+
+        // Prose fallback: augment system prompt with tool descriptions when
+        // --tools-json is unavailable (older CLI versions).
+        let system_with_prose: String;
+        let effective_system = if self.fallback_prose_tools && !tools.is_empty() {
             let mut s = system.to_string();
             s.push_str("\n\n## Available Tools\n\n");
             s.push_str("When you need to use a tool, respond with ONLY a JSON block in this exact format:\n");
@@ -885,12 +1089,17 @@ impl ClaudeClient {
                 ));
             }
             s.push_str("If you don't need a tool, respond normally with text.\n\n");
-            s
+            system_with_prose = s;
+            &system_with_prose
+        } else {
+            system
         };
 
+        let tools_json_bytes = tools_json.as_ref().map(|j| j.len()).unwrap_or(0);
         tracing::info!(
             prompt_bytes = prompt.len(),
-            system_bytes = augmented_system.len(),
+            system_bytes = effective_system.len(),
+            tools_json_bytes,
             messages = messages.len(),
             tools = tools.len(),
             "cold-start: prompt payload size"
@@ -904,12 +1113,16 @@ impl ClaudeClient {
             "--model".into(),
             self.model.clone(),
             "--no-session-persistence".into(),
-            "--tools".into(),
-            "Read,Glob,Grep,Bash(*)".into(),
             "--system-prompt".into(),
-            augmented_system,
+            effective_system.to_string(),
             // --strict-mcp-config removed — causes hangs when MCP servers fail
         ];
+
+        // Pass native tool definitions via --tools-json when supported.
+        if let Some(ref tj) = tools_json {
+            base_args.push("--tools-json".into());
+            base_args.push(tj.clone());
+        }
 
         if let Some(path) = image_path {
             base_args.push("--attachment".into());
@@ -1041,7 +1254,35 @@ impl ClaudeClient {
             "Claude CLI cold-start (with-image) response received"
         );
 
-        let (content, stop_reason) = parse_tool_calls(&cli_response.result);
+        // Prefer native content array from the CLI response; fall back to
+        // legacy prose-parsed result for older CLI versions.
+        let (content, stop_reason) = if !cli_response.content.is_empty() {
+            // Native content array: derive stop_reason from content + CLI field.
+            let has_tool_use = cli_response
+                .content
+                .iter()
+                .any(|b| matches!(b, ContentBlock::ToolUse { .. }));
+            let stop_reason = if has_tool_use {
+                StopReason::ToolUse
+            } else {
+                map_cli_stop_reason(&cli_response.stop_reason)
+            };
+            (cli_response.content, stop_reason)
+        } else if self.fallback_prose_tools {
+            // Prose fallback: parse fence-block tool calls from the result string.
+            parse_tool_calls(&cli_response.result)
+        } else {
+            // Native protocol but empty content (text-only response): wrap result.
+            let stop_reason = map_cli_stop_reason(&cli_response.stop_reason);
+            let content = if cli_response.result.is_empty() {
+                vec![]
+            } else {
+                vec![ContentBlock::Text {
+                    text: cli_response.result,
+                }]
+            };
+            (content, stop_reason)
+        };
 
         Ok(ApiResponse {
             id: cli_response.session_id,
@@ -1053,6 +1294,15 @@ impl ClaudeClient {
                 total_cost_usd: cli_response.usage.total_cost_usd,
             },
         })
+    }
+}
+
+/// Map a CLI stop_reason string to [`StopReason`].
+fn map_cli_stop_reason(s: &str) -> StopReason {
+    match s {
+        "tool_use" => StopReason::ToolUse,
+        "max_tokens" => StopReason::MaxTokens,
+        _ => StopReason::EndTurn,
     }
 }
 
@@ -1404,11 +1654,14 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
                             .into());
                         }
 
+                        // When no structured content blocks were emitted but the
+                        // result string is non-empty, wrap it as a plain text block.
+                        // The persistent session uses --tools-json so the CLI emits
+                        // structured tool_use events; prose fallback is not needed here.
                         if content_blocks.is_empty() && !event.result.is_empty() {
-                            let (parsed_content, parsed_reason) =
-                                parse_tool_calls(&event.result);
-                            content_blocks = parsed_content;
-                            stop_reason = parsed_reason;
+                            content_blocks.push(ContentBlock::Text {
+                                text: event.result,
+                            });
                         }
 
                         if stop_reason != StopReason::ToolUse {
@@ -2073,16 +2326,12 @@ mod tests {
     fn build_stream_input_returns_only_user_content() {
         let system = "You are NV.";
         let messages = vec![Message::user("hello")];
-        let tools = vec![ToolDefinition {
-            name: "read_memory".into(),
-            description: "Read a topic".into(),
-            input_schema: serde_json::json!({"type": "object"}),
-        }];
-        let input = build_stream_input(system, &messages, &tools);
+        // build_stream_input no longer takes a tools parameter — tools are
+        // registered at spawn time via --tools-json.
+        let input = build_stream_input(system, &messages);
         // Must contain ONLY the user message, not system prompt or tools
         assert_eq!(input, "hello");
         assert!(!input.contains("You are NV."), "must not contain system prompt");
-        assert!(!input.contains("read_memory"), "must not contain tool definitions");
     }
 
     #[test]
@@ -2093,7 +2342,7 @@ mod tests {
             Message { role: "assistant".into(), content: MessageContent::Text("reply".into()) },
             Message::user("second"),
         ];
-        let input = build_stream_input(system, &messages, &[]);
+        let input = build_stream_input(system, &messages);
         assert_eq!(input, "second", "must extract only the latest user message");
     }
 

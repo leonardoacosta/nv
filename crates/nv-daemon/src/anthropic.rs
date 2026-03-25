@@ -58,11 +58,14 @@ impl AnthropicClient {
     /// Serialize the request body for the Anthropic Messages API.
     ///
     /// The `tools` array is omitted entirely when the slice is empty.
+    /// When `tool_choice` is `Some`, it is included; defaults to `"auto"` when
+    /// tools are present and no override is specified.
     fn build_request_body(
         &self,
         messages: &[Message],
         system: &str,
         tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
     ) -> serde_json::Value {
         let mut body = serde_json::json!({
             "model": self.model,
@@ -73,7 +76,14 @@ impl AnthropicClient {
         });
 
         if !tools.is_empty() {
-            body["tools"] = serde_json::json!(tools);
+            // Use anthropic_json() to emit the exact Anthropic wire format.
+            let tools_array: Vec<serde_json::Value> =
+                tools.iter().map(|t| t.anthropic_json()).collect();
+            body["tools"] = serde_json::Value::Array(tools_array);
+
+            // tool_choice: explicit override, or default to "auto".
+            let choice_type = tool_choice.unwrap_or("auto");
+            body["tool_choice"] = serde_json::json!({ "type": choice_type });
         }
 
         body
@@ -91,7 +101,22 @@ impl AnthropicClient {
         system: &str,
         tools: &[ToolDefinition],
     ) -> Result<ApiResponse, ApiError> {
-        self.send_with_retry(messages, system, tools).await
+        self.send_with_retry(messages, system, tools, None).await
+    }
+
+    /// Send a message with explicit `tool_choice` control.
+    ///
+    /// Pass `tool_choice: Some("none")` for digest/summary calls that must not
+    /// invoke tools. Pass `None` to default to `"auto"` (Claude decides).
+    #[allow(dead_code)]
+    pub async fn send_message_with_tool_choice(
+        &self,
+        messages: &[Message],
+        system: &str,
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ApiResponse, ApiError> {
+        self.send_with_retry(messages, system, tools, tool_choice).await
     }
 
     // ── Retry Logic ──────────────────────────────────────────────────
@@ -104,11 +129,12 @@ impl AnthropicClient {
         messages: &[Message],
         system: &str,
         tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
     ) -> Result<ApiResponse, ApiError> {
         const MAX_RETRIES: u32 = 3;
         let backoff_secs: [u64; 3] = [1, 2, 4];
 
-        let body = self.build_request_body(messages, system, tools);
+        let body = self.build_request_body(messages, system, tools, tool_choice);
 
         for attempt in 0..=MAX_RETRIES {
             let response = self
@@ -756,13 +782,48 @@ mod tests {
     fn test_build_request_body_no_tools() {
         let client = AnthropicClient::new("test-key", "claude-opus-4-5");
         let messages = vec![Message::user("Hello")];
-        let body = client.build_request_body(&messages, "You are helpful.", &[]);
+        let body = client.build_request_body(&messages, "You are helpful.", &[], None);
 
         assert!(body.get("tools").is_none(), "tools key should be absent when tools vec is empty");
+        assert!(body.get("tool_choice").is_none(), "tool_choice should be absent when no tools");
         assert_eq!(body["model"], "claude-opus-4-5");
         assert_eq!(body["max_tokens"], 8192);
         assert_eq!(body["stream"], true);
         assert_eq!(body["system"], "You are helpful.");
+    }
+
+    // ── Test 6.6: build_request_body includes tools and tool_choice ──
+
+    #[test]
+    fn test_build_request_body_with_tools() {
+        let client = AnthropicClient::new("test-key", "claude-opus-4-5");
+        let messages = vec![Message::user("Hello")];
+        let tools = vec![crate::claude::ToolDefinition {
+            name: "read_memory".into(),
+            description: "Read a memory topic".into(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        }];
+        let body = client.build_request_body(&messages, "You are helpful.", &tools, None);
+
+        let tools_arr = body.get("tools").expect("tools should be present");
+        assert!(tools_arr.is_array());
+        assert_eq!(tools_arr[0]["name"], "read_memory");
+        assert_eq!(tools_arr[0]["input_schema"]["type"], "object");
+        // Default tool_choice is "auto"
+        assert_eq!(body["tool_choice"]["type"], "auto");
+    }
+
+    #[test]
+    fn test_build_request_body_tool_choice_none() {
+        let client = AnthropicClient::new("test-key", "claude-opus-4-5");
+        let messages = vec![Message::user("Summarize")];
+        let tools = vec![crate::claude::ToolDefinition {
+            name: "read_memory".into(),
+            description: "Read a memory topic".into(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        }];
+        let body = client.build_request_body(&messages, "Digest system.", &tools, Some("none"));
+        assert_eq!(body["tool_choice"]["type"], "none");
     }
 
     // ── Test 6.5: from_env with ANTHROPIC_API_KEY unset ──────────────

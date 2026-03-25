@@ -11,6 +11,9 @@ path = "src/main.rs"
 name = "nv_tools"
 path = "src/lib.rs"
 
+[features]
+integration = []
+
 [dependencies]
 nv-core = { path = "../nv-core" }
 tokio = { workspace = true }

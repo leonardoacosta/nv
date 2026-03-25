@@ -15,31 +15,31 @@
 
 ## Batch 2 — Components (parallel with Batch 3)
 
-- [ ] [2.1] [P-1] Port `apps/dashboard/components/Sidebar.tsx` — replace `react-router-dom` `Link`/`NavLink` with `next/link` `Link`, preserve all route paths and cosmic styling [owner:ui-engineer]
-- [ ] [2.2] [P-1] Port `apps/dashboard/components/SessionCard.tsx` — direct copy, no routing changes needed [owner:ui-engineer]
-- [ ] [2.3] [P-1] Port `apps/dashboard/components/ObligationItem.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.4] [P-1] Port `apps/dashboard/components/NovaMark.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.5] [P-1] Port `apps/dashboard/components/NovaBadge.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.6] [P-1] Port `apps/dashboard/components/LeoBadge.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.7] [P-2] Port `apps/dashboard/components/ProjectAccordion.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.8] [P-2] Port `apps/dashboard/components/ActiveSession.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.9] [P-2] Port `apps/dashboard/components/IntegrationCard.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.10] [P-2] Port `apps/dashboard/components/ConfigureModal.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.11] [P-2] Port `apps/dashboard/components/MemoryPreview.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.12] [P-2] Port `apps/dashboard/components/UsageSparkline.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.13] [P-2] Port `apps/dashboard/components/MiniChart.tsx` — direct copy [owner:ui-engineer]
-- [ ] [2.14] [P-2] Port `apps/dashboard/components/ServerHealth.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.1] [P-1] Port `apps/dashboard/components/Sidebar.tsx` — replace `react-router-dom` `Link`/`NavLink` with `next/link` `Link`, preserve all route paths and cosmic styling [owner:ui-engineer]
+- [x] [2.2] [P-1] Port `apps/dashboard/components/SessionCard.tsx` — direct copy, no routing changes needed [owner:ui-engineer]
+- [x] [2.3] [P-1] Port `apps/dashboard/components/ObligationItem.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.4] [P-1] Port `apps/dashboard/components/NovaMark.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.5] [P-1] Port `apps/dashboard/components/NovaBadge.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.6] [P-1] Port `apps/dashboard/components/LeoBadge.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.7] [P-2] Port `apps/dashboard/components/ProjectAccordion.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.8] [P-2] Port `apps/dashboard/components/ActiveSession.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.9] [P-2] Port `apps/dashboard/components/IntegrationCard.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.10] [P-2] Port `apps/dashboard/components/ConfigureModal.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.11] [P-2] Port `apps/dashboard/components/MemoryPreview.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.12] [P-2] Port `apps/dashboard/components/UsageSparkline.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.13] [P-2] Port `apps/dashboard/components/MiniChart.tsx` — direct copy [owner:ui-engineer]
+- [x] [2.14] [P-2] Port `apps/dashboard/components/ServerHealth.tsx` — direct copy [owner:ui-engineer]
 
 ## Batch 3 — Pages (parallel with Batch 2)
 
-- [ ] [3.1] [P-1] Port `apps/dashboard/app/page.tsx` — DashboardPage from `dashboard/src/pages/DashboardPage.tsx`; replace `fetch('/api/...')` with relative paths (unchanged — Next.js serves `/api/*` from the same origin) [owner:ui-engineer]
-- [ ] [3.2] [P-1] Port `apps/dashboard/app/obligations/page.tsx` — from `dashboard/src/pages/ObligationsPage.tsx` [owner:ui-engineer]
-- [ ] [3.3] [P-1] Port `apps/dashboard/app/projects/page.tsx` — from `dashboard/src/pages/ProjectsPage.tsx` [owner:ui-engineer]
-- [ ] [3.4] [P-1] Port `apps/dashboard/app/nexus/page.tsx` — from `dashboard/src/pages/NexusPage.tsx` [owner:ui-engineer]
-- [ ] [3.5] [P-1] Port `apps/dashboard/app/integrations/page.tsx` — from `dashboard/src/pages/IntegrationsPage.tsx` [owner:ui-engineer]
-- [ ] [3.6] [P-1] Port `apps/dashboard/app/usage/page.tsx` — from `dashboard/src/pages/UsagePage.tsx` [owner:ui-engineer]
-- [ ] [3.7] [P-2] Port `apps/dashboard/app/memory/page.tsx` — from `dashboard/src/pages/MemoryPage.tsx` [owner:ui-engineer]
-- [ ] [3.8] [P-2] Port `apps/dashboard/app/settings/page.tsx` — from `dashboard/src/pages/SettingsPage.tsx` [owner:ui-engineer]
+- [x] [3.1] [P-1] Port `apps/dashboard/app/page.tsx` — DashboardPage from `dashboard/src/pages/DashboardPage.tsx`; replace `fetch('/api/...')` with relative paths (unchanged — Next.js serves `/api/*` from the same origin) [owner:ui-engineer]
+- [x] [3.2] [P-1] Port `apps/dashboard/app/obligations/page.tsx` — from `dashboard/src/pages/ObligationsPage.tsx` [owner:ui-engineer]
+- [x] [3.3] [P-1] Port `apps/dashboard/app/projects/page.tsx` — from `dashboard/src/pages/ProjectsPage.tsx` [owner:ui-engineer]
+- [x] [3.4] [P-1] Port `apps/dashboard/app/nexus/page.tsx` — from `dashboard/src/pages/NexusPage.tsx` [owner:ui-engineer]
+- [x] [3.5] [P-1] Port `apps/dashboard/app/integrations/page.tsx` — from `dashboard/src/pages/IntegrationsPage.tsx` [owner:ui-engineer]
+- [x] [3.6] [P-1] Port `apps/dashboard/app/usage/page.tsx` — from `dashboard/src/pages/UsagePage.tsx` [owner:ui-engineer]
+- [x] [3.7] [P-2] Port `apps/dashboard/app/memory/page.tsx` — from `dashboard/src/pages/MemoryPage.tsx` [owner:ui-engineer]
+- [x] [3.8] [P-2] Port `apps/dashboard/app/settings/page.tsx` — from `dashboard/src/pages/SettingsPage.tsx` [owner:ui-engineer]
 
 ## Batch 4 — API Route Handlers
 

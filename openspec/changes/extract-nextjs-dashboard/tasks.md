@@ -43,20 +43,20 @@
 
 ## Batch 4 — API Route Handlers
 
-- [ ] [4.1] [P-1] Create `apps/dashboard/app/api/obligations/route.ts` — `GET` proxies to `${DAEMON_URL}/api/obligations` forwarding query params (`status`, `owner`); return daemon response body + status code unchanged [owner:ui-engineer]
-- [ ] [4.2] [P-1] Create `apps/dashboard/app/api/obligations/[id]/route.ts` — `PATCH` proxies to `${DAEMON_URL}/api/obligations/:id` forwarding JSON body; return daemon response [owner:ui-engineer]
-- [ ] [4.3] [P-1] Create `apps/dashboard/app/api/projects/route.ts` — `GET` proxies to `${DAEMON_URL}/api/projects`; return daemon response [owner:ui-engineer]
-- [ ] [4.4] [P-1] Create `apps/dashboard/app/api/sessions/route.ts` — `GET` proxies to `${DAEMON_URL}/api/sessions`; return daemon response [owner:ui-engineer]
-- [ ] [4.5] [P-1] Create `apps/dashboard/app/api/solve/route.ts` — `POST` proxies to `${DAEMON_URL}/api/solve` forwarding JSON body (`project`, `error`, `context`); return daemon response [owner:ui-engineer]
-- [ ] [4.6] [P-2] Create `apps/dashboard/app/api/memory/route.ts` — `GET` proxies to `${DAEMON_URL}/api/memory` forwarding `?topic=` param; `PUT` proxies JSON body; return daemon responses [owner:ui-engineer]
-- [ ] [4.7] [P-2] Create `apps/dashboard/app/api/config/route.ts` — `GET` proxies to `${DAEMON_URL}/api/config`; `PUT` proxies JSON body; return daemon responses [owner:ui-engineer]
-- [ ] [4.8] [P-2] Create `apps/dashboard/app/api/server-health/route.ts` — `GET` proxies to `${DAEMON_URL}/api/server-health`; return daemon response [owner:ui-engineer]
+- [x] [4.1] [P-1] Create `apps/dashboard/app/api/obligations/route.ts` — `GET` proxies to `${DAEMON_URL}/api/obligations` forwarding query params (`status`, `owner`); return daemon response body + status code unchanged [owner:ui-engineer]
+- [x] [4.2] [P-1] Create `apps/dashboard/app/api/obligations/[id]/route.ts` — `PATCH` proxies to `${DAEMON_URL}/api/obligations/:id` forwarding JSON body; return daemon response [owner:ui-engineer]
+- [x] [4.3] [P-1] Create `apps/dashboard/app/api/projects/route.ts` — `GET` proxies to `${DAEMON_URL}/api/projects`; return daemon response [owner:ui-engineer]
+- [x] [4.4] [P-1] Create `apps/dashboard/app/api/sessions/route.ts` — `GET` proxies to `${DAEMON_URL}/api/sessions`; return daemon response [owner:ui-engineer]
+- [x] [4.5] [P-1] Create `apps/dashboard/app/api/solve/route.ts` — `POST` proxies to `${DAEMON_URL}/api/solve` forwarding JSON body (`project`, `error`, `context`); return daemon response [owner:ui-engineer]
+- [x] [4.6] [P-2] Create `apps/dashboard/app/api/memory/route.ts` — `GET` proxies to `${DAEMON_URL}/api/memory` forwarding `?topic=` param; `PUT` proxies JSON body; return daemon responses [owner:ui-engineer]
+- [x] [4.7] [P-2] Create `apps/dashboard/app/api/config/route.ts` — `GET` proxies to `${DAEMON_URL}/api/config`; `PUT` proxies JSON body; return daemon responses [owner:ui-engineer]
+- [x] [4.8] [P-2] Create `apps/dashboard/app/api/server-health/route.ts` — `GET` proxies to `${DAEMON_URL}/api/server-health`; return daemon response [owner:ui-engineer]
 
 ## Batch 5 — Docker
 
-- [ ] [5.1] [P-1] Create `apps/dashboard/Dockerfile` — stage 1: `node:22-alpine`, install deps with `npm ci`, run `npm run build`; stage 2: `node:22-alpine`, copy `.next/standalone` + `.next/static` + `public/`; expose port 3000; `CMD ["node", "server.js"]` [owner:ui-engineer]
-- [ ] [5.2] [P-1] Create `apps/dashboard/.dockerignore` — exclude `node_modules`, `.next`, `.env*` [owner:ui-engineer]
-- [ ] [5.3] [P-2] Add `dashboard` service to project Docker Compose file (check for existing `docker-compose.yml` at repo root first; create if absent) — build `apps/dashboard`, port 3000:3000, `DAEMON_URL=http://nv-daemon:3443`, `depends_on: nv-daemon`, `restart: unless-stopped` [owner:ui-engineer]
+- [x] [5.1] [P-1] Create `apps/dashboard/Dockerfile` — stage 1: `node:22-alpine`, install deps with `npm ci`, run `npm run build`; stage 2: `node:22-alpine`, copy `.next/standalone` + `.next/static` + `public/`; expose port 3000; `CMD ["node", "server.js"]` [owner:ui-engineer]
+- [x] [5.2] [P-1] Create `apps/dashboard/.dockerignore` — exclude `node_modules`, `.next`, `.env*` [owner:ui-engineer]
+- [x] [5.3] [P-2] Add `dashboard` service to project Docker Compose file (check for existing `docker-compose.yml` at repo root first; create if absent) — build `apps/dashboard`, port 3000:3000, `DAEMON_URL=http://nv-daemon:3443`, `depends_on: nv-daemon`, `restart: unless-stopped` [owner:ui-engineer]
 
 ## Batch 6 — Strip Rust Embed
 

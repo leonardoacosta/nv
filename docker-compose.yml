@@ -1,0 +1,12 @@
+services:
+  dashboard:
+    build:
+      context: apps/dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DAEMON_URL=http://nv-daemon:3443
+    depends_on:
+      - nv-daemon
+    restart: unless-stopped

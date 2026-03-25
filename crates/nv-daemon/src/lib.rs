@@ -13,6 +13,7 @@
 mod account;
 mod aggregation;
 mod briefing_store;
+mod cc_sessions;
 mod cold_start_store;
 mod agent;
 mod alert_rules;

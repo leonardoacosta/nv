@@ -14,6 +14,7 @@ use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::sync::Mutex as TokioMutex;
 
 use crate::briefing_store::BriefingStore;
+use crate::cc_sessions::CcSessionManager;
 use crate::cold_start_store::ColdStartStore;
 use crate::health::HealthState;
 use crate::obligation_store::ObligationStore;
@@ -88,6 +89,8 @@ pub struct HttpState {
     /// to a receiver. Uses `broadcast` so multiple concurrent dashboard tabs
     /// all receive the same events.
     pub event_tx: broadcast::Sender<DaemonEvent>,
+    /// CC session manager for the /api/cc-sessions endpoint.
+    pub cc_session_manager: Option<CcSessionManager>,
 }
 
 /// Request body for POST /ask.
@@ -125,6 +128,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         // Dashboard API
         .route("/api/messages", get(get_messages_handler))
         .route("/api/approvals/:id/approve", post(approve_obligation_handler))
+        .route("/api/cc-sessions", get(get_cc_sessions_handler))
         // WebSocket event stream
         .route("/ws/events", get(ws_events_handler));
 
@@ -943,6 +947,7 @@ pub async fn run_http_server(
     briefing_store: Option<Arc<BriefingStore>>,
     cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
     event_tx: broadcast::Sender<DaemonEvent>,
+    cc_session_manager: Option<CcSessionManager>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -956,6 +961,7 @@ pub async fn run_http_server(
         briefing_store,
         cold_start_store,
         event_tx,
+        cc_session_manager,
     });
     let app = build_router(state);
 
@@ -964,6 +970,27 @@ pub async fn run_http_server(
 
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+// ── CC Sessions API ──────────────────────────────────────────────────
+
+/// GET /api/cc-sessions — list all CC sessions managed by CcSessionManager.
+///
+/// Returns a JSON array of `CcSessionSummary` objects. Returns an empty array
+/// when the manager is not configured.
+async fn get_cc_sessions_handler(State(state): State<Arc<HttpState>>) -> impl IntoResponse {
+    let Some(ref mgr) = state.cc_session_manager else {
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({ "sessions": [], "configured": false })),
+        );
+    };
+
+    let sessions = mgr.list().await;
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "sessions": sessions, "configured": true })),
+    )
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -995,6 +1022,7 @@ mod tests {
             briefing_store: None,
             cold_start_store: None,
             event_tx,
+            cc_session_manager: None,
         });
         (state, rx, tmp)
     }
@@ -1217,6 +1245,7 @@ mod tests {
             briefing_store: Some(briefing_store),
             cold_start_store: None,
             event_tx,
+            cc_session_manager: None,
         });
         (state, rx, tmp)
     }
@@ -1267,6 +1296,7 @@ mod tests {
             briefing_store: Some(Arc::clone(&briefing_store)),
             cold_start_store: None,
             event_tx,
+            cc_session_manager: None,
         });
         drop(rx);
 
@@ -1319,6 +1349,7 @@ mod tests {
             briefing_store: Some(Arc::clone(&briefing_store)),
             cold_start_store: None,
             event_tx,
+            cc_session_manager: None,
         });
         drop(rx);
 

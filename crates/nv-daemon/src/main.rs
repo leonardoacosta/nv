@@ -3,6 +3,7 @@ mod anthropic;
 mod agent;
 mod aggregation;
 mod briefing_store;
+mod cc_sessions;
 mod cold_start_store;
 mod alert_rules;
 mod bash;
@@ -644,6 +645,23 @@ async fn main() -> anyhow::Result<()> {
             None
         };
 
+    // Build CcSessionManager from team_agents config (if configured).
+    // Created early so it can be shared with the HTTP server and SharedDeps.
+    let cc_session_manager: Option<cc_sessions::CcSessionManager> =
+        if let Some(nexus_config) = &config.nexus {
+            if let Some(ta_config) = nexus_config.team_agents.as_ref() {
+                let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
+                let mgr = cc_sessions::CcSessionManager::new(dispatcher);
+                mgr.spawn_health_monitor();
+                tracing::info!("CcSessionManager initialized with health monitor");
+                Some(mgr)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
     // Initialize schedule store (user-defined recurring schedules)
     let schedule_store = match tools::schedule::ScheduleStore::new(&nv_base) {
         Ok(store) => {
@@ -848,6 +866,8 @@ async fn main() -> anyhow::Result<()> {
     let teams_client_for_workers = teams_client_for_http.clone();
     // Clone cold-start store for the HTTP server (shared with workers via SharedDeps).
     let cold_start_store_for_http = cold_start_store.clone();
+    // Clone CcSessionManager for the HTTP server (cheaply cloned via Arc).
+    let cc_session_manager_for_http = cc_session_manager.clone();
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -862,6 +882,7 @@ async fn main() -> anyhow::Result<()> {
             Some(briefing_store_for_http),
             cold_start_store_for_http,
             http_event_tx,
+            cc_session_manager_for_http,
         )
         .await
         {
@@ -1076,6 +1097,7 @@ async fn main() -> anyhow::Result<()> {
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),
         jira_registry,
         team_agent_dispatcher,
+        cc_session_manager,
         channels: channels.clone(),
         nv_base_path: nv_base,
         voice_enabled: voice_enabled.clone(),

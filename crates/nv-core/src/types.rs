@@ -213,6 +213,10 @@ pub enum ActionType {
     HaServiceCall,
     NexusStartSession,
     NexusStopSession,
+    /// Start a CC subprocess session (CcSessionManager).
+    CcStartSession,
+    /// Stop a CC subprocess session (CcSessionManager).
+    CcStopSession,
     /// Create a new user-defined recurring schedule in SQLite.
     ScheduleAdd,
     /// Modify an existing user-defined recurring schedule (cron expr or enabled state).

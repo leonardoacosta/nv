@@ -23,7 +23,12 @@ import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
-import type { SessionsGetResponse, NexusSessionRaw } from "@/types/api";
+import type {
+  SessionsGetResponse,
+  NexusSessionRaw,
+  CcSessionSummary,
+  CcSessionsGetResponse,
+} from "@/types/api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -353,6 +358,141 @@ function SessionDetailDrawer({
 }
 
 // ---------------------------------------------------------------------------
+// ProjectSessionsTable — CC subprocess sessions (CcSessionManager)
+// ---------------------------------------------------------------------------
+
+const CC_STATE_DOT: Record<string, string> = {
+  running: "bg-emerald-400 animate-pulse",
+  completed: "bg-cosmic-muted",
+  stopped: "bg-amber-400",
+};
+
+function ProjectSessionsTable() {
+  const [sessions, setSessions] = useState<CcSessionSummary[]>([]);
+  const [configured, setConfigured] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCcSessions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/cc-sessions");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as CcSessionsGetResponse;
+      setSessions(data.sessions ?? []);
+      setConfigured(data.configured ?? false);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to load CC sessions",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchCcSessions();
+  }, [fetchCcSessions]);
+
+  if (!configured && !loading) return null;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-cosmic-text flex items-center gap-2">
+          <Terminal size={14} className="text-cosmic-purple" />
+          CC Sessions
+        </h3>
+        <button
+          type="button"
+          onClick={() => void fetchCcSessions()}
+          disabled={loading}
+          className="text-xs text-cosmic-muted hover:text-cosmic-text transition-colors disabled:opacity-50"
+          aria-label="Refresh CC sessions"
+        >
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      {error && (
+        <p className="text-xs text-destructive">
+          Failed to load CC sessions: {error}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="space-y-1.5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-10 animate-pulse rounded-md bg-cosmic-surface border border-cosmic-border"
+            />
+          ))}
+        </div>
+      ) : sessions.length === 0 ? (
+        <p className="text-xs text-cosmic-muted py-2">No CC sessions.</p>
+      ) : (
+        <div className="rounded-cosmic border border-cosmic-border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-cosmic-border bg-cosmic-surface/60">
+                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                  ID
+                </th>
+                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                  Project
+                </th>
+                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                  State
+                </th>
+                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                  Duration
+                </th>
+                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                  Restarts
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-cosmic-border">
+              {sessions.map((s) => (
+                <tr
+                  key={s.id}
+                  className="hover:bg-cosmic-surface/40 transition-colors"
+                >
+                  <td className="px-3 py-2 font-mono text-cosmic-purple">
+                    {s.id.slice(0, 10)}
+                  </td>
+                  <td className="px-3 py-2 text-cosmic-text font-medium">
+                    {s.project}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${CC_STATE_DOT[s.state] ?? "bg-cosmic-muted"}`}
+                      />
+                      <span className="text-cosmic-muted capitalize">
+                        {s.state}
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-cosmic-muted font-mono">
+                    {s.duration_display}
+                  </td>
+                  <td className="px-3 py-2 text-cosmic-muted font-mono">
+                    {s.restart_attempts}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Sessions Page
 // ---------------------------------------------------------------------------
 
@@ -660,6 +800,8 @@ export default function SessionsPage() {
               )}
             </div>
           )}
+          {/* CC Sessions table (CcSessionManager) */}
+          <ProjectSessionsTable />
         </div>
       </PageShell>
 

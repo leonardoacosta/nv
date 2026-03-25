@@ -14,6 +14,7 @@ use nv_core::channel::Channel;
 
 use crate::tools::jira;
 use crate::nexus::backend::NexusBackend;
+use crate::cc_sessions::CcSessionManager;
 use crate::tools::schedule::ScheduleStore;
 use crate::state::{PendingStatus, State};
 use crate::channels::telegram::client::TelegramClient;
@@ -24,12 +25,13 @@ use crate::tools;
 /// Execute a confirmed pending action.
 ///
 /// Loads the action from state, detects the action type, and routes to
-/// the appropriate executor (Jira, TeamAgent, Home Assistant, channel send, etc.).
+/// the appropriate executor (Jira, CcSessionManager, Home Assistant, channel send, etc.).
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_approve_with_backend(
     uuid_str: &str,
     jira_registry: Option<&jira::JiraRegistry>,
     nexus_backend: Option<&NexusBackend>,
+    cc_session_manager: Option<&CcSessionManager>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
     telegram: &TelegramClient,
@@ -64,6 +66,20 @@ pub async fn handle_approve_with_backend(
                 backend.execute_stop_session(&action.payload).await
             } else {
                 Err(anyhow::anyhow!("Team agents not configured"))
+            }
+        }
+        nv_core::types::ActionType::CcStartSession => {
+            if let Some(mgr) = cc_session_manager {
+                mgr.execute_start(&action.payload, project_registry).await
+            } else {
+                Err(anyhow::anyhow!("CC session manager not configured"))
+            }
+        }
+        nv_core::types::ActionType::CcStopSession => {
+            if let Some(mgr) = cc_session_manager {
+                mgr.execute_stop(&action.payload).await
+            } else {
+                Err(anyhow::anyhow!("CC session manager not configured"))
             }
         }
         nv_core::types::ActionType::ChannelSend => {
@@ -252,6 +268,8 @@ fn detect_action_type(payload: &serde_json::Value) -> nv_core::types::ActionType
             "ChannelSend" => nv_core::types::ActionType::ChannelSend,
             "NexusStartSession" => nv_core::types::ActionType::NexusStartSession,
             "NexusStopSession" => nv_core::types::ActionType::NexusStopSession,
+            "CcStartSession" => nv_core::types::ActionType::CcStartSession,
+            "CcStopSession" => nv_core::types::ActionType::CcStopSession,
             "ScheduleAdd" => nv_core::types::ActionType::ScheduleAdd,
             "ScheduleModify" => nv_core::types::ActionType::ScheduleModify,
             "ScheduleRemove" => nv_core::types::ActionType::ScheduleRemove,

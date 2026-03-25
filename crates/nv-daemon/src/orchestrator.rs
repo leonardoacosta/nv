@@ -909,7 +909,7 @@ impl Orchestrator {
                         if let Some(tg) = self.channels.get("telegram") {
                             if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
-                                // Build NexusBackend for approval routing (team-agents or gRPC)
+                                // Build NexusBackend for legacy approval routing
                                 let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
                                     self.deps.team_agent_dispatcher
                                         .as_ref()
@@ -918,6 +918,7 @@ impl Orchestrator {
                                     uuid_str,
                                     self.deps.jira_registry.as_ref(),
                                     nexus_backend_owned.as_ref(),
+                                    self.deps.cc_session_manager.as_ref(),
                                     &self.deps.project_registry,
                                     &self.deps.channels,
                                     &tg_channel.client,
@@ -1071,6 +1072,9 @@ impl Orchestrator {
                     "health" => self.cmd_health().await,
                     "projects" => self.cmd_projects().await,
                     "apply" => self.cmd_apply(&parsed.args, msg).await,
+                    "sessions" => self.cmd_sessions().await,
+                    "start" => self.cmd_start(&parsed.args, msg).await,
+                    "stop" => self.cmd_stop(&parsed.args).await,
                     _ => self.cmd_unknown(&parsed.command),
                 };
 
@@ -1291,8 +1295,172 @@ impl Orchestrator {
              /digest -- Trigger immediate digest\n\
              /health -- Homelab status\n\
              /projects -- List all projects\n\
-             /apply <project> <spec> -- Apply a spec"
+             /apply <project> <spec> -- Apply a spec\n\
+             /sessions -- List CC sessions\n\
+             /start <project> <cmd...> -- Start a CC session\n\
+             /stop <session_id> -- Stop a CC session"
         )
+    }
+
+    // ── CC Session Commands ─────────────────────────────────────────
+
+    /// /sessions — list all CC sessions managed by CcSessionManager.
+    async fn cmd_sessions(&self) -> String {
+        let Some(ref mgr) = self.deps.cc_session_manager else {
+            return "\u{274C} CC session manager not configured.".to_string();
+        };
+
+        let sessions = mgr.list().await;
+        if sessions.is_empty() {
+            return "\u{1F4CB} No active CC sessions.".to_string();
+        }
+
+        let mut lines = vec![format!(
+            "\u{1F4BB} CC Sessions ({} total)\n",
+            sessions.len()
+        )];
+        for s in &sessions {
+            let icon = match s.state.as_str() {
+                "running" => "\u{1F7E2}",
+                "completed" => "\u{2705}",
+                "stopped" => "\u{23F9}",
+                _ => "\u{1F534}",
+            };
+            lines.push(format!(
+                "{icon} [{}] {} \u{2014} {} ({})",
+                &s.id[..8.min(s.id.len())],
+                s.project,
+                s.state,
+                s.duration_display,
+            ));
+        }
+        lines.join("\n")
+    }
+
+    /// /start <project> <cmd...> — start a CC session via CcSessionManager (with confirmation).
+    async fn cmd_start(
+        &self,
+        args: &[String],
+        msg: &nv_core::types::InboundMessage,
+    ) -> String {
+        if args.is_empty() {
+            return "\u{2139}\u{FE0F} Usage: /start <project> [cmd...]\n\nExample: /start oo /apply fix-chat".to_string();
+        }
+
+        let project = &args[0];
+
+        // Verify project exists in registry
+        if !self.deps.project_registry.contains_key(project.as_str()) {
+            let known: Vec<&String> = self.deps.project_registry.keys().collect();
+            return format!(
+                "\u{274C} Unknown project: {project}\n\nKnown projects: {}",
+                known.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+            );
+        }
+
+        // Check CC session manager availability
+        let mgr_available = self.deps.cc_session_manager
+            .as_ref()
+            .map(|m| m.is_available())
+            .unwrap_or(false);
+        if !mgr_available {
+            return "\u{274C} CC session manager not configured or no machines available.".to_string();
+        }
+
+        let command = if args.len() > 1 {
+            args[1..].join(" ")
+        } else {
+            "claude".to_string()
+        };
+
+        // Create PendingAction with confirmation keyboard
+        let action_id = uuid::Uuid::new_v4();
+        let description = format!(
+            "Start CC session on {}: `{command}`",
+            project.to_uppercase()
+        );
+
+        let keyboard = InlineKeyboard::confirm_action(&action_id.to_string());
+        let payload = serde_json::json!({
+            "project": project,
+            "command": command,
+            "_action_type": "CcStartSession",
+        });
+
+        let tg_chat_id = msg.metadata.get("chat_id").and_then(|v| v.as_i64());
+        let mut tg_msg_id: Option<i64> = None;
+
+        // Send confirmation keyboard via Telegram
+        if let Some(tg) = self.channels.get("telegram") {
+            if let Some(tg_channel) =
+                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
+            {
+                let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                match tg_channel
+                    .client
+                    .send_message(
+                        chat_id,
+                        &format!("\u{1F680} {description}\n\nApprove?"),
+                        None,
+                        Some(&keyboard),
+                    )
+                    .await
+                {
+                    Ok(mid) => tg_msg_id = Some(mid),
+                    Err(e) => {
+                        tracing::error!(error = %e, "failed to send start confirmation");
+                        return format!("\u{274C} Failed to send confirmation: {e}");
+                    }
+                }
+            }
+        }
+
+        // Save pending action
+        if let Err(e) = self.deps.state.save_pending_action(
+            &crate::state::PendingAction {
+                id: action_id,
+                description: description.clone(),
+                payload,
+                status: crate::state::PendingStatus::AwaitingConfirmation,
+                created_at: chrono::Utc::now(),
+                telegram_message_id: tg_msg_id,
+                telegram_chat_id: tg_chat_id,
+            },
+        ) {
+            tracing::error!(error = %e, "failed to save pending action for /start");
+        }
+
+        // Return empty — confirmation keyboard already sent
+        String::new()
+    }
+
+    /// /stop <session_id> — stop a CC session via CcSessionManager (with confirmation).
+    async fn cmd_stop(&self, args: &[String]) -> String {
+        let Some(session_id) = args.first() else {
+            return "\u{2139}\u{FE0F} Usage: /stop <session_id>\n\nExample: /stop ta-abc12345".to_string();
+        };
+
+        let Some(ref mgr) = self.deps.cc_session_manager else {
+            return "\u{274C} CC session manager not configured.".to_string();
+        };
+
+        // Verify session exists and is running
+        let Some(status) = mgr.get_status(session_id).await else {
+            return format!("\u{274C} Session '{session_id}' not found.");
+        };
+
+        if status.state != "running" {
+            return format!(
+                "\u{26A0}\u{FE0F} Session '{session_id}' is not running (state: {}).",
+                status.state
+            );
+        }
+
+        // Stop directly (no confirmation needed for stop — it's low-risk)
+        match mgr.stop(session_id).await {
+            Ok(msg) => format!("\u{23F9} {msg}"),
+            Err(e) => format!("\u{274C} Failed to stop session: {e}"),
+        }
     }
 
     // ── Obligation Callback Handler ─────────────────────────────────

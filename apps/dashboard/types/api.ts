@@ -69,6 +69,27 @@ export interface SessionsGetResponse {
   last_digest_at?: string | null;
 }
 
+// ── GET /api/cc-sessions ───────────────────────────────────────────────────
+
+/**
+ * Summary of a CC subprocess session managed by CcSessionManager.
+ * Matches `CcSessionSummary` in `crates/nv-daemon/src/cc_sessions.rs`.
+ */
+export interface CcSessionSummary {
+  id: string;
+  project: string;
+  state: "running" | "completed" | "stopped" | string;
+  machine_name: string;
+  started_at: string;
+  duration_display: string;
+  restart_attempts: number;
+}
+
+export interface CcSessionsGetResponse {
+  sessions: CcSessionSummary[];
+  configured: boolean;
+}
+
 // ── GET /api/config ────────────────────────────────────────────────────────
 
 /** The config endpoint returns the raw config JSON — shape varies by project. */

@@ -198,6 +198,8 @@ pub struct SharedDeps {
     pub jira_registry: Option<jira::JiraRegistry>,
     /// Team-agent subprocess dispatcher (populated when team_agents is configured).
     pub team_agent_dispatcher: Option<crate::team_agent::TeamAgentDispatcher>,
+    /// CC session manager (wraps TeamAgentDispatcher with health monitoring).
+    pub cc_session_manager: Option<crate::cc_sessions::CcSessionManager>,
     pub channels: ChannelRegistry,
     pub nv_base_path: PathBuf,
     pub voice_enabled: Arc<std::sync::atomic::AtomicBool>,

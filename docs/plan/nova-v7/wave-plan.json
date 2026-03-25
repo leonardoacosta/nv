@@ -516,6 +516,43 @@
       "rationale": "Wave 1a and 1b completed earlier in this session",
       "source": "system",
       "affected_waves": []
+    },
+    {
+      "date": "2026-03-25",
+      "decision": "Use sequential /apply per spec instead of apply:all mega-batches. Each spec is its own wave for validation and tagging.",
+      "rationale": "6/10 waves are single-spec (no parallelism gain). 4 multi-spec waves exceed 40-task guardrail. Wave 3 at 172 tasks would lose agent coherence.",
+      "source": "user",
+      "affected_waves": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "affected_specs": [
+        "extract-nextjs-dashboard",
+        "add-session-slug-names",
+        "cc-session-management",
+        "add-morning-briefing-page",
+        "add-cold-start-logging",
+        "rebuild-dashboard-wireframes",
+        "migrate-nova-brain",
+        "add-anthropic-api-client",
+        "native-tool-use-protocol",
+        "persistent-conversation-state",
+        "response-latency-optimization",
+        "replace-nexus-with-team-agents",
+        "remove-nexus-crate",
+        "remove-nexus-register-binary",
+        "update-session-lifecycle",
+        "cleanup-nexus-config"
+      ]
     }
-  ]
+  ],
+  "execution_mode": "sequential-apply"
 }

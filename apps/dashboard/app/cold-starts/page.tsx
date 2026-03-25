@@ -8,7 +8,7 @@ import {
   Zap,
 } from "lucide-react";
 
-import LatencyChart from "@/components/LatencyChart";
+import PipelineLatencyChart from "@/components/LatencyChart";
 
 // ── API types ────────────────────────────────────────────────────────────────
 
@@ -451,7 +451,7 @@ export default function ColdStartsPage() {
 
       {/* Pipeline Latency Chart */}
       <div className="mt-6">
-        <LatencyChart window="24h" />
+        <PipelineLatencyChart />
       </div>
     </div>
   );

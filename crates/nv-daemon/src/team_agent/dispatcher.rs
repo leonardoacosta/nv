@@ -13,8 +13,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::nexus::client::{SessionDetail, SessionSummary};
-use crate::nexus::connection::ConnectionStatus;
+use super::types::{ConnectionStatus, SessionDetail, SessionSummary};
 
 use super::session::{AgentSession, AgentStatus};
 

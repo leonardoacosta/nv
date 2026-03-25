@@ -911,17 +911,12 @@ impl Orchestrator {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
                                 // Build NexusBackend for approval routing (team-agents or gRPC)
                                 let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
-                                    if let Some(ref dispatcher) = self.deps.team_agent_dispatcher {
-                                        Some(nexus::backend::NexusBackend::TeamAgents(dispatcher.clone()))
-                                    } else {
-                                        self.deps.nexus_client
-                                            .as_ref()
-                                            .map(|c| nexus::backend::NexusBackend::Nexus(c.clone()))
-                                    };
+                                    self.deps.team_agent_dispatcher
+                                        .as_ref()
+                                        .map(|d| nexus::backend::NexusBackend::new(d.clone()));
                                 if let Err(e) = crate::callbacks::handle_approve_with_backend(
                                     uuid_str,
                                     self.deps.jira_registry.as_ref(),
-                                    self.deps.nexus_client.as_ref(),
                                     nexus_backend_owned.as_ref(),
                                     &self.deps.project_registry,
                                     &self.deps.channels,
@@ -1106,7 +1101,6 @@ impl Orchestrator {
             let result = crate::aggregation::project_health(
                 code,
                 self.deps.jira_registry.as_ref().and_then(|r| r.resolve(code)),
-                self.deps.nexus_client.as_ref(),
             )
             .await;
 
@@ -1174,7 +1168,6 @@ impl Orchestrator {
             let dot = if let Ok(output) = crate::aggregation::project_health(
                 code,
                 self.deps.jira_registry.as_ref().and_then(|r| r.resolve(code)),
-                self.deps.nexus_client.as_ref(),
             )
             .await
             {
@@ -1214,21 +1207,16 @@ impl Orchestrator {
             );
         }
 
-        // Check Nexus / team-agent connectivity
-        let backend_available = if let Some(ref dispatcher) = self.deps.team_agent_dispatcher {
-            dispatcher.is_available()
-        } else if let Some(ref client) = self.deps.nexus_client {
-            client.is_connected().await
-        } else {
-            false
-        };
+        // Check team-agent connectivity
+        let backend_available = self.deps.team_agent_dispatcher
+            .as_ref()
+            .map(|d| d.is_available())
+            .unwrap_or(false);
         if !backend_available {
             return if self.deps.team_agent_dispatcher.is_some() {
                 "\u{274C} No team-agent machines configured. Cannot start sessions.".to_string()
-            } else if self.deps.nexus_client.is_some() {
-                "\u{274C} No Nexus agents connected. Cannot start remote sessions.".to_string()
             } else {
-                "\u{274C} Nexus not configured. Cannot start remote sessions.".to_string()
+                "\u{274C} Team agents not configured. Cannot start remote sessions.".to_string()
             };
         }
 
@@ -1436,13 +1424,12 @@ impl Orchestrator {
         tracing::info!("digest: starting pipeline");
 
         let jira_client = self.deps.jira_registry.as_ref().and_then(|r| r.default_client());
-        let nexus_client = self.deps.nexus_client.as_ref();
         let memory = &self.deps.memory;
         let calendar_credentials = self.deps.calendar_credentials.as_deref();
         let calendar_id = &self.deps.calendar_id;
 
         // Step 1: gather context from all sources
-        let context = gather_context(jira_client, memory, nexus_client, calendar_credentials, calendar_id).await;
+        let context = gather_context(jira_client, memory, calendar_credentials, calendar_id).await;
         tracing::info!(
             jira_issues = context.jira_issues.len(),
             nexus_sessions = context.nexus_sessions.len(),
@@ -1534,95 +1521,17 @@ impl Orchestrator {
     // ── Nexus Error Handlers ────────────────────────────────────────
 
     async fn handle_nexus_view_error(&mut self, session_id: &str) {
-        let Some(nexus_client) = &self.deps.nexus_client else {
-            tracing::warn!("nexus_err:view callback but no Nexus client configured");
-            return;
-        };
-
-        match nexus_client.query_session(session_id).await {
-            Ok(Some(session)) => {
-                let detail_text = nexus::notify::format_session_error_detail(&session);
-                if let Some(channel) = self.channels.get("telegram") {
-                    let msg = OutboundMessage {
-                        channel: "telegram".into(),
-                        content: detail_text,
-                        reply_to: None,
-                        keyboard: None,
-                    };
-                    if let Err(e) = channel.send_message(msg).await {
-                        tracing::error!(error = %e, "failed to send error detail to Telegram");
-                    }
-                }
-            }
-            Ok(None) => {
-                tracing::warn!(session_id, "nexus_err:view — session not found");
-                self.send_error("telegram", &format!(
-                    "Session {session_id} not found on any connected Nexus agent."
-                )).await;
-            }
-            Err(e) => {
-                tracing::error!(error = %e, session_id, "nexus_err:view — query failed");
-                self.send_error("telegram", &format!(
-                    "Failed to query session {session_id}: {e}"
-                )).await;
-            }
-        }
+        tracing::warn!(session_id, "nexus_err:view callback — no longer supported (Nexus gRPC removed)");
+        self.send_error("telegram", &format!(
+            "Session error view for {session_id} is unavailable (Nexus gRPC removed)."
+        )).await;
     }
 
     async fn handle_nexus_create_bug(&mut self, session_id: &str) {
-        let Some(nexus_client) = &self.deps.nexus_client else {
-            tracing::warn!("nexus_err:bug callback but no Nexus client configured");
-            return;
-        };
-
-        match nexus_client.query_session(session_id).await {
-            Ok(Some(session)) => {
-                let action = nexus::notify::create_bug_from_session_error(&session);
-
-                if let Err(e) = self.deps.state.save_pending_action(
-                    &crate::state::PendingAction {
-                        id: action.id,
-                        description: action.description.clone(),
-                        payload: action.payload.clone(),
-                        status: crate::state::PendingStatus::AwaitingConfirmation,
-                        created_at: action.created_at,
-                        telegram_message_id: None,
-                        telegram_chat_id: None,
-                    },
-                ) {
-                    tracing::error!(error = %e, "failed to save bug pending action");
-                    return;
-                }
-
-                let keyboard = InlineKeyboard::confirm_action(&action.id.to_string());
-                if let Some(channel) = self.channels.get("telegram") {
-                    let msg = OutboundMessage {
-                        channel: "telegram".into(),
-                        content: format!(
-                            "Create Jira bug from session error?\n\n{}\n\nApprove, edit, or cancel?",
-                            action.description
-                        ),
-                        reply_to: None,
-                        keyboard: Some(keyboard),
-                    };
-                    if let Err(e) = channel.send_message(msg).await {
-                        tracing::error!(error = %e, "failed to send bug confirmation keyboard");
-                    }
-                }
-            }
-            Ok(None) => {
-                tracing::warn!(session_id, "nexus_err:bug — session not found");
-                self.send_error("telegram", &format!(
-                    "Session {session_id} not found on any connected Nexus agent."
-                )).await;
-            }
-            Err(e) => {
-                tracing::error!(error = %e, session_id, "nexus_err:bug — query failed");
-                self.send_error("telegram", &format!(
-                    "Failed to query session {session_id}: {e}"
-                )).await;
-            }
-        }
+        tracing::warn!(session_id, "nexus_err:bug callback — no longer supported (Nexus gRPC removed)");
+        self.send_error("telegram", &format!(
+            "Cannot create bug from session {session_id}: Nexus gRPC removed. Use Jira directly."
+        )).await;
     }
 
     /// Send an error message to a channel, with 2-second dedup batching.

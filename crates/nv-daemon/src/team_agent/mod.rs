@@ -5,5 +5,6 @@
 
 pub mod dispatcher;
 pub mod session;
+pub mod types;
 
 pub use dispatcher::TeamAgentDispatcher;

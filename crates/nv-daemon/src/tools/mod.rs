@@ -1522,7 +1522,6 @@ pub async fn execute_tool_send(
     input: &serde_json::Value,
     memory: &Memory,
     jira_registry: Option<&jira::JiraRegistry>,
-    nexus_client: Option<&nexus::client::NexusClient>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
     calendar_credentials: Option<&str>,
@@ -1530,7 +1529,7 @@ pub async fn execute_tool_send(
     service_registries: &ServiceRegistries<'_>,
 ) -> Result<ToolResult> {
     execute_tool_send_with_backend(
-        name, input, memory, jira_registry, nexus_client, None,
+        name, input, memory, jira_registry, None,
         project_registry, channels, calendar_credentials, calendar_id, service_registries,
     )
     .await
@@ -1539,15 +1538,13 @@ pub async fn execute_tool_send(
 /// Variant of `execute_tool_send` that accepts an optional `NexusBackend`.
 ///
 /// When `nexus_backend` is `Some`, all nexus tool calls are routed through it
-/// (whether team-agents or gRPC). When `None`, the call falls back to the raw
-/// `nexus_client` parameter (legacy path).
+/// (team-agents dispatcher). When `None`, nexus tools return "not configured".
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_tool_send_with_backend(
     name: &str,
     input: &serde_json::Value,
     memory: &Memory,
     jira_registry: Option<&jira::JiraRegistry>,
-    nexus_client: Option<&nexus::client::NexusClient>,
     nexus_backend: Option<&nexus::backend::NexusBackend>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
@@ -1640,55 +1637,30 @@ pub async fn execute_tool_send_with_backend(
         }
         "get_recent_messages" => Err(anyhow!("get_recent_messages must be handled by the worker directly")),
         "query_nexus" => {
-            if let Some(backend) = nexus_backend {
-                let output = backend.format_query_sessions().await?;
-                Ok(ToolResult::Immediate(output))
-            } else {
-                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-                let output = nexus::tools::format_query_sessions(client).await?;
-                Ok(ToolResult::Immediate(output))
-            }
+            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = backend.format_query_sessions().await?;
+            Ok(ToolResult::Immediate(output))
         }
         "query_session" => {
             let session_id = input["session_id"].as_str().ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
-            if let Some(backend) = nexus_backend {
-                let output = backend.format_query_session(session_id).await?;
-                Ok(ToolResult::Immediate(output))
-            } else {
-                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-                let output = nexus::tools::format_query_session(client, session_id).await?;
-                Ok(ToolResult::Immediate(output))
-            }
+            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = backend.format_query_session(session_id).await?;
+            Ok(ToolResult::Immediate(output))
         }
         "query_nexus_health" => {
-            if let Some(backend) = nexus_backend {
-                let output = backend.format_query_health().await?;
-                Ok(ToolResult::Immediate(output))
-            } else {
-                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-                let output = nexus::tools::format_query_health(client).await?;
-                Ok(ToolResult::Immediate(output))
-            }
+            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = backend.format_query_health().await?;
+            Ok(ToolResult::Immediate(output))
         }
         "query_nexus_projects" => {
-            if let Some(backend) = nexus_backend {
-                let output = backend.format_query_projects().await?;
-                Ok(ToolResult::Immediate(output))
-            } else {
-                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-                let output = nexus::tools::format_query_projects(client).await?;
-                Ok(ToolResult::Immediate(output))
-            }
+            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = backend.format_query_projects().await?;
+            Ok(ToolResult::Immediate(output))
         }
         "query_nexus_agents" => {
-            if let Some(backend) = nexus_backend {
-                let output = backend.format_query_agents().await?;
-                Ok(ToolResult::Immediate(output))
-            } else {
-                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-                let output = nexus::tools::format_query_agents(client).await?;
-                Ok(ToolResult::Immediate(output))
-            }
+            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            let output = backend.format_query_agents().await?;
+            Ok(ToolResult::Immediate(output))
         }
 
         // ── Nexus Project-Scoped Queries ─────────────────────────
@@ -1707,11 +1679,11 @@ pub async fn execute_tool_send_with_backend(
             Ok(ToolResult::Immediate(output))
         }
 
-        // ── Nexus Session Lifecycle ──────────────────────────────
+        // ── Session Lifecycle ──────────────────────────────────────
         "start_session" => {
-            // Validate that some backend is configured before queuing the action
+            // Validate that a backend is configured before queuing the action
             if nexus_backend.is_none() {
-                let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                anyhow::bail!("Team agents not configured");
             }
             let project = input["project"]
                 .as_str()
@@ -1741,20 +1713,14 @@ pub async fn execute_tool_send_with_backend(
             })
         }
         "send_command" => {
-            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let session_id = input["session_id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
-            let text = input["text"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'text' parameter"))?;
-            let output = client.send_command(session_id, text).await?;
-            Ok(ToolResult::Immediate(output))
+            // send_command is not supported by TeamAgentDispatcher (no persistent stdin).
+            // Return a clear error so callers know to use start_session instead.
+            anyhow::bail!("send_command is not supported by team-agent backend; use start_session");
         }
         "stop_session" => {
-            // Validate that some backend is configured before queuing the action
+            // Validate that a backend is configured before queuing the action
             if nexus_backend.is_none() {
-                let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                anyhow::bail!("Team agents not configured");
             }
             let session_id = input["session_id"]
                 .as_str()
@@ -1771,7 +1737,7 @@ pub async fn execute_tool_send_with_backend(
         "project_health" => {
             let code = input["code"].as_str().ok_or_else(|| anyhow!("missing 'code' parameter"))?;
             let jira_client = jira_registry.and_then(|r| r.resolve(code));
-            let output = aggregation::project_health(code, jira_client, nexus_client).await?;
+            let output = aggregation::project_health(code, jira_client).await?;
             Ok(ToolResult::Immediate(output))
         }
         "homelab_status" => {
@@ -3005,7 +2971,6 @@ mod tests {
             &serde_json::json!({"topic": "tasks"}),
             &memory,
             None,
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3027,7 +2992,6 @@ mod tests {
             "read_memory",
             &serde_json::json!({"topic": "nonexistent"}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3052,7 +3016,6 @@ mod tests {
             "search_memory",
             &serde_json::json!({"query": "Stripe"}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3079,7 +3042,6 @@ mod tests {
             &serde_json::json!({"query": "xyznonexistent"}),
             &memory,
             None,
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3101,7 +3063,6 @@ mod tests {
             "write_memory",
             &serde_json::json!({"topic": "notes", "content": "hello world"}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3125,7 +3086,6 @@ mod tests {
             &serde_json::json!({"topic": "notes"}),
             &memory,
             None,
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3147,7 +3107,6 @@ mod tests {
             "jira_search",
             &serde_json::json!({"jql": "project = NV"}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3199,7 +3158,6 @@ mod tests {
             }),
             &memory,
             Some(&registry),
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3236,7 +3194,6 @@ mod tests {
             }),
             &memory,
             Some(&registry),
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3274,7 +3231,6 @@ mod tests {
             }),
             &memory,
             Some(&registry),
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3328,42 +3284,61 @@ mod tests {
         assert!(validate_jira_project_key("Otaku Odyssey").is_err());
     }
 
+    fn make_test_backend() -> nexus::backend::NexusBackend {
+        use nv_core::config::{TeamAgentMachine, TeamAgentsConfig};
+        let config = TeamAgentsConfig {
+            machines: vec![TeamAgentMachine {
+                name: "local".to_string(),
+                ssh_host: None,
+                working_dir: Some("/tmp".to_string()),
+            }],
+            cc_binary: "/bin/true".to_string(),
+        };
+        nexus::backend::NexusBackend::new(crate::team_agent::TeamAgentDispatcher::new(&config))
+    }
+
     #[tokio::test]
-    async fn execute_query_nexus_without_client_returns_error() {
+    async fn execute_query_nexus_without_backend_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool_send("query_nexus", &serde_json::json!({}), &memory, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
+        let result = execute_tool_send("query_nexus", &serde_json::json!({}), &memory, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
             .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
     }
 
     #[tokio::test]
-    async fn execute_query_nexus_with_client_returns_immediate() {
+    async fn execute_query_nexus_with_backend_returns_immediate() {
         let (_dir, memory) = setup();
-        let client = nexus::client::NexusClient::new(&[nv_core::config::NexusAgent {
-            name: "test".into(),
-            host: "127.0.0.1".into(),
-            port: 7400,
-        }]);
-        let result = execute_tool_send("query_nexus", &serde_json::json!({}), &memory, None, Some(&client), &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
-            .await
-            .unwrap();
+        let backend = make_test_backend();
+        let result = execute_tool_send_with_backend(
+            "query_nexus",
+            &serde_json::json!({}),
+            &memory,
+            None,
+            Some(&backend),
+            &empty_registry(),
+            &empty_channels(),
+            None,
+            "primary",
+            &empty_service_registries(),
+        )
+        .await
+        .unwrap();
         match result {
             ToolResult::Immediate(s) => {
-                assert!(s.contains("unreachable") || s.contains("No Nexus agents") || s.contains("No active sessions"));
+                assert!(s.contains("No active") || s.contains("session"));
             }
             _ => panic!("expected Immediate"),
         }
     }
 
     #[tokio::test]
-    async fn execute_query_session_without_client_returns_error() {
+    async fn execute_query_session_without_backend_returns_error() {
         let (_dir, memory) = setup();
         let result = execute_tool_send(
             "query_session",
             &serde_json::json!({"session_id": "s-1"}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3379,13 +3354,13 @@ mod tests {
     #[tokio::test]
     async fn execute_query_session_missing_param() {
         let (_dir, memory) = setup();
-        let client = nexus::client::NexusClient::new(&[]);
-        let result = execute_tool_send(
+        let backend = make_test_backend();
+        let result = execute_tool_send_with_backend(
             "query_session",
             &serde_json::json!({}),
             &memory,
             None,
-            Some(&client),
+            Some(&backend),
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3400,7 +3375,7 @@ mod tests {
     #[tokio::test]
     async fn execute_unknown_tool_returns_error() {
         let (_dir, memory) = setup();
-        let result = execute_tool_send("nonexistent_tool", &serde_json::json!({}), &memory, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
+        let result = execute_tool_send("nonexistent_tool", &serde_json::json!({}), &memory, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("unknown tool"));
@@ -3410,7 +3385,7 @@ mod tests {
     #[tokio::test]
     async fn execute_read_memory_missing_param() {
         let (_dir, memory) = setup();
-        let result = execute_tool_send("read_memory", &serde_json::json!({}), &memory, None, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
+        let result = execute_tool_send("read_memory", &serde_json::json!({}), &memory, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("topic"));
     }
@@ -3422,7 +3397,6 @@ mod tests {
             "write_memory",
             &serde_json::json!({"topic": "x"}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3448,7 +3422,6 @@ mod tests {
             "complete_bootstrap",
             &serde_json::json!({}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3488,7 +3461,6 @@ mod tests {
             &serde_json::json!({"content": new_soul}),
             &memory,
             None,
-            None,
             &empty_registry(),
             &empty_channels(),
             None,
@@ -3518,7 +3490,6 @@ mod tests {
             "update_soul",
             &serde_json::json!({}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3571,7 +3542,6 @@ mod tests {
             "get_recent_messages",
             &serde_json::json!({}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),
@@ -3732,7 +3702,6 @@ mod tests {
             "check_services",
             &serde_json::json!({"read_only": true}),
             &memory,
-            None,
             None,
             &empty_registry(),
             &empty_channels(),

@@ -5,7 +5,6 @@ use anyhow::Result;
 use crate::tools::calendar as calendar_tools;
 use crate::tools::jira;
 use crate::memory::Memory;
-use crate::nexus;
 
 // ── Context Types ───────────────────────────────────────────────────
 
@@ -63,19 +62,17 @@ const GATHER_TIMEOUT: Duration = Duration::from_secs(30);
 /// Gather context from all sources in parallel.
 ///
 /// Each source has an independent 30-second timeout. Partial results are
-/// accepted -- if Jira is down, the digest still includes memory + nexus.
+/// accepted -- if Jira is down, the digest still includes memory.
 /// Calendar failure logs a warning and produces an empty calendar section.
 pub async fn gather_context(
     jira_client: Option<&jira::JiraClient>,
     memory: &Memory,
-    nexus_client: Option<&nexus::client::NexusClient>,
     calendar_credentials: Option<&str>,
     calendar_id: &str,
 ) -> DigestContext {
-    let (jira_result, memory_result, nexus_result, calendar_result) = tokio::join!(
+    let (jira_result, memory_result, calendar_result) = tokio::join!(
         gather_jira(jira_client),
         gather_memory(memory),
-        gather_nexus(nexus_client),
         gather_calendar(calendar_credentials, calendar_id),
     );
 
@@ -99,15 +96,6 @@ pub async fn gather_context(
         }
     };
 
-    let nexus_sessions = match nexus_result {
-        Ok(sessions) => sessions,
-        Err(e) => {
-            tracing::warn!(error = %e, "digest: nexus gather failed");
-            errors.push(format!("Nexus unavailable: {e}"));
-            Vec::new()
-        }
-    };
-
     let calendar_events = match calendar_result {
         Ok(events) => events,
         Err(e) => {
@@ -119,7 +107,7 @@ pub async fn gather_context(
 
     DigestContext {
         jira_issues,
-        nexus_sessions,
+        nexus_sessions: Vec::new(),
         memory_entries,
         calendar_events,
         errors,
@@ -184,28 +172,6 @@ async fn gather_memory(memory: &Memory) -> Result<Vec<MemoryEntry>> {
     .map_err(|_| anyhow::anyhow!("Memory gather timed out after 30s"))??;
 
     Ok(memory_result)
-}
-
-/// Gather Nexus session info from connected agents.
-async fn gather_nexus(
-    nexus_client: Option<&nexus::client::NexusClient>,
-) -> Result<Vec<SessionSummary>> {
-    let Some(client) = nexus_client else {
-        return Ok(Vec::new());
-    };
-
-    let sessions = tokio::time::timeout(GATHER_TIMEOUT, client.query_sessions())
-        .await
-        .map_err(|_| anyhow::anyhow!("Nexus query timed out after 30s"))??;
-
-    Ok(sessions
-        .into_iter()
-        .map(|s| SessionSummary {
-            agent_name: s.agent_name,
-            session_id: s.id,
-            status: s.status,
-        })
-        .collect())
 }
 
 /// Fetch today's calendar events for the digest.
@@ -407,7 +373,7 @@ mod tests {
         let memory = Memory::new(dir.path());
         memory.init().unwrap();
 
-        let ctx = gather_context(None, &memory, None, None, "primary").await;
+        let ctx = gather_context(None, &memory, None, "primary").await;
         assert!(ctx.jira_issues.is_empty());
         assert!(ctx.nexus_sessions.is_empty());
         // Memory should have default topics

@@ -40,11 +40,9 @@ use crate::server_health_store::{NewServerHealth, ServerHealthStore};
 ///
 /// `db_path` — path to `messages.db`
 /// `obligation_store` — shared obligation store for crash P1 obligations
-/// `nexus_client` — optional Nexus client to spawn investigation sessions
 pub fn spawn_health_poller(
     db_path: PathBuf,
     obligation_store: Arc<Mutex<ObligationStore>>,
-    nexus_client: Option<Arc<crate::nexus::client::NexusClient>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_secs(60));
@@ -55,7 +53,7 @@ pub fn spawn_health_poller(
             ticker.tick().await;
             tracing::debug!("health_poller: collecting metrics");
 
-            if let Err(e) = run_poll_cycle(&db_path, &obligation_store, nexus_client.as_deref()).await {
+            if let Err(e) = run_poll_cycle(&db_path, &obligation_store).await {
                 tracing::warn!(error = %e, "health_poller: poll cycle failed");
             }
         }
@@ -66,7 +64,6 @@ pub fn spawn_health_poller(
 pub async fn run_poll_cycle(
     db_path: &std::path::Path,
     obligation_store: &Arc<Mutex<ObligationStore>>,
-    nexus_client: Option<&crate::nexus::client::NexusClient>,
 ) -> Result<()> {
     let metrics = collect_metrics().await?;
 
@@ -90,7 +87,6 @@ pub async fn run_poll_cycle(
                 handle_crash_detected(
                     db_path,
                     obligation_store,
-                    nexus_client,
                     prev_uptime,
                     current_uptime,
                 )
@@ -112,12 +108,10 @@ pub async fn run_poll_cycle(
 /// Called when a crash is detected (uptime decreased between polls).
 ///
 /// 1. Creates a P1 obligation in the obligation store.
-/// 2. Spawns a Nexus investigation session (if a client is available).
-/// 3. The obligation itself acts as the crash event record.
+/// 2. The obligation itself acts as the crash event record.
 async fn handle_crash_detected(
     _db_path: &std::path::Path,
     obligation_store: &Arc<Mutex<ObligationStore>>,
-    nexus_client: Option<&crate::nexus::client::NexusClient>,
     prev_uptime: i64,
     current_uptime: i64,
 ) {
@@ -164,41 +158,6 @@ async fn handle_crash_detected(
                 priority = ob.priority,
                 "crash_detection: P1 obligation created"
             );
-
-            // Spawn Nexus investigation session if available.
-            if let Some(nexus) = nexus_client {
-                let crash_summary = format!(
-                    "Nova daemon crashed (uptime dropped from {prev_uptime}s to {current_uptime}s). \
-                     Please investigate the cause."
-                );
-
-                let nv_project_path = {
-                    let home = std::env::var("HOME").unwrap_or_else(|_| String::new());
-                    if home.is_empty() {
-                        tracing::warn!("crash_detection: HOME env var not set, using empty path for Nexus session");
-                    }
-                    format!("{home}/nv")
-                };
-
-                match nexus
-                    .start_session_with_context("nv", &nv_project_path, &crash_summary, None)
-                    .await
-                {
-                    Ok((session_id, tmux_session)) => {
-                        tracing::info!(
-                            session_id = %session_id,
-                            tmux_session = %tmux_session,
-                            "crash_detection: Nexus investigation session spawned"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            "crash_detection: failed to spawn Nexus investigation session"
-                        );
-                    }
-                }
-            }
         }
         Err(e) => {
             tracing::warn!(

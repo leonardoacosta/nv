@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::nexus::client::{SessionDetail, SessionSummary};
+use super::types::{SessionDetail, SessionSummary};
 
 // ── AgentStatus ─────────────────────────────────────────────────────
 

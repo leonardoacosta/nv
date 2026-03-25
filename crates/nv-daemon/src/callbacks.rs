@@ -13,7 +13,7 @@ use uuid::Uuid;
 use nv_core::channel::Channel;
 
 use crate::tools::jira;
-use crate::nexus;
+use crate::nexus::backend::NexusBackend;
 use crate::tools::schedule::ScheduleStore;
 use crate::state::{PendingStatus, State};
 use crate::channels::telegram::client::TelegramClient;
@@ -24,50 +24,12 @@ use crate::tools;
 /// Execute a confirmed pending action.
 ///
 /// Loads the action from state, detects the action type, and routes to
-/// the appropriate executor (Jira, Nexus/TeamAgent, Home Assistant, channel send, etc.).
-///
-/// When `nexus_backend` is `Some`, NexusStartSession and NexusStopSession actions
-/// are routed through it (supporting both gRPC Nexus and team-agent modes).
-/// When `None`, `nexus_client` is used as fallback (legacy path).
-#[allow(clippy::too_many_arguments)]
-pub async fn handle_approve(
-    uuid_str: &str,
-    jira_registry: Option<&jira::JiraRegistry>,
-    nexus_client: Option<&nexus::client::NexusClient>,
-    project_registry: &HashMap<String, PathBuf>,
-    channels: &HashMap<String, Arc<dyn Channel>>,
-    telegram: &TelegramClient,
-    chat_id: i64,
-    original_message_id: Option<i64>,
-    state: &State,
-    schedule_store: Option<&std::sync::Mutex<ScheduleStore>>,
-) -> Result<()> {
-    handle_approve_with_backend(
-        uuid_str,
-        jira_registry,
-        nexus_client,
-        None,
-        project_registry,
-        channels,
-        telegram,
-        chat_id,
-        original_message_id,
-        state,
-        schedule_store,
-    )
-    .await
-}
-
-/// Variant of `handle_approve` that accepts an optional `NexusBackend`.
-///
-/// When `nexus_backend` is `Some`, NexusStartSession / NexusStopSession actions
-/// are dispatched through it instead of the raw `nexus_client`.
+/// the appropriate executor (Jira, TeamAgent, Home Assistant, channel send, etc.).
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_approve_with_backend(
     uuid_str: &str,
     jira_registry: Option<&jira::JiraRegistry>,
-    nexus_client: Option<&nexus::client::NexusClient>,
-    nexus_backend: Option<&nexus::backend::NexusBackend>,
+    nexus_backend: Option<&NexusBackend>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
     telegram: &TelegramClient,
@@ -94,19 +56,14 @@ pub async fn handle_approve_with_backend(
             if let Some(backend) = nexus_backend {
                 backend.execute_start_session(&action.payload, project_registry).await
             } else {
-                execute_nexus_start_session(
-                    &action.payload,
-                    nexus_client,
-                    project_registry,
-                )
-                .await
+                Err(anyhow::anyhow!("Team agents not configured"))
             }
         }
         nv_core::types::ActionType::NexusStopSession => {
             if let Some(backend) = nexus_backend {
                 backend.execute_stop_session(&action.payload).await
             } else {
-                execute_nexus_stop_session(&action.payload, nexus_client).await
+                Err(anyhow::anyhow!("Team agents not configured"))
             }
         }
         nv_core::types::ActionType::ChannelSend => {
@@ -155,72 +112,6 @@ pub async fn handle_approve_with_backend(
     }
 
     Ok(())
-}
-
-/// Execute a confirmed NexusStartSession action.
-async fn execute_nexus_start_session(
-    payload: &serde_json::Value,
-    nexus_client: Option<&nexus::client::NexusClient>,
-    project_registry: &HashMap<String, PathBuf>,
-) -> Result<String> {
-    let client = nexus_client.ok_or_else(|| anyhow::anyhow!("Nexus not configured"))?;
-    let project = payload["project"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("missing 'project' in payload"))?;
-    let command = payload["command"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("missing 'command' in payload"))?;
-
-    // Pre-launch dedup guard: skip if a session is already active/idle for
-    // this project. Prevents duplicate session storms on batch approvals.
-    if client.has_active_session_for_project(project).await {
-        tracing::info!(
-            project,
-            dedup = true,
-            "session launch skipped — already active"
-        );
-        return Ok(format!(
-            "Session already active for {project} \u{2014} launch skipped"
-        ));
-    }
-
-    // Resolve project path from registry.
-    // Fall back to $HOME/dev/{project} when not in the registry.
-    let cwd = project_registry
-        .get(project)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_default();
-            format!("{home}/dev/{project}")
-        });
-
-    let agent = payload["agent"].as_str();
-
-    let args: Vec<String> = command
-        .split_whitespace()
-        .map(String::from)
-        .collect();
-
-    let (session_id, tmux_session) = client
-        .start_session(project, &cwd, &args, agent)
-        .await?;
-
-    Ok(format!(
-        "Session started: {session_id} (tmux: {tmux_session})"
-    ))
-}
-
-/// Execute a confirmed NexusStopSession action.
-async fn execute_nexus_stop_session(
-    payload: &serde_json::Value,
-    nexus_client: Option<&nexus::client::NexusClient>,
-) -> Result<String> {
-    let client = nexus_client.ok_or_else(|| anyhow::anyhow!("Nexus not configured"))?;
-    let session_id = payload["session_id"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("missing 'session_id' in payload"))?;
-
-    client.stop_session(session_id).await
 }
 
 // ── Edit Handler ────────────────────────────────────────────────────

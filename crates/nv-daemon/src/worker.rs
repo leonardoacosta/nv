@@ -196,9 +196,7 @@ pub struct SharedDeps {
     pub conversation_ttl_hours: u64,
     pub diary: Arc<std::sync::Mutex<DiaryWriter>>,
     pub jira_registry: Option<jira::JiraRegistry>,
-    pub nexus_client: Option<nexus::client::NexusClient>,
-    /// Team-agent subprocess dispatcher (populated when `use_team_agents = true`).
-    /// Mutually exclusive with `nexus_client`.
+    /// Team-agent subprocess dispatcher (populated when team_agents is configured).
     pub team_agent_dispatcher: Option<crate::team_agent::TeamAgentDispatcher>,
     pub channels: ChannelRegistry,
     pub nv_base_path: PathBuf,
@@ -1793,16 +1791,11 @@ impl Worker {
                         doppler: deps.doppler_registry.as_ref(),
                         teams: deps.teams_client.as_deref(),
                     };
-                    // Build a NexusBackend from whichever backend is configured.
-                    // TeamAgentDispatcher takes priority over the legacy Nexus gRPC client.
+                    // Build a NexusBackend from TeamAgentDispatcher if configured.
                     let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
-                        if let Some(ref dispatcher) = deps.team_agent_dispatcher {
-                            Some(nexus::backend::NexusBackend::TeamAgents(dispatcher.clone()))
-                        } else {
-                            deps.nexus_client
-                                .as_ref()
-                                .map(|c| nexus::backend::NexusBackend::Nexus(c.clone()))
-                        };
+                        deps.team_agent_dispatcher
+                            .as_ref()
+                            .map(|d| nexus::backend::NexusBackend::new(d.clone()));
                     let nexus_backend_ref = nexus_backend_owned.as_ref();
 
                     match tokio::time::timeout(
@@ -1812,7 +1805,6 @@ impl Worker {
                             input,
                             &deps.memory,
                             deps.jira_registry.as_ref(),
-                            deps.nexus_client.as_ref(),
                             nexus_backend_ref,
                             &deps.project_registry,
                             &deps.channels,

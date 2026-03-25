@@ -18,7 +18,6 @@ use crate::tools::docker as docker_tools;
 use crate::tools::github;
 use crate::tools::ha as ha_tools;
 use crate::tools::jira;
-use crate::nexus;
 use crate::tools::plaid as plaid_tools;
 use crate::tools::sentry as sentry_tools;
 use crate::tools::stripe as stripe_tools;
@@ -194,12 +193,11 @@ fn is_unavailable(s: &str) -> bool {
 
 // ── project_health ──────────────────────────────────────────────────
 
-/// Execute `project_health(code)` — calls Vercel, Sentry, Jira, Nexus, and
+/// Execute `project_health(code)` — calls Vercel, Sentry, Jira, and
 /// GitHub CI in parallel, each with a 5-second timeout.
 pub async fn project_health(
     code: &str,
     jira_client: Option<&jira::JiraClient>,
-    nexus_client: Option<&nexus::client::NexusClient>,
 ) -> Result<String> {
     let map = project_map();
     let resources = map.get(code);
@@ -212,7 +210,7 @@ pub async fn project_health(
     let start = std::time::Instant::now();
 
     // Spawn all source calls in parallel via tokio::join!
-    let (deploy_result, sentry_result, jira_result, nexus_result, ci_result) = tokio::join!(
+    let (deploy_result, sentry_result, jira_result, ci_result) = tokio::join!(
         // Vercel deployments
         async {
             if let Some(project) = res.vercel_project {
@@ -251,20 +249,6 @@ pub async fn project_health(
                 ("Issues".to_string(), "N/A (Jira not configured)".to_string())
             }
         },
-        // Nexus sessions
-        async {
-            if let Some(client) = nexus_client {
-                timed_call("Sessions", || async {
-                    nexus::tools::format_query_sessions(client).await
-                })
-                .await
-            } else {
-                (
-                    "Sessions".to_string(),
-                    "N/A (Nexus not configured)".to_string(),
-                )
-            }
-        },
         // GitHub CI status
         async {
             if let Some(repo) = res.github_repo {
@@ -285,7 +269,6 @@ pub async fn project_health(
         &deploy_result,
         &sentry_result,
         &jira_result,
-        &nexus_result,
         &ci_result,
     ];
 
@@ -529,7 +512,7 @@ mod tests {
 
     #[tokio::test]
     async fn project_health_unknown_code_returns_message() {
-        let result = project_health("zzz", None, None).await.unwrap();
+        let result = project_health("zzz", None).await.unwrap();
         assert!(result.contains("Unknown project code"));
         assert!(result.contains("zzz"));
     }

@@ -1,8 +1,7 @@
-//! NexusBackend — unified dispatch over Nexus gRPC or TeamAgentDispatcher.
+//! NexusBackend — dispatch over TeamAgentDispatcher.
 //!
-//! Tool calls and callback handlers go through `NexusBackend::route_*` methods
-//! rather than calling `NexusClient` or `TeamAgentDispatcher` directly. This
-//! keeps the `use_team_agents` branching in one place.
+//! Tool calls and callback handlers go through `NexusBackend` methods.
+//! Previously this enum also had a Nexus gRPC variant; that has been removed.
 
 use anyhow::Result;
 use std::collections::HashMap;
@@ -10,55 +9,34 @@ use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
 
-use super::client::{NexusClient, SessionDetail, SessionSummary};
-use super::connection::ConnectionStatus;
-use super::tools;
-use super::super::team_agent::TeamAgentDispatcher;
+use crate::team_agent::types::ConnectionStatus;
+use crate::team_agent::types::SessionSummary;
+use crate::team_agent::TeamAgentDispatcher;
 
 // ── NexusBackend ─────────────────────────────────────────────────────
 
-/// Either a Nexus gRPC client or a team-agents subprocess dispatcher.
+/// Wrapper around TeamAgentDispatcher for uniform session management.
 ///
-/// Callers receive the same types (`SessionSummary`, `SessionDetail`) from
-/// both variants; only the transport differs.
+/// Callers receive `SessionSummary` / `SessionDetail` values; transport
+/// details are hidden behind this type.
 #[derive(Clone)]
-pub enum NexusBackend {
-    /// Nexus gRPC — the original remote-agent backend.
-    Nexus(NexusClient),
-    /// Team agents — direct CC subprocess management.
-    TeamAgents(TeamAgentDispatcher),
+pub struct NexusBackend {
+    dispatcher: TeamAgentDispatcher,
 }
 
 impl NexusBackend {
-    // ── Session Queries ──────────────────────────────────────────────
-
-    /// Query all sessions (merged across agents / machines).
-    pub async fn query_sessions(&self) -> Result<Vec<SessionSummary>> {
-        match self {
-            NexusBackend::Nexus(c) => c.query_sessions().await,
-            NexusBackend::TeamAgents(d) => Ok(d.list_agents().await),
-        }
-    }
-
-    /// Query a single session by ID.
-    pub async fn query_session(&self, id: &str) -> Result<Option<SessionDetail>> {
-        match self {
-            NexusBackend::Nexus(c) => c.query_session(id).await,
-            NexusBackend::TeamAgents(d) => Ok(d.get_agent(id).await),
-        }
+    pub fn new(dispatcher: TeamAgentDispatcher) -> Self {
+        Self { dispatcher }
     }
 
     /// Returns `true` if any active/running session targets `project`.
     pub async fn has_active_session_for_project(&self, project: &str) -> bool {
-        match self {
-            NexusBackend::Nexus(c) => c.has_active_session_for_project(project).await,
-            NexusBackend::TeamAgents(d) => d.has_active_agent_for_project(project).await,
-        }
+        self.dispatcher.has_active_agent_for_project(project).await
     }
 
     // ── Session Lifecycle ────────────────────────────────────────────
 
-    /// Start a new session. Returns `(session_id, tmux_or_machine_name)`.
+    /// Start a new session. Returns `(session_id, machine_name)`.
     pub async fn start_session(
         &self,
         project: &str,
@@ -66,150 +44,119 @@ impl NexusBackend {
         args: &[String],
         agent: Option<&str>,
     ) -> Result<(String, String)> {
-        match self {
-            NexusBackend::Nexus(c) => c.start_session(project, cwd, args, agent).await,
-            NexusBackend::TeamAgents(d) => d.start_agent(project, cwd, args, agent).await,
-        }
+        self.dispatcher.start_agent(project, cwd, args, agent).await
     }
 
     /// Stop a running session by ID.
     pub async fn stop_session(&self, session_id: &str) -> Result<String> {
-        match self {
-            NexusBackend::Nexus(c) => c.stop_session(session_id).await,
-            NexusBackend::TeamAgents(d) => d.stop_agent(session_id).await,
-        }
+        self.dispatcher.stop_agent(session_id).await
     }
 
     // ── Tool Format Helpers ──────────────────────────────────────────
 
     /// Format `query_nexus` tool response.
     pub async fn format_query_sessions(&self) -> Result<String> {
-        match self {
-            NexusBackend::Nexus(c) => tools::format_query_sessions(c).await,
-            NexusBackend::TeamAgents(d) => {
-                let sessions: Vec<SessionSummary> = d.list_agents().await;
-                if sessions.is_empty() {
-                    return Ok("No active team-agent sessions.".to_string());
-                }
-                let mut output = format!("{} session(s):\n", sessions.len());
-                for s in &sessions {
-                    let project = s.project.as_deref().unwrap_or("(no project)");
-                    output.push_str(&format!(
-                        "[{}] {}: {} -- {} ({})\n",
-                        s.agent_name, s.id, project, s.status, s.duration_display
-                    ));
-                }
-                Ok(output)
-            }
+        let sessions: Vec<SessionSummary> = self.dispatcher.list_agents().await;
+        if sessions.is_empty() {
+            return Ok("No active team-agent sessions.".to_string());
         }
+        let mut output = format!("{} session(s):\n", sessions.len());
+        for s in &sessions {
+            let project = s.project.as_deref().unwrap_or("(no project)");
+            output.push_str(&format!(
+                "[{}] {}: {} -- {} ({})\n",
+                s.agent_name, s.id, project, s.status, s.duration_display
+            ));
+        }
+        Ok(output)
     }
 
     /// Format `query_session` tool response.
     pub async fn format_query_session(&self, session_id: &str) -> Result<String> {
-        match self {
-            NexusBackend::Nexus(c) => tools::format_query_session(c, session_id).await,
-            NexusBackend::TeamAgents(d) => {
-                let Some(detail) = d.get_agent(session_id).await else {
-                    return Ok(format!("Session '{session_id}' not found."));
-                };
-                let mut output = String::new();
-                output.push_str(&format!("Session: {}\n", detail.id));
-                output.push_str(&format!("Machine: {}\n", detail.agent_name));
-                output.push_str(&format!("Status: {}\n", detail.status));
-                output.push_str(&format!("Type: {}\n", detail.session_type));
-                if let Some(project) = &detail.project {
-                    output.push_str(&format!("Project: {project}\n"));
-                }
-                output.push_str(&format!("CWD: {}\n", detail.cwd));
-                output.push_str(&format!("Duration: {}\n", detail.duration_display));
-                if let Some(cmd) = &detail.command {
-                    output.push_str(&format!("Command: {cmd}\n"));
-                }
-                Ok(output)
-            }
+        let Some(detail) = self.dispatcher.get_agent(session_id).await else {
+            return Ok(format!("Session '{session_id}' not found."));
+        };
+        let mut output = String::new();
+        output.push_str(&format!("Session: {}\n", detail.id));
+        output.push_str(&format!("Machine: {}\n", detail.agent_name));
+        output.push_str(&format!("Status: {}\n", detail.status));
+        output.push_str(&format!("Type: {}\n", detail.session_type));
+        if let Some(project) = &detail.project {
+            output.push_str(&format!("Project: {project}\n"));
         }
+        output.push_str(&format!("CWD: {}\n", detail.cwd));
+        output.push_str(&format!("Duration: {}\n", detail.duration_display));
+        if let Some(cmd) = &detail.command {
+            output.push_str(&format!("Command: {cmd}\n"));
+        }
+        Ok(output)
     }
 
     /// Format `query_nexus_health` tool response.
     pub async fn format_query_health(&self) -> Result<String> {
-        match self {
-            NexusBackend::Nexus(c) => tools::format_query_health(c).await,
-            NexusBackend::TeamAgents(d) => {
-                let details: Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> =
-                    d.agent_details().await;
-                if details.is_empty() {
-                    return Ok("No team-agent machines configured.".to_string());
-                }
-                let mut output = String::new();
-                for (name, endpoint, status, last_seen) in &details {
-                    output.push_str(&format!("── {name} ──\n"));
-                    output.push_str(&format!("  Endpoint: {endpoint}\n"));
-                    output.push_str(&format!("  Status: {status}\n"));
-                    if let Some(seen) = last_seen {
-                        output.push_str(&format!(
-                            "  Last seen: {}\n",
-                            seen.format("%H:%M:%S UTC")
-                        ));
-                    }
-                }
-                Ok(output.trim_end().to_string())
+        let details: Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> =
+            self.dispatcher.agent_details().await;
+        if details.is_empty() {
+            return Ok("No team-agent machines configured.".to_string());
+        }
+        let mut output = String::new();
+        for (name, endpoint, status, last_seen) in &details {
+            output.push_str(&format!("── {name} ──\n"));
+            output.push_str(&format!("  Endpoint: {endpoint}\n"));
+            output.push_str(&format!("  Status: {status}\n"));
+            if let Some(seen) = last_seen {
+                output.push_str(&format!(
+                    "  Last seen: {}\n",
+                    seen.format("%H:%M:%S UTC")
+                ));
             }
         }
+        Ok(output.trim_end().to_string())
     }
 
     /// Format `query_nexus_agents` tool response.
     pub async fn format_query_agents(&self) -> Result<String> {
-        match self {
-            NexusBackend::Nexus(c) => tools::format_query_agents(c).await,
-            NexusBackend::TeamAgents(d) => {
-                let details: Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> =
-                    d.agent_details().await;
-                if details.is_empty() {
-                    return Ok("No team-agent machines configured.".to_string());
-                }
-                let mut output = format!("{} machine(s):\n", details.len());
-                for (name, endpoint, status, last_seen) in &details {
-                    let seen: String = last_seen
-                        .map(|t| t.format("%H:%M:%S UTC").to_string())
-                        .unwrap_or_else(|| "never".to_string());
-                    output.push_str(&format!(
-                        "  {name}: {status} ({endpoint}) — last seen: {seen}\n"
-                    ));
-                }
-                Ok(output.trim_end().to_string())
-            }
+        let details: Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> =
+            self.dispatcher.agent_details().await;
+        if details.is_empty() {
+            return Ok("No team-agent machines configured.".to_string());
         }
+        let mut output = format!("{} machine(s):\n", details.len());
+        for (name, endpoint, status, last_seen) in &details {
+            let seen: String = last_seen
+                .map(|t| t.format("%H:%M:%S UTC").to_string())
+                .unwrap_or_else(|| "never".to_string());
+            output.push_str(&format!(
+                "  {name}: {status} ({endpoint}) — last seen: {seen}\n"
+            ));
+        }
+        Ok(output.trim_end().to_string())
     }
 
     /// Format `query_nexus_projects` tool response.
     pub async fn format_query_projects(&self) -> Result<String> {
-        match self {
-            NexusBackend::Nexus(c) => tools::format_query_projects(c).await,
-            NexusBackend::TeamAgents(d) => {
-                // Derive project list from active sessions
-                let sessions: Vec<SessionSummary> = d.list_agents().await;
-                let mut projects: std::collections::BTreeSet<String> = sessions
-                    .into_iter()
-                    .filter_map(|s| s.project)
-                    .collect();
+        // Derive project list from active sessions
+        let sessions: Vec<SessionSummary> = self.dispatcher.list_agents().await;
+        let mut projects: std::collections::BTreeSet<String> = sessions
+            .into_iter()
+            .filter_map(|s| s.project)
+            .collect();
 
-                // Also include configured machine names as available "agents"
-                let details: Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> =
-                    d.agent_details().await;
-                for (name, _, _, _) in details {
-                    projects.insert(name);
-                }
-
-                if projects.is_empty() {
-                    return Ok("No projects found across team-agent machines.".to_string());
-                }
-                let mut output = format!("{} project(s):\n", projects.len());
-                for p in &projects {
-                    output.push_str(&format!("  {p}\n"));
-                }
-                Ok(output.trim_end().to_string())
-            }
+        // Also include configured machine names as available "agents"
+        let details: Vec<(String, String, ConnectionStatus, Option<DateTime<Utc>>)> =
+            self.dispatcher.agent_details().await;
+        for (name, _, _, _) in details {
+            projects.insert(name);
         }
+
+        if projects.is_empty() {
+            return Ok("No projects found across team-agent machines.".to_string());
+        }
+        let mut output = format!("{} project(s):\n", projects.len());
+        for p in &projects {
+            output.push_str(&format!("  {p}\n"));
+        }
+        Ok(output.trim_end().to_string())
     }
 
     // ── Callbacks ────────────────────────────────────────────────────
@@ -296,21 +243,21 @@ mod tests {
 
     #[tokio::test]
     async fn format_query_sessions_empty() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         let output = backend.format_query_sessions().await.unwrap();
         assert!(output.contains("No active"));
     }
 
     #[tokio::test]
     async fn format_query_health_with_machine() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         let output = backend.format_query_health().await.unwrap();
         assert!(output.contains("local"));
     }
 
     #[tokio::test]
     async fn format_query_agents_with_machine() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         let output = backend.format_query_agents().await.unwrap();
         assert!(output.contains("1 machine"));
         assert!(output.contains("local"));
@@ -318,20 +265,20 @@ mod tests {
 
     #[tokio::test]
     async fn format_query_session_not_found() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         let output = backend.format_query_session("nonexistent").await.unwrap();
         assert!(output.contains("not found"));
     }
 
     #[tokio::test]
     async fn has_active_session_false_initially() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         assert!(!backend.has_active_session_for_project("oo").await);
     }
 
     #[tokio::test]
     async fn execute_stop_session_missing_payload() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         let payload = serde_json::json!({});
         let result = backend.execute_stop_session(&payload).await;
         assert!(result.is_err());
@@ -339,7 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_start_session_missing_project() {
-        let backend = NexusBackend::TeamAgents(make_dispatcher(vec![local_machine("local")]));
+        let backend = NexusBackend::new(make_dispatcher(vec![local_machine("local")]));
         let payload = serde_json::json!({ "command": "claude" });
         let result = backend
             .execute_start_session(&payload, &HashMap::new())

@@ -20,9 +20,6 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 axum = { workspace = true }
 sha2 = "0.10"
-tonic = { workspace = true }
-prost = { workspace = true }
-prost-types = { workspace = true }
 tracing-appender = { workspace = true }
 tokio-util = { workspace = true }
 sd-notify = { workspace = true }
@@ -39,7 +36,6 @@ toml = { workspace = true }
 cron = "0.12"
 
 [build-dependencies]
-tonic-build = "0.12"
 
 [features]
 integration = []

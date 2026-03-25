@@ -621,85 +621,28 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    // Create and connect NexusClient (or TeamAgentDispatcher) if configured.
-    //
-    // When `use_team_agents = true`: build a TeamAgentDispatcher, skip gRPC,
-    // and leave nexus_client = None so the watchdog / stream paths are skipped.
-    let team_agent_dispatcher: Option<team_agent::TeamAgentDispatcher>;
-    let nexus_client = if let Some(nexus_config) = &config.nexus {
-        if nexus_config.use_team_agents {
-            // ── Team-agents mode ────────────────────────────────────────
+    // Create TeamAgentDispatcher if configured.
+    let team_agent_dispatcher: Option<team_agent::TeamAgentDispatcher> =
+        if let Some(nexus_config) = &config.nexus {
             let ta_config = nexus_config.team_agents.as_ref().ok_or_else(|| {
                 anyhow::anyhow!(
-                    "use_team_agents = true but [nexus.team_agents] section is missing"
+                    "[nexus.team_agents] section is missing"
                 )
             })?;
             let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
             tracing::info!(
                 machines = ta_config.machines.len(),
                 cc_binary = %ta_config.cc_binary,
-                "TeamAgentDispatcher initialized (use_team_agents = true)"
+                "TeamAgentDispatcher initialized"
             );
             health_state
                 .update_channel("team_agents", ChannelStatus::Connected)
                 .await;
-            team_agent_dispatcher = Some(dispatcher);
-            None // nexus_client intentionally None in team-agents mode
+            Some(dispatcher)
         } else {
-            // ── Classic Nexus gRPC mode ──────────────────────────────────
-            team_agent_dispatcher = None;
-            let client = nexus::client::NexusClient::new(&nexus_config.agents);
-            client.connect_all().await;
-
-            // Update health state for each Nexus agent
-            for agent in &nexus_config.agents {
-                let status = if client.is_connected().await {
-                    ChannelStatus::Connected
-                } else {
-                    ChannelStatus::Disconnected
-                };
-                health_state
-                    .update_channel(format!("nexus_{}", agent.name), status)
-                    .await;
-            }
-
-            // Spawn event stream listeners for all agents (connected or not — run_event_stream
-            // waits internally for a connection before subscribing).
-            let stream_handles =
-                nexus::stream::spawn_event_streams(&client.agents, trigger_tx.clone());
-            tracing::info!("Nexus event streams started");
-
-            // Spawn the session watchdog — proactive health checks every N seconds.
-            {
-                let watchdog_client = client.clone();
-                let watchdog_health = Arc::clone(&health_state);
-                let watchdog_interval = nexus_config.watchdog_interval_secs;
-                let watchdog_tx = trigger_tx.clone();
-                let watchdog_channels = channels.clone();
-                tokio::spawn(async move {
-                    nexus::watchdog::run_watchdog(
-                        watchdog_client,
-                        watchdog_health,
-                        watchdog_interval,
-                        stream_handles,
-                        watchdog_tx,
-                        watchdog_channels,
-                    )
-                    .await;
-                });
-                tracing::info!(
-                    interval_secs = nexus_config.watchdog_interval_secs,
-                    "Nexus session watchdog started"
-                );
-            }
-
-            Some(client)
-        }
-    } else {
-        tracing::info!("Nexus not configured -- nexus tools disabled");
-        team_agent_dispatcher = None;
-        None
-    };
+            tracing::info!("Nexus not configured -- team agents disabled");
+            None
+        };
 
     // Initialize schedule store (user-defined recurring schedules)
     let schedule_store = match tools::schedule::ScheduleStore::new(&nv_base) {
@@ -827,15 +770,11 @@ async fn main() -> anyhow::Result<()> {
     {
         let health_poll_db = nv_base.join("messages.db");
         let health_poll_ob = obligation_store.clone();
-        let health_poll_nexus = nexus_client
-            .as_ref()
-            .map(|c| std::sync::Arc::new(c.clone()));
 
         if let Some(ob_store) = health_poll_ob {
             health_poller::spawn_health_poller(
                 health_poll_db,
                 ob_store,
-                health_poll_nexus,
             );
             tracing::info!("health poller started (60s interval)");
         } else {
@@ -1136,7 +1075,6 @@ async fn main() -> anyhow::Result<()> {
         conversation_ttl_hours,
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),
         jira_registry,
-        nexus_client,
         team_agent_dispatcher,
         channels: channels.clone(),
         nv_base_path: nv_base,

@@ -106,6 +106,7 @@ impl ObligationStore {
     /// List obligations filtered by status.
     ///
     /// Results are ordered by priority ASC (0 = most urgent), then created_at ASC.
+    #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub fn list_by_status(&self, status: &ObligationStatus) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
@@ -132,6 +133,7 @@ impl ObligationStore {
     /// List obligations filtered by owner.
     ///
     /// Results are ordered by priority ASC, then created_at ASC.
+    #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub fn list_by_owner(&self, owner: &ObligationOwner) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
@@ -156,6 +158,7 @@ impl ObligationStore {
     }
 
     /// List all obligations, ordered by priority ASC then created_at ASC.
+    #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub fn list_all(&self) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,

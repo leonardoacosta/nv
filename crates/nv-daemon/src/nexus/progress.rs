@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Workflow type detected from the session command or spec.
+#[allow(dead_code)] // reserved for Next.js dashboard API exposure
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowKind {
@@ -17,6 +18,7 @@ pub enum WorkflowKind {
 }
 
 /// Current phase of a detected workflow.
+#[allow(dead_code)] // reserved for Next.js dashboard API exposure
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkflowPhase {
@@ -86,6 +88,7 @@ impl WorkflowPhase {
 }
 
 /// Progress information derived from session metadata.
+#[allow(dead_code)] // reserved for Next.js dashboard API exposure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionProgress {
     /// Detected workflow kind.
@@ -101,6 +104,7 @@ pub struct SessionProgress {
 /// Detect workflow kind from a command string.
 ///
 /// Checks for `/apply`, `/ci:gh`, and `/feature` command prefixes.
+#[allow(dead_code)] // called only by parse_session_progress
 fn detect_workflow(command: Option<&str>, spec: Option<&str>) -> WorkflowKind {
     if let Some(cmd) = command {
         let cmd = cmd.trim();
@@ -124,6 +128,7 @@ fn detect_workflow(command: Option<&str>, spec: Option<&str>) -> WorkflowKind {
 /// Detect current phase from command arguments or spec name.
 ///
 /// Uses keyword matching on the command tail and spec string.
+#[allow(dead_code)] // called only by parse_session_progress
 fn detect_phase(command: Option<&str>, spec: Option<&str>, kind: &WorkflowKind) -> WorkflowPhase {
     let haystack = format!(
         "{} {}",
@@ -175,6 +180,7 @@ fn detect_phase(command: Option<&str>, spec: Option<&str>, kind: &WorkflowKind) 
 /// `command` is the raw command string stored on the session (may be None).
 /// `spec` is the spec name associated with the session (may be None).
 /// `status` is the session status string ("active", "idle", "stale", etc.).
+#[allow(dead_code)] // reserved for Next.js dashboard API exposure
 pub fn parse_session_progress(
     command: Option<&str>,
     spec: Option<&str>,

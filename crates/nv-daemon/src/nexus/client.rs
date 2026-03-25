@@ -17,6 +17,7 @@ pub struct SessionSummary {
     pub agent_name: String,
     pub started_at: Option<DateTime<Utc>>,
     pub duration_display: String,
+    #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub branch: Option<String>,
     pub spec: Option<String>,
 }

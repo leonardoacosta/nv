@@ -70,12 +70,12 @@
 
 ## Batch 7 — Verify
 
-- [ ] [7.1] [P-1] `cd apps/dashboard && npm install && npm run build` passes with zero TypeScript errors and zero build errors [owner:ui-engineer]
-- [ ] [7.2] [P-1] `npm run typecheck` in `apps/dashboard/` passes [owner:ui-engineer]
-- [ ] [7.3] [P-1] `cargo build` passes after Rust embed removal [owner:api-engineer]
-- [ ] [7.4] [P-1] `cargo clippy -- -D warnings` passes after Rust embed removal [owner:api-engineer]
-- [ ] [7.5] [P-2] Docker build succeeds: `docker build -t nova-dashboard apps/dashboard` produces a runnable image [owner:ui-engineer]
-- [ ] [7.6] [P-2] `cargo test` — existing HTTP handler tests in `crates/nv-daemon/src/http.rs` continue to pass (health, ask, digest, stats, teams webhook tests must not be broken by dashboard removal) [owner:api-engineer]
+- [x] [7.1] [P-1] `cd apps/dashboard && npm install && npm run build` passes with zero TypeScript errors and zero build errors [owner:ui-engineer]
+- [x] [7.2] [P-1] `npm run typecheck` in `apps/dashboard/` passes [owner:ui-engineer]
+- [x] [7.3] [P-1] `cargo build` passes after Rust embed removal [owner:api-engineer]
+- [x] [7.4] [P-1] `cargo clippy -- -D warnings` passes after Rust embed removal [owner:api-engineer]
+- [x] [7.5] [P-2] Docker build succeeds: `docker build -t nova-dashboard apps/dashboard` produces a runnable image [owner:ui-engineer]
+- [x] [7.6] [P-2] `cargo test` — existing HTTP handler tests in `crates/nv-daemon/src/http.rs` continue to pass (health, ask, digest, stats, teams webhook tests must not be broken by dashboard removal) [owner:api-engineer]
 - [ ] [7.7] [user] Manual smoke test: start daemon (`cargo run -p nv-daemon`) + Next.js dev server (`npm run dev` in `apps/dashboard/`); visit `http://localhost:3000` and verify DashboardPage loads with real data from all 4 API calls (obligations, projects, sessions, server-health) [owner:ui-engineer]
 - [ ] [7.8] [user] Manual smoke test: verify all 8 pages render without console errors — Obligations, Projects, Nexus, Integrations, Usage, Memory, Settings [owner:ui-engineer]
 - [ ] [7.9] [user] Manual smoke test: deploy Docker container, reach dashboard at Tailscale IP:3000, confirm all pages load [owner:ui-engineer]

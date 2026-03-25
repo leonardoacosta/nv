@@ -40,6 +40,7 @@ pub struct NewServerHealth {
 }
 
 /// Overall health status classification.
+#[allow(dead_code)] // reserved for Next.js dashboard API exposure
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum HealthStatus {
@@ -54,6 +55,7 @@ impl HealthStatus {
     /// - Critical: CPU ≥ 90% or memory ≥ 95% full
     /// - Degraded: CPU ≥ 70% or memory ≥ 80% full
     /// - Healthy: below both thresholds
+    #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub fn from_metrics(snapshot: &ServerHealthSnapshot) -> Self {
         let cpu_pct = snapshot.cpu_percent.unwrap_or(0.0);
         let mem_pct = snapshot
@@ -152,6 +154,7 @@ impl ServerHealthStore {
     }
 
     /// Return up to `limit` snapshots from the last 24 hours, oldest first.
+    #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub fn history_24h(&self, limit: usize) -> Result<Vec<ServerHealthSnapshot>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, timestamp, cpu_percent, memory_used_mb, memory_total_mb,

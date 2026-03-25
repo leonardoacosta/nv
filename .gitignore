@@ -1,6 +1,11 @@
 # Rust build artifacts
 /target/
 
+# Node.js
+node_modules/
+.next/
+next-env.d.ts
+
 # IDE
 .idea/
 .vscode/

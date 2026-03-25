@@ -129,13 +129,15 @@
     1,
     2,
     3,
-    4
+    4,
+    5
   ],
   "completed_specs": [
     "nv-tools-scaffold",
     "nv-tools-extract-wave-a",
     "nv-tools-extract-wave-b",
-    "nv-tools-extract-wave-c"
+    "nv-tools-extract-wave-c",
+    "nv-tools-shared-deps"
   ],
-  "current_wave": 5
+  "current_wave": 6
 }

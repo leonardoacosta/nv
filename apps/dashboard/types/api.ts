@@ -137,6 +137,27 @@ export interface BriefingHistoryGetResponse {
   entries: BriefingEntry[];
 }
 
+// ── GET /api/messages ──────────────────────────────────────────────────────
+
+/** A single stored message from the daemon message store. */
+export interface StoredMessage {
+  id: number;
+  timestamp: string;
+  direction: string;
+  channel: string;
+  sender: string;
+  content: string;
+  response_time_ms: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+}
+
+export interface MessagesGetResponse {
+  messages: StoredMessage[];
+  limit: number;
+  offset: number;
+}
+
 // ── GET /stats ─────────────────────────────────────────────────────────────
 
 /** Per-tool breakdown entry from `ToolBreakdown` in Rust. */

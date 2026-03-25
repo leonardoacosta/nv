@@ -1,0 +1,673 @@
+"use client";
+
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+  useDeferredValue,
+} from "react";
+import {
+  RefreshCw,
+  Layers,
+  Search,
+  X,
+  ChevronRight,
+  Clock,
+  GitBranch,
+  MessageSquare,
+  Terminal,
+} from "lucide-react";
+import PageShell from "@/components/layout/PageShell";
+import SectionHeader from "@/components/layout/SectionHeader";
+import ErrorBanner from "@/components/layout/ErrorBanner";
+import EmptyState from "@/components/layout/EmptyState";
+import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
+import type { SessionsGetResponse, NexusSessionRaw } from "@/types/api";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface SessionItem {
+  id: string;
+  slug: string;
+  project: string;
+  agent_name: string;
+  status: "active" | "idle" | "completed";
+  duration_display: string;
+  started_at: string;
+  branch?: string;
+  spec?: string;
+  progress?: number;
+  phase_label?: string;
+}
+
+type StatusFilter = "all" | "active" | "idle" | "completed";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function mapSession(s: NexusSessionRaw): SessionItem {
+  const mapStatus = (raw: string): SessionItem["status"] => {
+    if (raw === "active") return "active";
+    if (raw === "idle") return "idle";
+    return "completed";
+  };
+  return {
+    id: s.id,
+    slug: s.id.slice(0, 8),
+    project: s.project ?? s.agent_name,
+    agent_name: s.agent_name,
+    status: mapStatus(s.status),
+    duration_display: s.duration_display,
+    started_at: s.started_at ?? new Date().toISOString(),
+    branch: s.branch ?? undefined,
+    spec: s.spec ?? undefined,
+    progress: s.progress?.progress_pct,
+    phase_label: s.progress?.phase_label,
+  };
+}
+
+function elapsed(startedAt: string): string {
+  const diffMs = Date.now() - new Date(startedAt).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
+}
+
+// ---------------------------------------------------------------------------
+// Status dot
+// ---------------------------------------------------------------------------
+
+const STATUS_DOT: Record<SessionItem["status"], string> = {
+  active: "bg-emerald-400 animate-pulse",
+  idle: "bg-amber-400",
+  completed: "bg-cosmic-muted",
+};
+
+const STATUS_LABEL: Record<SessionItem["status"], string> = {
+  active: "Active",
+  idle: "Idle",
+  completed: "Completed",
+};
+
+const STATUS_TEXT: Record<SessionItem["status"], string> = {
+  active: "text-emerald-400",
+  idle: "text-amber-400",
+  completed: "text-cosmic-muted",
+};
+
+// ---------------------------------------------------------------------------
+// Enhanced Session Card
+// ---------------------------------------------------------------------------
+
+interface SessionCardProps {
+  session: SessionItem;
+  onSelect: (s: SessionItem) => void;
+  selected: boolean;
+}
+
+function EnhancedSessionCard({
+  session,
+  onSelect,
+  selected,
+}: SessionCardProps) {
+  const dot = STATUS_DOT[session.status];
+  const statusText = STATUS_TEXT[session.status];
+  const label = STATUS_LABEL[session.status];
+  const progress = session.progress ?? 0;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(session)}
+      className={[
+        "w-full text-left p-4 rounded-cosmic border transition-colors space-y-3",
+        selected
+          ? "border-cosmic-purple/60 bg-cosmic-purple/10"
+          : "border-cosmic-border bg-cosmic-surface hover:border-cosmic-purple/40",
+      ].join(" ")}
+    >
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+          <span className="text-sm font-medium text-cosmic-bright truncate">
+            {session.project}
+          </span>
+          <span className={`text-xs font-medium ${statusText}`}>{label}</span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0 text-xs text-cosmic-muted font-mono">
+          <Clock size={11} />
+          <span suppressHydrationWarning>{elapsed(session.started_at)}</span>
+        </div>
+      </div>
+
+      {/* Slug + branch */}
+      <div className="flex items-center gap-3 text-xs text-cosmic-muted font-mono">
+        <span className="text-cosmic-purple/80">{session.slug}…</span>
+        {session.branch && (
+          <span className="flex items-center gap-1">
+            <GitBranch size={11} />
+            <span className="truncate max-w-[160px]">{session.branch}</span>
+          </span>
+        )}
+        {session.spec && (
+          <span className="px-1.5 py-0.5 rounded bg-cosmic-purple/20 text-cosmic-purple text-[10px] truncate max-w-[120px]">
+            {session.spec}
+          </span>
+        )}
+      </div>
+
+      {/* Phase label */}
+      {session.phase_label && (
+        <p className="text-xs text-cosmic-muted truncate pl-4">
+          {session.phase_label}
+        </p>
+      )}
+
+      {/* Progress bar — active sessions only */}
+      {session.status === "active" && (
+        <div className="space-y-1">
+          <div className="h-1 rounded-full bg-cosmic-dark overflow-hidden">
+            <div
+              className="h-full rounded-full bg-cosmic-purple transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
+            />
+          </div>
+          <p className="text-[10px] text-cosmic-muted font-mono text-right">
+            {progress}%
+          </p>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="flex items-center justify-between pt-1 border-t border-cosmic-border">
+        <span className="text-xs text-cosmic-muted font-mono">{session.agent_name}</span>
+        <ChevronRight size={14} className="text-cosmic-muted" />
+      </div>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Session Detail Drawer
+// ---------------------------------------------------------------------------
+
+function SessionDetailDrawer({
+  session,
+  onClose,
+}: {
+  session: SessionItem | null;
+  onClose: () => void;
+}) {
+  if (!session) return null;
+
+  const dot = STATUS_DOT[session.status];
+  const statusText = STATUS_TEXT[session.status];
+
+  return (
+    <div className="fixed inset-y-0 right-0 z-40 flex">
+      {/* Backdrop */}
+      <button
+        type="button"
+        className="fixed inset-0 bg-black/40"
+        onClick={onClose}
+        aria-label="Close drawer"
+      />
+
+      {/* Panel */}
+      <aside className="relative ml-auto w-80 md:w-96 bg-cosmic-dark border-l border-cosmic-border flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-cosmic-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+            <span className="text-sm font-semibold text-cosmic-bright truncate">
+              {session.project}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-surface transition-colors"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {/* Status */}
+          <section className="space-y-2">
+            <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+              Status
+            </p>
+            <span className={`text-sm font-medium ${statusText}`}>
+              {STATUS_LABEL[session.status]}
+            </span>
+          </section>
+
+          {/* Identifiers */}
+          <section className="space-y-3">
+            <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+              Identifiers
+            </p>
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-cosmic-muted">Session ID</span>
+                <span className="text-xs font-mono text-cosmic-text break-all text-right max-w-[200px]">
+                  {session.id}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-cosmic-muted">Agent</span>
+                <span className="text-xs font-mono text-cosmic-text">
+                  {session.agent_name}
+                </span>
+              </div>
+              {session.branch && (
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs text-cosmic-muted">Branch</span>
+                  <span className="flex items-center gap-1 text-xs font-mono text-cosmic-text">
+                    <GitBranch size={10} />
+                    {session.branch}
+                  </span>
+                </div>
+              )}
+              {session.spec && (
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-xs text-cosmic-muted">Spec</span>
+                  <span className="text-xs font-mono text-cosmic-purple">
+                    {session.spec}
+                  </span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* Timing */}
+          <section className="space-y-3">
+            <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+              Timing
+            </p>
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-cosmic-muted">Started</span>
+                <span
+                  className="text-xs font-mono text-cosmic-text"
+                  suppressHydrationWarning
+                >
+                  {new Date(session.started_at).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-cosmic-muted">Duration</span>
+                <span className="text-xs font-mono text-cosmic-text">
+                  {session.duration_display}
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-cosmic-muted">Elapsed</span>
+                <span
+                  className="text-xs font-mono text-cosmic-text"
+                  suppressHydrationWarning
+                >
+                  {elapsed(session.started_at)}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* Progress */}
+          {session.status === "active" && (
+            <section className="space-y-3">
+              <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+                Progress
+              </p>
+              {session.phase_label && (
+                <p className="text-xs text-cosmic-text">{session.phase_label}</p>
+              )}
+              <div className="space-y-1">
+                <div className="h-2 rounded-full bg-cosmic-dark overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-cosmic-purple transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, session.progress ?? 0))}%`,
+                    }}
+                  />
+                </div>
+                <p className="text-xs font-mono text-cosmic-muted text-right">
+                  {session.progress ?? 0}%
+                </p>
+              </div>
+            </section>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sessions Page
+// ---------------------------------------------------------------------------
+
+export default function SessionsPage() {
+  // 1. State
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [projectFilter, setProjectFilter] = useState("all");
+  const [searchInput, setSearchInput] = useState("");
+  const deferredSearch = useDeferredValue(searchInput);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 2. WebSocket — live session updates
+  useDaemonEvents(
+    useCallback((ev) => {
+      const payload = ev.payload as
+        | Partial<NexusSessionRaw>
+        | null
+        | undefined;
+      if (!payload?.id) return;
+      setSessions((prev) => {
+        const idx = prev.findIndex((s) => s.id === payload.id);
+        if (idx === -1) {
+          const mapped = mapSession(payload as NexusSessionRaw);
+          return [mapped, ...prev];
+        }
+        const updated = { ...prev[idx]! };
+        if (payload.status) {
+          updated.status = (() => {
+            if (payload.status === "active") return "active";
+            if (payload.status === "idle") return "idle";
+            return "completed";
+          })();
+        }
+        if (payload.progress) {
+          updated.progress = payload.progress.progress_pct;
+          updated.phase_label = payload.progress.phase_label;
+        }
+        const copy = [...prev];
+        copy[idx] = updated;
+        return copy;
+      });
+    }, []),
+    "session",
+  );
+
+  // 3. Fetch sessions
+  const fetchSessions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/sessions");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as SessionsGetResponse;
+      setSessions((data.sessions ?? []).map(mapSession));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sessions");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 4. Effects
+  useEffect(() => {
+    void fetchSessions();
+  }, [fetchSessions]);
+
+  // 5. Search debounce (300ms)
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      // Deferred value takes care of rendering — nothing extra needed
+    }, 300);
+  };
+
+  // 6. Derived — filtered lists
+  const projects = Array.from(new Set(sessions.map((s) => s.project))).sort();
+
+  const filtered = sessions.filter((s) => {
+    if (statusFilter !== "all" && s.status !== statusFilter) return false;
+    if (projectFilter !== "all" && s.project !== projectFilter) return false;
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase();
+      if (
+        !s.id.toLowerCase().includes(q) &&
+        !s.project.toLowerCase().includes(q) &&
+        !s.agent_name.toLowerCase().includes(q) &&
+        !(s.branch?.toLowerCase().includes(q) ?? false) &&
+        !(s.spec?.toLowerCase().includes(q) ?? false)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const active = filtered.filter((s) => s.status === "active");
+  const idle = filtered.filter((s) => s.status === "idle");
+  const completed = filtered.filter((s) => s.status === "completed");
+
+  const selectedSession = sessions.find((s) => s.id === selectedId) ?? null;
+
+  // 7. Header action
+  const headerAction = (
+    <button
+      type="button"
+      onClick={() => void fetchSessions()}
+      disabled={loading}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-cosmic-muted border border-cosmic-border hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+    >
+      <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+      Refresh
+    </button>
+  );
+
+  return (
+    <>
+      <PageShell
+        title="Sessions"
+        subtitle="Active, idle, and completed agent sessions"
+        action={headerAction}
+      >
+        <div className="space-y-5">
+          {error && (
+            <ErrorBanner
+              message="Failed to load sessions"
+              detail={error}
+              onRetry={() => void fetchSessions()}
+            />
+          )}
+
+          {/* Filter bar */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Search */}
+            <div className="relative flex-1 max-w-sm">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-cosmic-muted pointer-events-none"
+              />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                placeholder="Search by ID, project, agent…"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cosmic-muted hover:text-cosmic-text transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+
+            {/* Project dropdown */}
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              className="px-3 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+            >
+              <option value="all">All projects</option>
+              {projects.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+
+            {/* Status tabs */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-cosmic-surface border border-cosmic-border">
+              {(["all", "active", "idle", "completed"] as StatusFilter[]).map(
+                (s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStatusFilter(s)}
+                    className={[
+                      "px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize",
+                      statusFilter === s
+                        ? "bg-cosmic-purple/20 text-cosmic-purple"
+                        : "text-cosmic-muted hover:text-cosmic-text",
+                    ].join(" ")}
+                  >
+                    {s}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+
+          {/* Results count */}
+          {!loading && (
+            <p className="text-xs text-cosmic-muted">
+              {filtered.length} session{filtered.length !== 1 ? "s" : ""}
+              {deferredSearch ? ` matching "${deferredSearch}"` : ""}
+            </p>
+          )}
+
+          {/* Skeleton */}
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-28 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              title="No sessions found"
+              description={
+                deferredSearch || statusFilter !== "all" || projectFilter !== "all"
+                  ? "Try adjusting your filters."
+                  : "Sessions will appear here when the daemon is active."
+              }
+              icon={<Layers size={24} aria-hidden="true" />}
+            />
+          ) : (
+            <div className="space-y-6">
+              {/* Active */}
+              {active.length > 0 && (
+                <section className="space-y-2">
+                  <SectionHeader
+                    label="Active"
+                    count={active.length}
+                    statusDot="green"
+                    statusLabel="Active sessions"
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {active.map((s) => (
+                      <EnhancedSessionCard
+                        key={s.id}
+                        session={s}
+                        selected={selectedId === s.id}
+                        onSelect={(sess) =>
+                          setSelectedId((prev) =>
+                            prev === sess.id ? null : sess.id,
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Idle */}
+              {idle.length > 0 && (
+                <section className="space-y-2">
+                  <SectionHeader
+                    label="Idle"
+                    count={idle.length}
+                    statusDot="amber"
+                    statusLabel="Idle sessions"
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {idle.map((s) => (
+                      <EnhancedSessionCard
+                        key={s.id}
+                        session={s}
+                        selected={selectedId === s.id}
+                        onSelect={(sess) =>
+                          setSelectedId((prev) =>
+                            prev === sess.id ? null : sess.id,
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Completed */}
+              {completed.length > 0 && (
+                <section className="space-y-2">
+                  <SectionHeader
+                    label="Completed"
+                    count={completed.length}
+                    statusDot="muted"
+                    statusLabel="Completed sessions"
+                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {completed.map((s) => (
+                      <EnhancedSessionCard
+                        key={s.id}
+                        session={s}
+                        selected={selectedId === s.id}
+                        onSelect={(sess) =>
+                          setSelectedId((prev) =>
+                            prev === sess.id ? null : sess.id,
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </div>
+      </PageShell>
+
+      {/* Session detail drawer */}
+      <SessionDetailDrawer
+        session={selectedSession}
+        onClose={() => setSelectedId(null)}
+      />
+    </>
+  );
+}

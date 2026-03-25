@@ -26,29 +26,29 @@
 
 ## UI Batch — Main Dashboard Page
 
-- [ ] [4.1] [P-1] Rebuild `apps/dashboard/src/app/(dashboard)/page.tsx` — two-column desktop layout (2/3 content, 1/3 sidebar panel), single column on mobile, using PageShell [owner:ui-engineer]
-- [ ] [4.2] [P-1] Implement system health overview panel — status badge (healthy/degraded/critical), CPU %, memory %, uptime display, backed by `GET /api/server-health` [owner:ui-engineer]
-- [ ] [4.3] [P-1] Implement active sessions summary — top 5 sessions by status (active first), SessionCard with slug, project, progress bar, duration [owner:ui-engineer]
-- [ ] [4.4] [P-2] Implement recent activity feed — last 10 daemon events from WebSocket stream with fallback to `GET /api/sessions` polling; each row shows event type, target, timestamp [owner:ui-engineer]
-- [ ] [4.5] [P-2] Implement obligations summary sidebar panel — counts by owner (Nova/Leo) and status, linked to `/approvals` for Leo's open items [owner:ui-engineer]
-- [ ] [4.6] [P-2] Add auto-refresh toggle to dashboard header — on by default, 10s interval, subscribes to WebSocket events when available [owner:ui-engineer]
+- [x] [4.1] [P-1] Rebuild `apps/dashboard/src/app/(dashboard)/page.tsx` — two-column desktop layout (2/3 content, 1/3 sidebar panel), single column on mobile, using PageShell [owner:ui-engineer]
+- [x] [4.2] [P-1] Implement system health overview panel — status badge (healthy/degraded/critical), CPU %, memory %, uptime display, backed by `GET /api/server-health` [owner:ui-engineer]
+- [x] [4.3] [P-1] Implement active sessions summary — top 5 sessions by status (active first), SessionCard with slug, project, progress bar, duration [owner:ui-engineer]
+- [x] [4.4] [P-2] Implement recent activity feed — last 10 daemon events from WebSocket stream with fallback to `GET /api/sessions` polling; each row shows event type, target, timestamp [owner:ui-engineer]
+- [x] [4.5] [P-2] Implement obligations summary sidebar panel — counts by owner (Nova/Leo) and status, linked to `/approvals` for Leo's open items [owner:ui-engineer]
+- [x] [4.6] [P-2] Add auto-refresh toggle to dashboard header — on by default, 10s interval, subscribes to WebSocket events when available [owner:ui-engineer]
 
 ## UI Batch — Sessions Page
 
-- [ ] [5.1] [P-1] Create `apps/dashboard/src/app/(dashboard)/sessions/page.tsx` — three-section layout: Active, Idle, Completed (last 20), using PageShell [owner:ui-engineer]
-- [ ] [5.2] [P-1] Implement session card component — slug/ID, project code, agent name, status dot, progress bar (pct), phase label, started_at relative time, duration, branch badge [owner:ui-engineer]
-- [ ] [5.3] [P-2] Add filter bar — project dropdown, status tabs (all/active/idle/completed), text search on slug/agent name, debounced 300ms [owner:ui-engineer]
-- [ ] [5.4] [P-2] Implement session detail drawer — slide-in panel with full session metadata, spec name; on mobile collapses to separate route `/sessions/:id` [owner:ui-engineer]
-- [ ] [5.5] [P-2] Subscribe to WebSocket `session.updated`, `session.started`, `session.ended` events to update session list in real-time without polling [owner:ui-engineer]
+- [x] [5.1] [P-1] Create `apps/dashboard/src/app/(dashboard)/sessions/page.tsx` — three-section layout: Active, Idle, Completed (last 20), using PageShell [owner:ui-engineer]
+- [x] [5.2] [P-1] Implement session card component — slug/ID, project code, agent name, status dot, progress bar (pct), phase label, started_at relative time, duration, branch badge [owner:ui-engineer]
+- [x] [5.3] [P-2] Add filter bar — project dropdown, status tabs (all/active/idle/completed), text search on slug/agent name, debounced 300ms [owner:ui-engineer]
+- [x] [5.4] [P-2] Implement session detail drawer — slide-in panel with full session metadata, spec name; on mobile collapses to separate route `/sessions/:id` [owner:ui-engineer]
+- [x] [5.5] [P-2] Subscribe to WebSocket `session.updated`, `session.started`, `session.ended` events to update session list in real-time without polling [owner:ui-engineer]
 
 ## UI Batch — Message History Page
 
-- [ ] [6.1] [P-1] Create `apps/dashboard/src/app/(dashboard)/messages/page.tsx` — chronological list newest-first, paginated 50/page, using PageShell [owner:ui-engineer]
-- [ ] [6.2] [P-1] Implement message row component — channel icon (Telegram/Discord/Teams/iMessage), sender name, preview (120 char truncated), timestamp (relative + absolute on hover), response latency badge [owner:ui-engineer]
-- [ ] [6.3] [P-1] Implement expand-inline on row click — shows full message content, Nova's response, and tool calls used in a collapsible section [owner:ui-engineer]
-- [ ] [6.4] [P-2] Add search bar — full-text search on content and sender via `?search=` param, debounced 300ms, updates URL query string [owner:ui-engineer]
-- [ ] [6.5] [P-2] Add filter chips — by channel, by date range (today / last 7d / all), updates API query params [owner:ui-engineer]
-- [ ] [6.6] [P-3] Implement pagination controls — prev/next with current page indicator, keyboard accessible [owner:ui-engineer]
+- [x] [6.1] [P-1] Create `apps/dashboard/src/app/(dashboard)/messages/page.tsx` — chronological list newest-first, paginated 50/page, using PageShell [owner:ui-engineer]
+- [x] [6.2] [P-1] Implement message row component — channel icon (Telegram/Discord/Teams/iMessage), sender name, preview (120 char truncated), timestamp (relative + absolute on hover), response latency badge [owner:ui-engineer]
+- [x] [6.3] [P-1] Implement expand-inline on row click — shows full message content, Nova's response, and tool calls used in a collapsible section [owner:ui-engineer]
+- [x] [6.4] [P-2] Add search bar — full-text search on content and sender via `?search=` param, debounced 300ms, updates URL query string [owner:ui-engineer]
+- [x] [6.5] [P-2] Add filter chips — by channel, by date range (today / last 7d / all), updates API query params [owner:ui-engineer]
+- [x] [6.6] [P-3] Implement pagination controls — prev/next with current page indicator, keyboard accessible [owner:ui-engineer]
 
 ## UI Batch — Approval Queue Page
 

@@ -1,0 +1,26 @@
+services:
+  cc-session:
+    image: nova-cc-session:latest
+    container_name: nova-cc-session
+    restart: on-failure:3
+    stdin_open: true
+    tty: false
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+    volumes:
+      - cc-auth:/home/sandbox/.anthropic
+      - cc-sandbox:/home/sandbox/workspace
+    networks:
+      - nova-internal
+
+networks:
+  nova-internal:
+    name: nova-internal
+    external: false
+
+volumes:
+  cc-auth:
+    name: nova-cc-auth
+  cc-sandbox:
+    name: nova-cc-sandbox

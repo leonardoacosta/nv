@@ -1,33 +1,33 @@
 # Implementation Tasks
 
-<!-- beads:epic:TBD -->
+<!-- beads:epic:nv-bf9 -->
 
 ## Batch 1: Docker Container Image
 
-- [ ] [1.1] [P-1] Create `apps/dashboard/docker/cc-session/Dockerfile` — FROM node:20-slim, install `@anthropic-ai/claude-code` globally via npm, create sandbox home dir, expose stdin/stdout for stream-json, set ENTRYPOINT to `claude --input-format stream-json --output-format stream-json --dangerously-skip-permissions --no-session-persistence` [owner:api-engineer]
-- [ ] [1.2] [P-1] Create `apps/dashboard/docker/cc-session/.dockerignore` — exclude node_modules, .env files [owner:api-engineer]
-- [ ] [1.3] [P-2] Add `docker:build` and `docker:push` scripts to `apps/dashboard/package.json` for the cc-session image [owner:api-engineer]
-- [ ] [1.4] [P-2] Create `apps/dashboard/docker/cc-session/docker-compose.yml` (or `compose.yaml`) — service definition with named volumes (`cc-auth`, `cc-sandbox`), network attachment, env var passthrough (ANTHROPIC_MODEL), restart policy `on-failure:3` [owner:api-engineer]
+- [x] [1.1] [P-1] Create `apps/dashboard/docker/cc-session/Dockerfile` — FROM node:20-slim, install `@anthropic-ai/claude-code` globally via npm, create sandbox home dir, expose stdin/stdout for stream-json, set ENTRYPOINT to `claude --input-format stream-json --output-format stream-json --dangerously-skip-permissions --no-session-persistence` [owner:api-engineer]
+- [x] [1.2] [P-1] Create `apps/dashboard/docker/cc-session/.dockerignore` — exclude node_modules, .env files [owner:api-engineer]
+- [x] [1.3] [P-2] Add `docker:build` and `docker:push` scripts to `apps/dashboard/package.json` for the cc-session image [owner:api-engineer]
+- [x] [1.4] [P-2] Create `apps/dashboard/docker/cc-session/docker-compose.yml` (or `compose.yaml`) — service definition with named volumes (`cc-auth`, `cc-sandbox`), network attachment, env var passthrough (ANTHROPIC_MODEL), restart policy `on-failure:3` [owner:api-engineer]
 
 ## Batch 2: Session Manager Service
 
-- [ ] [2.1] [P-1] Create `apps/dashboard/src/lib/session-manager.ts` — `SessionManager` singleton class, wraps Docker Engine API via `dockerode` (or shell exec `docker` CLI), tracks state: `active | idle | starting | stopping | error` [owner:api-engineer]
-- [ ] [2.2] [P-1] Implement `SessionManager.start()` — `docker start nova-cc-session`, poll until running (max 30s), drain init events from container stdout, transition state to `active` [owner:api-engineer]
-- [ ] [2.3] [P-1] Implement `SessionManager.stop()` — `docker stop nova-cc-session` with 10s graceful timeout, transition state to `stopped` [owner:api-engineer]
-- [ ] [2.4] [P-1] Implement `SessionManager.restart()` — stop then start, reset error counter and restart counter [owner:api-engineer]
-- [ ] [2.5] [P-1] Implement `SessionManager.getStatus()` — return `{ state, uptime_secs, last_message_at, message_count, error_message?, restart_count }` by inspecting container state + in-memory counters [owner:api-engineer]
-- [ ] [2.6] [P-2] Implement health polling loop — runs every 15s, checks container state via Docker API, detects unexpected exit and triggers auto-restart (max 3 within 5 minutes before setting state=error), detects idle (no message >30 min) [owner:api-engineer]
-- [ ] [2.7] [P-2] Implement `SessionManager.sendMessage(text, context)` — write stream-json input line to container stdin via `docker exec` or attached stream, read stdout until `result` event, accumulate text blocks, return reply string and processing_ms [owner:api-engineer]
-- [ ] [2.8] [P-2] Implement `SessionManager.getLogs(lines)` — `docker logs --tail N nova-cc-session`, return as string array [owner:api-engineer]
-- [ ] [2.9] [P-3] Export singleton `sessionManager` from `session-manager.ts`, initialized on module load [owner:api-engineer]
+- [x] [2.1] [P-1] Create `apps/dashboard/lib/session-manager.ts` — `SessionManager` singleton class, wraps Docker CLI via child_process exec, tracks state: `active | idle | starting | stopping | error` [owner:api-engineer]
+- [x] [2.2] [P-1] Implement `SessionManager.start()` — `docker start nova-cc-session`, poll until running (max 30s), drain init events from container stdout, transition state to `active` [owner:api-engineer]
+- [x] [2.3] [P-1] Implement `SessionManager.stop()` — `docker stop nova-cc-session` with 10s graceful timeout, transition state to `stopped` [owner:api-engineer]
+- [x] [2.4] [P-1] Implement `SessionManager.restart()` — stop then start, reset error counter and restart counter [owner:api-engineer]
+- [x] [2.5] [P-1] Implement `SessionManager.getStatus()` — return `{ state, uptime_secs, last_message_at, message_count, error_message?, restart_count }` by inspecting container state + in-memory counters [owner:api-engineer]
+- [x] [2.6] [P-2] Implement health polling loop — runs every 15s, checks container state via Docker API, detects unexpected exit and triggers auto-restart (max 3 within 5 minutes before setting state=error), detects idle (no message >30 min) [owner:api-engineer]
+- [x] [2.7] [P-2] Implement `SessionManager.sendMessage(text, context)` — write stream-json input line to container stdin via `docker exec` or attached stream, read stdout until `result` event, accumulate text blocks, return reply string and processing_ms [owner:api-engineer]
+- [x] [2.8] [P-2] Implement `SessionManager.getLogs(lines)` — `docker logs --tail N nova-cc-session`, return as string array [owner:api-engineer]
+- [x] [2.9] [P-3] Export singleton `sessionManager` from `session-manager.ts`, initialized on module load [owner:api-engineer]
 
 ## Batch 3: Dashboard API Routes
 
-- [ ] [3.1] [P-1] Create `apps/dashboard/src/app/api/session/message/route.ts` — POST handler: validate `Authorization: Bearer` header against `DASHBOARD_SECRET` env var, parse `{ message_id, chat_id, text, context }`, call `sessionManager.sendMessage()`, return `{ reply, session_state, processing_ms }` or 503 if session not ready [owner:api-engineer]
-- [ ] [3.2] [P-1] Create `apps/dashboard/src/app/api/session/status/route.ts` — GET handler: return `sessionManager.getStatus()` as JSON; no auth required (dashboard-internal use) [owner:api-engineer]
-- [ ] [3.3] [P-2] Create `apps/dashboard/src/app/api/session/control/route.ts` — POST handler: `{ action: "start" | "stop" | "restart" }`, calls corresponding `SessionManager` method, returns updated status; requires session auth or dashboard admin cookie [owner:api-engineer]
-- [ ] [3.4] [P-2] Create `apps/dashboard/src/app/api/session/logs/route.ts` — GET handler: returns `sessionManager.getLogs(50)` as `{ lines: string[] }`; dashboard-internal [owner:api-engineer]
-- [ ] [3.5] [P-3] Add request timeout handling to message route — abort controller with 120s timeout, return 504 if exceeded [owner:api-engineer]
+- [x] [3.1] [P-1] Create `apps/dashboard/app/api/session/message/route.ts` — POST handler: validate `Authorization: Bearer` header against `DASHBOARD_SECRET` env var, parse `{ message_id, chat_id, text, context }`, call `sessionManager.sendMessage()`, return `{ reply, session_state, processing_ms }` or 503 if session not ready [owner:api-engineer]
+- [x] [3.2] [P-1] Create `apps/dashboard/app/api/session/status/route.ts` — GET handler: return `sessionManager.getStatus()` as JSON; no auth required (dashboard-internal use) [owner:api-engineer]
+- [x] [3.3] [P-2] Create `apps/dashboard/app/api/session/control/route.ts` — POST handler: `{ action: "start" | "stop" | "restart" }`, calls corresponding `SessionManager` method, returns updated status; requires Bearer auth [owner:api-engineer]
+- [x] [3.4] [P-2] Create `apps/dashboard/app/api/session/logs/route.ts` — GET handler: returns `sessionManager.getLogs(50)` as `{ lines: string[] }`; dashboard-internal [owner:api-engineer]
+- [x] [3.5] [P-3] Add request timeout handling to message route — abort controller with 120s timeout, return 504 if exceeded [owner:api-engineer]
 
 ## Batch 4: Dashboard UI
 

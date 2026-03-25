@@ -121,6 +121,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/api/briefing", get(get_briefing_handler))
         .route("/api/briefing/history", get(get_briefing_history_handler))
         .route("/api/cold-starts", get(get_cold_starts_handler))
+        .route("/api/latency", get(get_latency_handler))
         // Dashboard API
         .route("/api/messages", get(get_messages_handler))
         .route("/api/approvals/:id/approve", post(approve_obligation_handler))
@@ -793,6 +794,70 @@ async fn approve_obligation_handler(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": format!("Failed to open obligation store: {e}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── GET /api/latency ──────────────────────────────────────────────
+
+/// Per-stage latency percentile entry in the `/api/latency` response.
+#[derive(Debug, Serialize)]
+pub struct StageLatency {
+    pub stage: String,
+    pub p50_ms: Option<f64>,
+    pub p95_ms: Option<f64>,
+    pub window: String,
+}
+
+/// Response body for `GET /api/latency`.
+#[derive(Debug, Serialize)]
+pub struct LatencyResponse {
+    pub stages: Vec<StageLatency>,
+}
+
+/// GET /api/latency — returns P50 and P95 latency per pipeline stage for the
+/// last 24h and 7d windows.
+///
+/// Stages reported: `receive`, `context_build`, `api_call`, `tool_loop`, `delivery`.
+/// Returns 200 with an empty `stages` array when no spans exist yet.
+async fn get_latency_handler(
+    State(state): State<Arc<HttpState>>,
+) -> impl IntoResponse {
+    match MessageStore::init(&state.stats_db_path) {
+        Ok(store) => {
+            const STAGES: &[&str] = &[
+                "receive",
+                "context_build",
+                "api_call",
+                "tool_loop",
+                "delivery",
+            ];
+            let mut entries = Vec::new();
+            for &stage in STAGES {
+                // 24h window
+                entries.push(StageLatency {
+                    stage: stage.to_string(),
+                    p50_ms: store.latency_p50(stage, 24),
+                    p95_ms: store.latency_p95(stage, 24),
+                    window: "24h".to_string(),
+                });
+                // 7d window
+                entries.push(StageLatency {
+                    stage: stage.to_string(),
+                    p50_ms: store.latency_p50(stage, 168),
+                    p95_ms: store.latency_p95(stage, 168),
+                    window: "7d".to_string(),
+                });
+            }
+            (StatusCode::OK, Json(LatencyResponse { stages: entries })).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to open message store for /api/latency");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to open message store: {e}")})),
             )
                 .into_response()
         }

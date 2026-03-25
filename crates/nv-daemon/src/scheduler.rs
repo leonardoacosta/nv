@@ -7,6 +7,7 @@ use nv_core::types::{CronEvent, Trigger};
 use tokio::sync::mpsc;
 
 use crate::digest::state::DigestStateManager;
+use crate::messages::MessageStore;
 use crate::tools::schedule::{validate_cron_expr, ScheduleStore};
 
 /// Minimum allowed digest interval (prevents runaway loops).
@@ -37,6 +38,7 @@ pub fn spawn_scheduler(
     interval_minutes: u64,
     nv_base: &Path,
     schedule_store: Option<Arc<Mutex<ScheduleStore>>>,
+    message_store: Option<Arc<Mutex<MessageStore>>>,
 ) -> tokio::task::JoinHandle<()> {
     let interval_minutes = interval_minutes.max(MIN_INTERVAL_MINUTES);
     let nv_base = nv_base.to_path_buf();
@@ -87,6 +89,8 @@ pub fn spawn_scheduler(
 
         // Track the last date we sent a morning briefing to prevent duplicate fires.
         let mut last_briefing_date: Option<chrono::NaiveDate> = None;
+        // Track the last date we pruned latency_spans to fire once per day.
+        let mut last_latency_prune_date: Option<chrono::NaiveDate> = None;
 
         loop {
             tokio::select! {
@@ -119,6 +123,39 @@ pub fn spawn_scheduler(
                         if trigger_tx.send(Trigger::Cron(CronEvent::MorningBriefing)).is_err() {
                             tracing::info!("scheduler: trigger channel closed on morning briefing tick");
                             break;
+                        }
+                    }
+
+                    // Nightly latency_spans pruning: delete rows older than 30 days.
+                    // Fires once per day at any hour (not strictly at midnight) to
+                    // keep the table bounded without requiring a dedicated cron event.
+                    if last_latency_prune_date.is_none_or(|d| d < today) {
+                        last_latency_prune_date = Some(today);
+                        if let Some(ref ms_arc) = message_store {
+                            match ms_arc.lock() {
+                                Ok(store) => match store.prune_latency_spans() {
+                                    Ok(n) => {
+                                        if n > 0 {
+                                            tracing::info!(
+                                                rows_deleted = n,
+                                                "scheduler: pruned old latency_spans rows"
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "scheduler: failed to prune latency_spans"
+                                        );
+                                    }
+                                },
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "scheduler: failed to lock message_store for latency prune"
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -222,7 +259,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<Trigger>();
 
         // State has no last_sent_at, so initial delay should be 0
-        let _handle = spawn_scheduler(tx, MIN_INTERVAL_MINUTES, dir.path(), None);
+        let _handle = spawn_scheduler(tx, MIN_INTERVAL_MINUTES, dir.path(), None, None);
 
         // Should receive the first tick quickly (no delay)
         let trigger = tokio::time::timeout(Duration::from_secs(2), rx.recv())
@@ -242,7 +279,7 @@ mod tests {
         let (tx, rx) = mpsc::unbounded_channel::<Trigger>();
         drop(rx); // Close receiver immediately
 
-        let handle = spawn_scheduler(tx, MIN_INTERVAL_MINUTES, dir.path(), None);
+        let handle = spawn_scheduler(tx, MIN_INTERVAL_MINUTES, dir.path(), None, None);
 
         // Scheduler should exit without hanging
         let result = tokio::time::timeout(Duration::from_secs(2), handle).await;
@@ -259,7 +296,7 @@ mod tests {
             .unwrap();
 
         let (tx, mut rx) = mpsc::unbounded_channel::<Trigger>();
-        let _handle = spawn_scheduler(tx, MIN_INTERVAL_MINUTES, dir.path(), None);
+        let _handle = spawn_scheduler(tx, MIN_INTERVAL_MINUTES, dir.path(), None, None);
 
         // First tick should not arrive immediately (should wait ~5 minutes)
         let result = tokio::time::timeout(Duration::from_millis(500), rx.recv()).await;

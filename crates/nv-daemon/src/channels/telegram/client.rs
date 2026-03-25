@@ -429,6 +429,20 @@ impl TelegramClient {
         Ok(())
     }
 
+    /// Edit the text of an existing message without changing its keyboard.
+    ///
+    /// Convenience wrapper around `edit_message` for use in streaming delivery
+    /// where no keyboard update is needed.
+    #[allow(dead_code)]
+    pub async fn edit_message_text(
+        &self,
+        chat_id: i64,
+        message_id: i64,
+        text: &str,
+    ) -> anyhow::Result<()> {
+        self.edit_message(chat_id, message_id, text, None).await
+    }
+
     /// Send a "thinking" indicator, returns the message ID for later editing.
     // Wiring point for future typing-indicator replacement via message edit.
     #[allow(dead_code)]

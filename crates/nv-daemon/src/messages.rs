@@ -219,6 +219,17 @@ fn messages_migrations() -> Migrations<'static> {
             );
             CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);",
         ),
+        // v8: per-stage latency spans for pipeline profiling
+        M::up(
+            "CREATE TABLE IF NOT EXISTS latency_spans (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker_id   TEXT    NOT NULL,
+                stage       TEXT    NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                recorded_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_latency_stage ON latency_spans(stage, recorded_at);",
+        ),
     ])
 }
 
@@ -899,6 +910,93 @@ impl MessageStore {
             |row| row.get(0),
         )?;
         Ok(count > 0)
+    }
+
+    // ── Latency Spans ────────────────────────────────────────────────
+
+    /// Insert a single per-stage latency span into `latency_spans`.
+    ///
+    /// Called by the orchestrator event loop on each `WorkerEvent::StageComplete`.
+    pub fn log_latency_span(
+        &self,
+        worker_id: &str,
+        stage: &str,
+        duration_ms: i64,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO latency_spans (worker_id, stage, duration_ms)
+             VALUES (?1, ?2, ?3)",
+            params![worker_id, stage, duration_ms],
+        )?;
+        Ok(())
+    }
+
+    /// Compute the approximate P95 latency (ms) for a stage over the last
+    /// `since_hours` hours.
+    ///
+    /// Uses SQLite's `ORDER BY … OFFSET` percentile approximation:
+    ///   offset = ceil(0.95 * count) - 1
+    ///
+    /// Returns `None` when fewer than 2 samples exist in the window.
+    pub fn latency_p95(&self, stage: &str, since_hours: u32) -> Option<f64> {
+        self.latency_percentile(stage, since_hours, 0.95)
+    }
+
+    /// Compute the approximate P50 latency (ms) for a stage over the last
+    /// `since_hours` hours.
+    pub fn latency_p50(&self, stage: &str, since_hours: u32) -> Option<f64> {
+        self.latency_percentile(stage, since_hours, 0.50)
+    }
+
+    /// Delete `latency_spans` rows older than 30 days.
+    ///
+    /// Called nightly by the scheduler to prevent unbounded table growth.
+    pub fn prune_latency_spans(&self) -> Result<usize> {
+        let n = self.conn.execute(
+            "DELETE FROM latency_spans WHERE recorded_at < datetime('now', '-30 days')",
+            [],
+        )?;
+        Ok(n)
+    }
+
+    fn latency_percentile(
+        &self,
+        stage: &str,
+        since_hours: u32,
+        percentile: f64,
+    ) -> Option<f64> {
+        // Count rows in window
+        let count: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM latency_spans
+                 WHERE stage = ?1
+                   AND recorded_at >= datetime('now', ?2)",
+                params![stage, format!("-{since_hours} hours")],
+                |row| row.get(0),
+            )
+            .ok()?;
+
+        if count < 2 {
+            return None;
+        }
+
+        // Offset = floor(percentile * count) clamped to [0, count-1]
+        let offset = ((percentile * count as f64).floor() as i64)
+            .clamp(0, count - 1);
+
+        self.conn
+            .query_row(
+                "SELECT CAST(duration_ms AS REAL)
+                 FROM latency_spans
+                 WHERE stage = ?1
+                   AND recorded_at >= datetime('now', ?2)
+                 ORDER BY duration_ms
+                 LIMIT 1 OFFSET ?3",
+                params![stage, format!("-{since_hours} hours"), offset],
+                |row| row.get::<_, f64>(0),
+            )
+            .ok()
     }
 
     /// Record that a budget alert was sent now.

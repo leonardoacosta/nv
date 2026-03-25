@@ -223,7 +223,9 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("diary initialized");
 
     // Initialize message store
-    let message_store = messages::MessageStore::init(&nv_base.join("messages.db"))?;
+    let message_store = Arc::new(std::sync::Mutex::new(
+        messages::MessageStore::init(&nv_base.join("messages.db"))?,
+    ));
     tracing::info!("message store initialized");
 
     // Background: refresh account info cache (non-blocking)
@@ -848,6 +850,7 @@ async fn main() -> anyhow::Result<()> {
             config.agent.digest_interval_minutes,
             &nv_base,
             schedule_store.clone(),
+            Some(Arc::clone(&message_store)),
         );
         tracing::info!(
             interval_minutes = config.agent.digest_interval_minutes,
@@ -1128,7 +1131,7 @@ async fn main() -> anyhow::Result<()> {
     let shared_deps = Arc::new(worker::SharedDeps {
         memory: memory::Memory::new(&nv_base),
         state: state::State::new(&nv_base),
-        message_store: Arc::new(std::sync::Mutex::new(message_store)),
+        message_store: Arc::clone(&message_store),
         conversation_db,
         conversation_ttl_hours,
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),

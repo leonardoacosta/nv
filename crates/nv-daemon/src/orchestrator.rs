@@ -232,6 +232,11 @@ pub struct Orchestrator {
     /// Populated on `WorkerEvent::StageStarted`, cleared on `Complete`/`Error`.
     /// Used by the `ToolCalled` handler to send per-worker typing refreshes.
     worker_chat_id: std::collections::HashMap<Uuid, i64>,
+    /// Timestamp captured at trigger arrival in the select loop.
+    ///
+    /// Used to compute the `receive` latency span: time from trigger
+    /// arrival to `WorkerPool::dispatch` call.
+    trigger_arrival: Option<Instant>,
 }
 
 impl Orchestrator {
@@ -273,6 +278,7 @@ impl Orchestrator {
             error_count: 0,
             worker_stage_pending_removal: std::collections::HashSet::new(),
             worker_chat_id: std::collections::HashMap::new(),
+            trigger_arrival: None,
         }
     }
 
@@ -328,6 +334,9 @@ impl Orchestrator {
                         trigger_closed = true;
                         continue;
                     };
+
+                    // Capture trigger arrival time for the `receive` latency span.
+                    self.trigger_arrival = Some(Instant::now());
 
                     // Drain any additional queued triggers
                     let mut triggers = vec![first];
@@ -659,8 +668,24 @@ impl Orchestrator {
 
         // Dispatch to worker pool
         let slug = generate_slug_for_triggers(triggers);
+        let task_id = Uuid::new_v4();
+
+        // Emit and persist the `receive` latency span — time from trigger arrival
+        // to worker dispatch.
+        if let Some(arrival) = self.trigger_arrival.take() {
+            let receive_ms = arrival.elapsed().as_millis() as i64;
+            let _ = self.deps.event_tx.send(WorkerEvent::StageComplete {
+                worker_id: task_id,
+                stage: "receive".into(),
+                duration_ms: receive_ms as u64,
+            });
+            if let Ok(store) = self.deps.message_store.lock() {
+                let _ = store.log_latency_span(&task_id.to_string(), "receive", receive_ms);
+            }
+        }
+
         let task = WorkerTask {
-            id: Uuid::new_v4(),
+            id: task_id,
             triggers: std::mem::take(triggers),
             priority: class_to_priority(primary_class),
             created_at: Instant::now(),
@@ -729,6 +754,15 @@ impl Orchestrator {
                     duration_ms,
                     "worker stage complete"
                 );
+                // Persist stage duration to the latency_spans table for dashboard
+                // P50/P95 queries. Fire-and-forget: lock is held briefly.
+                if let Ok(store) = self.deps.message_store.lock() {
+                    let _ = store.log_latency_span(
+                        &worker_id.to_string(),
+                        stage,
+                        *duration_ms as i64,
+                    );
+                }
                 // Defer removal: a ToolCalled event may arrive immediately after
                 // StageComplete (the agent is mid-tool-call). The pending set is
                 // flushed by the next check_inactivity tick if no ToolCalled cancels it.

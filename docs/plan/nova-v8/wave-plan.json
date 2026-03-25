@@ -1,0 +1,343 @@
+{
+  "generated_at": "2026-03-25T18:45:00.000000",
+  "generated_by": "plan:roadmap",
+  "project": "nv",
+  "stack": "rust+nextjs",
+  "git_sha": "ee0ef588",
+  "plan_dir": "docs/plan/nova-v8",
+  "execution_mode": "sequential-apply",
+  "spec_names": [
+    "streaming-response-delivery",
+    "error-recovery-ux",
+    "telegram-bot-presence",
+    "callback-handler-completion",
+    "telegram-streaming-styled-buttons",
+    "telegram-reminder-ux",
+    "voice-to-text-stt",
+    "voice-tts-reply",
+    "contact-profiles-system",
+    "ms-graph-cli-tools",
+    "cross-channel-routing",
+    "tool-result-caching",
+    "proactive-followups",
+    "proactive-obligation-research",
+    "self-improvement-research",
+    "agent-persona-switching",
+    "persistent-subprocess-fix",
+    "interaction-diary"
+  ],
+  "specs": [
+    {
+      "name": "streaming-response-delivery",
+      "wave": 1,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/worker.rs", "crates/nv-daemon/src/claude.rs"],
+      "conflicts_with": ["error-recovery-ux"],
+      "depends_on": [],
+      "idea_source": "nv-vvq"
+    },
+    {
+      "name": "error-recovery-ux",
+      "wave": 2,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/worker.rs", "crates/nv-daemon/src/claude.rs", "crates/nv-daemon/src/anthropic.rs"],
+      "conflicts_with": ["streaming-response-delivery"],
+      "depends_on": [],
+      "idea_source": "nv-dkv"
+    },
+    {
+      "name": "telegram-bot-presence",
+      "wave": 2,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/channels/telegram/client.rs", "crates/nv-daemon/src/orchestrator.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-mkp"
+    },
+    {
+      "name": "callback-handler-completion",
+      "wave": 3,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/callbacks.rs", "crates/nv-daemon/src/channels/telegram/client.rs", "crates/nv-daemon/src/orchestrator.rs"],
+      "conflicts_with": ["telegram-bot-presence"],
+      "depends_on": [],
+      "idea_source": "nv-l2e"
+    },
+    {
+      "name": "telegram-streaming-styled-buttons",
+      "wave": 3,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/channels/telegram/client.rs", "crates/nv-daemon/src/worker.rs"],
+      "conflicts_with": [],
+      "depends_on": ["streaming-response-delivery"],
+      "idea_source": "nv-32o"
+    },
+    {
+      "name": "telegram-reminder-ux",
+      "wave": 4,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/callbacks.rs", "crates/nv-daemon/src/obligation_store.rs", "crates/nv-daemon/src/reminders.rs"],
+      "conflicts_with": ["callback-handler-completion"],
+      "depends_on": ["callback-handler-completion"],
+      "idea_source": "nv-b9t"
+    },
+    {
+      "name": "voice-to-text-stt",
+      "wave": 5,
+      "priority": "P2",
+      "phase": 2,
+      "feature_area": "voice",
+      "files": ["crates/nv-daemon/src/speech_to_text.rs", "crates/nv-daemon/src/channels/telegram/client.rs", "crates/nv-daemon/src/worker.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-dnq"
+    },
+    {
+      "name": "voice-tts-reply",
+      "wave": 6,
+      "priority": "P2",
+      "phase": 2,
+      "feature_area": "voice",
+      "files": ["crates/nv-daemon/src/channels/telegram/client.rs", "crates/nv-daemon/src/worker.rs"],
+      "conflicts_with": ["voice-to-text-stt"],
+      "depends_on": ["voice-to-text-stt"],
+      "idea_source": "nv-4an"
+    },
+    {
+      "name": "contact-profiles-system",
+      "wave": 7,
+      "priority": "P2",
+      "phase": 3,
+      "feature_area": "data",
+      "files": ["crates/nv-daemon/src/contact_store.rs", "crates/nv-daemon/src/messages.rs", "apps/dashboard/"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-0bxt"
+    },
+    {
+      "name": "ms-graph-cli-tools",
+      "wave": 7,
+      "priority": "P2",
+      "phase": 3,
+      "feature_area": "integrations",
+      "files": ["crates/nv-daemon/src/tools/outlook.rs", "crates/nv-daemon/src/tools/ado.rs", "crates/nv-daemon/src/channels/teams/oauth.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-rctm"
+    },
+    {
+      "name": "cross-channel-routing",
+      "wave": 8,
+      "priority": "P2",
+      "phase": 3,
+      "feature_area": "integrations",
+      "files": ["crates/nv-daemon/src/tools/channels.rs", "crates/nv-daemon/src/tools/mod.rs", "crates/nv-daemon/src/orchestrator.rs"],
+      "conflicts_with": [],
+      "depends_on": ["callback-handler-completion"],
+      "idea_source": "nv-2e6"
+    },
+    {
+      "name": "tool-result-caching",
+      "wave": 8,
+      "priority": "P2",
+      "phase": 3,
+      "feature_area": "performance",
+      "files": ["crates/nv-daemon/src/tool_cache.rs", "crates/nv-daemon/src/tools/mod.rs", "crates/nv-daemon/src/worker.rs"],
+      "conflicts_with": ["cross-channel-routing"],
+      "depends_on": [],
+      "idea_source": "nv-4pq"
+    },
+    {
+      "name": "proactive-followups",
+      "wave": 9,
+      "priority": "P2",
+      "phase": 4,
+      "feature_area": "autonomy",
+      "files": ["crates/nv-daemon/src/proactive_watcher.rs", "crates/nv-daemon/src/orchestrator.rs", "crates/nv-daemon/src/obligation_store.rs"],
+      "conflicts_with": [],
+      "depends_on": ["telegram-reminder-ux", "callback-handler-completion"],
+      "idea_source": "nv-7xc"
+    },
+    {
+      "name": "proactive-obligation-research",
+      "wave": 10,
+      "priority": "P2",
+      "phase": 4,
+      "feature_area": "autonomy",
+      "files": ["crates/nv-daemon/src/obligation_research.rs", "crates/nv-daemon/src/orchestrator.rs", "crates/nv-daemon/src/worker.rs"],
+      "conflicts_with": [],
+      "depends_on": ["proactive-followups"],
+      "idea_source": "nv-lvm"
+    },
+    {
+      "name": "self-improvement-research",
+      "wave": 10,
+      "priority": "P2",
+      "phase": 4,
+      "feature_area": "autonomy",
+      "files": ["crates/nv-daemon/src/self_assessment.rs", "crates/nv-daemon/src/scheduler.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-ad8"
+    },
+    {
+      "name": "agent-persona-switching",
+      "wave": 11,
+      "priority": "P3",
+      "phase": 5,
+      "feature_area": "polish",
+      "files": ["crates/nv-daemon/src/persona.rs", "crates/nv-daemon/src/worker.rs", "crates/nv-core/src/config.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-n2l"
+    },
+    {
+      "name": "persistent-subprocess-fix",
+      "wave": 11,
+      "priority": "P2",
+      "phase": 5,
+      "feature_area": "performance",
+      "files": ["crates/nv-daemon/src/claude.rs"],
+      "conflicts_with": [],
+      "depends_on": ["streaming-response-delivery"],
+      "idea_source": "carry-forward"
+    },
+    {
+      "name": "interaction-diary",
+      "wave": 12,
+      "priority": "P2",
+      "phase": 5,
+      "feature_area": "observability",
+      "files": ["crates/nv-daemon/src/diary.rs", "crates/nv-daemon/src/worker.rs", "apps/dashboard/"],
+      "conflicts_with": ["agent-persona-switching"],
+      "depends_on": [],
+      "idea_source": "nv-7n4"
+    }
+  ],
+  "conflict_map": {
+    "crates/nv-daemon/src/worker.rs": ["streaming-response-delivery", "error-recovery-ux", "telegram-streaming-styled-buttons", "voice-to-text-stt", "voice-tts-reply", "tool-result-caching", "proactive-obligation-research", "agent-persona-switching", "interaction-diary"],
+    "crates/nv-daemon/src/claude.rs": ["streaming-response-delivery", "error-recovery-ux", "persistent-subprocess-fix"],
+    "crates/nv-daemon/src/channels/telegram/client.rs": ["telegram-bot-presence", "callback-handler-completion", "telegram-streaming-styled-buttons", "voice-to-text-stt", "voice-tts-reply"],
+    "crates/nv-daemon/src/callbacks.rs": ["callback-handler-completion", "telegram-reminder-ux"],
+    "crates/nv-daemon/src/orchestrator.rs": ["telegram-bot-presence", "callback-handler-completion", "cross-channel-routing", "proactive-followups", "proactive-obligation-research"],
+    "crates/nv-daemon/src/tools/mod.rs": ["cross-channel-routing", "tool-result-caching"]
+  },
+  "dependency_map": {
+    "telegram-streaming-styled-buttons": ["streaming-response-delivery"],
+    "telegram-reminder-ux": ["callback-handler-completion"],
+    "voice-tts-reply": ["voice-to-text-stt"],
+    "cross-channel-routing": ["callback-handler-completion"],
+    "proactive-followups": ["telegram-reminder-ux", "callback-handler-completion"],
+    "proactive-obligation-research": ["proactive-followups"],
+    "persistent-subprocess-fix": ["streaming-response-delivery"]
+  },
+  "waves": [
+    {
+      "number": 1,
+      "label": "Wave 1 -- Streaming Response Delivery",
+      "specs": [{"name": "streaming-response-delivery"}],
+      "task_count": 17
+    },
+    {
+      "number": 2,
+      "label": "Wave 2 -- Error Recovery + Bot Presence",
+      "specs": [{"name": "error-recovery-ux"}, {"name": "telegram-bot-presence"}],
+      "task_count": 30
+    },
+    {
+      "number": 3,
+      "label": "Wave 3 -- Callback Handlers + Styled Buttons",
+      "specs": [{"name": "callback-handler-completion"}, {"name": "telegram-streaming-styled-buttons"}],
+      "task_count": 32
+    },
+    {
+      "number": 4,
+      "label": "Wave 4 -- Telegram Reminder UX",
+      "specs": [{"name": "telegram-reminder-ux"}],
+      "task_count": 18
+    },
+    {
+      "number": 5,
+      "label": "Wave 5 -- Voice STT (Deepgram)",
+      "specs": [{"name": "voice-to-text-stt"}],
+      "task_count": 15
+    },
+    {
+      "number": 6,
+      "label": "Wave 6 -- Voice TTS (ElevenLabs)",
+      "specs": [{"name": "voice-tts-reply"}],
+      "task_count": 9
+    },
+    {
+      "number": 7,
+      "label": "Wave 7 -- Contacts + MS Graph (parallel)",
+      "specs": [{"name": "contact-profiles-system"}, {"name": "ms-graph-cli-tools"}],
+      "task_count": 59
+    },
+    {
+      "number": 8,
+      "label": "Wave 8 -- Cross-Channel + Tool Caching (parallel)",
+      "specs": [{"name": "cross-channel-routing"}, {"name": "tool-result-caching"}],
+      "task_count": 31
+    },
+    {
+      "number": 9,
+      "label": "Wave 9 -- Proactive Followups",
+      "specs": [{"name": "proactive-followups"}],
+      "task_count": 17
+    },
+    {
+      "number": 10,
+      "label": "Wave 10 -- Obligation Research + Self-Assessment (parallel)",
+      "specs": [{"name": "proactive-obligation-research"}, {"name": "self-improvement-research"}],
+      "task_count": 60
+    },
+    {
+      "number": 11,
+      "label": "Wave 11 -- Persona Switching + Persistent Fix (parallel)",
+      "specs": [{"name": "agent-persona-switching"}, {"name": "persistent-subprocess-fix"}],
+      "task_count": 25
+    },
+    {
+      "number": 12,
+      "label": "Wave 12 -- Interaction Diary",
+      "specs": [{"name": "interaction-diary"}],
+      "task_count": 21
+    }
+  ],
+  "decisions": [
+    {
+      "date": "2026-03-25",
+      "decision": "Use sequential /apply per spec (same as v7)",
+      "rationale": "v7 proved sequential apply is more reliable than mega-batches. worker.rs contention forces most waves to be sequential anyway.",
+      "source": "user",
+      "affected_waves": [1,2,3,4,5,6,7,8,9,10,11,12]
+    },
+    {
+      "date": "2026-03-25",
+      "decision": "All 18 specs approved for single mega-session delivery",
+      "rationale": "User wants all ideas shipped. No prioritization filter.",
+      "source": "user",
+      "affected_waves": [1,2,3,4,5,6,7,8,9,10,11,12]
+    },
+    {
+      "date": "2026-03-25",
+      "decision": "Skip dashboard auth entirely",
+      "rationale": "Tailscale isolation sufficient for single-operator use",
+      "source": "user",
+      "affected_waves": []
+    }
+  ]
+}

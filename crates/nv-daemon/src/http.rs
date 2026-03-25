@@ -127,7 +127,7 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/api/latency", get(get_latency_handler))
         // Dashboard API
         .route("/api/messages", get(get_messages_handler))
-        .route("/api/approvals/:id/approve", post(approve_obligation_handler))
+        .route("/api/approvals/{id}/approve", post(approve_obligation_handler))
         .route("/api/cc-sessions", get(get_cc_sessions_handler))
         // WebSocket event stream
         .route("/ws/events", get(ws_events_handler));

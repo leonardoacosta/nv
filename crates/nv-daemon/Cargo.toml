@@ -41,6 +41,7 @@ cron = "0.12"
 integration = []
 
 [dev-dependencies]
+bytes = "1"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 wiremock = "0.6"

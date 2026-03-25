@@ -15,6 +15,7 @@ use crate::claude::{ApiError, ApiResponse, ContentBlock, Message, StopReason, To
 // ── Client ───────────────────────────────────────────────────────────
 
 /// A client for the Anthropic Messages API.
+#[derive(Debug)]
 pub struct AnthropicClient {
     http: reqwest::Client,
     api_key: String,

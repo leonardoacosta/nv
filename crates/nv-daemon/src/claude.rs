@@ -846,11 +846,37 @@ impl ClaudeClient {
         image_path: Option<&str>,
     ) -> Result<ApiResponse> {
         // Build user-content-only prompt: system prompt is passed via --system-prompt
-        // flag, tool definitions via --tools flag.  Only conversation content goes to stdin.
+        // flag, conversation content goes to stdin.
+        // Tool definitions are embedded in the system prompt so Claude knows what's
+        // available for the daemon's tool dispatch loop.
         let prompt = build_conversation_prompt(messages);
+
+        // Augment system prompt with tool definitions
+        let augmented_system = if tools.is_empty() {
+            system.to_string()
+        } else {
+            let mut s = system.to_string();
+            s.push_str("\n\n## Available Tools\n\n");
+            s.push_str("When you need to use a tool, respond with ONLY a JSON block in this exact format:\n");
+            s.push_str("```tool_call\n");
+            s.push_str("{\"tool\": \"tool_name\", \"input\": {\"param\": \"value\"}}\n");
+            s.push_str("```\n\n");
+            s.push_str("Available tools:\n\n");
+            for tool in tools {
+                s.push_str(&format!("### {}\n", tool.name));
+                s.push_str(&format!("{}\n", tool.description));
+                s.push_str(&format!(
+                    "Parameters: {}\n\n",
+                    serde_json::to_string_pretty(&tool.input_schema).unwrap_or_default()
+                ));
+            }
+            s.push_str("If you don't need a tool, respond normally with text.\n\n");
+            s
+        };
+
         tracing::info!(
             prompt_bytes = prompt.len(),
-            system_bytes = system.len(),
+            system_bytes = augmented_system.len(),
             messages = messages.len(),
             tools = tools.len(),
             "cold-start: prompt payload size"
@@ -865,9 +891,9 @@ impl ClaudeClient {
             self.model.clone(),
             "--no-session-persistence".into(),
             "--tools".into(),
-            "Read,Glob,Grep,Bash(git:*)".into(),
+            "Read,Glob,Grep,Bash(*)".into(),
             "--system-prompt".into(),
-            system.to_string(),
+            augmented_system,
             // --strict-mcp-config removed — causes hangs when MCP servers fail
         ];
 

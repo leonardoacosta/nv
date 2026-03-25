@@ -45,18 +45,9 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone)]
 pub enum WorkerEvent {
     /// A processing stage has started (e.g., "context_build", "tool_loop").
-    ///
-    /// `thinking_msg_id` is set on the first (context_build) stage and carries
-    /// the Telegram message ID of the "..." indicator sent at worker startup.
-    /// The orchestrator uses this to edit the indicator with tool status on
-    /// ToolCalled events, and the worker replaces it with the final response.
     StageStarted {
         worker_id: Uuid,
         stage: String,
-        /// Telegram message ID of the "..." thinking indicator (first stage only).
-        thinking_msg_id: Option<i64>,
-        /// Telegram chat ID corresponding to thinking_msg_id.
-        thinking_chat_id: Option<i64>,
     },
     /// A tool is about to be executed.
     ToolCalled { worker_id: Uuid, tool: String },
@@ -482,33 +473,20 @@ impl Worker {
             })
             .unwrap_or_else(|| "telegram".to_string());
 
-        // Send typing indicator immediately (fire-and-forget)
+        // Send a single typing indicator at the start — Telegram shows "typing..."
+        // for ~5s. We don't loop because cold-start turns take ~10-20s and the
+        // visual gap is acceptable. Avoids Telegram 429 rate limits from repeated calls.
+        let typing_cancel = tokio::sync::watch::channel(false);
+        let typing_tx = typing_cancel.0;
         if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
             tg.send_chat_action(chat_id, "typing").await;
         }
 
-        // Send "..." thinking indicator to Telegram (will be edited with tool status
-        // or final response). The message ID is threaded through WorkerEvent::StageStarted
-        // so the orchestrator can edit it on ToolCalled events.
-        let (thinking_msg_id, thinking_chat_id) = if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
-            match tg.send_message(chat_id, "\u{2026}", None, None).await {
-                Ok(id) => (Some(id), Some(chat_id)),
-                Err(e) => {
-                    tracing::debug!(error = %e, "failed to send thinking indicator");
-                    (None, None)
-                }
-            }
-        } else {
-            (None, None)
-        };
-
-        // Emit StageStarted for context build, including thinking_msg_id
+        // Emit StageStarted for context build
         let context_build_start = Instant::now();
         let _ = event_tx.send(WorkerEvent::StageStarted {
             worker_id: task_id,
             stage: "context_build".into(),
-            thinking_msg_id,
-            thinking_chat_id,
         });
 
         // Build system context and tool definitions
@@ -780,8 +758,6 @@ impl Worker {
         let _ = event_tx.send(WorkerEvent::StageStarted {
             worker_id: task_id,
             stage: "tool_loop".into(),
-            thinking_msg_id: None,
-            thinking_chat_id: None,
         });
 
         let (final_content, tool_names) = Self::run_tool_loop(
@@ -832,43 +808,21 @@ impl Worker {
             })
             .unwrap_or("telegram");
 
-        if response_text.is_empty() {
-            // All content was stripped — delete the "..." thinking indicator so it
-            // doesn't hang in the chat with no follow-up response.
-            if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, thinking_chat_id, thinking_msg_id) {
-                tracing::debug!(chat_id, msg_id, "response empty after stripping — deleting thinking indicator");
-                let _ = tg.delete_message(chat_id, msg_id).await;
-            }
-        }
+        // Cancel the typing indicator loop before sending response
+        let _ = typing_tx.send(true);
 
         if !response_text.is_empty() {
-            // For Telegram: if we sent a thinking indicator, edit it with the final
-            // response instead of sending a new message (avoids double-message UX).
-            let mut sent_via_edit = false;
-            if reply_channel == "telegram" {
-                if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, thinking_chat_id, thinking_msg_id) {
-                    match tg.edit_message(chat_id, msg_id, &response_text, None).await {
-                        Ok(_) => { sent_via_edit = true; }
-                        Err(e) => {
-                            tracing::debug!(error = %e, "failed to edit thinking message with response, falling back to send");
-                        }
-                    }
-                }
-            }
-
-            if !sent_via_edit {
-                if let Some(channel) = deps.channels.get(reply_channel) {
-                    if let Err(e) = channel
-                        .send_message(OutboundMessage {
-                            channel: reply_channel.to_string(),
-                            content: response_text.clone(),
-                            reply_to: reply_to_id.clone(),
-                            keyboard: None,
-                        })
-                        .await
-                    {
-                        tracing::error!(error = %e, "failed to route worker response");
-                    }
+            if let Some(channel) = deps.channels.get(reply_channel) {
+                if let Err(e) = channel
+                    .send_message(OutboundMessage {
+                        channel: reply_channel.to_string(),
+                        content: response_text.clone(),
+                        reply_to: reply_to_id.clone(),
+                        keyboard: None,
+                    })
+                    .await
+                {
+                    tracing::error!(error = %e, "failed to route worker response");
                 }
             }
         }
@@ -2178,7 +2132,7 @@ mod tests {
         let id = Uuid::new_v4();
 
         // StageStarted
-        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), thinking_msg_id: None, thinking_chat_id: None };
+        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() };
         assert!(matches!(&e, WorkerEvent::StageStarted { worker_id, stage, .. } if *worker_id == id && stage == "context_build"));
 
         // ToolCalled
@@ -2201,7 +2155,7 @@ mod tests {
     #[test]
     fn worker_event_clone_preserves_data() {
         let id = Uuid::new_v4();
-        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into(), thinking_msg_id: None, thinking_chat_id: None };
+        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into() };
         let cloned = event.clone();
         assert!(matches!(&cloned, WorkerEvent::StageStarted { worker_id, stage, .. } if *worker_id == id && stage == "test"));
     }
@@ -2211,9 +2165,9 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
         let id = Uuid::new_v4();
 
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), thinking_msg_id: None, thinking_chat_id: None }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
         tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "context_build".into(), duration_ms: 10 }).unwrap();
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into(), thinking_msg_id: None, thinking_chat_id: None }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into() }).unwrap();
         tx.send(WorkerEvent::ToolCalled { worker_id: id, tool: "jira_search".into() }).unwrap();
         tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "tool_loop".into(), duration_ms: 500 }).unwrap();
         tx.send(WorkerEvent::Complete { worker_id: id, response_len: 256 }).unwrap();
@@ -2238,7 +2192,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
         let id = Uuid::new_v4();
 
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), thinking_msg_id: None, thinking_chat_id: None }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
         tx.send(WorkerEvent::Error { worker_id: id, error: "Claude API failure: rate limited".into() }).unwrap();
         drop(tx);
 

@@ -219,11 +219,7 @@ pub struct Orchestrator {
     last_error_time: Instant,
     /// Number of errors accumulated in the current batch.
     error_count: u32,
-    // ── Thinking message state ──
-    /// Maps worker_id → (thinking_msg_id, chat_id) for active workers.
-    worker_thinking_msgs: std::collections::HashMap<Uuid, (i64, i64)>,
-    /// Maps worker_id → last thinking-message edit timestamp (for debounce).
-    worker_thinking_last_edit: std::collections::HashMap<Uuid, Instant>,
+    // Thinking message state removed — replaced by typing indicator loop in worker.
     // ── Deferred StageComplete removal ──
     /// Worker IDs whose StageComplete event is pending deferred removal from
     /// `worker_stage_started`. An entry is cleared if a `ToolCalled` event
@@ -269,8 +265,6 @@ impl Orchestrator {
             last_error_text: None,
             last_error_time: Instant::now(),
             error_count: 0,
-            worker_thinking_msgs: std::collections::HashMap::new(),
-            worker_thinking_last_edit: std::collections::HashMap::new(),
             worker_stage_pending_removal: std::collections::HashSet::new(),
         }
     }
@@ -609,7 +603,7 @@ impl Orchestrator {
     /// Handle a single worker event — log at appropriate level and track state.
     async fn handle_worker_event(&mut self, event: WorkerEvent) {
         match &event {
-            WorkerEvent::StageStarted { worker_id, stage, thinking_msg_id, thinking_chat_id } => {
+            WorkerEvent::StageStarted { worker_id, stage } => {
                 tracing::debug!(
                     worker_id = %worker_id,
                     stage = %stage,
@@ -617,10 +611,6 @@ impl Orchestrator {
                 );
                 self.worker_stage_started
                     .insert(*worker_id, (stage.clone(), Instant::now()));
-                // Store thinking message ID from the first (context_build) stage
-                if let (Some(msg_id), Some(chat_id)) = (thinking_msg_id, thinking_chat_id) {
-                    self.worker_thinking_msgs.insert(*worker_id, (*msg_id, *chat_id));
-                }
             }
             WorkerEvent::ToolCalled { worker_id, tool } => {
                 tracing::trace!(
@@ -637,38 +627,6 @@ impl Orchestrator {
                 let stage_label = format!("{emoji} {description}");
                 self.worker_stage_started
                     .insert(*worker_id, (stage_label.clone(), Instant::now()));
-
-                // Edit the thinking message with tool status (debounced, Telegram only)
-                if let Some((msg_id, chat_id)) = self.worker_thinking_msgs.get(worker_id).copied() {
-                    // Debounce: skip if we edited within the last 500ms
-                    let should_edit = self.worker_thinking_last_edit
-                        .get(worker_id)
-                        .map(|t| t.elapsed() >= Duration::from_millis(500))
-                        .unwrap_or(true);
-
-                    if should_edit {
-                        if let Some(tg) = self.channels.get("telegram") {
-                            if let Some(tg_channel) =
-                                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
-                            {
-                                let label = stage_label.clone();
-                                let client = tg_channel.client.clone();
-                                let wid = *worker_id;
-                                // Fire-and-forget — don't block the event loop
-                                tokio::spawn(async move {
-                                    if let Err(e) = client.edit_message(chat_id, msg_id, &label, None).await {
-                                        tracing::debug!(
-                                            worker_id = %wid,
-                                            error = %e,
-                                            "failed to edit thinking message with tool status"
-                                        );
-                                    }
-                                });
-                                self.worker_thinking_last_edit.insert(*worker_id, Instant::now());
-                            }
-                        }
-                    }
-                }
             }
             WorkerEvent::StageComplete {
                 worker_id,
@@ -695,11 +653,9 @@ impl Orchestrator {
                     response_len,
                     "worker complete"
                 );
-                // Clean up stage tracking and thinking message state
+                // Clean up stage tracking
                 self.worker_stage_started.remove(worker_id);
                 self.worker_stage_pending_removal.remove(worker_id);
-                self.worker_thinking_msgs.remove(worker_id);
-                self.worker_thinking_last_edit.remove(worker_id);
             }
             WorkerEvent::Error { worker_id, error } => {
                 tracing::warn!(
@@ -709,8 +665,6 @@ impl Orchestrator {
                 );
                 self.worker_stage_started.remove(worker_id);
                 self.worker_stage_pending_removal.remove(worker_id);
-                self.worker_thinking_msgs.remove(worker_id);
-                self.worker_thinking_last_edit.remove(worker_id);
             }
         }
     }
@@ -2084,8 +2038,6 @@ mod tests {
             .send(WorkerEvent::StageStarted {
                 worker_id,
                 stage: "context_build".into(),
-                thinking_msg_id: None,
-                thinking_chat_id: None,
             })
             .unwrap();
         event_tx

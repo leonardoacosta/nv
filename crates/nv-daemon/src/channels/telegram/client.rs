@@ -378,6 +378,7 @@ impl TelegramClient {
     }
 
     /// Delete a message.
+    #[allow(dead_code)]
     pub async fn delete_message(&self, chat_id: i64, message_id: i64) -> anyhow::Result<()> {
         let url = format!("{}/deleteMessage", self.base_url);
         let body = serde_json::json!({

@@ -1,0 +1,155 @@
+{
+  "generated_at": "2026-03-25T11:40:00-05:00",
+  "generated_by": "plan:roadmap",
+  "project": "nv",
+  "stack": "rust",
+  "git_sha": "abd91475",
+  "plan_dir": "docs/plan/nova-v7",
+  "spec_names": [
+    "fix-cold-start-memory",
+    "fix-telegram-null-callback",
+    "enrich-diary-narratives",
+    "improve-typing-indicators",
+    "fix-nexus-session-dedup",
+    "investigate-300s-timeout",
+    "fix-reminders-db-migration"
+  ],
+  "specs": [
+    {
+      "name": "fix-cold-start-memory",
+      "wave": 1,
+      "priority": "P1",
+      "phase": 1,
+      "feature_area": "memory",
+      "files": ["crates/nv-daemon/src/worker.rs", "crates/nv-daemon/src/claude.rs", "crates/nv-daemon/src/messages.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "architecture-gap"
+    },
+    {
+      "name": "fix-telegram-null-callback",
+      "wave": 1,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/channels/telegram/mod.rs", "crates/nv-daemon/src/callbacks.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-zsr"
+    },
+    {
+      "name": "enrich-diary-narratives",
+      "wave": 1,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "memory",
+      "files": ["crates/nv-daemon/src/diary.rs", "crates/nv-daemon/src/worker.rs"],
+      "conflicts_with": ["fix-cold-start-memory"],
+      "depends_on": [],
+      "idea_source": "nv-de2"
+    },
+    {
+      "name": "improve-typing-indicators",
+      "wave": 1,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "telegram-ux",
+      "files": ["crates/nv-daemon/src/orchestrator.rs", "crates/nv-daemon/src/channels/telegram/client.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-b4i"
+    },
+    {
+      "name": "fix-nexus-session-dedup",
+      "wave": 1,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "reliability",
+      "files": ["crates/nv-daemon/src/tools/mod.rs", "crates/nv-daemon/src/nexus/tools.rs", "crates/nv-daemon/src/nexus/client.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "nv-unw"
+    },
+    {
+      "name": "investigate-300s-timeout",
+      "wave": 1,
+      "priority": "P2",
+      "phase": 1,
+      "feature_area": "reliability",
+      "files": ["crates/nv-daemon/src/worker.rs", "crates/nv-daemon/src/claude.rs", "crates/nv-daemon/src/orchestrator.rs"],
+      "conflicts_with": ["fix-cold-start-memory", "improve-typing-indicators"],
+      "depends_on": [],
+      "idea_source": "nv-yhu"
+    },
+    {
+      "name": "fix-reminders-db-migration",
+      "wave": 1,
+      "priority": "P3",
+      "phase": 1,
+      "feature_area": "reliability",
+      "files": ["crates/nv-daemon/src/reminders.rs"],
+      "conflicts_with": [],
+      "depends_on": [],
+      "idea_source": "runtime-error"
+    }
+  ],
+  "conflict_map": {
+    "crates/nv-daemon/src/worker.rs": ["fix-cold-start-memory", "enrich-diary-narratives", "investigate-300s-timeout"],
+    "crates/nv-daemon/src/claude.rs": ["fix-cold-start-memory", "investigate-300s-timeout"],
+    "crates/nv-daemon/src/orchestrator.rs": ["improve-typing-indicators", "investigate-300s-timeout"]
+  },
+  "dependency_map": {},
+  "waves": [
+    {
+      "number": 1,
+      "label": "Memory & Quick Fixes",
+      "specs": [
+        {"name": "fix-cold-start-memory"},
+        {"name": "fix-telegram-null-callback"},
+        {"name": "enrich-diary-narratives"},
+        {"name": "improve-typing-indicators"},
+        {"name": "fix-nexus-session-dedup"},
+        {"name": "investigate-300s-timeout"},
+        {"name": "fix-reminders-db-migration"}
+      ],
+      "note": "All specs in single wave — file conflicts exist between 3 specs on worker.rs but they touch different sections. Apply sequentially within the mega-batch if conflicts arise."
+    }
+  ],
+  "future_waves": [
+    {
+      "number": 2,
+      "label": "Dashboard & Architecture Migration",
+      "specs_planned": ["extract-nextjs-dashboard", "cc-session-management", "migrate-nova-brain", "add-morning-briefing-page", "add-cold-start-logging", "add-session-slug-names", "rebuild-dashboard-wireframes"],
+      "status": "specs-not-yet-created"
+    },
+    {
+      "number": 3,
+      "label": "Direct API Fallback",
+      "specs_planned": ["add-anthropic-api-client", "native-tool-use-protocol", "persistent-conversation-state", "response-latency-optimization"],
+      "status": "conditional-on-cc-cli-reliability"
+    },
+    {
+      "number": 4,
+      "label": "Nexus Deprecation",
+      "specs_planned": ["replace-nexus-with-team-agents", "remove-nexus-crate", "remove-nexus-register-binary", "update-session-lifecycle", "cleanup-nexus-config"],
+      "status": "specs-not-yet-created"
+    }
+  ],
+  "decisions": [
+    {
+      "date": "2026-03-25",
+      "decision": "Generate Wave 1 specs only — Waves 2-4 depend on architectural decisions",
+      "rationale": "Wave 2 requires Next.js extraction which changes the project structure. Specs should be created after Wave 1 lands and architecture stabilizes.",
+      "source": "system",
+      "affected_waves": [2, 3, 4]
+    },
+    {
+      "date": "2026-03-25",
+      "decision": "All 7 Wave 1 specs in single wave despite file conflicts on worker.rs",
+      "rationale": "Conflicts are on different sections of worker.rs (memory injection vs diary vs timeout). Mega-batch agent can handle sequential edits. Splitting into sub-waves adds unnecessary overhead for small fixes.",
+      "source": "system",
+      "affected_waves": [1],
+      "affected_specs": ["fix-cold-start-memory", "enrich-diary-narratives", "investigate-300s-timeout"]
+    }
+  ]
+}

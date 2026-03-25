@@ -54,9 +54,8 @@ See scope-lock.md § Architecture Direction for current vs target diagrams.
 |---|------|------|-----------|
 | 1 | replace-nexus-with-team-agents | feature | large |
 | 2 | remove-nexus-crate | refactor | medium |
-| 3 | remove-nexus-register-binary | refactor | small |
-| 4 | update-session-lifecycle | feature | medium |
-| 5 | cleanup-nexus-config | refactor | trivial |
+| 3 | update-session-lifecycle | feature | medium |
+| 4 | cleanup-nexus-config | refactor | trivial |
 
 ## Success Criteria
 

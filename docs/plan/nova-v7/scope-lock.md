@@ -102,9 +102,8 @@ Ship immediately on existing daemon. No architecture changes.
 
 1. **Replace Nexus dispatch with CC team agents** -- drop gRPC client, use native coordination
 2. **Remove nexus crate** -- delete nexus/ module from nv-daemon
-3. **Remove nexus-register binary** -- clean up session hooks that reference it
-4. **Update session lifecycle** -- team agents handle start/stop/monitor natively
-5. **Clean up Nexus config** -- remove agent endpoints from nv.toml
+3. **Update session lifecycle** -- team agents handle start/stop/monitor natively
+4. **Clean up Nexus config** -- remove agent endpoints from nv.toml
 
 ## Latency Target
 

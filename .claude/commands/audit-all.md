@@ -1,6 +1,6 @@
 ---
 name: audit:all
-description: Run all 8 domain audits for nv with parallel agent dispatch
+description: Run all 7 domain audits for nv with parallel agent dispatch
 type: command
 execution: foreground
 ---
@@ -14,7 +14,7 @@ Run all 8 domain audits with parallel agent dispatch, progressive collection, an
 - **Name:** nv
 - **Path:** `/home/nyaptor/nv`
 - **Type:** Rust workspace (3 crates + React dashboard)
-- **Domains:** 8
+- **Domains:** 7
 
 ## Domains
 
@@ -26,7 +26,6 @@ Run all 8 domain audits with parallel agent dispatch, progressive collection, an
 | dashboard | single      | React SPA + axum API (11 endpoints)        | `/audit:dashboard` |
 | digest    | single      | gather, synthesize, format, scheduler      | `/audit:digest`    |
 | watchers  | single      | 4 watchers, alert rules, obligations       | `/audit:watchers`  |
-| nexus     | single      | gRPC client, query, notifications          | `/audit:nexus`     |
 | infra     | single      | health, CLI, config, memory, state, deploy | `/audit:infra`     |
 
 ## Execution Plan
@@ -45,7 +44,6 @@ Run all 8 domain audits with parallel agent dispatch, progressive collection, an
 
 ### Wave 3 — Infrastructure (parallel)
 
-- nexus (remote agent sessions)
 - infra (health, CLI, config, deploy)
 
 ## Agent Dispatch

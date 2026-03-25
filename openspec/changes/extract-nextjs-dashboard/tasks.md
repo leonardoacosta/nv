@@ -60,13 +60,13 @@
 
 ## Batch 6 — Strip Rust Embed
 
-- [ ] [6.1] [P-1] Remove `DashboardAssets` RustEmbed struct and `#[folder = "../../dashboard/dist/"]` from `crates/nv-daemon/src/dashboard.rs` [owner:api-engineer]
-- [ ] [6.2] [P-1] Remove all `/api/*` route registrations from `build_dashboard_router()` in `crates/nv-daemon/src/dashboard.rs` — remove handler functions: `get_obligations`, `patch_obligation`, `get_projects`, `get_sessions`, `post_solve`, `get_memory`, `put_memory`, `get_config`, `put_config`, `get_server_health` [owner:api-engineer]
-- [ ] [6.3] [P-1] Remove SPA static file handlers from `crates/nv-daemon/src/dashboard.rs`: `spa_index_handler`, `spa_asset_handler`, `spa_fallback_handler`, `serve_embedded_file`, and the `/assets/{*path}`, `/`, fallback routes [owner:api-engineer]
-- [ ] [6.4] [P-1] Remove `build_dashboard_router` call and `DashboardState` wiring from `crates/nv-daemon/src/http.rs`; remove `use crate::dashboard::{DashboardState, build_dashboard_router}` import [owner:api-engineer]
-- [ ] [6.5] [P-2] Check all `use` sites of `rust-embed` and `mime_guess` in `crates/nv-daemon/`; if `dashboard.rs` was the sole user, remove `rust-embed` and `mime_guess` from `crates/nv-daemon/Cargo.toml` and from `[workspace.dependencies]` in root `Cargo.toml` [owner:api-engineer]
-- [ ] [6.6] [P-2] Reduce or delete `DashboardState` struct — remove fields used only by the removed API handlers (`obligation_store`, `nv_base`, `config_json`, `nexus_client`, `messages_db_path`) if they are not referenced elsewhere in the daemon; keep `health` field if still used by any surviving handler [owner:api-engineer]
-- [ ] [6.7] [P-3] File a beads issue (separate from this spec) to delete the `dashboard/` Vite SPA source directory after one week of production soak — do not delete in this spec [owner:api-engineer]
+- [x] [6.1] [P-1] Remove `DashboardAssets` RustEmbed struct and `#[folder = "../../dashboard/dist/"]` from `crates/nv-daemon/src/dashboard.rs` [owner:api-engineer]
+- [x] [6.2] [P-1] Remove all `/api/*` route registrations from `build_dashboard_router()` in `crates/nv-daemon/src/dashboard.rs` — remove handler functions: `get_obligations`, `patch_obligation`, `get_projects`, `get_sessions`, `post_solve`, `get_memory`, `put_memory`, `get_config`, `put_config`, `get_server_health` [owner:api-engineer]
+- [x] [6.3] [P-1] Remove SPA static file handlers from `crates/nv-daemon/src/dashboard.rs`: `spa_index_handler`, `spa_asset_handler`, `spa_fallback_handler`, `serve_embedded_file`, and the `/assets/{*path}`, `/`, fallback routes [owner:api-engineer]
+- [x] [6.4] [P-1] Remove `build_dashboard_router` call and `DashboardState` wiring from `crates/nv-daemon/src/http.rs`; remove `use crate::dashboard::{DashboardState, build_dashboard_router}` import [owner:api-engineer]
+- [x] [6.5] [P-2] Check all `use` sites of `rust-embed` and `mime_guess` in `crates/nv-daemon/`; if `dashboard.rs` was the sole user, remove `rust-embed` and `mime_guess` from `crates/nv-daemon/Cargo.toml` and from `[workspace.dependencies]` in root `Cargo.toml` [owner:api-engineer]
+- [x] [6.6] [P-2] Reduce or delete `DashboardState` struct — remove fields used only by the removed API handlers (`obligation_store`, `nv_base`, `config_json`, `nexus_client`, `messages_db_path`) if they are not referenced elsewhere in the daemon; keep `health` field if still used by any surviving handler [owner:api-engineer]
+- [x] [6.7] [P-3] File a beads issue (separate from this spec) to delete the `dashboard/` Vite SPA source directory after one week of production soak — do not delete in this spec [owner:api-engineer]
 
 ## Batch 7 — Verify
 

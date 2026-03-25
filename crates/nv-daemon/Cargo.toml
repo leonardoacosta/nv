@@ -35,9 +35,7 @@ tokio-postgres = { workspace = true }
 tokio-postgres-rustls = { workspace = true }
 rustls = { workspace = true }
 webpki-roots = { workspace = true }
-rust-embed = { workspace = true }
 toml = { workspace = true }
-mime_guess = "2"
 cron = "0.12"
 
 [build-dependencies]

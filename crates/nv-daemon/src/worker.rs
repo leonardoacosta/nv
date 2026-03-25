@@ -84,14 +84,12 @@ pub const TOOL_TIMEOUT_WRITE: u64 = 60;
 ///
 /// Telegram rate-limits edits to 1 per second per chat; 1500ms provides
 /// comfortable headroom while keeping the user's view reasonably fresh.
-#[allow(dead_code)]
 pub const STREAMING_EDIT_INTERVAL_MS: u64 = 1500;
 
 /// Minimum accumulated character delta before forcing a mid-stream edit.
 ///
 /// An edit is sent when the buffer has grown by at least this many characters
 /// since the last edit, regardless of the time interval.
-#[allow(dead_code)]
 pub const STREAMING_EDIT_MIN_DELTA_CHARS: usize = 50;
 
 /// Tool names classified as write operations (use longer timeout).
@@ -740,11 +738,46 @@ impl Worker {
             })
             .unwrap_or_else(|| "telegram".to_string());
 
-        // Send a single typing indicator at the start — Telegram shows "typing..."
-        // for ~5s. The orchestrator refreshes it every 5s via check_inactivity
-        // and on each ToolCalled event.
-        if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
-            tg.send_chat_action(chat_id, "typing").await;
+        // Detect whether this turn originates from a Telegram message trigger.
+        // When true, we send a "..." placeholder via send_thinking() instead of
+        // a typing indicator, enabling streaming progressive edits (Req-1, Req-4).
+        let is_telegram_message_trigger = trigger_channel == "telegram"
+            && task.triggers.iter().any(|t| matches!(t, Trigger::Message(_)));
+
+        // Send placeholder or typing indicator at turn start.
+        // For Telegram message triggers with an active tg_client: send "..." placeholder
+        // and store its message_id for subsequent streaming edits and final delivery.
+        // For all other triggers (CLI, cron, non-Telegram): keep send_chat_action("typing").
+        let mut placeholder_msg_id: Option<i64> = None;
+        if is_telegram_message_trigger {
+            if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
+                match tg.send_thinking(chat_id).await {
+                    Ok(msg_id) => {
+                        placeholder_msg_id = Some(msg_id);
+                        tracing::debug!(
+                            chat_id,
+                            msg_id,
+                            "streaming: placeholder sent"
+                        );
+                    }
+                    Err(e) => {
+                        // Placeholder failed — fall back to typing indicator so the
+                        // user still sees some feedback.
+                        tracing::warn!(error = %e, "streaming: send_thinking failed, falling back to typing indicator");
+                        tg.send_chat_action(chat_id, "typing").await;
+                    }
+                }
+            } else {
+                // No tg_client available — send typing indicator as usual.
+                if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
+                    tg.send_chat_action(chat_id, "typing").await;
+                }
+            }
+        } else {
+            // Non-Telegram or non-message trigger: keep existing typing indicator.
+            if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
+                tg.send_chat_action(chat_id, "typing").await;
+            }
         }
 
         // Emit StageStarted for context build — carries telegram_chat_id so the
@@ -1215,67 +1248,154 @@ impl Worker {
             }
         }
 
-        // Call Claude
+        // ── Streaming edit closure (Req-3) ────────────────────────────────────
+        //
+        // When a placeholder was sent, build a closure that accumulates incoming
+        // text deltas and fires a Telegram edit when the 1.5s interval or 50-char
+        // threshold is reached.  The closure is passed to `send_messages_streaming`
+        // so it is called synchronously within the stream-reading loop.
+        // Telegram edits are dispatched via `tokio::spawn` (fire-and-forget) so the
+        // closure itself remains sync.
+        //
+        // When no placeholder is active (cold-start, non-Telegram) the closure is a
+        // no-op — the persistent path won't be reached anyway.
+        let stream_tg_client = tg_client.clone();
+        let stream_chat_id = tg_chat_id;
+        let stream_placeholder_id = placeholder_msg_id;
+
+        // Shared mutable state for the closure — these are moved in.
+        let mut stream_buffer = String::new();
+        let mut last_edit_at = Instant::now();
+        let mut chars_since_last_edit: usize = 0;
+
+        let on_text_delta = {
+            let tg_client_ref = stream_tg_client.clone();
+            move |delta: &str| {
+                if stream_placeholder_id.is_none() {
+                    // No placeholder — streaming edits are not applicable.
+                    return;
+                }
+                let (chat_id, placeholder_id) = match (stream_chat_id, stream_placeholder_id) {
+                    (Some(c), Some(p)) => (c, p),
+                    _ => return,
+                };
+
+                stream_buffer.push_str(delta);
+                chars_since_last_edit += delta.len();
+
+                let interval_elapsed = last_edit_at.elapsed()
+                    >= Duration::from_millis(STREAMING_EDIT_INTERVAL_MS);
+                let delta_threshold_met =
+                    chars_since_last_edit >= STREAMING_EDIT_MIN_DELTA_CHARS;
+
+                if interval_elapsed || delta_threshold_met {
+                    let text_snapshot = stream_buffer.clone();
+                    last_edit_at = Instant::now();
+                    chars_since_last_edit = 0;
+
+                    if let Some(ref tg) = tg_client_ref {
+                        let tg = tg.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = tg
+                                .edit_message_text(chat_id, placeholder_id, &text_snapshot)
+                                .await
+                            {
+                                tracing::debug!(
+                                    error = %e,
+                                    "streaming edit: edit_message_text failed (non-fatal)"
+                                );
+                            }
+                        });
+                    }
+                }
+            }
+        };
+
+        // Call Claude — streaming path for Telegram turns, cold-start otherwise.
         let call_start = Instant::now();
-        let response = match client
-            .send_messages_with_image(
-                &system_prompt,
-                &conversation_history,
-                &tool_definitions,
-                image_path.as_deref(),
-            )
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                // Emit Error event
-                let _ = event_tx.send(WorkerEvent::Error {
-                    worker_id: task_id,
-                    error: format!("Claude API failure: {e}"),
-                });
-                // React with error
-                if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, tg_chat_id, tg_msg_id) {
-                    let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await; // red X
+
+        // Attempt streaming via persistent session when no image attachment.
+        // image_path forces cold-start (no attachment support in persistent mode).
+        let streaming_result: Option<anyhow::Result<crate::claude::ApiResponse>> =
+            if placeholder_msg_id.is_some() && image_path.is_none() {
+                client
+                    .send_messages_streaming(
+                        &system_prompt,
+                        &conversation_history,
+                        &tool_definitions,
+                        on_text_delta,
+                    )
+                    .await
+            } else {
+                None
+            };
+
+        let response = match streaming_result {
+            // Persistent streaming path succeeded.
+            Some(Ok(r)) => r,
+            // Persistent streaming path unavailable or failed — fall back to cold-start.
+            // This also covers the case where placeholder_msg_id is None (non-Telegram).
+            _ => {
+                match client
+                    .send_messages_with_image(
+                        &system_prompt,
+                        &conversation_history,
+                        &tool_definitions,
+                        image_path.as_deref(),
+                    )
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        // Emit Error event
+                        let _ = event_tx.send(WorkerEvent::Error {
+                            worker_id: task_id,
+                            error: format!("Claude API failure: {e}"),
+                        });
+                        // React with error
+                        if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, tg_chat_id, tg_msg_id) {
+                            let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await; // red X
+                        }
+                        // Send user-friendly error to Telegram
+                        if let Some(channel) = deps.channels.get("telegram") {
+                            let error_str = e.to_string();
+                            let user_msg = if error_str.contains("EOF while parsing")
+                                || error_str.contains("Broken pipe")
+                                || error_str.contains("closed stdout")
+                                || error_str.contains("process died")
+                            {
+                                "Something went wrong — please try again.".to_string()
+                            } else if error_str.contains("Timeout") || error_str.contains("timed out") {
+                                "That took too long — try a simpler request.".to_string()
+                            } else if error_str.contains("hit your limit") || error_str.contains("rate limit") {
+                                let reset_info = error_str
+                                    .split("resets ")
+                                    .nth(1)
+                                    .map(|s| s.trim_end_matches([')', '.']))
+                                    .map(|s| format!(" Resets at {s}."))
+                                    .unwrap_or_default();
+                                format!("\u{23F8}\u{FE0F} I've hit my usage limit for now.{reset_info} I'll be back shortly — try again later.")
+                            } else if error_str.contains("Not logged in") || error_str.contains("auth") {
+                                "\u{1F511} Authentication issue — check Claude CLI credentials.".to_string()
+                            } else {
+                                format!("\u{26A0} {e}")
+                            };
+                            let msg = OutboundMessage {
+                                channel: "telegram".into(),
+                                content: user_msg,
+                                reply_to: reply_to_id.clone(),
+                                keyboard: None,
+                            };
+                            let _ = channel.send_message(msg).await;
+                        }
+                        // Send error to CLI channels
+                        let err_msg = format!("API error: {e}");
+                        for tx in task.cli_response_txs {
+                            let _ = tx.send(err_msg.clone());
+                        }
+                        return Err(e);
+                    }
                 }
-                // Send user-friendly error to Telegram
-                if let Some(channel) = deps.channels.get("telegram") {
-                    let error_str = e.to_string();
-                    let user_msg = if error_str.contains("EOF while parsing")
-                        || error_str.contains("Broken pipe")
-                        || error_str.contains("closed stdout")
-                        || error_str.contains("process died")
-                    {
-                        "Something went wrong — please try again.".to_string()
-                    } else if error_str.contains("Timeout") || error_str.contains("timed out") {
-                        "That took too long — try a simpler request.".to_string()
-                    } else if error_str.contains("hit your limit") || error_str.contains("rate limit") {
-                        // Extract reset time if present (e.g., "resets 4pm (America/Chicago)")
-                        let reset_info = error_str
-                            .split("resets ")
-                            .nth(1)
-                            .map(|s| s.trim_end_matches([')', '.']))
-                            .map(|s| format!(" Resets at {s}."))
-                            .unwrap_or_default();
-                        format!("\u{23F8}\u{FE0F} I've hit my usage limit for now.{reset_info} I'll be back shortly — try again later.")
-                    } else if error_str.contains("Not logged in") || error_str.contains("auth") {
-                        "\u{1F511} Authentication issue — check Claude CLI credentials.".to_string()
-                    } else {
-                        format!("\u{26A0} {e}")
-                    };
-                    let msg = OutboundMessage {
-                        channel: "telegram".into(),
-                        content: user_msg,
-                        reply_to: reply_to_id.clone(),
-                        keyboard: None,
-                    };
-                    let _ = channel.send_message(msg).await;
-                }
-                // Send error to CLI channels
-                let err_msg = format!("API error: {e}");
-                for tx in task.cli_response_txs {
-                    let _ = tx.send(err_msg.clone());
-                }
-                return Err(e);
             }
         };
 
@@ -1466,7 +1586,36 @@ impl Worker {
 
         // Record delivery span — time from send start to channel confirmation.
         let delivery_start = Instant::now();
-        if !response_text.is_empty() {
+
+        // ── Final delivery: streaming path vs cold-start path (Req-4, Req-5, Req-6) ──
+        //
+        // When a placeholder was sent (persistent streaming path):
+        //   - Non-empty response → edit the placeholder to the final content (Req-4).
+        //     Keyboard (if any) is attached only on this final edit (Req-7 / Req-9).
+        //   - Empty response (tool-only turn) → delete the placeholder (Req-5).
+        //
+        // When no placeholder was sent (cold-start, non-Telegram):
+        //   - Deliver via channel.send_message as today (Req-6 / Req-8).
+        if let (Some(tg), Some(chat_id), Some(placeholder_id)) =
+            (&tg_client, tg_chat_id, placeholder_msg_id)
+        {
+            if !response_text.is_empty() {
+                // Req-4: Final edit with full response (no keyboard here — pending-action
+                // confirmations are sent separately by the tool execution path).
+                if let Err(e) = tg
+                    .edit_message(chat_id, placeholder_id, &channel_content, None)
+                    .await
+                {
+                    tracing::warn!(error = %e, "streaming: final edit_message failed");
+                }
+            } else {
+                // Req-5: Tool-only turn — delete the placeholder.
+                if let Err(e) = tg.delete_message(chat_id, placeholder_id).await {
+                    tracing::warn!(error = %e, "streaming: delete_message (tool-only) failed");
+                }
+            }
+        } else if !response_text.is_empty() {
+            // Req-6 / Req-8: Cold-start or non-Telegram path — send_message as before.
             if let Some(channel) = deps.channels.get(reply_channel) {
                 if let Err(e) = channel
                     .send_message(OutboundMessage {
@@ -1481,6 +1630,7 @@ impl Worker {
                 }
             }
         }
+
         let delivery_ms = delivery_start.elapsed().as_millis() as u64;
         let _ = event_tx.send(WorkerEvent::StageComplete {
             worker_id: task_id,

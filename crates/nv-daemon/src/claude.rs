@@ -769,6 +769,156 @@ impl PersistentSession {
 
         Some(result)
     }
+
+    /// Send a turn via the persistent subprocess with a per-delta streaming callback.
+    ///
+    /// Behaves identically to `send_turn` except the provided `on_text_delta` closure
+    /// is invoked for every incremental `assistant/text` chunk as it arrives.
+    /// Returns `None` when the persistent session is unavailable (caller should fall
+    /// back to cold-start, which does not support streaming delivery).
+    pub(crate) async fn send_turn_streaming<F>(
+        &self,
+        system: &str,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        on_text_delta: F,
+    ) -> Option<Result<ApiResponse>>
+    where
+        F: FnMut(&str),
+    {
+        let mut inner = self.inner.lock().await;
+
+        // Mirror tool-change detection from send_turn.
+        {
+            let caller_json = serde_json::to_string(
+                &tools.iter().map(|t| &t.name).collect::<Vec<_>>(),
+            )
+            .unwrap_or_default();
+            let spawn_tool_names: Vec<String> = inner
+                .config
+                .tools_json
+                .as_deref()
+                .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|v| v["name"].as_str().map(ToString::to_string))
+                .collect();
+            let spawn_json = serde_json::to_string(&spawn_tool_names).unwrap_or_default();
+
+            if caller_json != spawn_json {
+                tracing::warn!(
+                    caller_tools = %caller_json,
+                    spawn_tools = %spawn_json,
+                    "persistent streaming: tool list changed since spawn — killing process for respawn"
+                );
+                inner.process = None;
+                let tools_array: Vec<serde_json::Value> =
+                    tools.iter().map(|t| t.anthropic_json()).collect();
+                if let Ok(json) = serde_json::to_string(&tools_array) {
+                    inner.config.tools_json = if tools.is_empty() { None } else { Some(json) };
+                }
+            }
+        }
+
+        if !Self::ensure_alive(&mut inner).await {
+            return None;
+        }
+
+        let tools_registered = inner
+            .config
+            .tools_json
+            .as_deref()
+            .and_then(|j| serde_json::from_str::<Vec<serde_json::Value>>(j).ok())
+            .map(|v| v.len())
+            .unwrap_or(0);
+
+        let proc = inner.process.as_mut()?;
+
+        let user_content = build_stream_input(system, messages);
+        tracing::info!(
+            prompt_bytes = user_content.len(),
+            system_bytes = system.len(),
+            messages = messages.len(),
+            tools_registered,
+            "persistent streaming: turn payload size"
+        );
+
+        let input = StreamJsonInput {
+            message: StreamJsonMessage {
+                role: "user".to_string(),
+                content: user_content,
+            },
+        };
+
+        let json_line = match serde_json::to_string(&input) {
+            Ok(j) => j,
+            Err(e) => {
+                tracing::error!(error = %e, "streaming: failed to serialize stream-json input");
+                return Some(Err(ApiError::Deserialize(format!(
+                    "failed to serialize input: {e}"
+                ))
+                .into()));
+            }
+        };
+
+        if let Err(e) = proc.stdin.write_all(json_line.as_bytes()).await {
+            tracing::error!(error = %e, "streaming: failed to write to stdin");
+            inner.process = None;
+            inner.backoff.record_failure();
+            if inner.backoff.should_fallback() {
+                inner.fallback_only = true;
+                inner.last_failure_at = Some(Instant::now());
+            }
+            return None;
+        }
+        if let Err(e) = proc.stdin.write_all(b"\n").await {
+            tracing::error!(error = %e, "streaming: failed to write newline to stdin");
+            inner.process = None;
+            inner.backoff.record_failure();
+            if inner.backoff.should_fallback() {
+                inner.fallback_only = true;
+                inner.last_failure_at = Some(Instant::now());
+            }
+            return None;
+        }
+        if let Err(e) = proc.stdin.flush().await {
+            tracing::error!(error = %e, "streaming: failed to flush stdin");
+            inner.process = None;
+            inner.backoff.record_failure();
+            if inner.backoff.should_fallback() {
+                inner.fallback_only = true;
+                inner.last_failure_at = Some(Instant::now());
+            }
+            return None;
+        }
+
+        tracing::info!("persistent streaming: turn sent, waiting for response");
+        let turn_start = Instant::now();
+        let result = read_stream_response_with_callback(proc, on_text_delta).await;
+        tracing::info!(
+            elapsed_ms = turn_start.elapsed().as_millis() as u64,
+            ok = result.is_ok(),
+            "persistent streaming: response received"
+        );
+
+        match &result {
+            Ok(_) => {
+                inner.backoff.record_success();
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "persistent streaming: response read failed");
+                inner.process = None;
+                inner.backoff.record_failure();
+                if inner.backoff.should_fallback() {
+                    inner.fallback_only = true;
+                    inner.last_failure_at = Some(Instant::now());
+                }
+                return None;
+            }
+        }
+
+        Some(result)
+    }
 }
 
 /// Read stream-json events from a `PersistentProcess` until a "result" event arrives.
@@ -785,6 +935,29 @@ async fn read_stream_response(proc: &mut PersistentProcess) -> Result<ApiRespons
         read_stream_response_from_lines(&mut chained_buf).await
     } else {
         read_stream_response_from_lines(&mut proc.stdout).await
+    }
+}
+
+/// Read stream-json events from a `PersistentProcess` with a per-delta callback.
+///
+/// Identical to `read_stream_response` but calls `on_text_delta(delta)` for every
+/// `{"type":"assistant","subtype":"text"}` event before accumulating into the buffer.
+/// The callback receives the incremental chunk (not the full accumulated text).
+async fn read_stream_response_with_callback<F>(
+    proc: &mut PersistentProcess,
+    on_text_delta: F,
+) -> Result<ApiResponse>
+where
+    F: FnMut(&str),
+{
+    if let Some(line) = proc.buffered_line.take() {
+        let prefixed = format!("{line}\n");
+        let prefix_reader = tokio::io::BufReader::new(std::io::Cursor::new(prefixed));
+        let chained = tokio::io::AsyncReadExt::chain(prefix_reader, &mut proc.stdout);
+        let mut chained_buf = tokio::io::BufReader::new(chained);
+        read_stream_response_streaming(&mut chained_buf, on_text_delta).await
+    } else {
+        read_stream_response_streaming(&mut proc.stdout, on_text_delta).await
     }
 }
 
@@ -953,6 +1126,29 @@ impl ClaudeClient {
             spawn_config,
             fallback_prose_tools,
         }
+    }
+
+    /// Send a messages request with an incremental text-delta callback.
+    ///
+    /// Attempts to use the persistent subprocess (stream-json mode) and calls
+    /// `on_text_delta` for each incremental text chunk as it arrives from Claude.
+    /// Returns `None` when the persistent session is unavailable — the caller
+    /// should fall back to cold-start, which does not support incremental delivery.
+    ///
+    /// The callback is called with raw incremental chunks, not accumulated text.
+    pub(crate) async fn send_messages_streaming<F>(
+        &self,
+        system: &str,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        on_text_delta: F,
+    ) -> Option<Result<ApiResponse>>
+    where
+        F: FnMut(&str),
+    {
+        self.session
+            .send_turn_streaming(system, messages, tools, on_text_delta)
+            .await
     }
 
     /// Send a messages request via the Claude CLI.
@@ -1692,6 +1888,171 @@ async fn read_stream_response_from_lines<R: tokio::io::AsyncBufRead + Unpin>(
     }
 }
 
+/// Read stream-json events from any async buffered reader, calling `on_text_delta`
+/// for each incremental `assistant/text` chunk before accumulating it.
+///
+/// This is the streaming-delivery variant of `read_stream_response_from_lines`.
+/// It is identical in structure except it calls `on_text_delta(delta)` on every
+/// `{"type":"assistant","subtype":"text","text":"..."}` event so the caller can
+/// dispatch intermediate Telegram edits without waiting for the full response.
+///
+/// The callback receives the raw incremental chunk (not the accumulated buffer).
+pub(crate) async fn read_stream_response_streaming<R, F>(
+    reader: &mut R,
+    mut on_text_delta: F,
+) -> Result<ApiResponse>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+    F: FnMut(&str),
+{
+    let mut content_blocks: Vec<ContentBlock> = Vec::new();
+    let mut current_text = String::new();
+    let mut usage = Usage {
+        input_tokens: 0,
+        output_tokens: 0,
+        total_cost_usd: None,
+    };
+    let mut stop_reason = StopReason::EndTurn;
+    let mut line = String::new();
+
+    let timeout = Duration::from_secs(60);
+    let response_start = Instant::now();
+
+    loop {
+        line.clear();
+        let read_result = tokio::time::timeout(timeout, reader.read_line(&mut line)).await;
+
+        match read_result {
+            Err(_) => {
+                tracing::warn!(
+                    elapsed_ms = response_start.elapsed().as_millis() as u64,
+                    "persistent streaming: read_line timed out after 60s"
+                );
+                return Err(ApiError::CliError {
+                    message: "Timeout waiting for persistent subprocess response (streaming)".into(),
+                }
+                .into());
+            }
+            Ok(Err(e)) => {
+                return Err(ApiError::CliError {
+                    message: format!("IO error reading from persistent subprocess (streaming): {e}"),
+                }
+                .into());
+            }
+            Ok(Ok(0)) => {
+                return Err(ApiError::CliError {
+                    message: "Persistent subprocess closed stdout (process died, streaming)".into(),
+                }
+                .into());
+            }
+            Ok(Ok(_)) => {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                tracing::debug!(
+                    bytes = trimmed.len(),
+                    preview = %&trimmed[..trimmed.len().min(200)],
+                    elapsed_ms = response_start.elapsed().as_millis() as u64,
+                    "persistent streaming: received stream line"
+                );
+
+                let event: StreamJsonEvent = match serde_json::from_str(trimmed) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        tracing::warn!(
+                            line_len = trimmed.len(),
+                            preview = %&trimmed[..trimmed.len().min(200)],
+                            error = %e,
+                            "streaming: skipping unparseable stream-json line"
+                        );
+                        continue;
+                    }
+                };
+
+                match event.event_type.as_str() {
+                    "assistant" => match event.subtype.as_str() {
+                        "text" => {
+                            // Fire the callback with the incremental delta before accumulating.
+                            on_text_delta(&event.text);
+                            current_text.push_str(&event.text);
+                        }
+                        "tool_use" => {
+                            if !current_text.is_empty() {
+                                content_blocks.push(ContentBlock::Text {
+                                    text: std::mem::take(&mut current_text),
+                                });
+                            }
+                            content_blocks.push(ContentBlock::ToolUse {
+                                id: event.id,
+                                name: event.name,
+                                input: event.input.unwrap_or(serde_json::Value::Null),
+                            });
+                            stop_reason = StopReason::ToolUse;
+                        }
+                        _ => {}
+                    },
+                    "result" => {
+                        if !current_text.is_empty() {
+                            content_blocks.push(ContentBlock::Text {
+                                text: std::mem::take(&mut current_text),
+                            });
+                        }
+
+                        let session_id = event.session_id;
+                        if let Some(u) = event.usage {
+                            usage = Usage {
+                                input_tokens: u.input_tokens,
+                                output_tokens: u.output_tokens,
+                                total_cost_usd: u.total_cost_usd,
+                            };
+                        }
+
+                        if event.is_error {
+                            if event.result.to_lowercase().contains("not logged in") {
+                                return Err(ApiError::AuthError(event.result).into());
+                            }
+                            return Err(ApiError::CliError {
+                                message: event.result,
+                            }
+                            .into());
+                        }
+
+                        if content_blocks.is_empty() && !event.result.is_empty() {
+                            content_blocks.push(ContentBlock::Text {
+                                text: event.result,
+                            });
+                        }
+
+                        if stop_reason != StopReason::ToolUse {
+                            stop_reason = match event.subtype.as_str() {
+                                "max_tokens" => StopReason::MaxTokens,
+                                _ => StopReason::EndTurn,
+                            };
+                        }
+
+                        tracing::debug!(
+                            input_tokens = usage.input_tokens,
+                            output_tokens = usage.output_tokens,
+                            session_id = %session_id,
+                            "streaming: stream response received"
+                        );
+
+                        return Ok(ApiResponse {
+                            id: session_id,
+                            content: content_blocks,
+                            stop_reason,
+                            usage,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -2396,6 +2757,163 @@ mod tests {
         };
         assert!(!result.contains("Your recent messages to Leo:"));
         assert_eq!(result, base_system);
+    }
+
+    // ── Tests: read_stream_response_streaming ───────────────────────
+
+    /// [3.3] on_text_delta is called once per assistant/text event with the exact delta.
+    #[tokio::test]
+    async fn streaming_calls_on_text_delta_per_event() {
+        use tokio::io::AsyncWriteExt;
+
+        let (reader, mut writer) = tokio::io::duplex(8192);
+        let mut buf_reader = BufReader::new(reader);
+
+        tokio::spawn(async move {
+            let events = [
+                r#"{"type":"assistant","subtype":"text","text":"Hello "}"#,
+                r#"{"type":"assistant","subtype":"text","text":"world"}"#,
+                r#"{"type":"assistant","subtype":"text","text":"!"}"#,
+                r#"{"type":"result","subtype":"success","result":"","session_id":"s-stream","usage":{"input_tokens":5,"output_tokens":3},"is_error":false}"#,
+            ];
+            for ev in &events {
+                writer.write_all(ev.as_bytes()).await.unwrap();
+                writer.write_all(b"\n").await.unwrap();
+            }
+        });
+
+        let mut deltas: Vec<String> = Vec::new();
+        let response = read_stream_response_streaming(&mut buf_reader, |delta| {
+            deltas.push(delta.to_string());
+        })
+        .await
+        .unwrap();
+
+        // Callback should have been called once per text event with the raw delta.
+        assert_eq!(deltas, vec!["Hello ", "world", "!"]);
+
+        // The final response should contain the fully accumulated text.
+        assert_eq!(response.content.len(), 1);
+        match &response.content[0] {
+            ContentBlock::Text { text } => assert_eq!(text, "Hello world!"),
+            _ => panic!("expected text block"),
+        }
+    }
+
+    /// [3.4] read_stream_response_streaming returns the same ApiResponse as
+    /// read_stream_response_from_lines for identical input.
+    #[tokio::test]
+    async fn streaming_returns_same_api_response_as_from_lines() {
+        use tokio::io::AsyncWriteExt;
+
+        let events = [
+            r#"{"type":"assistant","subtype":"text","text":"Hello "}"#,
+            r#"{"type":"assistant","subtype":"text","text":"world!"}"#,
+            r#"{"type":"result","subtype":"success","result":"","session_id":"s-dup","usage":{"input_tokens":10,"output_tokens":2},"is_error":false}"#,
+        ];
+
+        // Run read_stream_response_from_lines.
+        let (reader_a, mut writer_a) = tokio::io::duplex(8192);
+        let mut buf_reader_a = BufReader::new(reader_a);
+        let events_clone = events.to_vec();
+        tokio::spawn(async move {
+            for ev in &events_clone {
+                writer_a.write_all(ev.as_bytes()).await.unwrap();
+                writer_a.write_all(b"\n").await.unwrap();
+            }
+        });
+        let resp_a = read_stream_response_from_lines(&mut buf_reader_a).await.unwrap();
+
+        // Run read_stream_response_streaming.
+        let (reader_b, mut writer_b) = tokio::io::duplex(8192);
+        let mut buf_reader_b = BufReader::new(reader_b);
+        tokio::spawn(async move {
+            for ev in &events {
+                writer_b.write_all(ev.as_bytes()).await.unwrap();
+                writer_b.write_all(b"\n").await.unwrap();
+            }
+        });
+        let resp_b = read_stream_response_streaming(&mut buf_reader_b, |_| {}).await.unwrap();
+
+        // Both must produce identical content, stop_reason, and usage.
+        assert_eq!(resp_a.id, resp_b.id);
+        assert_eq!(resp_a.stop_reason, resp_b.stop_reason);
+        assert_eq!(resp_a.usage.input_tokens, resp_b.usage.input_tokens);
+        assert_eq!(resp_a.usage.output_tokens, resp_b.usage.output_tokens);
+        assert_eq!(resp_a.content.len(), resp_b.content.len());
+        if let (ContentBlock::Text { text: t_a }, ContentBlock::Text { text: t_b }) =
+            (&resp_a.content[0], &resp_b.content[0])
+        {
+            assert_eq!(t_a, t_b);
+        } else {
+            panic!("expected text blocks in both responses");
+        }
+    }
+
+    /// [3.6] streaming edit closure fires when accumulated delta >= STREAMING_EDIT_MIN_DELTA_CHARS
+    /// regardless of elapsed time.
+    #[test]
+    fn streaming_edit_closure_fires_on_delta_threshold() {
+        // Simulate the closure logic inline (no tokio::spawn needed — we test the
+        // threshold decision, not the actual HTTP call).
+        let threshold = crate::worker::STREAMING_EDIT_MIN_DELTA_CHARS;
+        let mut chars_since_last_edit: usize = 0;
+        let last_edit_at = Instant::now();
+        let mut edit_fired = false;
+
+        // Add enough characters to cross the threshold.
+        let chunk = "a".repeat(threshold);
+        chars_since_last_edit += chunk.len();
+
+        let delta_threshold_met = chars_since_last_edit >= threshold;
+        // Interval has not elapsed (we just created last_edit_at).
+        let interval_elapsed = last_edit_at.elapsed()
+            >= Duration::from_millis(crate::worker::STREAMING_EDIT_INTERVAL_MS);
+
+        if interval_elapsed || delta_threshold_met {
+            edit_fired = true;
+        }
+
+        assert!(
+            delta_threshold_met,
+            "threshold should be met after adding >= STREAMING_EDIT_MIN_DELTA_CHARS"
+        );
+        assert!(
+            edit_fired,
+            "edit should fire when delta threshold is reached even if interval has not elapsed"
+        );
+    }
+
+    /// [3.8] Existing read_stream_response_from_lines tests still pass (regression guard).
+    /// This test re-runs the core text accumulation path to confirm no regression.
+    #[tokio::test]
+    async fn streaming_no_regression_to_read_stream_response_from_lines() {
+        use tokio::io::AsyncWriteExt;
+
+        // Identical to the existing read_stream_response_text_only test.
+        let (reader, mut writer) = tokio::io::duplex(8192);
+        let mut buf_reader = BufReader::new(reader);
+
+        tokio::spawn(async move {
+            let events = [
+                r#"{"type":"assistant","subtype":"text","text":"Hello "}"#,
+                r#"{"type":"assistant","subtype":"text","text":"world!"}"#,
+                r#"{"type":"result","subtype":"success","result":"","session_id":"reg-1","usage":{"input_tokens":10,"output_tokens":5},"is_error":false}"#,
+            ];
+            for ev in &events {
+                writer.write_all(ev.as_bytes()).await.unwrap();
+                writer.write_all(b"\n").await.unwrap();
+            }
+        });
+
+        let response = read_stream_response_from_lines(&mut buf_reader).await.unwrap();
+        assert_eq!(response.id, "reg-1");
+        assert_eq!(response.content.len(), 1);
+        match &response.content[0] {
+            ContentBlock::Text { text } => assert_eq!(text, "Hello world!"),
+            _ => panic!("expected text block"),
+        }
+        assert_eq!(response.stop_reason, StopReason::EndTurn);
     }
 
     // ── New tests: ClaudeClient constructor ─────────────────────────

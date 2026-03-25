@@ -207,7 +207,7 @@
       "specs": [
         {
           "name": "improve-typing-indicators",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -216,12 +216,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-25T12:15:55.722054",
+          "merged_at": "2026-03-25T12:31:12.582059"
         },
         {
           "name": "fix-nexus-session-dedup",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -230,12 +230,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-25T12:15:55.722056",
+          "merged_at": "2026-03-25T12:31:12.582062"
         },
         {
           "name": "investigate-300s-timeout",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -244,8 +244,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-25T12:15:55.722058",
+          "merged_at": "2026-03-25T12:31:12.582064"
         }
       ],
       "task_count": 52
@@ -335,18 +335,22 @@
       ]
     }
   ],
-  "status": "in_progress",
-  "current_wave": 2,
+  "status": "completed",
+  "current_wave": null,
   "started_at": "2026-03-25T12:00:18.696682",
-  "completed_at": null,
+  "completed_at": "2026-03-25T12:31:45.557921",
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
     "fix-telegram-null-callback",
     "fix-reminders-db-migration",
     "enrich-diary-narratives",
-    "fix-cold-start-memory"
+    "fix-cold-start-memory",
+    "improve-typing-indicators",
+    "fix-nexus-session-dedup",
+    "investigate-300s-timeout"
   ],
   "failed_specs": [],
   "mode": "consolidated",
@@ -356,19 +360,15 @@
       "IMPL"
     ],
     "task_results": {
-      "fix-telegram-null-callback": {},
-      "fix-reminders-db-migration": {},
-      "enrich-diary-narratives": {},
-      "fix-cold-start-memory": {},
       "improve-typing-indicators": {},
       "fix-nexus-session-dedup": {},
       "investigate-300s-timeout": {}
     },
     "phase_started_at": {
-      "IMPL": "2026-03-25T12:01:37.637279"
+      "IMPL": "2026-03-25T12:15:55.722044"
     },
     "phase_completed_at": {
-      "IMPL": "2026-03-25T12:14:51.676271"
+      "IMPL": "2026-03-25T12:31:12.582048"
     }
   }
 }

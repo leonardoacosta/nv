@@ -30,6 +30,7 @@ mod memory;
 mod messages;
 mod nexus;
 mod obligation_detector;
+mod team_agent;
 mod obligation_store;
 mod orchestrator;
 mod query;

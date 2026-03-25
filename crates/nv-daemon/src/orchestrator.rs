@@ -875,10 +875,20 @@ impl Orchestrator {
                         if let Some(tg) = self.channels.get("telegram") {
                             if let Some(tg_channel) = tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>() {
                                 let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
-                                if let Err(e) = crate::callbacks::handle_approve(
+                                // Build NexusBackend for approval routing (team-agents or gRPC)
+                                let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
+                                    if let Some(ref dispatcher) = self.deps.team_agent_dispatcher {
+                                        Some(nexus::backend::NexusBackend::TeamAgents(dispatcher.clone()))
+                                    } else {
+                                        self.deps.nexus_client
+                                            .as_ref()
+                                            .map(|c| nexus::backend::NexusBackend::Nexus(c.clone()))
+                                    };
+                                if let Err(e) = crate::callbacks::handle_approve_with_backend(
                                     uuid_str,
                                     self.deps.jira_registry.as_ref(),
                                     self.deps.nexus_client.as_ref(),
+                                    nexus_backend_owned.as_ref(),
                                     &self.deps.project_registry,
                                     &self.deps.channels,
                                     &tg_channel.client,
@@ -1170,13 +1180,22 @@ impl Orchestrator {
             );
         }
 
-        // Check Nexus connectivity
-        let Some(nexus_client) = &self.deps.nexus_client else {
-            return "\u{274C} Nexus not configured. Cannot start remote sessions.".to_string();
+        // Check Nexus / team-agent connectivity
+        let backend_available = if let Some(ref dispatcher) = self.deps.team_agent_dispatcher {
+            dispatcher.is_available()
+        } else if let Some(ref client) = self.deps.nexus_client {
+            client.is_connected().await
+        } else {
+            false
         };
-
-        if !nexus_client.is_connected().await {
-            return "\u{274C} No Nexus agents connected. Cannot start remote sessions.".to_string();
+        if !backend_available {
+            return if self.deps.team_agent_dispatcher.is_some() {
+                "\u{274C} No team-agent machines configured. Cannot start sessions.".to_string()
+            } else if self.deps.nexus_client.is_some() {
+                "\u{274C} No Nexus agents connected. Cannot start remote sessions.".to_string()
+            } else {
+                "\u{274C} Nexus not configured. Cannot start remote sessions.".to_string()
+            };
         }
 
         // Create PendingAction with confirmation keyboard

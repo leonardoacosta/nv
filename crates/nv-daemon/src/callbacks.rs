@@ -24,12 +24,50 @@ use crate::tools;
 /// Execute a confirmed pending action.
 ///
 /// Loads the action from state, detects the action type, and routes to
-/// the appropriate executor (Jira, Nexus, Home Assistant, channel send, etc.).
+/// the appropriate executor (Jira, Nexus/TeamAgent, Home Assistant, channel send, etc.).
+///
+/// When `nexus_backend` is `Some`, NexusStartSession and NexusStopSession actions
+/// are routed through it (supporting both gRPC Nexus and team-agent modes).
+/// When `None`, `nexus_client` is used as fallback (legacy path).
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_approve(
     uuid_str: &str,
     jira_registry: Option<&jira::JiraRegistry>,
     nexus_client: Option<&nexus::client::NexusClient>,
+    project_registry: &HashMap<String, PathBuf>,
+    channels: &HashMap<String, Arc<dyn Channel>>,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    original_message_id: Option<i64>,
+    state: &State,
+    schedule_store: Option<&std::sync::Mutex<ScheduleStore>>,
+) -> Result<()> {
+    handle_approve_with_backend(
+        uuid_str,
+        jira_registry,
+        nexus_client,
+        None,
+        project_registry,
+        channels,
+        telegram,
+        chat_id,
+        original_message_id,
+        state,
+        schedule_store,
+    )
+    .await
+}
+
+/// Variant of `handle_approve` that accepts an optional `NexusBackend`.
+///
+/// When `nexus_backend` is `Some`, NexusStartSession / NexusStopSession actions
+/// are dispatched through it instead of the raw `nexus_client`.
+#[allow(clippy::too_many_arguments)]
+pub async fn handle_approve_with_backend(
+    uuid_str: &str,
+    jira_registry: Option<&jira::JiraRegistry>,
+    nexus_client: Option<&nexus::client::NexusClient>,
+    nexus_backend: Option<&nexus::backend::NexusBackend>,
     project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
     telegram: &TelegramClient,
@@ -53,15 +91,23 @@ pub async fn handle_approve(
 
     let result = match action_type {
         nv_core::types::ActionType::NexusStartSession => {
-            execute_nexus_start_session(
-                &action.payload,
-                nexus_client,
-                project_registry,
-            )
-            .await
+            if let Some(backend) = nexus_backend {
+                backend.execute_start_session(&action.payload, project_registry).await
+            } else {
+                execute_nexus_start_session(
+                    &action.payload,
+                    nexus_client,
+                    project_registry,
+                )
+                .await
+            }
         }
         nv_core::types::ActionType::NexusStopSession => {
-            execute_nexus_stop_session(&action.payload, nexus_client).await
+            if let Some(backend) = nexus_backend {
+                backend.execute_stop_session(&action.payload).await
+            } else {
+                execute_nexus_stop_session(&action.payload, nexus_client).await
+            }
         }
         nv_core::types::ActionType::ChannelSend => {
             tools::execute_channel_send(channels, &action.payload).await

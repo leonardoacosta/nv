@@ -448,12 +448,74 @@ pub struct NexusAgent {
     pub port: u16,
 }
 
+/// A machine that can run Claude Code subprocesses (locally or via SSH).
+///
+/// ```toml
+/// [[nexus.team_agents.machines]]
+/// name = "homelab"
+/// # ssh_host omitted → local execution
+///
+/// [[nexus.team_agents.machines]]
+/// name = "remote"
+/// ssh_host = "user@remote.host"
+/// working_dir = "/home/user"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct TeamAgentMachine {
+    /// Logical name for this machine (e.g. "homelab", "local").
+    pub name: String,
+    /// SSH target for remote execution (e.g. "user@host"). When absent, the
+    /// subprocess is spawned locally.
+    pub ssh_host: Option<String>,
+    /// Working directory to use when no project path is resolved. Defaults to
+    /// the daemon's `$HOME/dev` when unset.
+    pub working_dir: Option<String>,
+}
+
+/// Configuration for the team-agents subprocess mode.
+///
+/// When `[nexus.team_agents]` is present and `use_team_agents = true`, the
+/// daemon spawns CC subprocesses directly instead of using Nexus gRPC.
+///
+/// ```toml
+/// [nexus]
+/// use_team_agents = true
+///
+/// [nexus.team_agents]
+/// cc_binary = "claude"    # optional — defaults to "claude"
+///
+/// [[nexus.team_agents.machines]]
+/// name = "local"
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct TeamAgentsConfig {
+    /// List of machines available for subprocess dispatch.
+    #[serde(default)]
+    pub machines: Vec<TeamAgentMachine>,
+    /// Path / name of the Claude Code binary to invoke. Defaults to `"claude"`.
+    #[serde(default = "default_cc_binary")]
+    pub cc_binary: String,
+}
+
+fn default_cc_binary() -> String {
+    "claude".to_string()
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct NexusConfig {
+    #[serde(default)]
     pub agents: Vec<NexusAgent>,
     /// How often the watchdog checks agent health, in seconds. Default: 10.
     #[serde(default = "default_watchdog_interval")]
     pub watchdog_interval_secs: u64,
+    /// When `true`, the daemon uses `TeamAgentDispatcher` to spawn CC
+    /// subprocesses directly instead of connecting to Nexus gRPC agents.
+    /// Mutually exclusive with `agents` — when this is `true`, `agents` is
+    /// ignored and `nexus_client` is set to `None` in `SharedDeps`.
+    #[serde(default)]
+    pub use_team_agents: bool,
+    /// Team-agents configuration (required when `use_team_agents = true`).
+    pub team_agents: Option<TeamAgentsConfig>,
 }
 
 /// Configuration for the optional Google Calendar integration.
@@ -1496,5 +1558,155 @@ quiet_end = "07:00"
         let daemon = config.daemon.unwrap();
         assert_eq!(daemon.quiet_start.as_deref(), Some("23:00"));
         assert_eq!(daemon.quiet_end.as_deref(), Some("07:00"));
+    }
+
+    // ── TeamAgentMachine / TeamAgentsConfig deserialization ──────────
+
+    #[test]
+    fn parse_team_agent_machine_full() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus.team_agents]
+cc_binary = "/usr/local/bin/claude"
+
+[[nexus.team_agents.machines]]
+name = "dev-box"
+ssh_host = "dev-box.local"
+working_dir = "/home/dev/projects"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        let ta = nexus.team_agents.unwrap();
+        assert_eq!(ta.cc_binary, "/usr/local/bin/claude");
+        assert_eq!(ta.machines.len(), 1);
+        let m = &ta.machines[0];
+        assert_eq!(m.name, "dev-box");
+        assert_eq!(m.ssh_host.as_deref(), Some("dev-box.local"));
+        assert_eq!(m.working_dir.as_deref(), Some("/home/dev/projects"));
+    }
+
+    #[test]
+    fn parse_team_agent_machine_local_no_ssh() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus.team_agents]
+
+[[nexus.team_agents.machines]]
+name = "local"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        let ta = nexus.team_agents.unwrap();
+        let m = &ta.machines[0];
+        assert_eq!(m.name, "local");
+        assert!(m.ssh_host.is_none());
+        assert!(m.working_dir.is_none());
+    }
+
+    #[test]
+    fn parse_team_agents_config_cc_binary_default() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus.team_agents]
+
+[[nexus.team_agents.machines]]
+name = "local"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        let ta = nexus.team_agents.unwrap();
+        // Default cc_binary is "claude" when not specified
+        assert_eq!(ta.cc_binary, "claude");
+    }
+
+    #[test]
+    fn parse_team_agents_config_multiple_machines() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus.team_agents]
+
+[[nexus.team_agents.machines]]
+name = "local"
+
+[[nexus.team_agents.machines]]
+name = "remote-1"
+ssh_host = "192.168.1.10"
+working_dir = "/home/user/dev"
+
+[[nexus.team_agents.machines]]
+name = "remote-2"
+ssh_host = "server.example.com"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        let ta = nexus.team_agents.unwrap();
+        assert_eq!(ta.machines.len(), 3);
+        assert_eq!(ta.machines[0].name, "local");
+        assert!(ta.machines[0].ssh_host.is_none());
+        assert_eq!(ta.machines[1].name, "remote-1");
+        assert_eq!(ta.machines[1].ssh_host.as_deref(), Some("192.168.1.10"));
+        assert_eq!(ta.machines[1].working_dir.as_deref(), Some("/home/user/dev"));
+        assert_eq!(ta.machines[2].name, "remote-2");
+        assert_eq!(ta.machines[2].ssh_host.as_deref(), Some("server.example.com"));
+        assert!(ta.machines[2].working_dir.is_none());
+    }
+
+    #[test]
+    fn parse_use_team_agents_flag_true() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus]
+use_team_agents = true
+
+[nexus.team_agents]
+
+[[nexus.team_agents.machines]]
+name = "local"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        assert!(nexus.use_team_agents);
+        assert!(nexus.team_agents.is_some());
+    }
+
+    #[test]
+    fn parse_use_team_agents_flag_defaults_false() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus]
+agents = []
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        // use_team_agents defaults to false when not specified
+        assert!(!nexus.use_team_agents);
+        assert!(nexus.team_agents.is_none());
+    }
+
+    #[test]
+    fn parse_nexus_team_agents_absent_is_none() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[nexus]
+use_team_agents = false
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let nexus = config.nexus.unwrap();
+        assert!(!nexus.use_team_agents);
+        assert!(nexus.team_agents.is_none());
     }
 }

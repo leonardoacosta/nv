@@ -1529,6 +1529,32 @@ pub async fn execute_tool_send(
     calendar_id: &str,
     service_registries: &ServiceRegistries<'_>,
 ) -> Result<ToolResult> {
+    execute_tool_send_with_backend(
+        name, input, memory, jira_registry, nexus_client, None,
+        project_registry, channels, calendar_credentials, calendar_id, service_registries,
+    )
+    .await
+}
+
+/// Variant of `execute_tool_send` that accepts an optional `NexusBackend`.
+///
+/// When `nexus_backend` is `Some`, all nexus tool calls are routed through it
+/// (whether team-agents or gRPC). When `None`, the call falls back to the raw
+/// `nexus_client` parameter (legacy path).
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_tool_send_with_backend(
+    name: &str,
+    input: &serde_json::Value,
+    memory: &Memory,
+    jira_registry: Option<&jira::JiraRegistry>,
+    nexus_client: Option<&nexus::client::NexusClient>,
+    nexus_backend: Option<&nexus::backend::NexusBackend>,
+    project_registry: &HashMap<String, PathBuf>,
+    channels: &HashMap<String, Arc<dyn Channel>>,
+    calendar_credentials: Option<&str>,
+    calendar_id: &str,
+    service_registries: &ServiceRegistries<'_>,
+) -> Result<ToolResult> {
     let budget = if is_write_tool(name) {
         TOOL_TIMEOUT_WRITE
     } else {
@@ -1614,30 +1640,55 @@ pub async fn execute_tool_send(
         }
         "get_recent_messages" => Err(anyhow!("get_recent_messages must be handled by the worker directly")),
         "query_nexus" => {
-            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = nexus::tools::format_query_sessions(client).await?;
-            Ok(ToolResult::Immediate(output))
+            if let Some(backend) = nexus_backend {
+                let output = backend.format_query_sessions().await?;
+                Ok(ToolResult::Immediate(output))
+            } else {
+                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                let output = nexus::tools::format_query_sessions(client).await?;
+                Ok(ToolResult::Immediate(output))
+            }
         }
         "query_session" => {
-            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
             let session_id = input["session_id"].as_str().ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
-            let output = nexus::tools::format_query_session(client, session_id).await?;
-            Ok(ToolResult::Immediate(output))
+            if let Some(backend) = nexus_backend {
+                let output = backend.format_query_session(session_id).await?;
+                Ok(ToolResult::Immediate(output))
+            } else {
+                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                let output = nexus::tools::format_query_session(client, session_id).await?;
+                Ok(ToolResult::Immediate(output))
+            }
         }
         "query_nexus_health" => {
-            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = nexus::tools::format_query_health(client).await?;
-            Ok(ToolResult::Immediate(output))
+            if let Some(backend) = nexus_backend {
+                let output = backend.format_query_health().await?;
+                Ok(ToolResult::Immediate(output))
+            } else {
+                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                let output = nexus::tools::format_query_health(client).await?;
+                Ok(ToolResult::Immediate(output))
+            }
         }
         "query_nexus_projects" => {
-            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = nexus::tools::format_query_projects(client).await?;
-            Ok(ToolResult::Immediate(output))
+            if let Some(backend) = nexus_backend {
+                let output = backend.format_query_projects().await?;
+                Ok(ToolResult::Immediate(output))
+            } else {
+                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                let output = nexus::tools::format_query_projects(client).await?;
+                Ok(ToolResult::Immediate(output))
+            }
         }
         "query_nexus_agents" => {
-            let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = nexus::tools::format_query_agents(client).await?;
-            Ok(ToolResult::Immediate(output))
+            if let Some(backend) = nexus_backend {
+                let output = backend.format_query_agents().await?;
+                Ok(ToolResult::Immediate(output))
+            } else {
+                let client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+                let output = nexus::tools::format_query_agents(client).await?;
+                Ok(ToolResult::Immediate(output))
+            }
         }
 
         // ── Nexus Project-Scoped Queries ─────────────────────────
@@ -1658,7 +1709,10 @@ pub async fn execute_tool_send(
 
         // ── Nexus Session Lifecycle ──────────────────────────────
         "start_session" => {
-            let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            // Validate that some backend is configured before queuing the action
+            if nexus_backend.is_none() {
+                let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            }
             let project = input["project"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
@@ -1698,7 +1752,10 @@ pub async fn execute_tool_send(
             Ok(ToolResult::Immediate(output))
         }
         "stop_session" => {
-            let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            // Validate that some backend is configured before queuing the action
+            if nexus_backend.is_none() {
+                let _client = nexus_client.ok_or_else(|| anyhow!("Nexus not configured"))?;
+            }
             let session_id = input["session_id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;

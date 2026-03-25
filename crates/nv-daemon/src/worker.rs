@@ -177,6 +177,9 @@ pub struct SharedDeps {
     pub diary: Arc<std::sync::Mutex<DiaryWriter>>,
     pub jira_registry: Option<jira::JiraRegistry>,
     pub nexus_client: Option<nexus::client::NexusClient>,
+    /// Team-agent subprocess dispatcher (populated when `use_team_agents = true`).
+    /// Mutually exclusive with `nexus_client`.
+    pub team_agent_dispatcher: Option<crate::team_agent::TeamAgentDispatcher>,
     pub channels: ChannelRegistry,
     pub nv_base_path: PathBuf,
     pub voice_enabled: Arc<std::sync::atomic::AtomicBool>,
@@ -1694,14 +1697,27 @@ impl Worker {
                         doppler: deps.doppler_registry.as_ref(),
                         teams: deps.teams_client.as_deref(),
                     };
+                    // Build a NexusBackend from whichever backend is configured.
+                    // TeamAgentDispatcher takes priority over the legacy Nexus gRPC client.
+                    let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
+                        if let Some(ref dispatcher) = deps.team_agent_dispatcher {
+                            Some(nexus::backend::NexusBackend::TeamAgents(dispatcher.clone()))
+                        } else {
+                            deps.nexus_client
+                                .as_ref()
+                                .map(|c| nexus::backend::NexusBackend::Nexus(c.clone()))
+                        };
+                    let nexus_backend_ref = nexus_backend_owned.as_ref();
+
                     match tokio::time::timeout(
                         timeout_dur,
-                        tools::execute_tool_send(
+                        tools::execute_tool_send_with_backend(
                             name,
                             input,
                             &deps.memory,
                             deps.jira_registry.as_ref(),
                             deps.nexus_client.as_ref(),
+                            nexus_backend_ref,
                             &deps.project_registry,
                             &deps.channels,
                             deps.calendar_credentials.as_deref(),

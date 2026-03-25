@@ -14,6 +14,7 @@ import {
   Brain,
   Settings,
   Monitor,
+  Activity,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -34,6 +35,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/nexus", label: "Nexus", icon: Zap },
   { to: "/integrations", label: "Integrations", icon: Plug },
   { to: "/usage", label: "Usage", icon: BarChart3 },
+  { to: "/cold-starts", label: "Cold Starts", icon: Activity },
   { to: "/memory", label: "Memory", icon: Brain },
   { to: "/session", label: "CC Session", icon: Monitor },
   { to: "/settings", label: "Settings", icon: Settings },

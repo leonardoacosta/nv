@@ -35,12 +35,12 @@
 
 ## 6. Dashboard: ColdStartPage
 
-- [ ] [6.1] [P-2] Create `dashboard/src/pages/ColdStartPage.tsx` — fetches `GET /api/cold-starts?limit=200` from the daemon health server, renders latency chart and percentile cards [owner:ui-engineer]
-- [ ] [6.2] [P-2] Latency chart: line chart with `total_ms` and `first_response_ms` series over time (last 100 events), X-axis is `started_at`, Y-axis is milliseconds; use the charting library already present in dashboard (check `package.json` — likely Recharts) [owner:ui-engineer]
-- [ ] [6.3] [P-2] Add 20-event rolling average of `total_ms` as a third series (trend line) computed client-side from the events array [owner:ui-engineer]
-- [ ] [6.4] [P-2] Percentile cards row: three cards showing P50, P95, P99 (last 24h window from the `percentiles` response field) with units in seconds (e.g. "8.5s") [owner:ui-engineer]
-- [ ] [6.5] [P-3] Stats row below chart: average tool_count, average tokens_in, average tokens_out for the visible event window, computed client-side [owner:ui-engineer]
-- [ ] [6.6] [P-2] Register the new page in `dashboard/src/App.tsx` — add route and nav link using the same pattern as existing pages (e.g. UsagePage) [owner:ui-engineer]
+- [x] [6.1] [P-2] Create `dashboard/src/pages/ColdStartPage.tsx` — fetches `GET /api/cold-starts?limit=200` from the daemon health server, renders latency chart and percentile cards [owner:ui-engineer]
+- [x] [6.2] [P-2] Latency chart: line chart with `total_ms` and `first_response_ms` series over time (last 100 events), X-axis is `started_at`, Y-axis is milliseconds; use the charting library already present in dashboard (check `package.json` — likely Recharts) [owner:ui-engineer]
+- [x] [6.3] [P-2] Add 20-event rolling average of `total_ms` as a third series (trend line) computed client-side from the events array [owner:ui-engineer]
+- [x] [6.4] [P-2] Percentile cards row: three cards showing P50, P95, P99 (last 24h window from the `percentiles` response field) with units in seconds (e.g. "8.5s") [owner:ui-engineer]
+- [x] [6.5] [P-3] Stats row below chart: average tool_count, average tokens_in, average tokens_out for the visible event window, computed client-side [owner:ui-engineer]
+- [x] [6.6] [P-2] Register the new page in `dashboard/src/App.tsx` — add route and nav link using the same pattern as existing pages (e.g. UsagePage) [owner:ui-engineer]
 
 ## 7. Verify
 

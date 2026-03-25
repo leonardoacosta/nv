@@ -191,6 +191,21 @@ fn messages_migrations() -> Migrations<'static> {
             );
             CREATE INDEX IF NOT EXISTS idx_server_health_timestamp ON server_health(timestamp);",
         ),
+        M::up(
+            "CREATE TABLE IF NOT EXISTS cold_start_events (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id      TEXT    NOT NULL,
+                started_at      TEXT    NOT NULL,
+                context_build_ms INTEGER NOT NULL DEFAULT 0,
+                first_response_ms INTEGER NOT NULL DEFAULT 0,
+                total_ms        INTEGER NOT NULL DEFAULT 0,
+                tool_count      INTEGER NOT NULL DEFAULT 0,
+                tokens_in       INTEGER NOT NULL DEFAULT 0,
+                tokens_out      INTEGER NOT NULL DEFAULT 0,
+                trigger_type    TEXT    NOT NULL DEFAULT 'unknown'
+            );
+            CREATE INDEX IF NOT EXISTS idx_cold_start_started_at ON cold_start_events(started_at);",
+        ),
     ])
 }
 
@@ -839,7 +854,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 4, "user_version should be 4 after all migrations");
+        assert_eq!(version, 5, "user_version should be 5 after all migrations");
 
         // Verify all expected tables exist.
         for table in &["messages", "tool_usage", "api_usage", "budget_alert_sent"] {

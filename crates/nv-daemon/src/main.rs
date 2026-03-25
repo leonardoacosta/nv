@@ -2,6 +2,7 @@ mod account;
 mod agent;
 mod aggregation;
 mod briefing_store;
+mod cold_start_store;
 mod alert_rules;
 mod bash;
 mod dashboard_client;
@@ -681,6 +682,18 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Initialize cold-start store (shares messages.db — table created lazily by ColdStartStore::new)
+    let cold_start_store = match cold_start_store::ColdStartStore::new(&nv_base.join("messages.db")) {
+        Ok(store) => {
+            tracing::info!("cold-start store initialized");
+            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to initialize cold-start store — cold-start logging disabled");
+            None
+        }
+    };
+
     // Initialize obligation store (shares messages.db — migration already run by MessageStore)
     let obligation_store = match obligation_store::ObligationStore::new(&nv_base.join("messages.db")) {
         Ok(store) => {
@@ -858,6 +871,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Clone teams client before the async move so SharedDeps can hold its own reference.
     let teams_client_for_workers = teams_client_for_http.clone();
+    // Clone cold-start store for the HTTP server (shared with workers via SharedDeps).
+    let cold_start_store_for_http = cold_start_store.clone();
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -870,6 +885,7 @@ async fn main() -> anyhow::Result<()> {
             http_weekly_budget,
             teams_client_state_for_http,
             Some(briefing_store_for_http),
+            cold_start_store_for_http,
         )
         .await
         {
@@ -1092,6 +1108,7 @@ async fn main() -> anyhow::Result<()> {
         dashboard_url: config.daemon.as_ref().and_then(|d| d.dashboard_url.clone()),
         dashboard_client,
         briefing_store: Some(Arc::clone(&briefing_store)),
+        cold_start_store,
     });
 
     // Extract Telegram client and chat_id for reactions

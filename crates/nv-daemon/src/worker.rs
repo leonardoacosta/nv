@@ -19,6 +19,7 @@ use crate::agent::{
     build_system_context, check_bootstrap_state, ChannelRegistry,
 };
 use crate::briefing_store::BriefingStore;
+use crate::cold_start_store::{ColdStartEvent, ColdStartStore};
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
 use crate::conversation::ConversationStore;
 use crate::diary::{DiaryEntry, DiaryWriter};
@@ -242,6 +243,8 @@ pub struct SharedDeps {
     pub claude_client: ClaudeClient,
     /// Morning briefing log store. Shared with the HTTP server.
     pub briefing_store: Option<Arc<BriefingStore>>,
+    /// Cold-start timing event store. None if the DB failed to open.
+    pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────
@@ -692,6 +695,8 @@ impl Worker {
         default_chat_id: Option<i64>,
     ) -> Result<()> {
         let task_start = Instant::now();
+        // Capture UTC start time for cold-start event (chrono wall clock).
+        let session_started_at = chrono::Utc::now();
         let task_id = task.id;
         let tg_chat_id = task.telegram_chat_id.or(default_chat_id);
         let tg_msg_id = task.telegram_message_id;
@@ -908,10 +913,11 @@ impl Worker {
         conversation_history.push(Message::user(&user_message));
 
         // Emit StageComplete for context build
+        let context_build_ms = context_build_start.elapsed().as_millis() as u64;
         let _ = event_tx.send(WorkerEvent::StageComplete {
             worker_id: task_id,
             stage: "context_build".into(),
-            duration_ms: context_build_start.elapsed().as_millis() as u64,
+            duration_ms: context_build_ms,
         });
 
         // Extract image_path from trigger metadata (photo messages)
@@ -1209,7 +1215,7 @@ impl Worker {
 
         let diary_entry = DiaryEntry {
             timestamp: chrono::Local::now(),
-            trigger_type,
+            trigger_type: trigger_type.clone(),
             trigger_source,
             trigger_count: task.triggers.len(),
             tools_called: tool_names.clone(),
@@ -1224,6 +1230,28 @@ impl Worker {
             if let Err(e) = diary.write_entry(&diary_entry) {
                 tracing::warn!(error = %e, "failed to write diary entry");
             }
+        }
+
+        // Cold-start event: fire-and-forget insert via spawn_blocking.
+        if let Some(ref cs_store) = deps.cold_start_store {
+            let cs_store = Arc::clone(cs_store);
+            let cold_start_event = ColdStartEvent {
+                session_id: task_id.to_string(),
+                started_at: session_started_at,
+                context_build_ms,
+                first_response_ms: response_time_ms.max(0) as u64,
+                total_ms: task_start.elapsed().as_millis() as u64,
+                tool_count: tool_names.len() as u32,
+                tokens_in,
+                tokens_out,
+                trigger_type,
+            };
+            tokio::task::spawn_blocking(move || {
+                match cs_store.lock().unwrap().insert(&cold_start_event) {
+                    Ok(()) => {}
+                    Err(e) => tracing::warn!(error = %e, "failed to insert cold-start event"),
+                }
+            });
         }
 
         // Voice delivery

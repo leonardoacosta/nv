@@ -13,6 +13,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::sync::Mutex as TokioMutex;
 
 use crate::briefing_store::BriefingStore;
+use crate::cold_start_store::ColdStartStore;
 use crate::health::HealthState;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
@@ -36,6 +37,8 @@ pub struct HttpState {
     pub teams_client_state: Option<String>,
     /// Morning briefing log store. None if not initialised.
     pub briefing_store: Option<Arc<BriefingStore>>,
+    /// Cold-start timing event store. None if not initialised.
+    pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
 }
 
 /// Request body for POST /ask.
@@ -67,7 +70,8 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/stats", get(stats_handler))
         .route("/webhooks/teams", post(teams_webhook_handler))
         .route("/api/briefing", get(get_briefing_handler))
-        .route("/api/briefing/history", get(get_briefing_history_handler));
+        .route("/api/briefing/history", get(get_briefing_history_handler))
+        .route("/api/cold-starts", get(get_cold_starts_handler));
 
     // Add Jira webhook route if configured (uses its own sub-state)
     if let Some(jira_state) = &state.jira_webhook_state {
@@ -513,6 +517,73 @@ async fn get_briefing_history_handler(
     }
 }
 
+// ── Cold-Start API ─────────────────────────────────────────────────
+
+/// Query parameters for `GET /api/cold-starts`.
+#[derive(Debug, Deserialize)]
+pub struct ColdStartsQuery {
+    /// Maximum number of events to return (default 200, max 1000).
+    pub limit: Option<usize>,
+}
+
+/// GET /api/cold-starts — return recent cold-start timing events plus
+/// 24-hour percentile summary.
+///
+/// Accepts `?limit=N` (1–1000, default 200). Returns JSON:
+/// `{ "events": [...], "percentiles": { "p50_ms", "p95_ms", "p99_ms", "sample_count" } }`.
+async fn get_cold_starts_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<ColdStartsQuery>,
+) -> impl IntoResponse {
+    let cs_arc = match &state.cold_start_store {
+        Some(s) => s,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "cold-start store not configured"})),
+            )
+                .into_response();
+        }
+    };
+
+    let limit = query.limit.unwrap_or(200).clamp(1, 1000);
+
+    let store = cs_arc.lock().unwrap();
+
+    let events = match store.get_recent(limit) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to read cold-start events");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to read events: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    let percentiles = match store.get_percentiles(24) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to compute cold-start percentiles");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to compute percentiles: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "events": events,
+            "percentiles": percentiles,
+        })),
+    )
+        .into_response()
+}
+
 /// Start the HTTP server on the given port.
 ///
 /// Runs until the listener is dropped or the runtime shuts down.
@@ -528,6 +599,7 @@ pub async fn run_http_server(
     weekly_budget_usd: f64,
     teams_client_state: Option<String>,
     briefing_store: Option<Arc<BriefingStore>>,
+    cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -539,6 +611,7 @@ pub async fn run_http_server(
         weekly_budget_usd,
         teams_client_state,
         briefing_store,
+        cold_start_store,
     });
     let app = build_router(state);
 
@@ -575,6 +648,7 @@ mod tests {
             weekly_budget_usd: 50.0,
             teams_client_state: None,
             briefing_store: None,
+            cold_start_store: None,
         });
         (state, rx, tmp)
     }
@@ -794,6 +868,7 @@ mod tests {
             weekly_budget_usd: 50.0,
             teams_client_state: None,
             briefing_store: Some(briefing_store),
+            cold_start_store: None,
         });
         (state, rx, tmp)
     }
@@ -841,6 +916,7 @@ mod tests {
             weekly_budget_usd: 50.0,
             teams_client_state: None,
             briefing_store: Some(Arc::clone(&briefing_store)),
+            cold_start_store: None,
         });
         drop(rx);
 
@@ -890,6 +966,7 @@ mod tests {
             weekly_budget_usd: 50.0,
             teams_client_state: None,
             briefing_store: Some(Arc::clone(&briefing_store)),
+            cold_start_store: None,
         });
         drop(rx);
 

@@ -4,7 +4,7 @@
   "project": "nv",
   "stack": "rust",
   "git_sha": "eb342806",
-  "status": "in_progress",
+  "status": "completed",
   "spec_names": [
     "nv-tools-scaffold",
     "nv-tools-extract-wave-a",
@@ -130,14 +130,17 @@
     2,
     3,
     4,
-    5
+    5,
+    6
   ],
   "completed_specs": [
     "nv-tools-scaffold",
     "nv-tools-extract-wave-a",
     "nv-tools-extract-wave-b",
     "nv-tools-extract-wave-c",
-    "nv-tools-shared-deps"
+    "nv-tools-shared-deps",
+    "nv-tools-integration-test"
   ],
-  "current_wave": 6
+  "current_wave": null,
+  "completed_at": "2026-03-24T19:53:08.312265"
 }

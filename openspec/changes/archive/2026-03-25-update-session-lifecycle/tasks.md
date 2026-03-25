@@ -1,6 +1,6 @@
 # Implementation Tasks
 
-<!-- beads:epic:TBD -->
+<!-- beads:epic:nv-guha -->
 
 ## Batch 1: CcSessionManager Core
 

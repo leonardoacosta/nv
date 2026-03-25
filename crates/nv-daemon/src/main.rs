@@ -1,4 +1,5 @@
 mod account;
+mod anthropic;
 mod agent;
 mod aggregation;
 mod briefing_store;
@@ -18,6 +19,7 @@ mod memory;
 mod messages;
 mod nexus;
 mod obligation_detector;
+mod team_agent;
 mod obligation_store;
 mod orchestrator;
 mod query;
@@ -617,56 +619,83 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
-    // Create and connect NexusClient if configured
+    // Create and connect NexusClient (or TeamAgentDispatcher) if configured.
+    //
+    // When `use_team_agents = true`: build a TeamAgentDispatcher, skip gRPC,
+    // and leave nexus_client = None so the watchdog / stream paths are skipped.
+    let team_agent_dispatcher: Option<team_agent::TeamAgentDispatcher>;
     let nexus_client = if let Some(nexus_config) = &config.nexus {
-        let client = nexus::client::NexusClient::new(&nexus_config.agents);
-        client.connect_all().await;
-
-        // Update health state for each Nexus agent
-        for agent in &nexus_config.agents {
-            let status = if client.is_connected().await {
-                ChannelStatus::Connected
-            } else {
-                ChannelStatus::Disconnected
-            };
-            health_state
-                .update_channel(format!("nexus_{}", agent.name), status)
-                .await;
-        }
-
-        // Spawn event stream listeners for all agents (connected or not — run_event_stream
-        // waits internally for a connection before subscribing).
-        let stream_handles =
-            nexus::stream::spawn_event_streams(&client.agents, trigger_tx.clone());
-        tracing::info!("Nexus event streams started");
-
-        // Spawn the session watchdog — proactive health checks every N seconds.
-        {
-            let watchdog_client = client.clone();
-            let watchdog_health = Arc::clone(&health_state);
-            let watchdog_interval = nexus_config.watchdog_interval_secs;
-            let watchdog_tx = trigger_tx.clone();
-            let watchdog_channels = channels.clone();
-            tokio::spawn(async move {
-                nexus::watchdog::run_watchdog(
-                    watchdog_client,
-                    watchdog_health,
-                    watchdog_interval,
-                    stream_handles,
-                    watchdog_tx,
-                    watchdog_channels,
+        if nexus_config.use_team_agents {
+            // ── Team-agents mode ────────────────────────────────────────
+            let ta_config = nexus_config.team_agents.as_ref().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "use_team_agents = true but [nexus.team_agents] section is missing"
                 )
-                .await;
-            });
+            })?;
+            let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
             tracing::info!(
-                interval_secs = nexus_config.watchdog_interval_secs,
-                "Nexus session watchdog started"
+                machines = ta_config.machines.len(),
+                cc_binary = %ta_config.cc_binary,
+                "TeamAgentDispatcher initialized (use_team_agents = true)"
             );
-        }
+            health_state
+                .update_channel("team_agents", ChannelStatus::Connected)
+                .await;
+            team_agent_dispatcher = Some(dispatcher);
+            None // nexus_client intentionally None in team-agents mode
+        } else {
+            // ── Classic Nexus gRPC mode ──────────────────────────────────
+            team_agent_dispatcher = None;
+            let client = nexus::client::NexusClient::new(&nexus_config.agents);
+            client.connect_all().await;
 
-        Some(client)
+            // Update health state for each Nexus agent
+            for agent in &nexus_config.agents {
+                let status = if client.is_connected().await {
+                    ChannelStatus::Connected
+                } else {
+                    ChannelStatus::Disconnected
+                };
+                health_state
+                    .update_channel(format!("nexus_{}", agent.name), status)
+                    .await;
+            }
+
+            // Spawn event stream listeners for all agents (connected or not — run_event_stream
+            // waits internally for a connection before subscribing).
+            let stream_handles =
+                nexus::stream::spawn_event_streams(&client.agents, trigger_tx.clone());
+            tracing::info!("Nexus event streams started");
+
+            // Spawn the session watchdog — proactive health checks every N seconds.
+            {
+                let watchdog_client = client.clone();
+                let watchdog_health = Arc::clone(&health_state);
+                let watchdog_interval = nexus_config.watchdog_interval_secs;
+                let watchdog_tx = trigger_tx.clone();
+                let watchdog_channels = channels.clone();
+                tokio::spawn(async move {
+                    nexus::watchdog::run_watchdog(
+                        watchdog_client,
+                        watchdog_health,
+                        watchdog_interval,
+                        stream_handles,
+                        watchdog_tx,
+                        watchdog_channels,
+                    )
+                    .await;
+                });
+                tracing::info!(
+                    interval_secs = nexus_config.watchdog_interval_secs,
+                    "Nexus session watchdog started"
+                );
+            }
+
+            Some(client)
+        }
     } else {
         tracing::info!("Nexus not configured -- nexus tools disabled");
+        team_agent_dispatcher = None;
         None
     };
 
@@ -1076,6 +1105,7 @@ async fn main() -> anyhow::Result<()> {
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),
         jira_registry,
         nexus_client,
+        team_agent_dispatcher,
         channels: channels.clone(),
         nv_base_path: nv_base,
         voice_enabled: voice_enabled.clone(),

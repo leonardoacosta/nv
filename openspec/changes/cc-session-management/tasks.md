@@ -31,13 +31,13 @@
 
 ## Batch 4: Dashboard UI
 
-- [ ] [4.1] [P-1] Create `apps/dashboard/src/app/session/page.tsx` — server component shell, fetches initial status via `sessionManager.getStatus()`, renders `<SessionDashboard>` client component [owner:ui-engineer]
-- [ ] [4.2] [P-1] Create `apps/dashboard/src/components/SessionDashboard.tsx` — client component: state badge, uptime counter, last activity, message count, Start/Stop/Restart buttons (disabled based on state), log viewer, error panel [owner:ui-engineer]
-- [ ] [4.3] [P-2] Implement auto-refresh in `SessionDashboard` — poll `/api/session/status` every 5s with `useEffect` + `setInterval`, update UI state without full page reload [owner:ui-engineer]
-- [ ] [4.4] [P-2] Implement log viewer — `<LogViewer>` sub-component, polls `/api/session/logs` every 5s, renders last 50 lines in monospace scroll container, auto-scrolls to bottom [owner:ui-engineer]
-- [ ] [4.5] [P-2] Create `apps/dashboard/src/components/SessionWidget.tsx` — compact status widget for home page: state badge, last activity timestamp, message count, Restart button, link to `/session` page [owner:ui-engineer]
-- [ ] [4.6] [P-3] Wire `SessionWidget` into existing dashboard home page [owner:ui-engineer]
-- [ ] [4.7] [P-3] Add `/session` route to dashboard navigation [owner:ui-engineer]
+- [x] [4.1] [P-1] Create `apps/dashboard/src/app/session/page.tsx` — server component shell, fetches initial status via `sessionManager.getStatus()`, renders `<SessionDashboard>` client component [owner:ui-engineer]
+- [x] [4.2] [P-1] Create `apps/dashboard/src/components/SessionDashboard.tsx` — client component: state badge, uptime counter, last activity, message count, Start/Stop/Restart buttons (disabled based on state), log viewer, error panel [owner:ui-engineer]
+- [x] [4.3] [P-2] Implement auto-refresh in `SessionDashboard` — poll `/api/session/status` every 5s with `useEffect` + `setInterval`, update UI state without full page reload [owner:ui-engineer]
+- [x] [4.4] [P-2] Implement log viewer — `<LogViewer>` sub-component, polls `/api/session/logs` every 5s, renders last 50 lines in monospace scroll container, auto-scrolls to bottom [owner:ui-engineer]
+- [x] [4.5] [P-2] Create `apps/dashboard/src/components/SessionWidget.tsx` — compact status widget for home page: state badge, last activity timestamp, message count, Restart button, link to `/session` page [owner:ui-engineer]
+- [x] [4.6] [P-3] Wire `SessionWidget` into existing dashboard home page [owner:ui-engineer]
+- [x] [4.7] [P-3] Add `/session` route to dashboard navigation [owner:ui-engineer]
 
 ## Batch 5: Daemon Message Forwarding
 

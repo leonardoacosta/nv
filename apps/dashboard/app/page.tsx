@@ -15,6 +15,7 @@ import {
   Heart,
 } from "lucide-react";
 import SessionCard, { type Session } from "@/components/SessionCard";
+import SessionWidget from "@/components/SessionWidget";
 import type {
   ProjectsGetResponse,
   SessionsGetResponse,
@@ -298,6 +299,14 @@ export default function DashboardPage() {
             />
           </>
         )}
+      </div>
+
+      {/* CC Session widget */}
+      <div>
+        <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide mb-3">
+          CC Session
+        </h2>
+        <SessionWidget />
       </div>
 
       {/* Recent sessions */}

@@ -12,6 +12,7 @@ import {
   BarChart3,
   Brain,
   Settings,
+  Monitor,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/integrations", label: "Integrations", icon: Plug },
   { to: "/usage", label: "Usage", icon: BarChart3 },
   { to: "/memory", label: "Memory", icon: Brain },
+  { to: "/session", label: "CC Session", icon: Monitor },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

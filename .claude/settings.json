@@ -1,0 +1,62 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "MultiEdit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebSearch",
+      "WebFetch(*)",
+      "Agent(*)",
+      "LSP(*)",
+      "NotebookEdit(*)",
+
+      "mcp__nv-tools__*",
+      "mcp__context7__*",
+      "mcp__sentry__*",
+      "mcp__sequential-thinking__*",
+      "mcp__figma__*",
+      "mcp__ide__*",
+      "mcp__vercel__*",
+
+      "mcp__plugin_telegram_telegram__reply",
+      "mcp__plugin_telegram_telegram__react",
+      "mcp__plugin_telegram_telegram__edit_message",
+      "mcp__plugin_telegram_telegram__download_attachment"
+    ],
+    "deny": [
+      "Write(.env)",
+      "Write(.env.*)",
+      "Write(*.pem)",
+      "Write(*credentials*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf ~)",
+      "Bash(git push --force)",
+
+      "Bash(*doppler*--config prd*)",
+      "Bash(*doppler*--config prod*)",
+      "Bash(*doppler*--config production*)",
+      "Bash(*DOPPLER_CONFIG=prd*)",
+      "Bash(*DOPPLER_CONFIG=prod*)",
+      "Bash(*DOPPLER_CONFIG=production*)",
+      "Bash(*doppler secrets set*--config prd*)",
+
+      "Bash(*vercel --prod*)",
+      "Bash(*vercel deploy --prod*)",
+      "Bash(*vercel promote*)",
+
+      "Bash(*git push*origin main*)",
+      "Bash(*git push origin main*)",
+
+      "Bash(*psql*neon*main*)",
+      "Bash(*drizzle-kit push*--config*prod*)",
+      "Bash(*drizzle-kit migrate*--config*prod*)",
+
+      "Bash(*systemctl*restart*--system*)",
+      "Bash(*systemctl*stop*--system*)"
+    ]
+  }
+}

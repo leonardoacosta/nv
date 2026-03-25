@@ -42,37 +42,37 @@
 
 ## Frontend: TypeScript Types
 
-- [ ] [6.1] [P-1] Add to `dashboard/src/types/api.ts`: `BriefingAction` interface (`id`, `label`, `status: "pending" | "completed" | "dismissed"`); `BriefingEntry` interface (`id`, `generated_at`, `content`, `suggested_actions: BriefingAction[]`, `sources_status: Record<string, string>`); `BriefingGetResponse` (`entry: BriefingEntry`); `BriefingHistoryGetResponse` (`entries: BriefingEntry[]`) [owner:ui-engineer]
+- [x] [6.1] [P-1] Add to `dashboard/src/types/api.ts`: `BriefingAction` interface (`id`, `label`, `status: "pending" | "completed" | "dismissed"`); `BriefingEntry` interface (`id`, `generated_at`, `content`, `suggested_actions: BriefingAction[]`, `sources_status: Record<string, string>`); `BriefingGetResponse` (`entry: BriefingEntry`); `BriefingHistoryGetResponse` (`entries: BriefingEntry[]`) [owner:ui-engineer]
 
 ## Frontend: Section Parser Utility
 
-- [ ] [7.1] [P-1] Create `dashboard/src/utils/briefing.ts` — export `BriefingSection` interface (`title: string`, `body: string`) and `parseBriefingSections(content: string): BriefingSection[]` [owner:ui-engineer]
-- [ ] [7.2] [P-2] Implement `parseBriefingSections`: detect `-- Title --` lines (fallback format from `synthesize_digest_fallback`) and `### Title` lines (Claude markdown format); split content into sections at each detected header; trim each body; return array of `{ title, body }` [owner:ui-engineer]
-- [ ] [7.3] [P-2] Fallback: if no section headers detected, return `[{ title: "Summary", body: content.trim() }]` so the page always has something to render [owner:ui-engineer]
-- [ ] [7.4] [P-3] Unit tests for `parseBriefingSections`: both delimiter formats, mixed format (first section has no header), empty string, content with only whitespace [owner:ui-engineer]
+- [x] [7.1] [P-1] Create `dashboard/src/utils/briefing.ts` — export `BriefingSection` interface (`title: string`, `body: string`) and `parseBriefingSections(content: string): BriefingSection[]` [owner:ui-engineer]
+- [x] [7.2] [P-2] Implement `parseBriefingSections`: detect `-- Title --` lines (fallback format from `synthesize_digest_fallback`) and `### Title` lines (Claude markdown format); split content into sections at each detected header; trim each body; return array of `{ title, body }` [owner:ui-engineer]
+- [x] [7.3] [P-2] Fallback: if no section headers detected, return `[{ title: "Summary", body: content.trim() }]` so the page always has something to render [owner:ui-engineer]
+- [x] [7.4] [P-3] Unit tests for `parseBriefingSections`: both delimiter formats, mixed format (first section has no header), empty string, content with only whitespace [owner:ui-engineer]
 
 ## Frontend: BriefingPage Component
 
-- [ ] [8.1] [P-1] Create `dashboard/src/pages/BriefingPage.tsx` — page shell with `useState` for `entry: BriefingEntry | null`, `history: BriefingEntry[]`, `loading: boolean`, `error: string | null`, `selectedId: string | null` [owner:ui-engineer]
-- [ ] [8.2] [P-1] On mount, fetch `GET /api/briefing` and `GET /api/briefing/history?limit=10` in parallel via `Promise.allSettled`; populate state accordingly [owner:ui-engineer]
-- [ ] [8.3] [P-1] Render loading skeleton while `loading === true`: 3-4 pulse placeholder cards matching section card height [owner:ui-engineer]
-- [ ] [8.4] [P-1] Render empty state when `entry === null` and not loading: center-aligned `Sun` icon, "No briefing yet today", subtitle "Nova generates a briefing each morning at 7am" [owner:ui-engineer]
-- [ ] [8.5] [P-1] Render content panel when entry is available: call `parseBriefingSections(entry.content)` and map each section to a `BriefingSectionCard` sub-component with title and body text [owner:ui-engineer]
-- [ ] [8.6] [P-2] Render `suggested_actions` as a horizontal strip of chips below the section cards; chip label shows action label; chip background reflects status (`pending` = purple tint, `completed` = emerald tint, `dismissed` = muted); chips are read-only (no interactivity in this spec) [owner:ui-engineer]
-- [ ] [8.7] [P-2] Render history rail as a vertical list on the right side (or below on narrow viewports); each entry shows date + time formatted as "Mon Mar 25, 7:00am"; clicking an entry sets `selectedId` and displays that entry's content in the content panel [owner:ui-engineer]
-- [ ] [8.8] [P-2] Header row: title "Morning Briefing", subtitle showing `generated_at` formatted as "Today, 7:00am" (or full date for historical entries), Refresh button that re-fetches latest [owner:ui-engineer]
-- [ ] [8.9] [P-3] Display `sources_status` as a small badge row under the header: each source name + status indicator dot (green = "ok", red = "unavailable", grey = unknown) [owner:ui-engineer]
+- [x] [8.1] [P-1] Create `dashboard/src/pages/BriefingPage.tsx` — page shell with `useState` for `entry: BriefingEntry | null`, `history: BriefingEntry[]`, `loading: boolean`, `error: string | null`, `selectedId: string | null` [owner:ui-engineer]
+- [x] [8.2] [P-1] On mount, fetch `GET /api/briefing` and `GET /api/briefing/history?limit=10` in parallel via `Promise.allSettled`; populate state accordingly [owner:ui-engineer]
+- [x] [8.3] [P-1] Render loading skeleton while `loading === true`: 3-4 pulse placeholder cards matching section card height [owner:ui-engineer]
+- [x] [8.4] [P-1] Render empty state when `entry === null` and not loading: center-aligned `Sun` icon, "No briefing yet today", subtitle "Nova generates a briefing each morning at 7am" [owner:ui-engineer]
+- [x] [8.5] [P-1] Render content panel when entry is available: call `parseBriefingSections(entry.content)` and map each section to a `BriefingSectionCard` sub-component with title and body text [owner:ui-engineer]
+- [x] [8.6] [P-2] Render `suggested_actions` as a horizontal strip of chips below the section cards; chip label shows action label; chip background reflects status (`pending` = purple tint, `completed` = emerald tint, `dismissed` = muted); chips are read-only (no interactivity in this spec) [owner:ui-engineer]
+- [x] [8.7] [P-2] Render history rail as a vertical list on the right side (or below on narrow viewports); each entry shows date + time formatted as "Mon Mar 25, 7:00am"; clicking an entry sets `selectedId` and displays that entry's content in the content panel [owner:ui-engineer]
+- [x] [8.8] [P-2] Header row: title "Morning Briefing", subtitle showing `generated_at` formatted as "Today, 7:00am" (or full date for historical entries), Refresh button that re-fetches latest [owner:ui-engineer]
+- [x] [8.9] [P-3] Display `sources_status` as a small badge row under the header: each source name + status indicator dot (green = "ok", red = "unavailable", grey = unknown) [owner:ui-engineer]
 
 ## Frontend: Auto-refresh
 
-- [ ] [9.1] [P-2] Add `useEffect` with `setInterval` polling `GET /api/briefing` every 60 seconds; on each poll compare `entry.generated_at` with polled result; if different, update `entry` state [owner:ui-engineer]
-- [ ] [9.2] [P-3] Show a brief "Briefing updated" inline notification (non-blocking banner) when auto-refresh detects a new entry; auto-dismisses after 4 seconds [owner:ui-engineer]
-- [ ] [9.3] [P-3] Clear the interval on component unmount to prevent memory leaks [owner:ui-engineer]
+- [x] [9.1] [P-2] Add `useEffect` with `setInterval` polling `GET /api/briefing` every 60 seconds; on each poll compare `entry.generated_at` with polled result; if different, update `entry` state [owner:ui-engineer]
+- [x] [9.2] [P-3] Show a brief "Briefing updated" inline notification (non-blocking banner) when auto-refresh detects a new entry; auto-dismisses after 4 seconds [owner:ui-engineer]
+- [x] [9.3] [P-3] Clear the interval on component unmount to prevent memory leaks [owner:ui-engineer]
 
 ## Frontend: Navigation
 
-- [ ] [10.1] [P-1] Add `{ to: "/briefing", label: "Briefing", icon: Sun }` to `NAV_ITEMS` array in `dashboard/src/components/Sidebar.tsx` — position between the Dashboard entry and the Obligations entry; import `Sun` from `lucide-react` [owner:ui-engineer]
-- [ ] [10.2] [P-1] Add `import BriefingPage from "@/pages/BriefingPage"` and `<Route path="/briefing" element={<BriefingPage />} />` to `dashboard/src/App.tsx` — positioned after the root Dashboard route [owner:ui-engineer]
+- [x] [10.1] [P-1] Add `{ to: "/briefing", label: "Briefing", icon: Sun }` to `NAV_ITEMS` array in `dashboard/src/components/Sidebar.tsx` — position between the Dashboard entry and the Obligations entry; import `Sun` from `lucide-react` [owner:ui-engineer]
+- [x] [10.2] [P-1] Add `import BriefingPage from "@/pages/BriefingPage"` and `<Route path="/briefing" element={<BriefingPage />} />` to `dashboard/src/App.tsx` — positioned after the root Dashboard route [owner:ui-engineer]
 
 ## Verify
 

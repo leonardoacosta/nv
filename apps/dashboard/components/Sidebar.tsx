@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  Sun,
   CheckSquare,
   FolderOpen,
   Zap,
@@ -27,6 +28,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/briefing", label: "Briefing", icon: Sun },
   { to: "/obligations", label: "Obligations", icon: CheckSquare },
   { to: "/projects", label: "Projects", icon: FolderOpen },
   { to: "/nexus", label: "Nexus", icon: Zap },

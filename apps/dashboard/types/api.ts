@@ -111,6 +111,32 @@ export interface ServerHealthGetResponse {
   history: ServerHealthSnapshot[];
 }
 
+// ── GET /api/briefing ──────────────────────────────────────────────────────
+
+export interface BriefingAction {
+  id: string;
+  label: string;
+  status: "pending" | "completed" | "dismissed";
+}
+
+export interface BriefingEntry {
+  id: string;
+  generated_at: string;
+  content: string;
+  suggested_actions: BriefingAction[];
+  sources_status: Record<string, string>;
+}
+
+/** Response from GET /api/briefing — returns latest entry or 404. */
+export interface BriefingGetResponse {
+  entry: BriefingEntry;
+}
+
+/** Response from GET /api/briefing/history — returns list of past entries. */
+export interface BriefingHistoryGetResponse {
+  entries: BriefingEntry[];
+}
+
 // ── GET /stats ─────────────────────────────────────────────────────────────
 
 /** Per-tool breakdown entry from `ToolBreakdown` in Rust. */

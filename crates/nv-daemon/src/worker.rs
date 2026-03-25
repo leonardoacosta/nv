@@ -22,7 +22,7 @@ use crate::dashboard_client::{DashboardError, ForwardRequest};
 use crate::briefing_store::BriefingStore;
 use crate::cold_start_store::{ColdStartEvent, ColdStartStore};
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
-use crate::conversation::ConversationStore;
+use crate::conversation::PersistentConversationStore;
 use crate::diary::{DiaryEntry, DiaryWriter};
 use crate::tools::jira;
 use crate::memory::Memory;
@@ -173,7 +173,13 @@ pub struct SharedDeps {
     pub memory: Memory,
     pub state: State,
     pub message_store: Arc<std::sync::Mutex<MessageStore>>,
-    pub conversation_store: Arc<std::sync::Mutex<ConversationStore>>,
+    /// Shared SQLite connection for the conversation history table.
+    ///
+    /// Workers construct a `PersistentConversationStore` from this connection
+    /// plus the channel + thread_id derived from the incoming trigger.
+    pub conversation_db: Arc<std::sync::Mutex<rusqlite::Connection>>,
+    /// Hours before conversation history is considered expired (0 = never).
+    pub conversation_ttl_hours: u64,
     pub diary: Arc<std::sync::Mutex<DiaryWriter>>,
     pub jira_registry: Option<jira::JiraRegistry>,
     pub nexus_client: Option<nexus::client::NexusClient>,
@@ -907,11 +913,26 @@ impl Worker {
             }
         }
 
-        // Load prior conversation turns from the shared store
-        let prior_turns = {
-            let mut store = deps.conversation_store.lock().unwrap();
-            store.load()
-        };
+        // Derive conversation thread_id from the trigger (Message.thread_id → id → "default").
+        let conv_thread_id: String = task.triggers.first()
+            .and_then(|t| match t {
+                Trigger::Message(msg) => {
+                    msg.thread_id.clone().or_else(|| Some(msg.id.clone()))
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| "default".to_string());
+
+        // Construct per-task PersistentConversationStore (shares the DB connection).
+        let conv_store = PersistentConversationStore::new(
+            Arc::clone(&deps.conversation_db),
+            &trigger_channel,
+            &conv_thread_id,
+            deps.conversation_ttl_hours,
+        );
+
+        // Load prior conversation turns from the persistent store.
+        let prior_turns = conv_store.load().unwrap_or_default();
 
         let mut conversation_history = prior_turns;
         conversation_history.push(Message::user(&user_message));
@@ -1333,12 +1354,13 @@ impl Worker {
             }
         }
 
-        // Push the completed turn (user + assistant) to the conversation store
+        // Push the completed turn (user + assistant) to the persistent conversation store.
         {
             let user_msg_for_store = Message::user(&user_message);
             let assistant_msg_for_store = Message::assistant_blocks(final_content.clone());
-            let mut conv_store = deps.conversation_store.lock().unwrap();
-            conv_store.push(user_msg_for_store, assistant_msg_for_store);
+            if let Err(e) = conv_store.push(user_msg_for_store, assistant_msg_for_store) {
+                tracing::warn!(error = %e, "failed to persist conversation turn");
+            }
         }
 
         // Emit Complete event

@@ -208,6 +208,17 @@ fn messages_migrations() -> Migrations<'static> {
         ),
         // v6: index on messages.timestamp for fast pagination by created_at / newest-first
         M::up("CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc ON messages(timestamp DESC);"),
+        // v7: persistent conversation history keyed by (channel, thread_id)
+        M::up(
+            "CREATE TABLE IF NOT EXISTS conversations (
+                channel     TEXT NOT NULL,
+                thread_id   TEXT NOT NULL,
+                turns_json  TEXT NOT NULL DEFAULT '[]',
+                updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (channel, thread_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);",
+        ),
     ])
 }
 

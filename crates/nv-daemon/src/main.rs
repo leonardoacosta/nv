@@ -949,9 +949,37 @@ async fn main() -> anyhow::Result<()> {
     let (worker_event_tx, worker_event_rx) =
         mpsc::unbounded_channel::<worker::WorkerEvent>();
 
-    // Initialize conversation store
-    let conversation_store = conversation::ConversationStore::new();
-    tracing::info!("conversation store initialized");
+    // Open the conversation DB connection (shares messages.db in WAL mode).
+    //
+    // WAL mode allows concurrent reads from other connections (message_store,
+    // obligation_store, etc.) while the conversation store writes.
+    let conversation_ttl_hours = config
+        .daemon
+        .as_ref()
+        .map(|d| d.conversation_ttl_hours)
+        .unwrap_or(24);
+
+    let conversation_db = {
+        let conn = rusqlite::Connection::open(&nv_base.join("messages.db"))
+            .expect("failed to open conversation DB");
+        conn.execute_batch("PRAGMA journal_mode=WAL;")
+            .expect("WAL pragma failed");
+        // Run the conversations-table migration so the table exists when using
+        // a fresh connection that hasn't gone through MessageStore::init().
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS conversations (
+                channel     TEXT NOT NULL,
+                thread_id   TEXT NOT NULL,
+                turns_json  TEXT NOT NULL DEFAULT '[]',
+                updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (channel, thread_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);",
+        )
+        .expect("failed to ensure conversations table");
+        std::sync::Arc::new(std::sync::Mutex::new(conn))
+    };
+    tracing::info!(ttl_hours = conversation_ttl_hours, "conversation DB initialized");
 
     // Build service registries from environment variables
     let stripe_registry = match tools::stripe::StripeClient::from_env() {
@@ -1101,7 +1129,8 @@ async fn main() -> anyhow::Result<()> {
         memory: memory::Memory::new(&nv_base),
         state: state::State::new(&nv_base),
         message_store: Arc::new(std::sync::Mutex::new(message_store)),
-        conversation_store: Arc::new(std::sync::Mutex::new(conversation_store)),
+        conversation_db,
+        conversation_ttl_hours,
         diary: Arc::new(std::sync::Mutex::new(diary_writer)),
         jira_registry,
         nexus_client,

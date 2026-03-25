@@ -66,6 +66,10 @@ fn default_watchdog_interval() -> u64 {
     10
 }
 
+fn default_conversation_ttl_hours() -> u64 {
+    24
+}
+
 fn default_search_url() -> String {
     "https://html.duckduckgo.com/html/".to_string()
 }
@@ -567,6 +571,14 @@ pub struct DaemonConfig {
     /// dashboard side. When absent, dashboard forwarding is disabled even if
     /// `dashboard_url` is configured.
     pub dashboard_secret: Option<String>,
+    /// How many hours to retain conversation history per `(channel, thread_id)`.
+    ///
+    /// After this duration of inactivity the stored turns are expired and
+    /// the next load returns an empty history (fresh context).
+    ///
+    /// Default: 24 hours.  Set to 0 to disable expiry.
+    #[serde(default = "default_conversation_ttl_hours")]
+    pub conversation_ttl_hours: u64,
 }
 
 // ── Alert Rules Config ───────────────────────────────────────────────

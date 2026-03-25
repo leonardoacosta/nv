@@ -23,6 +23,8 @@ reqwest = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 base64 = "0.22"
+futures-util = { workspace = true }
+uuid = { workspace = true }
 tokio-postgres = { workspace = true }
 tokio-postgres-rustls = { workspace = true }
 rustls = { workspace = true }

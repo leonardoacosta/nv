@@ -1521,6 +1521,7 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "futures-util",
  "nv-core",
  "reqwest",
  "rustls",
@@ -1531,6 +1532,7 @@ dependencies = [
  "tokio-postgres-rustls",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "webpki-roots 0.26.11",
 ]
 

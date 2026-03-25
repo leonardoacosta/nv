@@ -5,8 +5,11 @@
 
 use nv_tools::tools::{
     ado::AdoClient,
+    calendar::CalendarClient,
     cloudflare::CloudflareClient,
+    docker::DockerClient,
     doppler::DopplerClient,
+    github::GithubClient,
     ha::HAClient,
     neon::NeonClient,
     plaid::PlaidClient,
@@ -521,6 +524,174 @@ impl Checkable for NeonClient {
             Err(e) => CheckResult::Unhealthy {
                 error: format!("connection failed: {e}"),
             },
+        }
+    }
+}
+
+// ── Docker ────────────────────────────────────────────────────────────
+
+const DOCKER_TIMEOUT_SECS: u64 = 10;
+
+#[async_trait::async_trait]
+impl Checkable for DockerClient {
+    fn name(&self) -> &str {
+        "docker"
+    }
+
+    async fn check_read(&self) -> CheckResult {
+        use super::check::timed;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(DOCKER_TIMEOUT_SECS),
+                tokio::process::Command::new("docker")
+                    .arg("info")
+                    .arg("--format")
+                    .arg("{{.ServerVersion}}")
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::null())
+                    .output(),
+            )
+            .await
+        })
+        .await;
+        match result {
+            Ok(Ok(output)) if output.status.success() => {
+                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                CheckResult::Healthy {
+                    latency_ms: latency,
+                    detail: format!("docker daemon reachable (v{version})"),
+                }
+            }
+            Ok(Ok(output)) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                CheckResult::Unhealthy {
+                    error: if stderr.is_empty() {
+                        format!("docker info exited with code {:?}", output.status.code())
+                    } else {
+                        stderr
+                    },
+                }
+            }
+            Ok(Err(e)) => CheckResult::Unhealthy {
+                error: format!("failed to run docker: {e}"),
+            },
+            Err(_) => CheckResult::Unhealthy {
+                error: format!("docker info timed out after {DOCKER_TIMEOUT_SECS}s"),
+            },
+        }
+    }
+}
+
+// ── GitHub ────────────────────────────────────────────────────────────
+
+const GH_CHECK_TIMEOUT_SECS: u64 = 15;
+
+#[async_trait::async_trait]
+impl Checkable for GithubClient {
+    fn name(&self) -> &str {
+        "github"
+    }
+
+    async fn check_read(&self) -> CheckResult {
+        use super::check::timed;
+        let (latency, result) = timed(std::time::Duration::from_secs(15), || async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(GH_CHECK_TIMEOUT_SECS),
+                tokio::process::Command::new("gh")
+                    .args(["auth", "status"])
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .output(),
+            )
+            .await
+        })
+        .await;
+        match result {
+            Ok(Ok(output)) if output.status.success() => {
+                let combined = format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                let detail = combined
+                    .lines()
+                    .find(|l| l.contains("Logged in"))
+                    .map(|l| l.trim().to_string())
+                    .unwrap_or_else(|| "gh auth status ok".into());
+                CheckResult::Healthy {
+                    latency_ms: latency,
+                    detail,
+                }
+            }
+            Ok(Ok(output)) => {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                CheckResult::Unhealthy {
+                    error: if stderr.is_empty() {
+                        "gh auth status failed — run `gh auth login`".into()
+                    } else {
+                        stderr
+                    },
+                }
+            }
+            Ok(Err(e)) => CheckResult::Unhealthy {
+                error: format!("failed to run gh: {e}"),
+            },
+            Err(_) => CheckResult::Unhealthy {
+                error: format!("gh auth status timed out after {GH_CHECK_TIMEOUT_SECS}s"),
+            },
+        }
+    }
+}
+
+// ── Calendar ──────────────────────────────────────────────────────────
+
+#[async_trait::async_trait]
+impl Checkable for CalendarClient {
+    fn name(&self) -> &str {
+        "calendar"
+    }
+
+    async fn check_read(&self) -> CheckResult {
+        use super::check::timed;
+
+        let (latency, result): (u64, anyhow::Result<Vec<nv_tools::tools::calendar::Event>>) =
+            timed(std::time::Duration::from_secs(15), || async {
+                let now = chrono::Utc::now();
+                let time_min = now.to_rfc3339();
+                self.query_events(&[
+                    ("timeMin", time_min.as_str()),
+                    ("singleEvents", "true"),
+                    ("orderBy", "startTime"),
+                    ("maxResults", "1"),
+                ])
+                .await
+            })
+            .await;
+
+        match result {
+            Ok(events) => {
+                let detail = if events.is_empty() {
+                    "no upcoming events".to_string()
+                } else {
+                    events
+                        .first()
+                        .and_then(|e| e.summary.clone())
+                        .unwrap_or_else(|| "next event found".to_string())
+                };
+                CheckResult::Healthy { latency_ms: latency, detail }
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("not configured") || msg.contains("not set") {
+                    CheckResult::Missing {
+                        env_var: "GOOGLE_CALENDAR_CREDENTIALS".into(),
+                    }
+                } else {
+                    CheckResult::Unhealthy { error: msg }
+                }
+            }
         }
     }
 }

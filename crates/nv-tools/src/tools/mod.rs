@@ -1,6 +1,9 @@
 pub mod ado;
+pub mod calendar;
 pub mod cloudflare;
+pub mod docker;
 pub mod doppler;
+pub mod github;
 pub mod ha;
 pub mod neon;
 pub mod plaid;
@@ -10,6 +13,7 @@ pub mod sentry;
 pub mod stripe;
 pub mod upstash;
 pub mod vercel;
+pub mod web;
 
 // ── Shared Formatting Helpers ────────────────────────────────────────
 

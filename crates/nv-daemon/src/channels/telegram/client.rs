@@ -575,6 +575,13 @@ impl TelegramClient {
     /// 30 seconds if the field is absent or unparseable.
     ///
     /// Returns `true` if the call was sent, `false` if suppressed.
+    ///
+    /// **Presence limitations:** `sendChatAction` is the only per-message engagement
+    /// signal available to Telegram bots. The Telegram Bot API does not expose bot
+    /// online/offline presence status — that is a user-controlled setting not
+    /// accessible via the Bot API. Regular user presence (online/last seen) is
+    /// similarly not accessible to bots. This method wraps `sendChatAction`, which
+    /// is the closest equivalent to a presence signal bots can emit.
     pub async fn send_chat_action(&self, chat_id: i64, action: &str) -> bool {
         // Check throttle state under lock (released before any await).
         {

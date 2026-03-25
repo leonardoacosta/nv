@@ -16,7 +16,7 @@ No new dependencies, no new types, no behavior changes beyond the earlier indica
 
 ## Tasks
 
-### Task 1 — Immediate typing indicator in orchestrator
+### [x] Task 1 — Immediate typing indicator in orchestrator
 **File:** `crates/nv-daemon/src/orchestrator.rs`
 **Agent:** `api-engineer`
 
@@ -44,7 +44,7 @@ comment level — the live HTTP call is already covered by `ThrottleState` unit 
 
 ---
 
-### Task 2 — Doc comment on `send_chat_action` (presence limitations)
+### [x] Task 2 — Doc comment on `send_chat_action` (presence limitations)
 **File:** `crates/nv-daemon/src/channels/telegram/client.rs`
 **Agent:** `api-engineer`
 
@@ -58,7 +58,7 @@ replacement.
 
 ---
 
-### Task 3 — Code comment in `check_inactivity` (stop-on-delivery contract)
+### [x] Task 3 — Code comment in `check_inactivity` (stop-on-delivery contract)
 **File:** `crates/nv-daemon/src/orchestrator.rs`
 **Agent:** `api-engineer`
 
@@ -77,7 +77,7 @@ explaining the stop-on-delivery contract:
 
 ## Verification
 
-- [ ] `cargo build -p nv-daemon` passes after all three tasks
-- [ ] No new clippy warnings introduced
+- [x] `cargo build -p nv-daemon` passes after all three tasks
+- [x] No new clippy warnings introduced
 - [ ] The typing indicator is visually present from the moment a text message is received
       (manual verification: send a message, observe typing indicator before response arrives)

@@ -697,6 +697,12 @@ impl Orchestrator {
             slug,
         };
 
+        // Before dispatch — send typing indicator immediately so the user sees feedback
+        // while the worker starts up (worker also sends one at startup as belt-and-suspenders)
+        if let (Some(tg), Some(chat_id)) = (&self.telegram_client, self.telegram_chat_id) {
+            tg.send_chat_action(chat_id, "typing").await;
+        }
+
         self.worker_pool.dispatch(task).await;
     }
 
@@ -822,6 +828,12 @@ impl Orchestrator {
                 "worker active"
             );
         }
+
+        // Stop-on-delivery: Telegram "typing..." expires automatically after ~5s.
+        // When a worker completes, it's removed from worker_stage_started and worker_chat_id.
+        // The next tick of this function finds no active workers and sends no refresh,
+        // so the indicator expires within 5s of response delivery.
+        // There is no explicit "stop typing" API call in the Telegram Bot API.
 
         // Refresh typing indicator — shows "Nova is typing..." in chat header
         // Telegram typing indicator expires after ~5s, so we refresh every cycle

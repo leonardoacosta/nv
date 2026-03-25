@@ -493,6 +493,11 @@ pub struct DaemonConfig {
     /// Default: "America/Chicago".
     #[serde(default = "default_timezone")]
     pub timezone: String,
+    /// Base URL for the Nova dashboard (e.g. "https://nova.example.com").
+    ///
+    /// When set, workers append a `<a href="{url}/sessions/{task_id}">` link to
+    /// Telegram responses. When omitted, the link is suppressed entirely.
+    pub dashboard_url: Option<String>,
 }
 
 // ── Alert Rules Config ───────────────────────────────────────────────

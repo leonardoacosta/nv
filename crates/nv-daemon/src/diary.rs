@@ -27,6 +27,8 @@ pub struct DiaryEntry {
     pub tokens_in: u32,
     /// Output tokens from the Claude API response.
     pub tokens_out: u32,
+    /// Human-readable session slug (e.g. "check-jira-sprint").
+    pub slug: String,
 }
 
 // ── Diary Writer ────────────────────────────────────────────────────
@@ -94,7 +96,7 @@ fn format_entry(entry: &DiaryEntry) -> String {
     };
 
     format!(
-        "## {time} — {} ({})\n\n\
+        "## {time} — {} ({}) · {}\n\n\
          **Triggers:** {} ({})\n\
          **Tools called:** {tools}\n\
          **Sources checked:** {}\n\
@@ -102,6 +104,7 @@ fn format_entry(entry: &DiaryEntry) -> String {
          **Cost:** {} in + {} out tokens\n\n",
         entry.trigger_type,
         entry.trigger_source,
+        entry.slug,
         entry.trigger_count,
         entry.trigger_type,
         entry.sources_checked,
@@ -144,6 +147,7 @@ mod tests {
             result_summary: "sent reply".into(),
             tokens_in: 500,
             tokens_out: 120,
+            slug: "sent-reply".into(),
         };
 
         writer.write_entry(&entry).unwrap();
@@ -177,6 +181,7 @@ mod tests {
             result_summary: "sent reply".into(),
             tokens_in: 100,
             tokens_out: 50,
+            slug: "sent-reply".into(),
         };
 
         let entry2 = DiaryEntry {
@@ -189,6 +194,7 @@ mod tests {
             result_summary: "suppressed digest".into(),
             tokens_in: 800,
             tokens_out: 200,
+            slug: "digest".into(),
         };
 
         writer.write_entry(&entry1).unwrap();
@@ -216,10 +222,41 @@ mod tests {
             result_summary: "suppressed digest".into(),
             tokens_in: 0,
             tokens_out: 0,
+            slug: "digest".into(),
         };
 
         let formatted = format_entry(&entry);
         assert!(formatted.contains("**Tools called:** none"));
+    }
+
+    #[test]
+    fn test_format_entry_includes_slug_in_heading() {
+        let now = Local::now();
+        let entry = DiaryEntry {
+            timestamp: now,
+            trigger_type: "message".into(),
+            trigger_source: "telegram".into(),
+            trigger_count: 1,
+            tools_called: vec![],
+            sources_checked: "none".into(),
+            result_summary: "sent reply".into(),
+            tokens_in: 10,
+            tokens_out: 5,
+            slug: "check-jira-sprint".into(),
+        };
+
+        let formatted = format_entry(&entry);
+        // Heading must contain the slug separated by " · "
+        assert!(
+            formatted.contains(" · check-jira-sprint"),
+            "heading must include slug with separator; got: {formatted:?}"
+        );
+        // Heading structure: ## HH:MM — trigger_type (trigger_source) · slug
+        let heading_line = formatted.lines().next().expect("must have heading line");
+        assert!(heading_line.starts_with("## "), "must be an h2 heading");
+        assert!(heading_line.contains("message"), "must include trigger type");
+        assert!(heading_line.contains("telegram"), "must include trigger source");
+        assert!(heading_line.ends_with("check-jira-sprint"), "slug must be last in heading");
     }
 
     #[test]

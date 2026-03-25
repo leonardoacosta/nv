@@ -1048,6 +1048,7 @@ async fn main() -> anyhow::Result<()> {
         doppler_registry,
         teams_client: teams_client_for_workers,
         claude_client: client.clone(),
+        dashboard_url: config.daemon.as_ref().and_then(|d| d.dashboard_url.clone()),
     });
 
     // Extract Telegram client and chat_id for reactions

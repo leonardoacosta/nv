@@ -22,7 +22,7 @@ use crate::nexus;
 use crate::obligation_detector;
 use crate::obligation_store::NewObligation;
 use crate::channels::telegram::client::TelegramClient;
-use crate::worker::{Priority, SharedDeps, WorkerEvent, WorkerPool, WorkerTask};
+use crate::worker::{generate_slug_for_triggers, Priority, SharedDeps, WorkerEvent, WorkerPool, WorkerTask};
 
 // ── Constants ───────────────────────────────────────────────────────
 
@@ -598,6 +598,7 @@ impl Orchestrator {
         let is_edit_reply = editing_action_id.is_some();
 
         // Dispatch to worker pool
+        let slug = generate_slug_for_triggers(triggers);
         let task = WorkerTask {
             id: Uuid::new_v4(),
             triggers: std::mem::take(triggers),
@@ -608,6 +609,7 @@ impl Orchestrator {
             cli_response_txs,
             is_edit_reply,
             editing_action_id,
+            slug,
         };
 
         self.worker_pool.dispatch(task).await;

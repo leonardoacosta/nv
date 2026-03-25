@@ -20,6 +20,48 @@ import {
 } from "lucide-react";
 import NovaMark from "@/components/NovaMark";
 import UsageSparkline from "@/components/UsageSparkline";
+import { useDaemonStatus, type WsStatus } from "@/components/providers/DaemonEventContext";
+
+const WS_STATUS_CONFIG: Record<
+  WsStatus,
+  { dot: string; label: string; text: string }
+> = {
+  connected: {
+    dot: "bg-emerald-400",
+    label: "Daemon connected",
+    text: "Connected",
+  },
+  reconnecting: {
+    dot: "bg-amber-400 animate-pulse",
+    label: "Daemon reconnecting",
+    text: "Reconnecting…",
+  },
+  disconnected: {
+    dot: "bg-red-400",
+    label: "Daemon disconnected",
+    text: "Disconnected",
+  },
+};
+
+function WsStatusDot({ collapsed }: { collapsed: boolean }) {
+  const status = useDaemonStatus();
+  const cfg = WS_STATUS_CONFIG[status];
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 min-h-11"
+      title={cfg.label}
+    >
+      <span
+        className={`inline-block w-2 h-2 rounded-full shrink-0 ${cfg.dot}`}
+        aria-label={cfg.label}
+        role="img"
+      />
+      {!collapsed && (
+        <span className="text-xs text-cosmic-muted truncate">{cfg.text}</span>
+      )}
+    </div>
+  );
+}
 
 interface NavItem {
   to: string;
@@ -104,6 +146,11 @@ export default function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Footer: WebSocket status */}
+      <div className="border-t border-cosmic-border shrink-0">
+        <WsStatusDot collapsed={collapsed} />
+      </div>
 
       {/* Collapse toggle */}
       <button

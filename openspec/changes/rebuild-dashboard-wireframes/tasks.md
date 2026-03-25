@@ -1,6 +1,6 @@
 # Implementation Tasks
 
-<!-- beads:epic:TBD -->
+<!-- beads:epic:nv-f8c -->
 
 ## DB Batch
 
@@ -11,18 +11,18 @@
 
 ## UI Batch — Shared Primitives
 
-- [ ] [2.1] [P-1] Create `apps/dashboard/src/components/layout/PageShell.tsx` — page header with title, subtitle, and action slot; max-width container [owner:ui-engineer]
-- [ ] [2.2] [P-1] Create `apps/dashboard/src/components/layout/PageSkeleton.tsx` — animated pulse skeleton that matches the loaded content shape for each page variant [owner:ui-engineer]
-- [ ] [2.3] [P-1] Create `apps/dashboard/src/components/layout/ErrorBanner.tsx` — inline error display with retry button, cosmic-rose styling [owner:ui-engineer]
-- [ ] [2.4] [P-1] Create `apps/dashboard/src/components/layout/EmptyState.tsx` — centered icon + message + optional CTA, consistent across all empty pages [owner:ui-engineer]
-- [ ] [2.5] [P-1] Create `apps/dashboard/src/components/layout/StatCard.tsx` — metric tile: icon, label, value, optional accent color and trend indicator [owner:ui-engineer]
-- [ ] [2.6] [P-2] Create `apps/dashboard/src/components/layout/SectionHeader.tsx` — uppercase section label with count badge and optional status dot [owner:ui-engineer]
+- [x] [2.1] [P-1] Create `apps/dashboard/src/components/layout/PageShell.tsx` — page header with title, subtitle, and action slot; max-width container [owner:ui-engineer]
+- [x] [2.2] [P-1] Create `apps/dashboard/src/components/layout/PageSkeleton.tsx` — animated pulse skeleton that matches the loaded content shape for each page variant [owner:ui-engineer]
+- [x] [2.3] [P-1] Create `apps/dashboard/src/components/layout/ErrorBanner.tsx` — inline error display with retry button, cosmic-rose styling [owner:ui-engineer]
+- [x] [2.4] [P-1] Create `apps/dashboard/src/components/layout/EmptyState.tsx` — centered icon + message + optional CTA, consistent across all empty pages [owner:ui-engineer]
+- [x] [2.5] [P-1] Create `apps/dashboard/src/components/layout/StatCard.tsx` — metric tile: icon, label, value, optional accent color and trend indicator [owner:ui-engineer]
+- [x] [2.6] [P-2] Create `apps/dashboard/src/components/layout/SectionHeader.tsx` — uppercase section label with count badge and optional status dot [owner:ui-engineer]
 
 ## UI Batch — WebSocket Context
 
-- [ ] [3.1] [P-1] Create `apps/dashboard/src/components/providers/DaemonEventContext.tsx` — WebSocket connection manager: connect to `/ws/events`, reconnect with exponential backoff (1s/2s/4s, max 30s), expose event subscription hook [owner:ui-engineer]
-- [ ] [3.2] [P-1] Wrap `apps/dashboard/src/app/layout.tsx` root with `DaemonEventContext` provider [owner:ui-engineer]
-- [ ] [3.3] [P-2] Add WebSocket status indicator to sidebar footer — green/amber/red dot reflecting connected/reconnecting/disconnected state [owner:ui-engineer]
+- [x] [3.1] [P-1] Create `apps/dashboard/src/components/providers/DaemonEventContext.tsx` — WebSocket connection manager: connect to `/ws/events`, reconnect with exponential backoff (1s/2s/4s, max 30s), expose event subscription hook [owner:ui-engineer]
+- [x] [3.2] [P-1] Wrap `apps/dashboard/src/app/layout.tsx` root with `DaemonEventContext` provider [owner:ui-engineer]
+- [x] [3.3] [P-2] Add WebSocket status indicator to sidebar footer — green/amber/red dot reflecting connected/reconnecting/disconnected state [owner:ui-engineer]
 
 ## UI Batch — Main Dashboard Page
 

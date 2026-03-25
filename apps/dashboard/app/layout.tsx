@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import { DaemonEventProvider } from "@/components/providers/DaemonEventContext";
 
 export const metadata: Metadata = {
   title: "Nova Dashboard",
@@ -15,10 +16,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="flex min-h-dvh bg-cosmic-gradient">
-          <Sidebar />
-          <main className="flex-1 overflow-auto">{children}</main>
-        </div>
+        <DaemonEventProvider>
+          <div className="flex min-h-dvh bg-cosmic-gradient">
+            <Sidebar />
+            <main className="flex-1 overflow-auto">{children}</main>
+          </div>
+        </DaemonEventProvider>
       </body>
     </html>
   );

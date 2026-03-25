@@ -1,0 +1,59 @@
+@font-face {
+  font-family: "Geist Sans Variable";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono Variable";
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-cosmic-purple: #7c3aed;
+    --color-cosmic-rose: #f43f5e;
+    --color-cosmic-dark: #0f0b1a;
+    --color-cosmic-surface: #1a1425;
+    --color-cosmic-border: #2d2640;
+    --color-cosmic-muted: #6b5b8a;
+    --color-cosmic-text: #e8e0f0;
+    --color-cosmic-bright: #f5f0ff;
+  }
+
+  html,
+  body {
+    @apply bg-cosmic-dark text-cosmic-text font-sans;
+    min-height: 100dvh;
+  }
+
+  * {
+    @apply border-cosmic-border;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-cosmic-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-cosmic-muted;
+  }
+}

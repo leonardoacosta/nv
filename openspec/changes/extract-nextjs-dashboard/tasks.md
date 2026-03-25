@@ -4,14 +4,14 @@
 
 ## Batch 1 — Scaffold (Next.js app skeleton)
 
-- [ ] [1.1] [P-1] Create `apps/dashboard/package.json` — name `nova-dashboard`, Next.js 15, React 19, `lucide-react`, `geist`, `react-router-dom` removed (App Router handles routing) [owner:ui-engineer]
-- [ ] [1.2] [P-1] Create `apps/dashboard/next.config.ts` — `output: 'standalone'`, rewrites from `/api/*` to daemon proxy via `DAEMON_URL` env var [owner:ui-engineer]
-- [ ] [1.3] [P-1] Create `apps/dashboard/tsconfig.json` — path alias `@/*` → `apps/dashboard/*`, strict mode, Next.js plugin [owner:ui-engineer]
-- [ ] [1.4] [P-1] Create `apps/dashboard/tailwind.config.ts` — port all cosmic color tokens, font families (Geist Sans Variable, Geist Mono Variable), backgroundImage, boxShadow, borderRadius verbatim from `dashboard/tailwind.config.ts` [owner:ui-engineer]
-- [ ] [1.5] [P-1] Create `apps/dashboard/app/globals.css` — Tailwind directives, CSS vars for cosmic theme, Geist font face declarations [owner:ui-engineer]
-- [ ] [1.6] [P-1] Create `apps/dashboard/app/layout.tsx` — root layout with `<html>`, Geist font loading via `next/font` (or `geist` npm package), Tailwind `bg-cosmic-gradient min-h-dvh flex` wrapper, `<Sidebar />` + `<main>` slot [owner:ui-engineer]
-- [ ] [1.7] [P-2] Create `apps/dashboard/lib/daemon.ts` — `DAEMON_URL` constant from `process.env.DAEMON_URL ?? 'http://127.0.0.1:3443'`, typed `daemonFetch(path, init?)` helper that returns `Response` [owner:ui-engineer]
-- [ ] [1.8] [P-2] Port `apps/dashboard/types/api.ts` — copy `dashboard/src/types/api.ts` verbatim, update import paths if any [owner:ui-engineer]
+- [x] [1.1] [P-1] Create `apps/dashboard/package.json` — name `nova-dashboard`, Next.js 15, React 19, `lucide-react`, `geist`, `react-router-dom` removed (App Router handles routing) [owner:ui-engineer]
+- [x] [1.2] [P-1] Create `apps/dashboard/next.config.ts` — `output: 'standalone'`, rewrites from `/api/*` to daemon proxy via `DAEMON_URL` env var [owner:ui-engineer]
+- [x] [1.3] [P-1] Create `apps/dashboard/tsconfig.json` — path alias `@/*` → `apps/dashboard/*`, strict mode, Next.js plugin [owner:ui-engineer]
+- [x] [1.4] [P-1] Create `apps/dashboard/tailwind.config.ts` — port all cosmic color tokens, font families (Geist Sans Variable, Geist Mono Variable), backgroundImage, boxShadow, borderRadius verbatim from `dashboard/tailwind.config.ts` [owner:ui-engineer]
+- [x] [1.5] [P-1] Create `apps/dashboard/app/globals.css` — Tailwind directives, CSS vars for cosmic theme, Geist font face declarations [owner:ui-engineer]
+- [x] [1.6] [P-1] Create `apps/dashboard/app/layout.tsx` — root layout with `<html>`, Geist font loading via `next/font` (or `geist` npm package), Tailwind `bg-cosmic-gradient min-h-dvh flex` wrapper, `<Sidebar />` + `<main>` slot [owner:ui-engineer]
+- [x] [1.7] [P-2] Create `apps/dashboard/lib/daemon.ts` — `DAEMON_URL` constant from `process.env.DAEMON_URL ?? 'http://127.0.0.1:3443'`, typed `daemonFetch(path, init?)` helper that returns `Response` [owner:ui-engineer]
+- [x] [1.8] [P-2] Port `apps/dashboard/types/api.ts` — copy `dashboard/src/types/api.ts` verbatim, update import paths if any [owner:ui-engineer]
 
 ## Batch 2 — Components (parallel with Batch 3)
 

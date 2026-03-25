@@ -592,6 +592,65 @@ impl Orchestrator {
             });
         }
 
+        // ── Dashboard forwarding (Tasks 5.3 + 5.4) ───────────────────────
+        //
+        // For Query and Command triggers originating from a Telegram message,
+        // attempt to forward to the dashboard CC session first. If healthy and
+        // successful, send the reply directly to Telegram and return — no worker
+        // dispatch needed. On any failure, fall through to the worker pool.
+        let should_try_dashboard = matches!(primary_class, TriggerClass::Query | TriggerClass::Command);
+
+        if should_try_dashboard {
+            // Extract message text — only forward if there's a concrete message.
+            if let Some(Trigger::Message(msg)) = triggers.first() {
+                let msg_text = msg.content.clone();
+                let msg_chat_id = tg_chat_id.or(self.telegram_chat_id);
+                let msg_reply_to = tg_msg_id;
+
+                // Borrow dashboard client from shared deps (behind Arc).
+                if let Some(ref dc) = self.deps.dashboard_client {
+                    if dc.is_healthy() {
+                        tracing::info!(
+                            class = ?primary_class,
+                            chat_id = ?msg_chat_id,
+                            "forwarding to dashboard"
+                        );
+
+                        match dc.forward_message(&msg_text, msg_chat_id, None).await {
+                            Ok(reply) => {
+                                // Send reply directly to Telegram.
+                                if let Some(channel) = self.channels.get("telegram") {
+                                    let outbound = nv_core::types::OutboundMessage {
+                                        channel: "telegram".into(),
+                                        content: reply,
+                                        reply_to: msg_reply_to.map(|id| id.to_string()),
+                                        keyboard: None,
+                                    };
+                                    if let Err(e) = channel.send_message(outbound).await {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "dashboard forward: failed to deliver reply to Telegram"
+                                        );
+                                    }
+                                }
+                                // Reply sent — no worker dispatch needed.
+                                return;
+                            }
+                            Err(e) => {
+                                // Task 5.4: log warning and fall back to worker pool.
+                                tracing::warn!(
+                                    error = %e,
+                                    "dashboard forward failed — falling back to worker pool"
+                                );
+                            }
+                        }
+                    } else {
+                        tracing::debug!("dashboard unhealthy — routing to worker pool");
+                    }
+                }
+            }
+        }
+
         // Phase 2: Consume editing_action_id so the next message starts an
         // edit-aware Claude session. .take() ensures only this task gets it.
         let editing_action_id = self.editing_action_id.take();

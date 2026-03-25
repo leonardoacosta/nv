@@ -498,6 +498,13 @@ pub struct DaemonConfig {
     /// When set, workers append a `<a href="{url}/sessions/{task_id}">` link to
     /// Telegram responses. When omitted, the link is suppressed entirely.
     pub dashboard_url: Option<String>,
+    /// Shared secret for authenticating daemon → dashboard requests.
+    ///
+    /// When set, the daemon sends `Authorization: Bearer <secret>` on every
+    /// POST to `/api/session/message`. Must match `DASHBOARD_SECRET` on the
+    /// dashboard side. When absent, dashboard forwarding is disabled even if
+    /// `dashboard_url` is configured.
+    pub dashboard_secret: Option<String>,
 }
 
 // ── Alert Rules Config ───────────────────────────────────────────────

@@ -3,6 +3,7 @@ mod agent;
 mod aggregation;
 mod alert_rules;
 mod bash;
+mod dashboard_client;
 mod callbacks;
 mod channels;
 mod claude;
@@ -995,6 +996,39 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Build optional DashboardClient if both url and secret are configured.
+    let dashboard_client = match (
+        config.daemon.as_ref().and_then(|d| d.dashboard_url.as_deref()),
+        config.daemon.as_ref().and_then(|d| d.dashboard_secret.as_deref()),
+    ) {
+        (Some(url), Some(secret)) => {
+            match dashboard_client::DashboardClient::new(url, secret) {
+                Ok(dc) => {
+                    // Task 5.5: ping on startup to establish healthy flag
+                    let healthy = dc.ping().await;
+                    tracing::info!(
+                        url = %url,
+                        healthy,
+                        "dashboard reachability check complete"
+                    );
+                    Some(dc)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to build DashboardClient — forwarding disabled");
+                    None
+                }
+            }
+        }
+        (Some(_), None) => {
+            tracing::warn!("dashboard_url configured but dashboard_secret missing — forwarding disabled");
+            None
+        }
+        _ => {
+            tracing::debug!("dashboard forwarding not configured");
+            None
+        }
+    };
+
     // Build shared dependencies for workers
     let shared_deps = Arc::new(worker::SharedDeps {
         memory: memory::Memory::new(&nv_base),
@@ -1049,6 +1083,7 @@ async fn main() -> anyhow::Result<()> {
         teams_client: teams_client_for_workers,
         claude_client: client.clone(),
         dashboard_url: config.daemon.as_ref().and_then(|d| d.dashboard_url.clone()),
+        dashboard_client,
     });
 
     // Extract Telegram client and chat_id for reactions

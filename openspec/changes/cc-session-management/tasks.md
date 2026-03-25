@@ -41,12 +41,12 @@
 
 ## Batch 5: Daemon Message Forwarding
 
-- [ ] [5.1] [P-1] Add `dashboard_url: Option<String>` and `dashboard_secret: Option<String>` fields to daemon config struct in `crates/nv-daemon/src/config.rs`; populate from `DASHBOARD_URL` and `DASHBOARD_SECRET` env vars [owner:api-engineer]
-- [ ] [5.2] [P-1] Add `DashboardClient` struct to `crates/nv-daemon/src/` — thin HTTP client wrapping `reqwest`, with `forward_message(text, chat_id, context) -> Result<String>` that POST to `/api/session/message` with Bearer auth and 120s timeout [owner:api-engineer]
-- [ ] [5.3] [P-1] In `crates/nv-daemon/src/orchestrator.rs`, add dashboard forwarding path: for triggers classified as `Query` or `Command`, if `DashboardClient` is configured and healthy, forward via `DashboardClient::forward_message()` and send reply to Telegram directly [owner:api-engineer]
-- [ ] [5.4] [P-2] Implement fallback logic in orchestrator: if `DashboardClient::forward_message()` returns error or 503, fall back to existing `WorkerPool` dispatch; log warning with error detail [owner:api-engineer]
-- [ ] [5.5] [P-2] Add dashboard reachability check on daemon startup — ping `/api/session/status`, log result, set initial `dashboard_healthy` flag [owner:api-engineer]
-- [ ] [5.6] [P-3] Add `DashboardClient` as optional field to `SharedDeps` in `worker.rs` for any future worker-initiated dashboard calls [owner:api-engineer]
+- [x] [5.1] [P-1] Add `dashboard_url: Option<String>` and `dashboard_secret: Option<String>` fields to daemon config struct in `crates/nv-daemon/src/config.rs`; populate from `DASHBOARD_URL` and `DASHBOARD_SECRET` env vars [owner:api-engineer]
+- [x] [5.2] [P-1] Add `DashboardClient` struct to `crates/nv-daemon/src/` — thin HTTP client wrapping `reqwest`, with `forward_message(text, chat_id, context) -> Result<String>` that POST to `/api/session/message` with Bearer auth and 120s timeout [owner:api-engineer]
+- [x] [5.3] [P-1] In `crates/nv-daemon/src/orchestrator.rs`, add dashboard forwarding path: for triggers classified as `Query` or `Command`, if `DashboardClient` is configured and healthy, forward via `DashboardClient::forward_message()` and send reply to Telegram directly [owner:api-engineer]
+- [x] [5.4] [P-2] Implement fallback logic in orchestrator: if `DashboardClient::forward_message()` returns error or 503, fall back to existing `WorkerPool` dispatch; log warning with error detail [owner:api-engineer]
+- [x] [5.5] [P-2] Add dashboard reachability check on daemon startup — ping `/api/session/status`, log result, set initial `dashboard_healthy` flag [owner:api-engineer]
+- [x] [5.6] [P-3] Add `DashboardClient` as optional field to `SharedDeps` in `worker.rs` for any future worker-initiated dashboard calls [owner:api-engineer]
 
 ## Verify
 

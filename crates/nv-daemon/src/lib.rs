@@ -15,6 +15,7 @@ mod aggregation;
 mod agent;
 mod alert_rules;
 mod bash;
+mod dashboard_client;
 mod callbacks;
 mod channels;
 mod claude;

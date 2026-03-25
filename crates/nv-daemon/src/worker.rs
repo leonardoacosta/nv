@@ -229,6 +229,12 @@ pub struct SharedDeps {
     /// When `Some`, workers append a dashboard link to outbound Telegram responses.
     /// When `None`, link generation is suppressed.
     pub dashboard_url: Option<String>,
+    /// Optional dashboard HTTP client for worker-initiated forwarding.
+    ///
+    /// Populated when both `daemon.dashboard_url` and `daemon.dashboard_secret`
+    /// are configured. Workers may use this for any future dashboard calls;
+    /// primary forwarding logic lives in the orchestrator.
+    pub dashboard_client: Option<crate::dashboard_client::DashboardClient>,
     /// ClaudeClient for direct pipeline calls (e.g. digest synthesis).
     /// Workers each clone the `client_template` in `WorkerPool`; this field
     /// allows the orchestrator to invoke Claude outside of the worker loop.

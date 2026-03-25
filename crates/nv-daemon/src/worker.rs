@@ -11,13 +11,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use nv_core::types::{CronEvent, InlineKeyboard, OutboundMessage, Trigger};
 use uuid::Uuid;
 
 use crate::agent::{
     build_system_context, check_bootstrap_state, ChannelRegistry,
 };
+use crate::dashboard_client::{DashboardError, ForwardRequest};
 use crate::briefing_store::BriefingStore;
 use crate::cold_start_store::{ColdStartEvent, ColdStartStore};
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
@@ -688,7 +689,7 @@ struct Worker;
 impl Worker {
     /// Run a single task: load context, call Claude, execute tools, send response.
     async fn run(
-        task: WorkerTask,
+        mut task: WorkerTask,
         deps: Arc<SharedDeps>,
         client: ClaudeClient,
         tg_client: Option<TelegramClient>,
@@ -931,6 +932,205 @@ impl Worker {
                 None
             }
         });
+
+        // ── Dashboard forwarding path ─────────────────────────────────────────
+        //
+        // If a DashboardClient is configured, attempt to forward the trigger to
+        // the Nova dashboard CC session before falling back to the cold-start
+        // (local Claude) path.
+        //
+        // Fallback policy:
+        //   DashboardError::Unavailable  → warn + fall through to cold-start.
+        //   DashboardError::AuthError    → log error + Telegram alert + return Err
+        //                                  (no fallback — this is a config bug).
+        //   DashboardError::BadRequest   → log error + Telegram alert + return Err.
+        if let Some(ref dash_client) = deps.dashboard_client {
+            let forward_span_start = Instant::now();
+            let forward_result = Self::run_forward(
+                dash_client,
+                &trigger_text,
+                tg_chat_id,
+                task.telegram_message_id,
+                &trigger_channel,
+                &system_prompt,
+            )
+            .await;
+
+            match forward_result {
+                Ok(reply_text) => {
+                    let elapsed_ms = forward_span_start.elapsed().as_millis() as u64;
+                    let dashboard_url = dash_client.base_url().to_string();
+                    tracing::info!(
+                        worker_task = %task_id,
+                        dashboard_url = %dashboard_url,
+                        chat_id = ?tg_chat_id,
+                        elapsed_ms,
+                        fallback_used = false,
+                        "dashboard forward succeeded"
+                    );
+
+                    // React with check mark
+                    if let (Some(tg), Some(chat_id), Some(msg_id)) =
+                        (&tg_client, tg_chat_id, tg_msg_id)
+                    {
+                        let _ = tg.set_message_reaction(chat_id, msg_id, "\u{2705}").await;
+                    }
+
+                    // Drain CLI response channels (take avoids partial-move of task)
+                    let cli_txs = std::mem::take(&mut task.cli_response_txs);
+                    for tx in cli_txs {
+                        let _ = tx.send(reply_text.clone());
+                    }
+
+                    // Build channel content with optional dashboard link
+                    let channel_content = if let Some(ref base_url) = deps.dashboard_url {
+                        format!(
+                            "{reply_text}\n\n<a href=\"{base_url}/sessions/{task_id}\">{}</a>",
+                            task.slug
+                        )
+                    } else {
+                        reply_text.clone()
+                    };
+
+                    if !reply_text.is_empty() {
+                        if let Some(channel) = deps.channels.get(trigger_channel.as_str()) {
+                            if let Err(e) = channel
+                                .send_message(OutboundMessage {
+                                    channel: trigger_channel.clone(),
+                                    content: channel_content,
+                                    reply_to: reply_to_id.clone(),
+                                    keyboard: None,
+                                })
+                                .await
+                            {
+                                tracing::error!(
+                                    error = %e,
+                                    "failed to route dashboard-forward response"
+                                );
+                            }
+                        }
+                    }
+
+                    // Log outbound message to MessageStore (same as cold-start path)
+                    {
+                        let store = deps.message_store.lock().unwrap();
+                        if let Err(e) = store.log_outbound(
+                            &trigger_channel,
+                            &reply_text,
+                            tg_msg_id,
+                            Some(elapsed_ms as i64),
+                            None,
+                            None,
+                        ) {
+                            tracing::warn!(error = %e, "failed to log outbound message (dashboard)");
+                        }
+                    }
+
+                    // Write diary entry (same format as cold-start path)
+                    let (trigger_type, trigger_source) = classify_triggers(&task.triggers);
+                    let diary_entry = DiaryEntry {
+                        timestamp: chrono::Local::now(),
+                        trigger_type,
+                        trigger_source,
+                        trigger_count: task.triggers.len(),
+                        tools_called: vec![],
+                        sources_checked: String::new(),
+                        result_summary: reply_text.chars().take(120).collect::<String>(),
+                        tokens_in: 0,
+                        tokens_out: 0,
+                        slug: task.slug.clone(),
+                    };
+                    {
+                        let diary = deps.diary.lock().unwrap();
+                        if let Err(e) = diary.write_entry(&diary_entry) {
+                            tracing::warn!(
+                                error = %e,
+                                "failed to write diary entry (dashboard)"
+                            );
+                        }
+                    }
+
+                    let _ = event_tx.send(WorkerEvent::Complete {
+                        worker_id: task_id,
+                        response_len: reply_text.len(),
+                    });
+
+                    tracing::info!(
+                        worker_task = %task_id,
+                        elapsed_ms = task_start.elapsed().as_millis() as u64,
+                        "worker completed (via dashboard)"
+                    );
+
+                    return Ok(());
+                }
+
+                Err(DashboardError::Unavailable(ref reason)) => {
+                    let dashboard_url = dash_client.base_url().to_string();
+                    tracing::warn!(
+                        worker_task = %task_id,
+                        dashboard_url = %dashboard_url,
+                        reason = %reason,
+                        fallback_used = true,
+                        "dashboard unavailable, using cold-start fallback"
+                    );
+                    // Fall through to cold-start path below.
+                }
+
+                Err(DashboardError::AuthError(ref detail)) => {
+                    let detail = detail.clone();
+                    tracing::error!(
+                        worker_task = %task_id,
+                        detail = %detail,
+                        "dashboard auth error — check DASHBOARD_SECRET config"
+                    );
+                    let _ = event_tx.send(WorkerEvent::Error {
+                        worker_id: task_id,
+                        error: format!("dashboard auth error: {detail}"),
+                    });
+                    if let Some(channel) = deps.channels.get("telegram") {
+                        let msg = OutboundMessage {
+                            channel: "telegram".into(),
+                            content: "Nova: dashboard auth error — check logs and DASHBOARD_SECRET config.".to_string(),
+                            reply_to: reply_to_id.clone(),
+                            keyboard: None,
+                        };
+                        let _ = channel.send_message(msg).await;
+                    }
+                    let cli_txs = std::mem::take(&mut task.cli_response_txs);
+                    for tx in cli_txs {
+                        let _ = tx.send(format!("dashboard auth error: {detail}"));
+                    }
+                    return Err(anyhow!("dashboard auth error: {detail}"));
+                }
+
+                Err(DashboardError::BadRequest(ref detail)) => {
+                    let detail = detail.clone();
+                    tracing::error!(
+                        worker_task = %task_id,
+                        detail = %detail,
+                        "dashboard bad request — this is a client-side bug"
+                    );
+                    let _ = event_tx.send(WorkerEvent::Error {
+                        worker_id: task_id,
+                        error: format!("dashboard bad request: {detail}"),
+                    });
+                    if let Some(channel) = deps.channels.get("telegram") {
+                        let msg = OutboundMessage {
+                            channel: "telegram".into(),
+                            content: "Nova: dashboard request error — check logs.".to_string(),
+                            reply_to: reply_to_id.clone(),
+                            keyboard: None,
+                        };
+                        let _ = channel.send_message(msg).await;
+                    }
+                    let cli_txs = std::mem::take(&mut task.cli_response_txs);
+                    for tx in cli_txs {
+                        let _ = tx.send(format!("dashboard bad request: {detail}"));
+                    }
+                    return Err(anyhow!("dashboard bad request: {detail}"));
+                }
+            }
+        }
 
         // Call Claude
         let call_start = Instant::now();
@@ -1300,6 +1500,31 @@ impl Worker {
         Ok(())
     }
 
+    /// Forward a single trigger to the Nova dashboard worker endpoint.
+    ///
+    /// Constructs a `ForwardRequest` from the trigger text and system context,
+    /// then calls `DashboardClient::forward()`.  Returns the reply string on
+    /// success, or a classified `DashboardError` for the caller to handle.
+    async fn run_forward(
+        dash_client: &crate::dashboard_client::DashboardClient,
+        trigger_text: &str,
+        chat_id: Option<i64>,
+        message_id: Option<i64>,
+        channel: &str,
+        system_context: &str,
+    ) -> Result<String, DashboardError> {
+        let req = ForwardRequest {
+            message: trigger_text.to_string(),
+            chat_id,
+            message_id,
+            channel: channel.to_string(),
+            system_context: system_context.to_string(),
+        };
+
+        let resp = dash_client.forward(req).await?;
+        Ok(resp.reply)
+    }
+
     /// Execute the tool use loop for a worker.
     #[allow(clippy::too_many_arguments)]
     async fn run_tool_loop(
@@ -1497,7 +1722,7 @@ impl Worker {
                                 worker_id,
                                 error: format!("Tool {name} timed out after {timeout_secs}s"),
                             });
-                            Err(anyhow::anyhow!(
+                            Err(anyhow!(
                                 "Tool timed out after {timeout_secs}s"
                             ))
                         }

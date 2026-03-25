@@ -1139,6 +1139,7 @@ mod tests {
         let db_path = tmp.path().join("messages.db");
         let _store = MessageStore::init(&db_path).unwrap();
         let briefing_store = Arc::new(BriefingStore::new(tmp.path()));
+        let (event_tx, _event_rx) = broadcast::channel(64);
         let state = Arc::new(HttpState {
             trigger_tx: tx,
             health,
@@ -1150,6 +1151,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: Some(briefing_store),
             cold_start_store: None,
+            event_tx,
         });
         (state, rx, tmp)
     }
@@ -1187,6 +1189,7 @@ mod tests {
         );
         briefing_store.append(&entry).unwrap();
 
+        let (event_tx, _event_rx) = broadcast::channel(64);
         let state = Arc::new(HttpState {
             trigger_tx: tx,
             health,
@@ -1198,6 +1201,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: Some(Arc::clone(&briefing_store)),
             cold_start_store: None,
+            event_tx,
         });
         drop(rx);
 
@@ -1237,6 +1241,7 @@ mod tests {
             briefing_store.append(&e).unwrap();
         }
 
+        let (event_tx, _event_rx) = broadcast::channel(64);
         let state = Arc::new(HttpState {
             trigger_tx: tx,
             health,
@@ -1248,6 +1253,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: Some(Arc::clone(&briefing_store)),
             cold_start_store: None,
+            event_tx,
         });
         drop(rx);
 

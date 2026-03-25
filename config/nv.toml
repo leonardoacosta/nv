@@ -80,6 +80,14 @@ port = 7400
 [daemon]
 tts_url = "http://100.91.88.16:9999"
 health_port = 8400
+# ── Dashboard forwarding ────────────────────────────────────────────
+# When both dashboard_url and dashboard_secret are set, workers forward
+# triggers to the Nova dashboard CC session instead of running a local
+# cold-start.  On 5xx/timeout the worker falls back to cold-start
+# transparently.  On 401/403 an error is surfaced to the user (no fallback).
+#
+# dashboard_url = "https://nova.example.com"
+# dashboard_secret = ""  # set NOVA_DASHBOARD_TOKEN env var or configure here
 
 # ── Multi-instance service examples ──────────────────────────────────
 #

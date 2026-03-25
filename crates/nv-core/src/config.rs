@@ -592,6 +592,16 @@ impl Config {
             })
             .collect();
 
+        // Apply NOVA_DASHBOARD_TOKEN env override for dashboard_secret.
+        // Allows secret rotation without editing nv.toml.
+        if let Ok(token) = std::env::var("NOVA_DASHBOARD_TOKEN") {
+            if !token.is_empty() {
+                if let Some(ref mut daemon) = config.daemon {
+                    daemon.dashboard_secret = Some(token);
+                }
+            }
+        }
+
         // Validate quiet_start and quiet_end at parse time.
         if let Some(ref daemon) = config.daemon {
             if let Some(ref qs) = daemon.quiet_start {

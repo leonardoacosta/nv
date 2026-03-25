@@ -1030,9 +1030,19 @@ async fn main() -> anyhow::Result<()> {
         config.daemon.as_ref().and_then(|d| d.dashboard_secret.as_deref()),
     ) {
         (Some(url), Some(secret)) => {
+            // Redact token: show first 4 chars only (e.g. "tok1..." or "****" if short).
+            let redacted = if secret.len() > 4 {
+                format!("{}...", &secret[..4])
+            } else {
+                "****".to_string()
+            };
+            tracing::info!(
+                url = %url,
+                token = %redacted,
+                "dashboard forwarding enabled"
+            );
             match dashboard_client::DashboardClient::new(url, secret) {
                 Ok(dc) => {
-                    // Task 5.5: ping on startup to establish healthy flag
                     let healthy = dc.ping().await;
                     tracing::info!(
                         url = %url,
@@ -1048,11 +1058,11 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         (Some(_), None) => {
-            tracing::warn!("dashboard_url configured but dashboard_secret missing — forwarding disabled");
+            tracing::warn!("dashboard_url configured but dashboard_secret missing — forwarding disabled (cold-start only)");
             None
         }
         _ => {
-            tracing::debug!("dashboard forwarding not configured");
+            tracing::info!("dashboard forwarding not configured — cold-start only");
             None
         }
     };

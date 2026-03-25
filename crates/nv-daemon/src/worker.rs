@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::agent::{
     build_system_context, check_bootstrap_state, ChannelRegistry,
 };
+use crate::briefing_store::BriefingStore;
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
 use crate::conversation::ConversationStore;
 use crate::diary::{DiaryEntry, DiaryWriter};
@@ -239,6 +240,8 @@ pub struct SharedDeps {
     /// Workers each clone the `client_template` in `WorkerPool`; this field
     /// allows the orchestrator to invoke Claude outside of the worker loop.
     pub claude_client: ClaudeClient,
+    /// Morning briefing log store. Shared with the HTTP server.
+    pub briefing_store: Option<Arc<BriefingStore>>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────

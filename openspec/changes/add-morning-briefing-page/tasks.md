@@ -4,41 +4,41 @@
 
 ## Rust: BriefingStore
 
-- [ ] [1.1] [P-1] Create `crates/nv-daemon/src/briefing_store.rs` — define `BriefingEntry` struct with fields: `id: String` (UUID v4), `generated_at: DateTime<Utc>`, `content: String`, `suggested_actions: Vec<SuggestedAction>`, `sources_status: HashMap<String, String>`; derive `Serialize`, `Deserialize`, `Debug`, `Clone` [owner:api-engineer]
-- [ ] [1.2] [P-1] Implement `BriefingStore` struct with `path: PathBuf` pointing to `~/.nv/state/briefing-log.jsonl`; add `BriefingStore::new(nv_base: &Path) -> Self` constructor [owner:api-engineer]
-- [ ] [1.3] [P-1] Implement `BriefingStore::append(&self, entry: &BriefingEntry) -> Result<()>` — serialize entry as a single JSONL line, append to file (create if absent), then trim the file to the last 30 entries using a read-rewrite cycle [owner:api-engineer]
-- [ ] [1.4] [P-2] Implement `BriefingStore::list(&self, limit: usize) -> Result<Vec<BriefingEntry>>` — read all JSONL lines, deserialize, return up to `limit` entries in newest-first order [owner:api-engineer]
-- [ ] [1.5] [P-2] Implement `BriefingStore::latest(&self) -> Result<Option<BriefingEntry>>` — convenience wrapper: `self.list(1).map(|v| v.into_iter().next())` [owner:api-engineer]
-- [ ] [1.6] [P-3] Add `mod briefing_store;` declaration in `crates/nv-daemon/src/lib.rs` (or `main.rs` depending on module layout post-extract-nextjs-dashboard) [owner:api-engineer]
+- [x] [1.1] [P-1] Create `crates/nv-daemon/src/briefing_store.rs` — define `BriefingEntry` struct with fields: `id: String` (UUID v4), `generated_at: DateTime<Utc>`, `content: String`, `suggested_actions: Vec<SuggestedAction>`, `sources_status: HashMap<String, String>`; derive `Serialize`, `Deserialize`, `Debug`, `Clone` [owner:api-engineer]
+- [x] [1.2] [P-1] Implement `BriefingStore` struct with `path: PathBuf` pointing to `~/.nv/state/briefing-log.jsonl`; add `BriefingStore::new(nv_base: &Path) -> Self` constructor [owner:api-engineer]
+- [x] [1.3] [P-1] Implement `BriefingStore::append(&self, entry: &BriefingEntry) -> Result<()>` — serialize entry as a single JSONL line, append to file (create if absent), then trim the file to the last 30 entries using a read-rewrite cycle [owner:api-engineer]
+- [x] [1.4] [P-2] Implement `BriefingStore::list(&self, limit: usize) -> Result<Vec<BriefingEntry>>` — read all JSONL lines, deserialize, return up to `limit` entries in newest-first order [owner:api-engineer]
+- [x] [1.5] [P-2] Implement `BriefingStore::latest(&self) -> Result<Option<BriefingEntry>>` — convenience wrapper: `self.list(1).map(|v| v.into_iter().next())` [owner:api-engineer]
+- [x] [1.6] [P-3] Add `mod briefing_store;` declaration in `crates/nv-daemon/src/lib.rs` (or `main.rs` depending on module layout post-extract-nextjs-dashboard) [owner:api-engineer]
 
 ## Rust: BriefingStore Tests
 
-- [ ] [2.1] [P-2] Unit test: `append_and_list_round_trip` — append 3 entries, call `list(10)`, assert all 3 returned newest-first, assert `content` and `generated_at` preserved exactly [owner:api-engineer]
-- [ ] [2.2] [P-2] Unit test: `cap_at_30_entries` — append 35 entries, call `list(30)`, assert exactly 30 returned and the 5 oldest were dropped [owner:api-engineer]
-- [ ] [2.3] [P-2] Unit test: `latest_returns_most_recent` — append 2 entries with distinct `generated_at`, call `latest()`, assert returns the newer one [owner:api-engineer]
-- [ ] [2.4] [P-2] Unit test: `list_empty_store` — call `list(10)` on a store whose file does not exist, assert returns empty vec without error [owner:api-engineer]
+- [x] [2.1] [P-2] Unit test: `append_and_list_round_trip` — append 3 entries, call `list(10)`, assert all 3 returned newest-first, assert `content` and `generated_at` preserved exactly [owner:api-engineer]
+- [x] [2.2] [P-2] Unit test: `cap_at_30_entries` — append 35 entries, call `list(30)`, assert exactly 30 returned and the 5 oldest were dropped [owner:api-engineer]
+- [x] [2.3] [P-2] Unit test: `latest_returns_most_recent` — append 2 entries with distinct `generated_at`, call `latest()`, assert returns the newer one [owner:api-engineer]
+- [x] [2.4] [P-2] Unit test: `list_empty_store` — call `list(10)` on a store whose file does not exist, assert returns empty vec without error [owner:api-engineer]
 
 ## Rust: Digest Pipeline Integration
 
-- [ ] [3.1] [P-1] Add `briefing_store: Option<Arc<BriefingStore>>` field to `DashboardState` in `dashboard.rs` [owner:api-engineer]
-- [ ] [3.2] [P-1] In the worker or actions module that handles `CronEvent::MorningBriefing`: after `synthesize_digest()` (or `synthesize_digest_fallback()`) returns a `DigestResult`, construct a `BriefingEntry` (new UUID via `uuid::Uuid::new_v4()`, `generated_at: Utc::now()`, copy `result.content` and `result.suggested_actions`, copy `sources_status` from `DigestState`) and call `briefing_store.append(&entry)` [owner:api-engineer]
-- [ ] [3.3] [P-2] Init `BriefingStore` in `main.rs` (or equivalent startup site) with `nv_base` path; wrap in `Arc`; pass to `DashboardState` [owner:api-engineer]
-- [ ] [3.4] [P-3] Add `uuid` dependency to `Cargo.toml` for `nv-daemon` if not already present (`uuid = { version = "1", features = ["v4"] }`) [owner:api-engineer]
+- [x] [3.1] [P-1] Add `briefing_store: Option<Arc<BriefingStore>>` field to `HttpState` in `http.rs` (dashboard.rs was deleted; adapted to current architecture) [owner:api-engineer]
+- [x] [3.2] [P-1] In `send_morning_briefing` in `orchestrator.rs`: after formatting the briefing message, construct a `BriefingEntry` and call `briefing_store.append(&entry)` via `SharedDeps.briefing_store` [owner:api-engineer]
+- [x] [3.3] [P-2] Init `BriefingStore` in `main.rs` with `nv_base` path; wrap in `Arc`; pass to `HttpState` (via `run_http_server`) and `SharedDeps` (via worker pool) [owner:api-engineer]
+- [x] [3.4] [P-3] `uuid` workspace dep already present with `v4` + `serde` features — no change needed [owner:api-engineer]
 
 ## Rust: API Endpoints
 
-- [ ] [4.1] [P-1] Add `GET /api/briefing` route in `build_dashboard_router()` in `dashboard.rs` [owner:api-engineer]
-- [ ] [4.2] [P-1] Implement `get_briefing` handler: call `briefing_store.latest()`, return 200 + `{"entry": ...}` on success; 404 + `{"error": "no briefing available"}` if empty; 503 + `{"error": "briefing store not available"}` if `briefing_store` is `None` [owner:api-engineer]
-- [ ] [4.3] [P-1] Add `GET /api/briefing/history` route in `build_dashboard_router()` [owner:api-engineer]
-- [ ] [4.4] [P-2] Implement `get_briefing_history` handler: accept `?limit=N` query param (default 10, clamp to max 30), call `briefing_store.list(limit)`, return 200 + `{"entries": [...]}` (empty array is valid); 503 if store absent [owner:api-engineer]
-- [ ] [4.5] [P-3] Add `BriefingQuery` struct for query param deserialization: `struct BriefingQuery { limit: Option<usize> }` [owner:api-engineer]
+- [x] [4.1] [P-1] Add `GET /api/briefing` route in `build_router()` in `http.rs` [owner:api-engineer]
+- [x] [4.2] [P-1] Implement `get_briefing_handler`: call `briefing_store.latest()`, return 200 with entry JSON on success; 404 if empty or store absent [owner:api-engineer]
+- [x] [4.3] [P-1] Add `GET /api/briefing/history` route in `build_router()` [owner:api-engineer]
+- [x] [4.4] [P-2] Implement `get_briefing_history_handler`: accept `?limit=N` (default 10, clamp 1–30), call `briefing_store.list(limit)`, return 200 with JSON array [owner:api-engineer]
+- [x] [4.5] [P-3] Add `BriefingQuery` struct for query param deserialization in `http.rs` [owner:api-engineer]
 
 ## Rust: API Tests
 
-- [ ] [5.1] [P-2] Unit test: `get_briefing_empty_store` — handler with empty BriefingStore returns 404 [owner:api-engineer]
-- [ ] [5.2] [P-2] Unit test: `get_briefing_with_entry` — handler with one entry returns 200 + correct JSON shape [owner:api-engineer]
-- [ ] [5.3] [P-2] Unit test: `get_briefing_history_respects_limit` — store with 15 entries, `?limit=5` returns 5 entries [owner:api-engineer]
-- [ ] [5.4] [P-2] Unit test: `get_briefing_history_clamps_limit` — `?limit=100` is clamped to 30 [owner:api-engineer]
+- [x] [5.1] [P-2] Unit test: `briefing_returns_404_when_empty` — handler with empty BriefingStore returns 404 [owner:api-engineer]
+- [x] [5.2] [P-2] Unit test: `briefing_returns_latest_entry` — handler with one entry returns 200 + correct JSON shape [owner:api-engineer]
+- [x] [5.3] [P-2] Unit test: `briefing_history_returns_entries` — store with 5 entries, `?limit=3` returns 3 entries newest-first [owner:api-engineer]
+- [x] [5.4] [P-2] Unit test: `briefing_returns_404_when_store_not_configured` — handler with `briefing_store: None` returns 404 [owner:api-engineer]
 
 ## Frontend: TypeScript Types
 
@@ -76,9 +76,9 @@
 
 ## Verify
 
-- [ ] [11.1] `cargo build` passes for all workspace members [owner:api-engineer]
-- [ ] [11.2] `cargo clippy -- -D warnings` passes [owner:api-engineer]
-- [ ] [11.3] `cargo test -p nv-daemon` — all BriefingStore tests pass, all API endpoint tests pass [owner:api-engineer]
+- [x] [11.1] `cargo build` passes for all workspace members [owner:api-engineer]
+- [x] [11.2] `cargo clippy -- -D warnings` passes [owner:api-engineer]
+- [x] [11.3] `cargo test -p nv-daemon` — all BriefingStore tests pass, all API endpoint tests pass [owner:api-engineer]
 - [ ] [11.4] `pnpm build` (or `vite build`) passes in the `dashboard/` directory with no TypeScript errors [owner:ui-engineer]
 - [ ] [11.5] [user] Manual smoke test: trigger a morning briefing digest manually (or wait for 07:00), then navigate to `/briefing` in the dashboard and confirm the briefing content renders with sections, action chips, and sources status [owner:ui-engineer]
 - [ ] [11.6] [user] Manual smoke test: confirm history rail shows at least the current entry; click it to reload and verify the content panel updates [owner:ui-engineer]

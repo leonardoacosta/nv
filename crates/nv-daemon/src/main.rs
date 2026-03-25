@@ -1,6 +1,7 @@
 mod account;
 mod agent;
 mod aggregation;
+mod briefing_store;
 mod alert_rules;
 mod bash;
 mod dashboard_client;
@@ -850,6 +851,11 @@ async fn main() -> anyhow::Result<()> {
     let stats_db_path = nv_base.join("messages.db");
     let http_weekly_budget = config.agent.weekly_budget_usd;
 
+    // Initialize the morning briefing store.
+    let briefing_store = Arc::new(briefing_store::BriefingStore::new(&nv_base));
+    let briefing_store_for_http = Arc::clone(&briefing_store);
+    tracing::info!("briefing store initialized");
+
     // Clone teams client before the async move so SharedDeps can hold its own reference.
     let teams_client_for_workers = teams_client_for_http.clone();
     tokio::spawn(async move {
@@ -863,6 +869,7 @@ async fn main() -> anyhow::Result<()> {
             jira_webhook_state,
             http_weekly_budget,
             teams_client_state_for_http,
+            Some(briefing_store_for_http),
         )
         .await
         {
@@ -1084,6 +1091,7 @@ async fn main() -> anyhow::Result<()> {
         claude_client: client.clone(),
         dashboard_url: config.daemon.as_ref().and_then(|d| d.dashboard_url.clone()),
         dashboard_client,
+        briefing_store: Some(Arc::clone(&briefing_store)),
     });
 
     // Extract Telegram client and chat_id for reactions

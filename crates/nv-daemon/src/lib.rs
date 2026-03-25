@@ -12,6 +12,7 @@
 // These are needed because `tools` imports from sibling modules.
 mod account;
 mod aggregation;
+mod briefing_store;
 mod agent;
 mod alert_rules;
 mod bash;

@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::agent::ChannelRegistry;
+use crate::briefing_store::BriefingEntry;
 use crate::digest::format::format_digest;
 use crate::digest::gather::gather_context;
 use crate::digest::state::{content_hash, DigestStateManager};
@@ -1345,6 +1346,17 @@ impl Orchestrator {
         };
 
         let message = format_morning_briefing(&by_priority, total_open);
+
+        // Persist the briefing entry before sending so the dashboard can read it even
+        // if the Telegram send fails.
+        if let Some(briefing_store) = &self.deps.briefing_store {
+            let mut sources = std::collections::HashMap::new();
+            sources.insert("obligations".to_string(), "ok".to_string());
+            let entry = BriefingEntry::new(message.clone(), vec![], sources);
+            if let Err(e) = briefing_store.append(&entry) {
+                tracing::warn!(error = %e, "morning briefing: failed to persist briefing entry");
+            }
+        }
 
         if let Some(channel) = self.channels.get("telegram") {
             let msg = OutboundMessage {

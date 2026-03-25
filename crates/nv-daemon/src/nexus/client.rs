@@ -162,6 +162,58 @@ impl NexusClient {
         Ok(all_sessions)
     }
 
+    /// Return `true` if any connected agent has an `active` or `idle` session
+    /// for the given `project`.
+    ///
+    /// Uses `GetSessions` with a project filter on each connected agent. RPC
+    /// failures are logged as warnings and skipped — if all agents fail the
+    /// method returns `false` (fail-open: prefer a potential duplicate over a
+    /// missed launch).
+    ///
+    /// `stale` and `errored` sessions are treated as non-blocking.
+    pub async fn has_active_session_for_project(&self, project: &str) -> bool {
+        for agent_mutex in &self.agents {
+            let mut conn = agent_mutex.lock().await;
+            let agent_name = conn.name.clone();
+
+            let Some(client) = conn.client.as_mut() else {
+                continue;
+            };
+
+            match client
+                .get_sessions(SessionFilter {
+                    status: None,
+                    project: Some(project.to_string()),
+                    session_type: None,
+                })
+                .await
+            {
+                Ok(response) => {
+                    conn.last_seen = Some(Utc::now());
+                    let list = response.into_inner();
+                    for session in list.sessions {
+                        let status = proto_status_to_string(session.status);
+                        if status == "active" || status == "idle" {
+                            return true;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        agent = %agent_name,
+                        project,
+                        error = %e,
+                        "has_active_session_for_project: GetSessions RPC failed — skipping agent"
+                    );
+                    // Do not mark disconnected here — this is a soft query,
+                    // not authoritative connectivity check.
+                }
+            }
+        }
+
+        false
+    }
+
     /// Query a specific session by ID across all connected agents.
     pub async fn query_session(&self, id: &str) -> Result<Option<SessionDetail>> {
         for agent_mutex in &self.agents {
@@ -820,5 +872,45 @@ mod tests {
     #[test]
     fn compute_duration_none() {
         assert_eq!(compute_duration_display(None), "unknown");
+    }
+
+    // ── has_active_session_for_project tests ─────────────────────────
+
+    /// When no agents are configured, has_active_session_for_project returns false.
+    #[tokio::test]
+    async fn has_active_session_no_agents_returns_false() {
+        let client = NexusClient::new(&[]);
+        assert!(!client.has_active_session_for_project("my-project").await);
+    }
+
+    /// When agents are configured but all are disconnected (fail-open path),
+    /// the method returns false without blocking the launch.
+    #[tokio::test]
+    async fn has_active_session_all_disconnected_returns_false() {
+        let configs = vec![
+            NexusAgent { name: "a".into(), host: "127.0.0.1".into(), port: 19001 },
+            NexusAgent { name: "b".into(), host: "127.0.0.1".into(), port: 19002 },
+        ];
+        let client = NexusClient::new(&configs);
+        // No connect_all called — all agents have None clients.
+        // has_active_session_for_project must return false (fail-open).
+        assert!(!client.has_active_session_for_project("oo").await);
+    }
+
+    /// Verify status mapping: active and idle are the only blocking statuses.
+    #[test]
+    fn status_mapping_active_idle_are_blocking() {
+        // active (1) and idle (2) map to strings that the method checks.
+        assert_eq!(proto_status_to_string(1), "active");
+        assert_eq!(proto_status_to_string(2), "idle");
+        // stale (3), errored (4), and unknown (0 / out-of-range) are non-blocking.
+        assert_ne!(proto_status_to_string(3), "active");
+        assert_ne!(proto_status_to_string(3), "idle");
+        assert_ne!(proto_status_to_string(4), "active");
+        assert_ne!(proto_status_to_string(4), "idle");
+        assert_ne!(proto_status_to_string(0), "active");
+        assert_ne!(proto_status_to_string(0), "idle");
+        assert_ne!(proto_status_to_string(99), "active");
+        assert_ne!(proto_status_to_string(99), "idle");
     }
 }

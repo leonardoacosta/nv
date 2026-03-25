@@ -226,6 +226,11 @@ pub struct Orchestrator {
     /// arrives before the next `check_inactivity` tick; otherwise the
     /// `check_inactivity` tick removes the entry.
     worker_stage_pending_removal: std::collections::HashSet<Uuid>,
+    /// Maps worker_id → Telegram chat_id for the duration of a worker run.
+    ///
+    /// Populated on `WorkerEvent::StageStarted`, cleared on `Complete`/`Error`.
+    /// Used by the `ToolCalled` handler to send per-worker typing refreshes.
+    worker_chat_id: std::collections::HashMap<Uuid, i64>,
 }
 
 impl Orchestrator {
@@ -266,6 +271,7 @@ impl Orchestrator {
             last_error_time: Instant::now(),
             error_count: 0,
             worker_stage_pending_removal: std::collections::HashSet::new(),
+            worker_chat_id: std::collections::HashMap::new(),
         }
     }
 
@@ -586,6 +592,11 @@ impl Orchestrator {
             });
         }
 
+        // Phase 2: Consume editing_action_id so the next message starts an
+        // edit-aware Claude session. .take() ensures only this task gets it.
+        let editing_action_id = self.editing_action_id.take();
+        let is_edit_reply = editing_action_id.is_some();
+
         // Dispatch to worker pool
         let task = WorkerTask {
             id: Uuid::new_v4(),
@@ -595,6 +606,8 @@ impl Orchestrator {
             telegram_chat_id: tg_chat_id.or(self.telegram_chat_id),
             telegram_message_id: tg_msg_id,
             cli_response_txs,
+            is_edit_reply,
+            editing_action_id,
         };
 
         self.worker_pool.dispatch(task).await;
@@ -603,7 +616,7 @@ impl Orchestrator {
     /// Handle a single worker event — log at appropriate level and track state.
     async fn handle_worker_event(&mut self, event: WorkerEvent) {
         match &event {
-            WorkerEvent::StageStarted { worker_id, stage } => {
+            WorkerEvent::StageStarted { worker_id, stage, telegram_chat_id } => {
                 tracing::debug!(
                     worker_id = %worker_id,
                     stage = %stage,
@@ -611,6 +624,10 @@ impl Orchestrator {
                 );
                 self.worker_stage_started
                     .insert(*worker_id, (stage.clone(), Instant::now()));
+                // Populate worker_chat_id for typing indicator routing.
+                if let Some(chat_id) = telegram_chat_id.or(self.telegram_chat_id) {
+                    self.worker_chat_id.insert(*worker_id, chat_id);
+                }
             }
             WorkerEvent::ToolCalled { worker_id, tool } => {
                 tracing::trace!(
@@ -627,6 +644,17 @@ impl Orchestrator {
                 let stage_label = format!("{emoji} {description}");
                 self.worker_stage_started
                     .insert(*worker_id, (stage_label.clone(), Instant::now()));
+
+                // Refresh typing indicator for this worker's chat_id.
+                if let Some(chat_id) = self.worker_chat_id.get(worker_id).copied() {
+                    if let Some(tg) = self.channels.get("telegram") {
+                        if let Some(tg_channel) =
+                            tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
+                        {
+                            let _ = tg_channel.client.send_chat_action(chat_id, "typing").await;
+                        }
+                    }
+                }
             }
             WorkerEvent::StageComplete {
                 worker_id,
@@ -656,6 +684,7 @@ impl Orchestrator {
                 // Clean up stage tracking
                 self.worker_stage_started.remove(worker_id);
                 self.worker_stage_pending_removal.remove(worker_id);
+                self.worker_chat_id.remove(worker_id);
             }
             WorkerEvent::Error { worker_id, error } => {
                 tracing::warn!(
@@ -665,6 +694,7 @@ impl Orchestrator {
                 );
                 self.worker_stage_started.remove(worker_id);
                 self.worker_stage_pending_removal.remove(worker_id);
+                self.worker_chat_id.remove(worker_id);
             }
         }
     }
@@ -2038,6 +2068,7 @@ mod tests {
             .send(WorkerEvent::StageStarted {
                 worker_id,
                 stage: "context_build".into(),
+                telegram_chat_id: None,
             })
             .unwrap();
         event_tx

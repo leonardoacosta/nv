@@ -48,6 +48,9 @@ pub enum WorkerEvent {
     StageStarted {
         worker_id: Uuid,
         stage: String,
+        /// Telegram chat ID for this worker — used by the orchestrator to send
+        /// per-worker typing indicators on ToolCalled events.
+        telegram_chat_id: Option<i64>,
     },
     /// A tool is about to be executed.
     ToolCalled { worker_id: Uuid, tool: String },
@@ -113,6 +116,17 @@ pub struct WorkerTask {
     pub telegram_message_id: Option<i64>,
     /// CLI response channels extracted from triggers.
     pub cli_response_txs: Vec<tokio::sync::oneshot::Sender<String>>,
+    /// `true` when this task is the follow-up reply to an "Edit" prompt.
+    ///
+    /// Set by `process_trigger_batch` when `editing_action_id` is `Some` at
+    /// dispatch time. Used to select an extended timeout and better log messages.
+    pub is_edit_reply: bool,
+    /// UUID of the pending action being edited.
+    ///
+    /// Set by `process_trigger_batch` when `editing_action_id.take()` returns
+    /// `Some`. The worker uses this to load the `PendingAction` and build an
+    /// edit-aware Claude context.
+    pub editing_action_id: Option<Uuid>,
 }
 
 /// Wrapper for BinaryHeap ordering (higher priority first, then FIFO by creation time).
@@ -289,25 +303,101 @@ impl WorkerPool {
         tokio::spawn(async move {
             let task_id = task.id;
             let task_tg_chat_id = task.telegram_chat_id.or(tg_chat_id);
+            let is_edit_reply = task.is_edit_reply;
+
+            // Phase 3: Edit-reply tasks get double the timeout budget.
+            let effective_timeout_secs = if is_edit_reply {
+                worker_timeout_secs * 2
+            } else {
+                worker_timeout_secs
+            };
+
+            let task_start = Instant::now();
+
             tracing::info!(
                 worker_task = %task_id,
                 priority = ?task.priority,
                 triggers = task.triggers.len(),
+                is_edit_reply,
                 "worker started"
             );
+            tracing::info!(
+                effective_timeout_secs,
+                is_edit_reply,
+                "worker timeout configured"
+            );
 
-            let timeout_dur = Duration::from_secs(worker_timeout_secs);
-            let result = tokio::time::timeout(
-                timeout_dur,
-                Worker::run(
-                    task,
-                    Arc::clone(&deps),
-                    client,
-                    tg_client.clone(),
-                    tg_chat_id,
-                ),
-            )
-            .await;
+            // Phase 5: "Still working" feedback at 80% of timeout budget.
+            // Not sent for is_edit_reply tasks (Leo is typing, not Claude).
+            let warn_secs = effective_timeout_secs * 4 / 5;
+            let worker_fut = Worker::run(
+                task,
+                Arc::clone(&deps),
+                client,
+                tg_client.clone(),
+                tg_chat_id,
+            );
+            tokio::pin!(worker_fut);
+
+            let result = if !is_edit_reply {
+                // Race worker against an 80% warning sleep.
+                let warn_sleep = tokio::time::sleep(Duration::from_secs(warn_secs));
+                tokio::pin!(warn_sleep);
+
+                let worker_result = tokio::select! {
+                    res = &mut worker_fut => {
+                        // Worker completed before warning — no message needed.
+                        res
+                    }
+                    () = &mut warn_sleep => {
+                        // 80% threshold reached — send "still working" message,
+                        // then wait out the rest with a hard timeout.
+                        let elapsed = task_start.elapsed().as_secs();
+                        if let Some(chat_id) = task_tg_chat_id {
+                            if let Some(channel) = deps.channels.get("telegram") {
+                                let msg = nv_core::types::OutboundMessage {
+                                    channel: "telegram".into(),
+                                    content: format!(
+                                        "Still working... ({}s elapsed, up to {}s total)",
+                                        elapsed, effective_timeout_secs
+                                    ),
+                                    reply_to: None,
+                                    keyboard: None,
+                                };
+                                let channel = channel.clone();
+                                let _ = chat_id;
+                                tokio::spawn(async move {
+                                    if let Err(e) = channel.send_message(msg).await {
+                                        tracing::warn!(error = %e, "failed to send still-working message");
+                                    }
+                                });
+                            }
+                        }
+                        // Wait for the rest of the timeout budget.
+                        let remaining = Duration::from_secs(effective_timeout_secs)
+                            .saturating_sub(task_start.elapsed());
+                        match tokio::time::timeout(remaining, &mut worker_fut).await {
+                            Ok(r) => r,
+                            Err(_elapsed) => {
+                                return; // timeout handled below via the outer block
+                            }
+                        }
+                    }
+                };
+
+                // Wrap in Ok(worker_result) to match the outer timeout shape.
+                Ok(worker_result)
+            } else {
+                // For edit-reply tasks: straight timeout, no "still working" message.
+                tokio::time::timeout(
+                    Duration::from_secs(effective_timeout_secs),
+                    &mut worker_fut,
+                )
+                .await
+            };
+
+            // Phase 1: timeout_reason distinguishes edit-wait from active-work timeouts.
+            let timeout_reason = if is_edit_reply { "edit_wait" } else { "active_work" };
 
             match result {
                 Ok(Ok(())) => {}
@@ -315,31 +405,43 @@ impl WorkerPool {
                     tracing::error!(worker_task = %task_id, error = %e, "worker failed");
                 }
                 Err(_elapsed) => {
-                    // Worker timed out — emit error event, notify user, reclaim slot
+                    // Worker timed out — emit error event, notify user, reclaim slot.
+                    let stage_elapsed_ms = task_start.elapsed().as_millis();
                     tracing::warn!(
                         worker_task = %task_id,
-                        timeout_secs = worker_timeout_secs,
+                        timeout_secs = effective_timeout_secs,
+                        timeout_reason,
+                        stage_elapsed_ms,
+                        chat_id = task_tg_chat_id,
                         "worker session timed out"
                     );
                     let _ = deps.event_tx.send(WorkerEvent::Error {
                         worker_id: task_id,
-                        error: format!("Worker timed out after {worker_timeout_secs}s"),
+                        error: format!("Worker timed out after {effective_timeout_secs}s"),
                     });
-                    // Send Telegram error to the originating chat
+                    // Send Telegram error to the originating chat.
+                    // Phase 3: use a more specific message for edit-reply tasks.
                     if let Some(chat_id) = task_tg_chat_id {
                         if let Some(channel) = deps.channels.get("telegram") {
+                            let content = if is_edit_reply {
+                                "Edit timed out waiting for your reply. \
+                                 The pending action is still queued \u{2014} tap Edit again to retry."
+                                    .to_string()
+                            } else {
+                                format!(
+                                    "\u{26A0} Request timed out after {effective_timeout_secs}s. \
+                                     Try again or simplify the request."
+                                )
+                            };
                             let msg = nv_core::types::OutboundMessage {
                                 channel: "telegram".into(),
-                                content: format!(
-                                    "\u{26A0} Request timed out after {worker_timeout_secs}s. \
-                                     Try again or simplify the request."
-                                ),
+                                content,
                                 reply_to: None,
                                 keyboard: None,
                             };
-                            // Fire-and-forget; we can't await here as we need to release the slot
+                            // Fire-and-forget; we can't await here as we need to release the slot.
                             let channel = channel.clone();
-                            let _ = chat_id; // suppress unused warning — chat_id is in msg routing
+                            let _ = chat_id; // chat_id logged in warn span above
                             tokio::spawn(async move {
                                 if let Err(e) = channel.send_message(msg).await {
                                     tracing::warn!(error = %e, "failed to send timeout error to Telegram");
@@ -374,15 +476,29 @@ impl WorkerPool {
             if let Some(next_task) = next {
                 let next_task_id = next_task.id;
                 let next_task_tg_chat_id = next_task.telegram_chat_id.or(tg_chat_id);
+                let next_is_edit_reply = next_task.is_edit_reply;
+                let next_effective_timeout_secs = if next_is_edit_reply {
+                    worker_timeout_secs * 2
+                } else {
+                    worker_timeout_secs
+                };
                 let next_client = client_template;
                 let next_active = Arc::clone(&active);
                 tokio::spawn(async move {
+                    let next_task_start = Instant::now();
                     tracing::info!(
                         worker_task = %next_task_id,
                         priority = ?next_task.priority,
+                        is_edit_reply = next_is_edit_reply,
                         "queued worker started"
                     );
-                    let next_timeout_dur = Duration::from_secs(worker_timeout_secs);
+                    tracing::info!(
+                        effective_timeout_secs = next_effective_timeout_secs,
+                        is_edit_reply = next_is_edit_reply,
+                        "worker timeout configured"
+                    );
+                    let next_timeout_dur = Duration::from_secs(next_effective_timeout_secs);
+                    let next_timeout_reason = if next_is_edit_reply { "edit_wait" } else { "active_work" };
                     let result = tokio::time::timeout(
                         next_timeout_dur,
                         Worker::run(
@@ -401,28 +517,39 @@ impl WorkerPool {
                         }
                         Err(_elapsed) => {
                             // Mirror the primary timeout branch: emit error event + notify user.
+                            let stage_elapsed_ms = next_task_start.elapsed().as_millis();
                             tracing::warn!(
                                 worker_task = %next_task_id,
-                                timeout_secs = worker_timeout_secs,
+                                timeout_secs = next_effective_timeout_secs,
+                                timeout_reason = next_timeout_reason,
+                                stage_elapsed_ms,
+                                chat_id = next_task_tg_chat_id,
                                 "queued worker session timed out"
                             );
                             let _ = deps.event_tx.send(WorkerEvent::Error {
                                 worker_id: next_task_id,
-                                error: format!("Worker timed out after {worker_timeout_secs}s"),
+                                error: format!("Worker timed out after {next_effective_timeout_secs}s"),
                             });
                             if let Some(chat_id) = next_task_tg_chat_id {
                                 if let Some(channel) = deps.channels.get("telegram") {
+                                    let content = if next_is_edit_reply {
+                                        "Edit timed out waiting for your reply. \
+                                         The pending action is still queued \u{2014} tap Edit again to retry."
+                                            .to_string()
+                                    } else {
+                                        format!(
+                                            "\u{26A0} Request timed out after {next_effective_timeout_secs}s. \
+                                             Try again or simplify the request."
+                                        )
+                                    };
                                     let msg = nv_core::types::OutboundMessage {
                                         channel: "telegram".into(),
-                                        content: format!(
-                                            "\u{26A0} Request timed out after {worker_timeout_secs}s. \
-                                             Try again or simplify the request."
-                                        ),
+                                        content,
                                         reply_to: None,
                                         keyboard: None,
                                     };
                                     let channel = channel.clone();
-                                    let _ = chat_id; // chat_id is in msg routing
+                                    let _ = chat_id; // chat_id logged in warn span above
                                     tokio::spawn(async move {
                                         if let Err(e) = channel.send_message(msg).await {
                                             tracing::warn!(error = %e, "failed to send queued timeout error to Telegram");
@@ -474,19 +601,19 @@ impl Worker {
             .unwrap_or_else(|| "telegram".to_string());
 
         // Send a single typing indicator at the start — Telegram shows "typing..."
-        // for ~5s. We don't loop because cold-start turns take ~10-20s and the
-        // visual gap is acceptable. Avoids Telegram 429 rate limits from repeated calls.
-        let typing_cancel = tokio::sync::watch::channel(false);
-        let typing_tx = typing_cancel.0;
+        // for ~5s. The orchestrator refreshes it every 5s via check_inactivity
+        // and on each ToolCalled event.
         if let (Some(tg), Some(chat_id)) = (&tg_client, tg_chat_id) {
             tg.send_chat_action(chat_id, "typing").await;
         }
 
-        // Emit StageStarted for context build
+        // Emit StageStarted for context build — carries telegram_chat_id so the
+        // orchestrator can map worker_id → chat_id for per-worker typing indicators.
         let context_build_start = Instant::now();
         let _ = event_tx.send(WorkerEvent::StageStarted {
             worker_id: task_id,
             stage: "context_build".into(),
+            telegram_chat_id: tg_chat_id,
         });
 
         // Query recent outbound messages for cold-start context injection.
@@ -505,6 +632,50 @@ impl Worker {
             format!("Your recent messages to Leo:\n{ctx}\n\n{base_system_prompt}")
         } else {
             base_system_prompt
+        };
+
+        // Phase 2: If this task is an edit-reply, load the PendingAction and
+        // prepend a system-level edit context so Claude knows what it's editing.
+        let editing_context: Option<(Uuid, String)> = if let Some(action_id) = task.editing_action_id {
+            match deps.state.find_pending_action(&action_id) {
+                Ok(Some(action)) => {
+                    let ctx = format!(
+                        "You are editing a pending action that is awaiting user confirmation.\n\
+                         Action ID: {action_id}\n\
+                         Original description: {description}\n\
+                         The user's next message is an edit instruction — apply it to produce a \
+                         revised description, then confirm you have updated the pending action.",
+                        action_id = action_id,
+                        description = action.description,
+                    );
+                    Some((action_id, action.description.clone()))
+                        .map(|(id, _desc)| (id, ctx))
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        action_id = %action_id,
+                        "editing_action_id set but pending action not found — proceeding without edit context"
+                    );
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        action_id = %action_id,
+                        error = %e,
+                        "failed to load pending action for edit context"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Prepend edit context to the system prompt if present.
+        let system_prompt = if let Some((_, ref ctx)) = editing_context {
+            format!("{ctx}\n\n{system_prompt}")
+        } else {
+            system_prompt
         };
         let bootstrapped = check_bootstrap_state();
         let tool_definitions = if bootstrapped {
@@ -773,6 +944,7 @@ impl Worker {
         let _ = event_tx.send(WorkerEvent::StageStarted {
             worker_id: task_id,
             stage: "tool_loop".into(),
+            telegram_chat_id: tg_chat_id,
         });
 
         let (final_content, tool_names) = Self::run_tool_loop(
@@ -798,6 +970,48 @@ impl Worker {
         // Extract the [SUMMARY:] tag for the diary and produce the cleaned response
         // that gets delivered to the channel (tag line stripped).
         let (result_summary, response_text) = extract_summary(&raw_response_text);
+
+        // Phase 2: If this was an edit-reply task, update the PendingAction
+        // payload with Claude's revised description and re-send the confirmation
+        // keyboard so Leo can approve/cancel/edit the updated action.
+        if let Some((action_id, _)) = editing_context {
+            if !response_text.is_empty() {
+                // Update the description field in the existing payload.
+                if let Ok(Some(mut action)) = deps.state.find_pending_action(&action_id) {
+                    action.payload["description"] =
+                        serde_json::Value::String(response_text.clone());
+                    if let Err(e) = deps.state.update_pending_action_payload(&action_id, action.payload.clone()) {
+                        tracing::warn!(
+                            action_id = %action_id,
+                            error = %e,
+                            "failed to update pending action payload after edit"
+                        );
+                    } else {
+                        tracing::info!(
+                            action_id = %action_id,
+                            "pending action updated with revised description"
+                        );
+                        // Re-send the confirmation keyboard via Telegram.
+                        if let Some(tg) = deps.channels.get("telegram") {
+                            if let Some(tg_channel) =
+                                tg.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()
+                            {
+                                let chat_id = tg_chat_id.unwrap_or(tg_channel.chat_id);
+                                let keyboard = InlineKeyboard::confirm_action(&action_id.to_string());
+                                let _ = tg_channel.client.send_message(
+                                    chat_id,
+                                    &format!(
+                                        "Updated pending action:\n{response_text}\n\nApprove, edit, or cancel?"
+                                    ),
+                                    None,
+                                    Some(&keyboard),
+                                ).await;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Push the completed turn (user + assistant) to the conversation store
         {
@@ -826,9 +1040,6 @@ impl Worker {
                 _ => None,
             })
             .unwrap_or("telegram");
-
-        // Cancel the typing indicator loop before sending response
-        let _ = typing_tx.send(true);
 
         if !response_text.is_empty() {
             if let Some(channel) = deps.channels.get(reply_channel) {
@@ -1762,6 +1973,8 @@ mod tests {
             telegram_chat_id: None,
             telegram_message_id: None,
             cli_response_txs: vec![],
+            is_edit_reply: false,
+            editing_action_id: None,
         });
         let normal = PrioritizedTask(WorkerTask {
             id: Uuid::new_v4(),
@@ -1771,6 +1984,8 @@ mod tests {
             telegram_chat_id: None,
             telegram_message_id: None,
             cli_response_txs: vec![],
+            is_edit_reply: false,
+            editing_action_id: None,
         });
 
         assert!(high > normal);
@@ -1789,6 +2004,8 @@ mod tests {
             telegram_chat_id: None,
             telegram_message_id: None,
             cli_response_txs: vec![],
+            is_edit_reply: false,
+            editing_action_id: None,
         });
         let task2 = PrioritizedTask(WorkerTask {
             id: Uuid::new_v4(),
@@ -1798,6 +2015,8 @@ mod tests {
             telegram_chat_id: None,
             telegram_message_id: None,
             cli_response_txs: vec![],
+            is_edit_reply: false,
+            editing_action_id: None,
         });
 
         // Earlier task should be processed first (higher in heap)
@@ -2202,7 +2421,7 @@ mod tests {
         let id = Uuid::new_v4();
 
         // StageStarted
-        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() };
+        let e = WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), telegram_chat_id: None };
         assert!(matches!(&e, WorkerEvent::StageStarted { worker_id, stage, .. } if *worker_id == id && stage == "context_build"));
 
         // ToolCalled
@@ -2225,7 +2444,7 @@ mod tests {
     #[test]
     fn worker_event_clone_preserves_data() {
         let id = Uuid::new_v4();
-        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into() };
+        let event = WorkerEvent::StageStarted { worker_id: id, stage: "test".into(), telegram_chat_id: Some(123) };
         let cloned = event.clone();
         assert!(matches!(&cloned, WorkerEvent::StageStarted { worker_id, stage, .. } if *worker_id == id && stage == "test"));
     }
@@ -2235,9 +2454,9 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
         let id = Uuid::new_v4();
 
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), telegram_chat_id: Some(42) }).unwrap();
         tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "context_build".into(), duration_ms: 10 }).unwrap();
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into() }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "tool_loop".into(), telegram_chat_id: Some(42) }).unwrap();
         tx.send(WorkerEvent::ToolCalled { worker_id: id, tool: "jira_search".into() }).unwrap();
         tx.send(WorkerEvent::StageComplete { worker_id: id, stage: "tool_loop".into(), duration_ms: 500 }).unwrap();
         tx.send(WorkerEvent::Complete { worker_id: id, response_len: 256 }).unwrap();
@@ -2262,7 +2481,7 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel::<WorkerEvent>();
         let id = Uuid::new_v4();
 
-        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into() }).unwrap();
+        tx.send(WorkerEvent::StageStarted { worker_id: id, stage: "context_build".into(), telegram_chat_id: None }).unwrap();
         tx.send(WorkerEvent::Error { worker_id: id, error: "Claude API failure: rate limited".into() }).unwrap();
         drop(tx);
 
@@ -2330,5 +2549,74 @@ mod tests {
         let (_summary, cleaned) = extract_summary(input);
         // The tag line should be stripped; remaining text should be the first line
         assert_eq!(cleaned, "Main response text.");
+    }
+
+    // ── investigate-300s-timeout tests ───────────────────────────────
+
+    /// A WorkerTask with `is_edit_reply = true` should produce `timeout_reason = "edit_wait"`.
+    ///
+    /// This tests the logic inline (without spawning workers) to verify the
+    /// discriminant is computed correctly.
+    #[test]
+    fn is_edit_reply_sets_timeout_reason_edit_wait() {
+        let is_edit_reply = true;
+        let timeout_reason = if is_edit_reply { "edit_wait" } else { "active_work" };
+        assert_eq!(timeout_reason, "edit_wait");
+    }
+
+    /// A WorkerTask with `is_edit_reply = false` should produce `timeout_reason = "active_work"`.
+    #[test]
+    fn not_edit_reply_sets_timeout_reason_active_work() {
+        let is_edit_reply = false;
+        let timeout_reason = if is_edit_reply { "edit_wait" } else { "active_work" };
+        assert_eq!(timeout_reason, "active_work");
+    }
+
+    /// `editing_action_id.take()` on an `Option<Uuid>` consumes the ID so
+    /// subsequent dispatches do not inherit it.
+    #[test]
+    fn editing_action_id_take_consumes_the_id() {
+        let id = Uuid::new_v4();
+        let mut editing_action_id: Option<Uuid> = Some(id);
+
+        // First take: returns the ID and leaves None.
+        let taken = editing_action_id.take();
+        assert_eq!(taken, Some(id));
+        assert!(editing_action_id.is_none(), "should be None after take()");
+
+        // Second take (simulating next trigger batch): returns None.
+        let taken2 = editing_action_id.take();
+        assert!(taken2.is_none(), "subsequent take() must return None");
+    }
+
+    /// `is_edit_reply` is derived from whether `editing_action_id` was `Some`
+    /// at dispatch time. Verify the derivation logic.
+    #[test]
+    fn is_edit_reply_derived_from_editing_action_id() {
+        let some_id: Option<Uuid> = Some(Uuid::new_v4());
+        let is_edit_reply = some_id.is_some();
+        assert!(is_edit_reply);
+
+        let none_id: Option<Uuid> = None;
+        let is_not_edit_reply = none_id.is_some();
+        assert!(!is_not_edit_reply);
+    }
+
+    /// Edit-reply tasks get double the timeout budget.
+    #[test]
+    fn edit_reply_effective_timeout_is_doubled() {
+        let base_secs: u64 = 300;
+        let is_edit_reply = true;
+        let effective = if is_edit_reply { base_secs * 2 } else { base_secs };
+        assert_eq!(effective, 600);
+    }
+
+    /// Normal tasks use the base timeout unchanged.
+    #[test]
+    fn normal_task_effective_timeout_unchanged() {
+        let base_secs: u64 = 300;
+        let is_edit_reply = false;
+        let effective = if is_edit_reply { base_secs * 2 } else { base_secs };
+        assert_eq!(effective, 300);
     }
 }

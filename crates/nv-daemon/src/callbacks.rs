@@ -125,6 +125,19 @@ async fn execute_nexus_start_session(
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("missing 'command' in payload"))?;
 
+    // Pre-launch dedup guard: skip if a session is already active/idle for
+    // this project. Prevents duplicate session storms on batch approvals.
+    if client.has_active_session_for_project(project).await {
+        tracing::info!(
+            project,
+            dedup = true,
+            "session launch skipped — already active"
+        );
+        return Ok(format!(
+            "Session already active for {project} \u{2014} launch skipped"
+        ));
+    }
+
     // Resolve project path from registry.
     // Fall back to $HOME/dev/{project} when not in the registry.
     let cwd = project_registry

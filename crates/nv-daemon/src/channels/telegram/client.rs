@@ -1,10 +1,63 @@
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::bail;
 use reqwest::multipart;
 use reqwest::Client;
 
 use super::types::{BotUser, TelegramResponse, Update};
+
+// ── Throttle State ──────────────────────────────────────────────────
+
+/// Per-chat-id throttle state for `send_chat_action`.
+struct ThrottleState {
+    /// Timestamp of the last successful send per chat_id.
+    last_sent: HashMap<i64, Instant>,
+    /// Backoff deadline per chat_id (set on 429 responses).
+    backoff_until: HashMap<i64, Instant>,
+}
+
+impl ThrottleState {
+    fn new() -> Self {
+        Self {
+            last_sent: HashMap::new(),
+            backoff_until: HashMap::new(),
+        }
+    }
+
+    /// Returns `true` if a send should be suppressed for this `chat_id`.
+    fn is_suppressed(&self, chat_id: i64) -> bool {
+        let now = Instant::now();
+        // Suppress if within the backoff window.
+        if let Some(&until) = self.backoff_until.get(&chat_id) {
+            if until > now {
+                return true;
+            }
+        }
+        // Suppress if last send was within 5 seconds.
+        if let Some(&last) = self.last_sent.get(&chat_id) {
+            if now.duration_since(last) < Duration::from_secs(5) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Record a successful send for `chat_id`.
+    fn record_sent(&mut self, chat_id: i64) {
+        self.last_sent.insert(chat_id, Instant::now());
+    }
+
+    /// Record a 429 backoff for `chat_id`.
+    ///
+    /// `retry_after_secs` comes from the Telegram error JSON `parameters.retry_after`.
+    /// Defaults to 30s if `None`.
+    fn record_backoff(&mut self, chat_id: i64, retry_after_secs: Option<u64>) {
+        let delay = retry_after_secs.unwrap_or(30);
+        self.backoff_until.insert(chat_id, Instant::now() + Duration::from_secs(delay));
+    }
+}
 
 /// Telegram Bot API maximum message length.
 const TELEGRAM_MAX_MESSAGE_LEN: usize = 4096;
@@ -199,10 +252,15 @@ fn convert_inline_markdown(text: &str) -> String {
 }
 
 /// Thin HTTP wrapper for Telegram Bot API endpoints.
+///
+/// `Clone` is cheap — `throttle` is `Arc<Mutex<...>>` so all clones share
+/// the same throttle state.
 #[derive(Clone)]
 pub struct TelegramClient {
     http: Client,
     base_url: String,
+    /// Shared throttle state across all clones of this client.
+    throttle: Arc<Mutex<ThrottleState>>,
 }
 
 impl TelegramClient {
@@ -213,6 +271,7 @@ impl TelegramClient {
         Self {
             http: Client::new(),
             base_url: format!("https://api.telegram.org/bot{bot_token}"),
+            throttle: Arc::new(Mutex::new(ThrottleState::new())),
         }
     }
 
@@ -492,29 +551,77 @@ impl TelegramClient {
         Ok(())
     }
 
-    /// Send a chat action (e.g. "typing") to a chat.
+    /// Send a chat action (e.g. "typing") to a chat with per-chat-id throttling.
     ///
-    /// Fire-and-forget: logs errors at warn level but does not propagate them.
-    /// Uses the Telegram Bot API `sendChatAction` endpoint.
-    pub async fn send_chat_action(&self, chat_id: i64, action: &str) {
+    /// Suppresses the call if it was made within 5 seconds of the last successful
+    /// call for the same `chat_id`, or if a 429 backoff window is active.
+    ///
+    /// On a 429 response the `parameters.retry_after` field (seconds) is read
+    /// from the Telegram error JSON and stored as a backoff deadline. Defaults to
+    /// 30 seconds if the field is absent or unparseable.
+    ///
+    /// Returns `true` if the call was sent, `false` if suppressed.
+    pub async fn send_chat_action(&self, chat_id: i64, action: &str) -> bool {
+        // Check throttle state under lock (released before any await).
+        {
+            let state = self.throttle.lock().unwrap();
+            if state.is_suppressed(chat_id) {
+                return false;
+            }
+        }
+
         let url = format!("{}/sendChatAction", self.base_url);
         let body = serde_json::json!({
             "chat_id": chat_id,
             "action": action,
         });
+
         match self.http.post(&url).json(&body).send().await {
             Ok(resp) => {
-                if let Ok(tg_resp) = resp.json::<TelegramResponse<bool>>().await {
-                    if !tg_resp.ok {
-                        tracing::warn!(
-                            error = %tg_resp.description.unwrap_or_default(),
-                            "sendChatAction failed"
-                        );
+                // Read the full response body as JSON so we can inspect both
+                // the `ok` field and the optional `parameters.retry_after` field.
+                match resp.json::<serde_json::Value>().await {
+                    Ok(json) => {
+                        let ok = json.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+                        if ok {
+                            // Record the successful send under lock.
+                            self.throttle.lock().unwrap().record_sent(chat_id);
+                            true
+                        } else {
+                            let desc = json
+                                .get("description")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+
+                            // Parse retry_after from the error parameters field.
+                            let retry_after = json
+                                .get("parameters")
+                                .and_then(|p| p.get("retry_after"))
+                                .and_then(|v| v.as_u64());
+
+                            if desc.contains("429") || retry_after.is_some() {
+                                let secs = retry_after;
+                                tracing::warn!(
+                                    chat_id,
+                                    retry_after_secs = ?secs,
+                                    "sendChatAction 429 — backing off"
+                                );
+                                self.throttle.lock().unwrap().record_backoff(chat_id, secs);
+                            } else {
+                                tracing::warn!(error = %desc, "sendChatAction failed");
+                            }
+                            false
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "sendChatAction response parse failed");
+                        false
                     }
                 }
             }
             Err(e) => {
                 tracing::warn!(error = %e, "sendChatAction request failed");
+                false
             }
         }
     }
@@ -679,5 +786,64 @@ mod tests {
         assert!(truncated.len() <= TELEGRAM_MAX_MESSAGE_LEN);
         // Verify the result is non-empty (the input is large enough to produce output).
         assert!(!truncated.is_empty());
+    }
+
+    // ── ThrottleState tests ──────────────────────────────────────────
+
+    #[test]
+    fn throttle_suppresses_second_call_within_5s_for_same_chat_id() {
+        let mut state = ThrottleState::new();
+        let chat_id: i64 = 123;
+
+        // First call: not suppressed, then record it.
+        assert!(!state.is_suppressed(chat_id));
+        state.record_sent(chat_id);
+
+        // Second call within 5s: suppressed.
+        assert!(state.is_suppressed(chat_id));
+    }
+
+    #[test]
+    fn throttle_does_not_suppress_different_chat_ids() {
+        let mut state = ThrottleState::new();
+        let chat_a: i64 = 111;
+        let chat_b: i64 = 222;
+
+        // Record a send for chat_a.
+        state.record_sent(chat_a);
+
+        // chat_a is suppressed but chat_b is not.
+        assert!(state.is_suppressed(chat_a));
+        assert!(!state.is_suppressed(chat_b));
+    }
+
+    #[test]
+    fn throttle_backoff_with_retry_after_suppresses_calls() {
+        let mut state = ThrottleState::new();
+        let chat_id: i64 = 456;
+
+        // Record a 10s backoff.
+        state.record_backoff(chat_id, Some(10));
+
+        // Immediately after backoff, suppressed.
+        assert!(state.is_suppressed(chat_id));
+    }
+
+    #[test]
+    fn throttle_backoff_missing_retry_after_defaults_to_30s() {
+        let mut state = ThrottleState::new();
+        let chat_id: i64 = 789;
+
+        // Record backoff with no retry_after (defaults to 30s).
+        state.record_backoff(chat_id, None);
+
+        // Immediately after, suppressed.
+        assert!(state.is_suppressed(chat_id));
+
+        // The backoff deadline should be ~30s in the future.
+        // We can verify by checking that it's definitely more than 25s away.
+        let until = state.backoff_until[&chat_id];
+        let remaining = until.duration_since(Instant::now());
+        assert!(remaining > Duration::from_secs(25), "default backoff should be ~30s");
     }
 }

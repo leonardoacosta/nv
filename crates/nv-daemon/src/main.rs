@@ -624,12 +624,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Create TeamAgentDispatcher if configured.
     let team_agent_dispatcher: Option<team_agent::TeamAgentDispatcher> =
-        if let Some(nexus_config) = &config.nexus {
-            let ta_config = nexus_config.team_agents.as_ref().ok_or_else(|| {
-                anyhow::anyhow!(
-                    "[nexus.team_agents] section is missing"
-                )
-            })?;
+        if let Some(ta_config) = &config.team_agents {
             let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
             tracing::info!(
                 machines = ta_config.machines.len(),
@@ -641,23 +636,19 @@ async fn main() -> anyhow::Result<()> {
                 .await;
             Some(dispatcher)
         } else {
-            tracing::info!("Nexus not configured -- team agents disabled");
+            tracing::info!("team_agents not configured -- team agents disabled");
             None
         };
 
     // Build CcSessionManager from team_agents config (if configured).
     // Created early so it can be shared with the HTTP server and SharedDeps.
     let cc_session_manager: Option<cc_sessions::CcSessionManager> =
-        if let Some(nexus_config) = &config.nexus {
-            if let Some(ta_config) = nexus_config.team_agents.as_ref() {
-                let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
-                let mgr = cc_sessions::CcSessionManager::new(dispatcher);
-                mgr.spawn_health_monitor();
-                tracing::info!("CcSessionManager initialized with health monitor");
-                Some(mgr)
-            } else {
-                None
-            }
+        if let Some(ta_config) = &config.team_agents {
+            let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
+            let mgr = cc_sessions::CcSessionManager::new(dispatcher);
+            mgr.spawn_health_monitor();
+            tracing::info!("CcSessionManager initialized with health monitor");
+            Some(mgr)
         } else {
             None
         };

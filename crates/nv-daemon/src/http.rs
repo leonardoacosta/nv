@@ -2,22 +2,64 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use nv_core::types::{CliCommand, CliRequest, CronEvent, Trigger};
+use nv_core::types::{CliCommand, CliRequest, CronEvent, ObligationStatus, Trigger};
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::sync::Mutex as TokioMutex;
 
 use crate::briefing_store::BriefingStore;
 use crate::cold_start_store::ColdStartStore;
 use crate::health::HealthState;
+use crate::obligation_store::ObligationStore;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
 use crate::channels::teams::types::{ChangeNotificationCollection, ChatMessage};
+
+// ── Dashboard Event Types ─────────────────────────────────────────
+
+/// Event broadcast over the `/ws/events` WebSocket endpoint.
+///
+/// Each variant corresponds to a daemon lifecycle event the dashboard
+/// subscribes to for real-time updates. Variants not yet wired to a
+/// producer are intentionally stubbed so the dashboard client can subscribe
+/// without the daemon emitting them yet.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+#[allow(dead_code)]
+pub enum DaemonEvent {
+    /// A message was logged (inbound or outbound).
+    Message {
+        id: i64,
+        channel: String,
+        direction: String,
+        sender: String,
+        preview: String,
+        timestamp: String,
+    },
+    /// An obligation/approval changed status.
+    ApprovalUpdated {
+        id: String,
+        status: String,
+        owner: String,
+    },
+    /// A new obligation was created (triggers badge updates).
+    ApprovalCreated {
+        id: String,
+        detected_action: String,
+        priority: i32,
+        owner: String,
+    },
+    /// A periodic health ping so the client can detect stale connections.
+    HealthPing {
+        timestamp: String,
+    },
+}
 
 /// Shared state for the HTTP server.
 #[derive(Clone)]
@@ -39,6 +81,13 @@ pub struct HttpState {
     pub briefing_store: Option<Arc<BriefingStore>>,
     /// Cold-start timing event store. None if not initialised.
     pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
+    /// Broadcast channel for dashboard WebSocket events (`/ws/events`).
+    ///
+    /// Handlers that produce events (approvals, messages, health changes) send
+    /// on this sender; the WebSocket upgrade handler subscribes each new client
+    /// to a receiver. Uses `broadcast` so multiple concurrent dashboard tabs
+    /// all receive the same events.
+    pub event_tx: broadcast::Sender<DaemonEvent>,
 }
 
 /// Request body for POST /ask.
@@ -71,7 +120,12 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/webhooks/teams", post(teams_webhook_handler))
         .route("/api/briefing", get(get_briefing_handler))
         .route("/api/briefing/history", get(get_briefing_history_handler))
-        .route("/api/cold-starts", get(get_cold_starts_handler));
+        .route("/api/cold-starts", get(get_cold_starts_handler))
+        // Dashboard API
+        .route("/api/messages", get(get_messages_handler))
+        .route("/api/approvals/:id/approve", post(approve_obligation_handler))
+        // WebSocket event stream
+        .route("/ws/events", get(ws_events_handler));
 
     // Add Jira webhook route if configured (uses its own sub-state)
     if let Some(jira_state) = &state.jira_webhook_state {
@@ -584,6 +638,229 @@ async fn get_cold_starts_handler(
         .into_response()
 }
 
+// ── GET /api/messages ─────────────────────────────────────────────
+
+/// Query parameters for `GET /api/messages`.
+#[derive(Debug, Deserialize)]
+pub struct MessagesQuery {
+    /// Rows per page (1–200, default 50).
+    pub limit: Option<i64>,
+    /// Row offset for pagination (default 0).
+    pub offset: Option<i64>,
+    /// Optional channel filter (e.g. "telegram", "discord").
+    pub channel: Option<String>,
+    /// Optional full-text search query.
+    pub search: Option<String>,
+}
+
+/// Response body for `GET /api/messages`.
+#[derive(Debug, Serialize)]
+pub struct MessagesResponse {
+    pub messages: Vec<crate::messages::StoredMessage>,
+    pub limit: i64,
+    pub offset: i64,
+}
+
+/// GET /api/messages — paginated message history for the dashboard.
+///
+/// Supports optional `channel` and `search` filters. Results are ordered
+/// newest-first. Default limit is 50; max is 200.
+async fn get_messages_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<MessagesQuery>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(50).clamp(1, 200);
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    match MessageStore::init(&state.stats_db_path) {
+        Ok(store) => {
+            match store.paginate(
+                limit,
+                offset,
+                query.channel.as_deref(),
+                query.search.as_deref(),
+            ) {
+                Ok(messages) => (
+                    StatusCode::OK,
+                    Json(serde_json::to_value(MessagesResponse {
+                        messages,
+                        limit,
+                        offset,
+                    })
+                    .unwrap()),
+                )
+                    .into_response(),
+                Err(e) => {
+                    tracing::error!(error = %e, "failed to paginate messages");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to query messages: {e}")})),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "failed to open message store for /api/messages");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to open message store: {e}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── POST /api/approvals/:id/approve ──────────────────────────────
+
+/// Response body for `POST /api/approvals/:id/approve`.
+#[derive(Debug, Serialize)]
+pub struct ApproveResponse {
+    pub id: String,
+    pub status: String,
+}
+
+/// POST /api/approvals/:id/approve — mark an obligation as approved (done).
+///
+/// Opens the obligation store, transitions status from any state to `done`,
+/// and broadcasts an `ApprovalUpdated` WebSocket event.
+async fn approve_obligation_handler(
+    State(state): State<Arc<HttpState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match ObligationStore::new(&state.stats_db_path) {
+        Ok(store) => {
+            // Verify the obligation exists before updating.
+            match store.get_by_id(&id) {
+                Ok(None) => {
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(serde_json::json!({"error": format!("obligation {id} not found")})),
+                    )
+                        .into_response();
+                }
+                Err(e) => {
+                    tracing::error!(id = %id, error = %e, "approve: get_by_id failed");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to fetch obligation: {e}")})),
+                    )
+                        .into_response();
+                }
+                Ok(Some(_)) => {}
+            }
+
+            match store.update_status(&id, &ObligationStatus::Done) {
+                Ok(true) => {
+                    // Broadcast the update — ignore send error (no subscribers is fine).
+                    let _ = state.event_tx.send(DaemonEvent::ApprovalUpdated {
+                        id: id.clone(),
+                        status: "done".to_string(),
+                        owner: String::new(), // owner unchanged
+                    });
+
+                    tracing::info!(id = %id, "obligation approved via dashboard");
+
+                    (
+                        StatusCode::OK,
+                        Json(
+                            serde_json::to_value(ApproveResponse {
+                                id,
+                                status: "approved".to_string(),
+                            })
+                            .unwrap(),
+                        ),
+                    )
+                        .into_response()
+                }
+                Ok(false) => (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": format!("obligation {id} not found")})),
+                )
+                    .into_response(),
+                Err(e) => {
+                    tracing::error!(id = %id, error = %e, "approve: update_status failed");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to approve obligation: {e}")})),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "approve: failed to open obligation store");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to open obligation store: {e}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── GET /ws/events ────────────────────────────────────────────────
+
+/// GET /ws/events — upgrade to WebSocket and stream daemon events.
+///
+/// Each connected client receives a copy of every `DaemonEvent` broadcast
+/// on the shared `event_tx` channel. The connection is closed gracefully
+/// when the client disconnects or when the broadcast channel is dropped.
+async fn ws_events_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<HttpState>>,
+) -> impl IntoResponse {
+    let rx = state.event_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_ws_events(socket, rx))
+}
+
+/// Drive a single WebSocket client: forward broadcast events as JSON text frames.
+async fn handle_ws_events(
+    mut socket: WebSocket,
+    mut rx: broadcast::Receiver<DaemonEvent>,
+) {
+    loop {
+        tokio::select! {
+            // Forward the next daemon event to the client.
+            event = rx.recv() => {
+                match event {
+                    Ok(ev) => {
+                        let json = match serde_json::to_string(&ev) {
+                            Ok(j) => j,
+                            Err(e) => {
+                                tracing::warn!(error = %e, "ws: failed to serialize event");
+                                continue;
+                            }
+                        };
+                        if socket.send(WsMessage::Text(json.into())).await.is_err() {
+                            // Client disconnected.
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(skipped = n, "ws/events: client lagged, skipped events");
+                        // Continue — don't disconnect lagged clients.
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Sender dropped — daemon shutting down.
+                        break;
+                    }
+                }
+            }
+            // Client sent a frame — consume it to detect close.
+            msg = socket.recv() => {
+                match msg {
+                    None | Some(Err(_)) => break, // disconnected or error
+                    Some(Ok(WsMessage::Close(_))) => break,
+                    Some(Ok(_)) => {} // ping/pong/text from client — ignore
+                }
+            }
+        }
+    }
+
+    tracing::debug!("ws/events: client disconnected");
+}
+
 /// Start the HTTP server on the given port.
 ///
 /// Runs until the listener is dropped or the runtime shuts down.
@@ -600,6 +877,7 @@ pub async fn run_http_server(
     teams_client_state: Option<String>,
     briefing_store: Option<Arc<BriefingStore>>,
     cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
+    event_tx: broadcast::Sender<DaemonEvent>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -612,6 +890,7 @@ pub async fn run_http_server(
         teams_client_state,
         briefing_store,
         cold_start_store,
+        event_tx,
     });
     let app = build_router(state);
 
@@ -638,6 +917,7 @@ mod tests {
         let db_path = tmp.path().join("messages.db");
         // Initialize the message store so the DB file exists for /stats
         let _store = MessageStore::init(&db_path).unwrap();
+        let (event_tx, _event_rx) = broadcast::channel(64);
         let state = Arc::new(HttpState {
             trigger_tx: tx,
             health,
@@ -649,6 +929,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: None,
             cold_start_store: None,
+            event_tx,
         });
         (state, rx, tmp)
     }

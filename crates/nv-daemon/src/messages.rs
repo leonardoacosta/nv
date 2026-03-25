@@ -8,7 +8,7 @@ use serde::Serialize;
 // ── Stored Message ─────────────────────────────────────────────────
 
 /// A single message stored in the SQLite database.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 #[allow(dead_code)]
 pub struct StoredMessage {
     pub id: i64,
@@ -206,6 +206,8 @@ fn messages_migrations() -> Migrations<'static> {
             );
             CREATE INDEX IF NOT EXISTS idx_cold_start_started_at ON cold_start_events(started_at);",
         ),
+        // v6: index on messages.timestamp for fast pagination by created_at / newest-first
+        M::up("CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc ON messages(timestamp DESC);"),
     ])
 }
 
@@ -531,6 +533,139 @@ impl MessageStore {
             total_tokens_out,
             daily_counts,
         })
+    }
+
+    // ── Dashboard Pagination ───────────────────────────────────────
+
+    /// Return a paginated, optionally filtered slice of messages (newest first).
+    ///
+    /// Parameters:
+    /// - `limit`: rows per page (1–200)
+    /// - `offset`: skip this many rows (for page N: `N * limit`)
+    /// - `channel`: optional exact channel filter (e.g. "telegram")
+    /// - `search`: optional FTS5 full-text search query
+    pub fn paginate(
+        &self,
+        limit: i64,
+        offset: i64,
+        channel: Option<&str>,
+        search: Option<&str>,
+    ) -> Result<Vec<StoredMessage>> {
+        let limit = limit.clamp(1, 200);
+
+        // When a search term is provided, use FTS5; otherwise use a plain scan.
+        if let Some(q) = search {
+            return self.paginate_fts(limit, offset, channel, q);
+        }
+
+        // Plain scan (no FTS)
+        let rows = self.paginate_plain(limit, offset, channel)?;
+        Ok(rows)
+    }
+
+    fn paginate_plain(
+        &self,
+        limit: i64,
+        offset: i64,
+        channel: Option<&str>,
+    ) -> Result<Vec<StoredMessage>> {
+        fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
+            Ok(StoredMessage {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                direction: row.get(2)?,
+                channel: row.get(3)?,
+                sender: row.get(4)?,
+                content: row.get(5)?,
+                response_time_ms: row.get(6)?,
+                tokens_in: row.get(7)?,
+                tokens_out: row.get(8)?,
+            })
+        }
+
+        if let Some(ch) = channel {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, timestamp, direction, channel,
+                        COALESCE(sender, ''), content,
+                        response_time_ms, tokens_in, tokens_out
+                 FROM messages
+                 WHERE channel = ?1
+                 ORDER BY timestamp DESC
+                 LIMIT ?2 OFFSET ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![ch, limit, offset], map_row)?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(rows)
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, timestamp, direction, channel,
+                        COALESCE(sender, ''), content,
+                        response_time_ms, tokens_in, tokens_out
+                 FROM messages
+                 ORDER BY timestamp DESC
+                 LIMIT ?1 OFFSET ?2",
+            )?;
+            let rows = stmt
+                .query_map(params![limit, offset], map_row)?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(rows)
+        }
+    }
+
+    fn paginate_fts(
+        &self,
+        limit: i64,
+        offset: i64,
+        channel: Option<&str>,
+        query: &str,
+    ) -> Result<Vec<StoredMessage>> {
+        fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
+            Ok(StoredMessage {
+                id: row.get(0)?,
+                timestamp: row.get(1)?,
+                direction: row.get(2)?,
+                channel: row.get(3)?,
+                sender: row.get(4)?,
+                content: row.get(5)?,
+                response_time_ms: row.get(6)?,
+                tokens_in: row.get(7)?,
+                tokens_out: row.get(8)?,
+            })
+        }
+
+        if let Some(ch) = channel {
+            let mut stmt = self.conn.prepare(
+                "SELECT m.id, m.timestamp, m.direction, m.channel,
+                        COALESCE(m.sender, ''), m.content,
+                        m.response_time_ms, m.tokens_in, m.tokens_out
+                 FROM messages m
+                 JOIN messages_fts f ON m.id = f.rowid
+                 WHERE messages_fts MATCH ?1
+                   AND m.channel = ?4
+                 ORDER BY m.timestamp DESC
+                 LIMIT ?2 OFFSET ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![query, limit, offset, ch], map_row)?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(rows)
+        } else {
+            let mut stmt = self.conn.prepare(
+                "SELECT m.id, m.timestamp, m.direction, m.channel,
+                        COALESCE(m.sender, ''), m.content,
+                        m.response_time_ms, m.tokens_in, m.tokens_out
+                 FROM messages m
+                 JOIN messages_fts f ON m.id = f.rowid
+                 WHERE messages_fts MATCH ?1
+                 ORDER BY m.timestamp DESC
+                 LIMIT ?2 OFFSET ?3",
+            )?;
+            let rows = stmt
+                .query_map(params![query, limit, offset], map_row)?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(rows)
+        }
     }
 
     // ── Tool Usage Logging ─────────────────────────────────────────

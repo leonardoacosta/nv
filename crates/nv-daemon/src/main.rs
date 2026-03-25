@@ -869,6 +869,10 @@ async fn main() -> anyhow::Result<()> {
     let briefing_store_for_http = Arc::clone(&briefing_store);
     tracing::info!("briefing store initialized");
 
+    // Create the dashboard WebSocket event broadcast channel.
+    // Capacity 256: enough for burst events; lagged clients are warned but not disconnected.
+    let (http_event_tx, _http_event_rx) = tokio::sync::broadcast::channel::<http::DaemonEvent>(256);
+
     // Clone teams client before the async move so SharedDeps can hold its own reference.
     let teams_client_for_workers = teams_client_for_http.clone();
     // Clone cold-start store for the HTTP server (shared with workers via SharedDeps).
@@ -886,6 +890,7 @@ async fn main() -> anyhow::Result<()> {
             teams_client_state_for_http,
             Some(briefing_store_for_http),
             cold_start_store_for_http,
+            http_event_tx,
         )
         .await
         {

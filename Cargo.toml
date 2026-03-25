@@ -16,7 +16,7 @@ clap = { version = "4", features = ["derive"] }
 toml = "0.8"
 uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
 tonic = "0.12"
 prost = "0.13"
 prost-types = "0.13"

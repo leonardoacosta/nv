@@ -4,10 +4,10 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Add `GET /api/messages` handler in `crates/nv-daemon/src/dashboard.rs` — paginated query against SQLite `messages` table, params: limit, offset, channel, search [owner:api-engineer]
-- [ ] [1.2] [P-1] Add `POST /api/approvals/:id/approve` handler — mark obligation approved, trigger pending action execution path [owner:api-engineer]
-- [ ] [1.3] [P-2] Add WebSocket `/ws/events` endpoint to dashboard router — upgrade handler, broadcast session/health/message/approval events [owner:api-engineer]
-- [ ] [1.4] [P-2] Add SQLite index on `messages.created_at` (migration) so paginated message queries remain fast on large stores [owner:api-engineer]
+- [x] [1.1] [P-1] Add `GET /api/messages` handler in `crates/nv-daemon/src/http.rs` — paginated query against SQLite `messages` table, params: limit, offset, channel, search [owner:api-engineer]
+- [x] [1.2] [P-1] Add `POST /api/approvals/:id/approve` handler — mark obligation approved, trigger pending action execution path [owner:api-engineer]
+- [x] [1.3] [P-2] Add WebSocket `/ws/events` endpoint to dashboard router — upgrade handler, broadcast session/health/message/approval events [owner:api-engineer]
+- [x] [1.4] [P-2] Add SQLite index on `messages.created_at` (migration) so paginated message queries remain fast on large stores [owner:api-engineer]
 
 ## UI Batch — Shared Primitives
 

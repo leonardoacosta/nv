@@ -562,7 +562,7 @@
       "specs": [
         {
           "name": "add-schedule-svc",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -572,7 +572,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:21:52.621663"
         }
       ]
     },
@@ -582,7 +582,7 @@
       "specs": [
         {
           "name": "add-meta-svc",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -592,7 +592,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:21:52.621674"
         }
       ]
     },
@@ -822,14 +822,16 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 5,
+  "current_wave": 7,
   "started_at": "2026-03-26T17:15:08.767015",
   "completed_at": null,
   "completed_waves": [
     1,
     2,
     3,
-    4
+    4,
+    5,
+    6
   ],
   "completed_specs": [
     "scaffold-tool-service",
@@ -842,7 +844,9 @@
     "add-channels-svc",
     "add-discord-svc",
     "add-teams-svc",
-    "add-graph-svc"
+    "add-graph-svc",
+    "add-schedule-svc",
+    "add-meta-svc"
   ],
   "failed_specs": [],
   "mode": "consolidated",

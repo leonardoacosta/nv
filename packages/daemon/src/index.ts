@@ -7,6 +7,7 @@ import { createLogger } from "./logger.js";
 import { startApiServer } from "./api/server.js";
 import { TelegramAdapter } from "./channels/telegram.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
+import { startBriefingScheduler } from "./features/briefing/scheduler.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -85,6 +86,24 @@ export async function main(): Promise<void> {
     );
   }
 
+  // ── Morning briefing scheduler ─────────────────────────────────────────────
+
+  let stopBriefingScheduler: (() => void) | null = null;
+
+  if (config.vercelGatewayKey) {
+    stopBriefingScheduler = startBriefingScheduler({
+      pool,
+      gatewayKey: config.vercelGatewayKey,
+      logger: log,
+    });
+    log.info({ service: "nova-daemon" }, "Morning briefing scheduler started");
+  } else {
+    log.warn(
+      { service: "nova-daemon" },
+      "VERCEL_GATEWAY_KEY not set — morning briefing scheduler disabled",
+    );
+  }
+
   // ── Message routing ────────────────────────────────────────────────────────
 
   if (telegram !== null) {
@@ -121,6 +140,10 @@ export async function main(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     log.info({ service: "nova-daemon" }, "Shutting down…");
+
+    if (stopBriefingScheduler !== null) {
+      stopBriefingScheduler();
+    }
 
     if (watcher !== null) {
       watcher.stop();

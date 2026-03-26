@@ -5,6 +5,7 @@ import { obligations } from "./schema/obligations.js";
 import { contacts } from "./schema/contacts.js";
 import { diary } from "./schema/diary.js";
 import { memory } from "./schema/memory.js";
+import { briefings } from "./schema/briefings.js";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -14,6 +15,6 @@ if (!connectionString) {
 
 const queryClient = postgres(connectionString);
 
-const schema = { messages, obligations, contacts, diary, memory };
+const schema = { messages, obligations, contacts, diary, memory, briefings };
 
 export const db = drizzle(queryClient, { schema });

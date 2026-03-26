@@ -14,3 +14,6 @@ export type { DiaryEntry, NewDiaryEntry } from "./schema/diary.js";
 
 export { memory } from "./schema/memory.js";
 export type { Memory, NewMemory } from "./schema/memory.js";
+
+export { briefings } from "./schema/briefings.js";
+export type { Briefing, NewBriefing } from "./schema/briefings.js";

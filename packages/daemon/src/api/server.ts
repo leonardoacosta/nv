@@ -11,6 +11,7 @@ import { Pool } from "pg";
 import { logger } from "../logger.js";
 import { loadConfig } from "../config.js";
 import { handleDiaryGet } from "../http/routes/diary.js";
+import { handleBriefingGet, handleBriefingHistory } from "../http/routes/briefing.js";
 import { createMemoryService, getMemory, putMemory, type MemoryService } from "../features/memory/index.js";
 
 // ---------------------------------------------------------------------------
@@ -281,6 +282,16 @@ app.get("/api/messages", async (c) => {
 // GET /api/diary
 // ---------------------------------------------------------------------------
 app.get("/api/diary", handleDiaryGet);
+
+// ---------------------------------------------------------------------------
+// GET /api/briefing
+// ---------------------------------------------------------------------------
+app.get("/api/briefing", (c) => handleBriefingGet(c, getPool));
+
+// ---------------------------------------------------------------------------
+// GET /api/briefing/history
+// ---------------------------------------------------------------------------
+app.get("/api/briefing/history", (c) => handleBriefingHistory(c, getPool));
 
 // ---------------------------------------------------------------------------
 // GET /api/memory

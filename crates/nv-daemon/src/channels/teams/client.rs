@@ -320,7 +320,7 @@ impl TeamsClient {
 
     /// List chats for the authenticated user.
     ///
-    /// Uses `GET /me/chats?$top={limit}&$expand=members&$orderby=lastUpdatedDateTime desc`
+    /// Uses `GET /me/chats?$top={limit}&$expand=members` (no $orderby — not supported)
     /// which requires a **delegated** (user) token with `Chat.Read` scope.
     ///
     /// The delegated token must be set via `self.delegated_token` before calling this method.
@@ -339,9 +339,9 @@ impl TeamsClient {
             ),
         };
 
+        // Note: /me/chats does not support $orderby — sort client-side if needed.
         let url = format!(
-            "{GRAPH_API_BASE}/me/chats?$top={limit}&$expand=members\
-             &$orderby=lastUpdatedDateTime desc"
+            "{GRAPH_API_BASE}/me/chats?$top={limit}&$expand=members"
         );
 
         let resp = self

@@ -497,7 +497,10 @@ impl PersistentSession {
                 config,
                 backoff: BackoffState::new(),
                 // Persistent mode active — root cause fixed in persistent-subprocess-fix spec.
-                fallback_only: false,
+                // Persistent mode disabled — stream-json subprocess times out on every turn.
+                // Cold-start (json mode) works reliably at ~5-10s per response.
+                // Re-enable once Claude CLI stream-json is stable.
+                fallback_only: true,
                 last_failure_at: None,
             }),
         }

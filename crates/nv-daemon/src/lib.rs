@@ -11,6 +11,7 @@
 // Declare all modules so the library target compiles cleanly.
 // These are needed because `tools` imports from sibling modules.
 mod account;
+mod anthropic;
 mod self_assessment;
 mod contact_store;
 mod error_recovery;

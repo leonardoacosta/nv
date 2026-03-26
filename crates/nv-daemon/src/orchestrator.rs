@@ -3006,10 +3006,9 @@ impl Orchestrator {
 
         let deps = Arc::clone(&self.deps);
         let telegram_chat_id = self.telegram_chat_id;
-        let claude_client = self.deps.claude_client.clone();
 
         let result =
-            crate::obligation_executor::execute_obligation(&obligation, &deps, &config, claude_client)
+            crate::obligation_executor::execute_obligation(&obligation, &deps, &config)
                 .await;
 
         crate::obligation_executor::handle_execution_result(

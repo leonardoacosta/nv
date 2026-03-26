@@ -17,7 +17,8 @@ use nv_core::config::AutonomyConfig;
 use nv_core::types::{InlineButton, InlineKeyboard, Obligation, OutboundMessage};
 
 use crate::agent::build_system_context;
-use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason};
+use crate::anthropic::AnthropicClient;
+use crate::claude::{ContentBlock, Message, StopReason};
 use crate::http::{DaemonEvent, ObligationActivityEvent};
 use crate::nexus;
 use crate::tools;
@@ -125,7 +126,6 @@ pub async fn execute_obligation(
     obligation: &Obligation,
     deps: &Arc<SharedDeps>,
     config: &AutonomyConfig,
-    claude_client: ClaudeClient,
 ) -> ObligationResult {
     tracing::info!(
         obligation_id = %obligation.id,
@@ -160,6 +160,19 @@ pub async fn execute_obligation(
         build_obligation_context(obligation, research_summary.as_deref());
     let tool_definitions = tools::register_tools();
 
+    // Use AnthropicClient (direct HTTP API) instead of ClaudeClient (CC CLI wrapper).
+    // The CC CLI subprocess had --tools-json removed, so it can't dispatch tools.
+    // AnthropicClient sends tool definitions in the request body directly.
+    let anthropic_client = match AnthropicClient::from_env("claude-sonnet-4-6") {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!(error = %e, "autonomous executor: failed to create AnthropicClient");
+            return ObligationResult::Failed {
+                error: format!("Failed to create API client: {e}"),
+            };
+        }
+    };
+
     let user_message = Message::user(format!(
         "Work on this obligation now: {}",
         obligation.detected_action,
@@ -174,7 +187,7 @@ pub async fn execute_obligation(
             &system_prompt,
             &mut conversation,
             &tool_definitions,
-            &claude_client,
+            &anthropic_client,
             deps,
             &obligation.id,
         ),
@@ -215,15 +228,16 @@ async fn run_executor_loop(
     system_prompt: &str,
     conversation: &mut Vec<Message>,
     tool_definitions: &[crate::claude::ToolDefinition],
-    client: &ClaudeClient,
+    client: &AnthropicClient,
     deps: &Arc<SharedDeps>,
     obligation_id: &str,
 ) -> ObligationResult {
     let mut final_text = String::new();
 
     loop {
+        // AnthropicClient::send_message takes (messages, system, tools) — direct HTTP API.
         let response = match client
-            .send_messages(system_prompt, conversation, tool_definitions)
+            .send_message(conversation, system_prompt, tool_definitions)
             .await
         {
             Ok(r) => r,

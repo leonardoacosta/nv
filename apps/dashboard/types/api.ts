@@ -201,3 +201,26 @@ export interface StatsGetResponse {
   tool_usage: ToolStatsReport;
   [key: string]: unknown;
 }
+
+// ── GET /api/diary ─────────────────────────────────────────────────────────
+
+/** A single diary entry returned by GET /api/diary. */
+export interface DiaryEntryItem {
+  time: string;
+  trigger_type: string;
+  trigger_source: string;
+  channel_source: string;
+  slug: string;
+  tools_called: string[];
+  result_summary: string;
+  response_latency_ms: number;
+  tokens_in: number;
+  tokens_out: number;
+}
+
+/** Response from GET /api/diary. */
+export interface DiaryGetResponse {
+  date: string;
+  entries: DiaryEntryItem[];
+  total: number;
+}

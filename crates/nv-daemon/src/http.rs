@@ -17,6 +17,7 @@ use crate::briefing_store::BriefingStore;
 use crate::cc_sessions::CcSessionManager;
 use crate::cold_start_store::ColdStartStore;
 use crate::contact_store::ContactStore;
+use crate::diary::DiaryWriter;
 use crate::health::HealthState;
 use crate::obligation_store::ObligationStore;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
@@ -94,6 +95,8 @@ pub struct HttpState {
     pub cc_session_manager: Option<CcSessionManager>,
     /// Contact store for /api/contacts CRUD.
     pub contact_store: Option<Arc<ContactStore>>,
+    /// Diary writer for reading daily diary files via GET /api/diary.
+    pub diary: Option<Arc<std::sync::Mutex<DiaryWriter>>>,
 }
 
 /// Request body for POST /ask.
@@ -141,7 +144,9 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
                 .delete(delete_contact_handler),
         )
         // WebSocket event stream
-        .route("/ws/events", get(ws_events_handler));
+        .route("/ws/events", get(ws_events_handler))
+        // Diary
+        .route("/api/diary", get(get_diary_handler));
 
     // Add Jira webhook route if configured (uses its own sub-state)
     if let Some(jira_state) = &state.jira_webhook_state {
@@ -960,6 +965,7 @@ pub async fn run_http_server(
     event_tx: broadcast::Sender<DaemonEvent>,
     cc_session_manager: Option<CcSessionManager>,
     contact_store: Option<Arc<ContactStore>>,
+    diary: Option<Arc<std::sync::Mutex<DiaryWriter>>>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -975,6 +981,7 @@ pub async fn run_http_server(
         event_tx,
         cc_session_manager,
         contact_store,
+        diary,
     });
     let app = build_router(state);
 
@@ -1144,6 +1151,195 @@ async fn delete_contact_handler(
     }
 }
 
+// ── Diary ────────────────────────────────────────────────────────────
+
+/// Query parameters for GET /api/diary.
+#[derive(Debug, Deserialize)]
+pub struct DiaryQuery {
+    /// Which day to read (YYYY-MM-DD). Defaults to today.
+    pub date: Option<String>,
+    /// Maximum entries to return. Defaults to 50.
+    pub limit: Option<usize>,
+}
+
+/// A single diary entry returned by GET /api/diary.
+#[derive(Debug, Serialize)]
+pub struct DiaryEntryItem {
+    pub time: String,
+    pub trigger_type: String,
+    pub trigger_source: String,
+    pub channel_source: String,
+    pub slug: String,
+    pub tools_called: Vec<String>,
+    pub result_summary: String,
+    pub response_latency_ms: u64,
+    pub tokens_in: u64,
+    pub tokens_out: u64,
+}
+
+/// Response body for GET /api/diary.
+#[derive(Debug, Serialize)]
+pub struct DiaryGetResponse {
+    pub date: String,
+    pub entries: Vec<DiaryEntryItem>,
+    pub total: usize,
+}
+
+/// Parse a raw diary markdown file into structured entries.
+///
+/// The fixed schema emitted by `format_entry` makes this straightforward:
+/// each `## HH:MM — type (source) · slug` section contains labelled lines.
+fn parse_diary_file(content: &str) -> Vec<DiaryEntryItem> {
+    let mut entries = Vec::new();
+
+    // Split on "## " to get sections (first element may be empty).
+    let sections: Vec<&str> = content.split("\n## ").collect();
+
+    for section in &sections {
+        let trimmed = section.trim_start_matches("## ").trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let lines: Vec<&str> = trimmed.lines().collect();
+        let heading = match lines.first() {
+            Some(h) => *h,
+            None => continue,
+        };
+
+        // Parse heading: "HH:MM — trigger_type (trigger_source) · slug"
+        let (time_part, after_dash) = heading
+            .split_once(" — ")
+            .map(|(t, a)| (t.trim().to_string(), a))
+            .unwrap_or_else(|| (heading.trim().to_string(), ""));
+        // trigger_source is in parentheses inside "type (source) · slug"
+        let before_dot = after_dash.split(" \u{00B7} ").next().unwrap_or(after_dash);
+        let slug = after_dash.split(" \u{00B7} ").last().unwrap_or("").trim().to_string();
+
+        let (trigger_type, trigger_source) = before_dot
+            .split_once(" (")
+            .map(|(t, s)| {
+                (
+                    t.trim().to_string(),
+                    s.trim_end_matches(')').trim().to_string(),
+                )
+            })
+            .unwrap_or_else(|| (before_dot.trim().to_string(), String::new()));
+
+        // Extract labelled fields.
+        let get_field = |label: &str| -> String {
+            lines
+                .iter()
+                .find(|l| l.starts_with(label))
+                .map(|l| l[label.len()..].trim().to_string())
+                .unwrap_or_default()
+        };
+
+        let channel_source = get_field("**Channel:** ");
+        let tools_raw = get_field("**Tools called:** ");
+        let tools_called: Vec<String> = if tools_raw.is_empty() || tools_raw == "none" {
+            vec![]
+        } else {
+            tools_raw.split(", ").map(|s| s.trim().to_string()).collect()
+        };
+        let result_summary = get_field("**Result:** ");
+
+        let latency_raw = get_field("**Latency:** ");
+        let response_latency_ms: u64 = latency_raw
+            .trim_end_matches("ms")
+            .trim()
+            .parse()
+            .unwrap_or(0);
+
+        let cost_raw = get_field("**Cost:** ");
+        // Format: "N in + M out tokens"
+        let mut tokens_in: u64 = 0;
+        let mut tokens_out: u64 = 0;
+        if let Some(in_part) = cost_raw.split(" in + ").next() {
+            tokens_in = in_part.trim().parse().unwrap_or(0);
+        }
+        if let Some(out_part) = cost_raw.split(" in + ").nth(1) {
+            tokens_out = out_part
+                .split_whitespace()
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .unwrap_or(0);
+        }
+
+        entries.push(DiaryEntryItem {
+            time: time_part,
+            trigger_type,
+            trigger_source,
+            channel_source,
+            slug,
+            tools_called,
+            result_summary,
+            response_latency_ms,
+            tokens_in,
+            tokens_out,
+        });
+    }
+
+    entries
+}
+
+/// GET /api/diary — return diary entries for a given day.
+async fn get_diary_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<DiaryQuery>,
+) -> impl IntoResponse {
+    let Some(ref diary_arc) = state.diary else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+
+    let date_str = query.date.unwrap_or_else(|| {
+        chrono::Local::now().format("%Y-%m-%d").to_string()
+    });
+
+    let limit = query.limit.unwrap_or(50);
+
+    let file_path = {
+        let diary = diary_arc.lock().unwrap();
+        let date = match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
+            Ok(d) => d,
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "invalid date format, expected YYYY-MM-DD" })),
+                )
+                    .into_response();
+            }
+        };
+        diary.daily_file_path(date)
+    };
+
+    let content = match std::fs::read_to_string(&file_path) {
+        Ok(c) => c,
+        Err(_) => {
+            // File does not exist — return empty list, not an error.
+            return Json(DiaryGetResponse {
+                date: date_str,
+                entries: vec![],
+                total: 0,
+            })
+            .into_response();
+        }
+    };
+
+    let mut entries = parse_diary_file(&content);
+    // Reverse so newest entries come first, then apply limit.
+    entries.reverse();
+    entries.truncate(limit);
+
+    let total = entries.len();
+    Json(DiaryGetResponse {
+        date: date_str,
+        entries,
+        total,
+    })
+    .into_response()
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1175,6 +1371,7 @@ mod tests {
             event_tx,
             cc_session_manager: None,
             contact_store: None,
+            diary: None,
         });
         (state, rx, tmp)
     }
@@ -1399,6 +1596,7 @@ mod tests {
             contact_store: None,
             event_tx,
             cc_session_manager: None,
+            diary: None,
         });
         (state, rx, tmp)
     }
@@ -1451,6 +1649,7 @@ mod tests {
             contact_store: None,
             event_tx,
             cc_session_manager: None,
+            diary: None,
         });
         drop(rx);
 
@@ -1505,6 +1704,7 @@ mod tests {
             contact_store: None,
             event_tx,
             cc_session_manager: None,
+            diary: None,
         });
         drop(rx);
 

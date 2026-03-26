@@ -1428,12 +1428,14 @@ impl Worker {
                         timestamp: chrono::Local::now(),
                         trigger_type,
                         trigger_source,
+                        channel_source: trigger_channel.clone(),
                         trigger_count: task.triggers.len(),
                         tools_called: vec![],
                         sources_checked: String::new(),
                         result_summary: reply_text.chars().take(120).collect::<String>(),
                         tokens_in: 0,
                         tokens_out: 0,
+                        response_latency_ms: elapsed_ms,
                         slug: task.slug.clone(),
                     };
                     {
@@ -2041,12 +2043,14 @@ impl Worker {
             timestamp: chrono::Local::now(),
             trigger_type: trigger_type.clone(),
             trigger_source,
+            channel_source: trigger_channel.clone(),
             trigger_count: task.triggers.len(),
             tools_called: tool_names.clone(),
             sources_checked,
             result_summary,
             tokens_in: tokens_in as u32,
             tokens_out: tokens_out as u32,
+            response_latency_ms: response_time_ms.max(0) as u64,
             slug: task.slug.clone(),
         };
         {

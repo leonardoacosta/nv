@@ -1324,6 +1324,7 @@ impl Orchestrator {
                     "status" => self.cmd_status(&parsed.args).await,
                     "digest" => self.cmd_digest().await,
                     "health" => self.cmd_health().await,
+                    "diary" => self.cmd_diary(&parsed.args),
                     "projects" => self.cmd_projects().await,
                     "apply" => self.cmd_apply(&parsed.args, msg).await,
                     "sessions" => self.cmd_sessions().await,
@@ -1429,6 +1430,101 @@ impl Orchestrator {
             }
             Err(e) => format!("\u{274C} Health check failed: {e}"),
         }
+    }
+
+    /// /diary [N] — show last N diary entries (default 5, max 20).
+    ///
+    /// Reads the current day's diary file and, if needed, yesterday's file.
+    /// Returns a plain-text summary suitable for Telegram. No Claude call.
+    fn cmd_diary(&self, args: &[String]) -> String {
+        let n: usize = args
+            .first()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5)
+            .min(20);
+
+        let base = self.deps.diary.lock().unwrap().base_path().to_path_buf();
+        let today = chrono::Local::now().date_naive();
+        let yesterday = today.pred_opt().unwrap_or(today);
+
+        // Collect lines from today's file, then yesterday's if needed.
+        let mut raw_sections: Vec<String> = Vec::new();
+
+        for date in [today, yesterday] {
+            if raw_sections.len() >= n {
+                break;
+            }
+            let path = base.join(format!("{}.md", date.format("%Y-%m-%d")));
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            // Split on "## " headings to get individual entries.
+            let sections: Vec<&str> = content.split("\n## ").collect();
+            for section in sections.into_iter().rev() {
+                let trimmed = section.trim_start_matches("## ").trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                raw_sections.push(trimmed.to_string());
+                if raw_sections.len() >= n {
+                    break;
+                }
+            }
+        }
+
+        if raw_sections.is_empty() {
+            return "No diary entries found.".to_string();
+        }
+
+        let mut lines = format!("Diary — last {} entries\n", raw_sections.len());
+        for section in &raw_sections {
+            let entry_lines: Vec<&str> = section.lines().collect();
+            let heading = entry_lines.first().copied().unwrap_or("?");
+
+            // Extract time from heading (HH:MM — ...) and after-dash portion
+            let (time_part, after_dash) = heading
+                .split_once(" — ")
+                .unwrap_or((heading, ""));
+
+            // Extract slug from heading (last part after " · ")
+            let slug_part = after_dash.split(" \u{00B7} ").last().unwrap_or("");
+
+            // Extract trigger type + source (the part between "—" and "·")
+            let middle = after_dash
+                .split(" \u{00B7} ")
+                .next()
+                .unwrap_or("")
+                .trim();
+
+            // Find Tools, Result, Latency, Cost lines
+            let tools = entry_lines
+                .iter()
+                .find(|l| l.starts_with("**Tools called:**"))
+                .map(|l| l.trim_start_matches("**Tools called:** "))
+                .unwrap_or("none");
+            let result = entry_lines
+                .iter()
+                .find(|l| l.starts_with("**Result:**"))
+                .map(|l| l.trim_start_matches("**Result:** "))
+                .unwrap_or("—");
+            let latency = entry_lines
+                .iter()
+                .find(|l| l.starts_with("**Latency:**"))
+                .map(|l| l.trim_start_matches("**Latency:** "))
+                .unwrap_or("?");
+            let cost = entry_lines
+                .iter()
+                .find(|l| l.starts_with("**Cost:**"))
+                .map(|l| l.trim_start_matches("**Cost:** "))
+                .unwrap_or("?");
+
+            lines.push('\n');
+            lines.push_str(&format!("{time_part} — {middle} · {slug_part}\n"));
+            lines.push_str(&format!("  Tools: {tools}\n"));
+            lines.push_str(&format!("  Result: {result} ({latency}, {cost})\n"));
+        }
+
+        lines
     }
 
     /// /projects — list all registered projects with latest status dot.
@@ -3072,6 +3168,8 @@ mod tests {
         assert_eq!(classify_trigger(&make_message("/status")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/digest")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/health")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/diary")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/diary 10")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/apply oo fix-chat")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/projects")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/unknown")), TriggerClass::BotCommand);

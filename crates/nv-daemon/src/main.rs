@@ -225,9 +225,10 @@ async fn main() -> anyhow::Result<()> {
     st.init()?;
 
     // Initialize diary
-    let diary_writer = diary::DiaryWriter::new(&nv_base.join("diary"));
-    diary_writer.init()?;
+    let diary_writer_inner = diary::DiaryWriter::new(&nv_base.join("diary"));
+    diary_writer_inner.init()?;
     tracing::info!("diary initialized");
+    let diary_writer = std::sync::Arc::new(std::sync::Mutex::new(diary_writer_inner));
 
     // Initialize message store
     let message_store = Arc::new(std::sync::Mutex::new(
@@ -949,6 +950,8 @@ async fn main() -> anyhow::Result<()> {
     let cold_start_store_for_http = cold_start_store.clone();
     // Clone CcSessionManager for the HTTP server (cheaply cloned via Arc).
     let cc_session_manager_for_http = cc_session_manager.clone();
+    // Clone diary writer for the HTTP server (shared with workers via SharedDeps).
+    let diary_for_http = Arc::clone(&diary_writer);
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -965,6 +968,7 @@ async fn main() -> anyhow::Result<()> {
             http_event_tx,
             cc_session_manager_for_http,
             contact_store_for_http,
+            Some(diary_for_http),
         )
         .await
         {
@@ -1176,7 +1180,7 @@ async fn main() -> anyhow::Result<()> {
         message_store: Arc::clone(&message_store),
         conversation_db,
         conversation_ttl_hours,
-        diary: Arc::new(std::sync::Mutex::new(diary_writer)),
+        diary: Arc::clone(&diary_writer),
         jira_registry,
         team_agent_dispatcher,
         cc_session_manager,

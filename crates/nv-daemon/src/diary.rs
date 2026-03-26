@@ -15,6 +15,8 @@ pub struct DiaryEntry {
     pub trigger_type: String,
     /// The source of the trigger (channel name, cron event, agent name, etc.).
     pub trigger_source: String,
+    /// The raw channel name that originated the trigger (e.g. "telegram-personal", "cli").
+    pub channel_source: String,
     /// Number of triggers in the batch.
     pub trigger_count: usize,
     /// Names of tools called during the tool use loop.
@@ -27,6 +29,8 @@ pub struct DiaryEntry {
     pub tokens_in: u32,
     /// Output tokens from the Claude API response.
     pub tokens_out: u32,
+    /// How long the worker took to produce a response, in milliseconds.
+    pub response_latency_ms: u64,
     /// Human-readable session slug (e.g. "check-jira-sprint").
     pub slug: String,
 }
@@ -78,8 +82,13 @@ impl DiaryWriter {
         Ok(())
     }
 
+    /// Return the base directory for diary files.
+    pub fn base_path(&self) -> &Path {
+        &self.base_path
+    }
+
     /// Return the path for a given date's diary file.
-    fn daily_file_path(&self, date: NaiveDate) -> PathBuf {
+    pub fn daily_file_path(&self, date: NaiveDate) -> PathBuf {
         self.base_path.join(format!("{}.md", date.format("%Y-%m-%d")))
     }
 }
@@ -97,18 +106,22 @@ fn format_entry(entry: &DiaryEntry) -> String {
 
     format!(
         "## {time} — {} ({}) · {}\n\n\
+         **Channel:** {}\n\
          **Triggers:** {} ({})\n\
          **Tools called:** {tools}\n\
          **Sources checked:** {}\n\
          **Result:** {}\n\
+         **Latency:** {}ms\n\
          **Cost:** {} in + {} out tokens\n\n",
         entry.trigger_type,
         entry.trigger_source,
         entry.slug,
+        entry.channel_source,
         entry.trigger_count,
         entry.trigger_type,
         entry.sources_checked,
         entry.result_summary,
+        entry.response_latency_ms,
         entry.tokens_in,
         entry.tokens_out,
     )
@@ -141,12 +154,14 @@ mod tests {
             timestamp: now,
             trigger_type: "message".into(),
             trigger_source: "telegram".into(),
+            channel_source: "telegram-personal".into(),
             trigger_count: 1,
             tools_called: vec!["read_memory".into(), "jira_search".into()],
             sources_checked: "memory: decisions, jira: 2 issues".into(),
             result_summary: "sent reply".into(),
             tokens_in: 500,
             tokens_out: 120,
+            response_latency_ms: 42,
             slug: "sent-reply".into(),
         };
 
@@ -161,6 +176,8 @@ mod tests {
         assert!(content.contains("telegram"));
         assert!(content.contains("read_memory, jira_search"));
         assert!(content.contains("500 in + 120 out tokens"));
+        assert!(content.contains("**Channel:** telegram-personal"));
+        assert!(content.contains("**Latency:** 42ms"));
     }
 
     #[test]
@@ -175,12 +192,14 @@ mod tests {
             timestamp: now,
             trigger_type: "message".into(),
             trigger_source: "telegram".into(),
+            channel_source: "telegram-personal".into(),
             trigger_count: 1,
             tools_called: vec![],
             sources_checked: "none".into(),
             result_summary: "sent reply".into(),
             tokens_in: 100,
             tokens_out: 50,
+            response_latency_ms: 100,
             slug: "sent-reply".into(),
         };
 
@@ -188,12 +207,14 @@ mod tests {
             timestamp: now,
             trigger_type: "cron".into(),
             trigger_source: "digest".into(),
+            channel_source: "cron".into(),
             trigger_count: 1,
             tools_called: vec!["jira_search".into()],
             sources_checked: "jira: 5 issues".into(),
             result_summary: "suppressed digest".into(),
             tokens_in: 800,
             tokens_out: 200,
+            response_latency_ms: 1200,
             slug: "digest".into(),
         };
 
@@ -216,12 +237,14 @@ mod tests {
             timestamp: now,
             trigger_type: "cron".into(),
             trigger_source: "digest".into(),
+            channel_source: "cron".into(),
             trigger_count: 1,
             tools_called: vec![],
             sources_checked: "none".into(),
             result_summary: "suppressed digest".into(),
             tokens_in: 0,
             tokens_out: 0,
+            response_latency_ms: 0,
             slug: "digest".into(),
         };
 
@@ -236,12 +259,14 @@ mod tests {
             timestamp: now,
             trigger_type: "message".into(),
             trigger_source: "telegram".into(),
+            channel_source: "telegram-personal".into(),
             trigger_count: 1,
             tools_called: vec![],
             sources_checked: "none".into(),
             result_summary: "sent reply".into(),
             tokens_in: 10,
             tokens_out: 5,
+            response_latency_ms: 55,
             slug: "check-jira-sprint".into(),
         };
 
@@ -265,5 +290,67 @@ mod tests {
         let date = NaiveDate::from_ymd_opt(2026, 3, 22).unwrap();
         let path = writer.daily_file_path(date);
         assert_eq!(path, PathBuf::from("/tmp/diary/2026-03-22.md"));
+    }
+
+    #[test]
+    fn test_rollover_creates_separate_files() {
+        use chrono::{TimeZone, NaiveDateTime};
+
+        let tmp = tempfile::tempdir().unwrap();
+        let diary_path = tmp.path().join("diary");
+        let writer = DiaryWriter::new(&diary_path);
+        writer.init().unwrap();
+
+        // Entry at 23:59 on day N
+        let day_n = NaiveDateTime::parse_from_str("2026-03-24 23:59:00", "%Y-%m-%d %H:%M:%S").unwrap();
+        let ts_n = Local.from_local_datetime(&day_n).single().expect("valid datetime");
+        let entry_n = DiaryEntry {
+            timestamp: ts_n,
+            trigger_type: "message".into(),
+            trigger_source: "telegram".into(),
+            channel_source: "telegram-personal".into(),
+            trigger_count: 1,
+            tools_called: vec![],
+            sources_checked: "none".into(),
+            result_summary: "end of day".into(),
+            tokens_in: 10,
+            tokens_out: 5,
+            response_latency_ms: 100,
+            slug: "end-of-day".into(),
+        };
+
+        // Entry at 00:00 on day N+1
+        let day_n1 = NaiveDateTime::parse_from_str("2026-03-25 00:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+        let ts_n1 = Local.from_local_datetime(&day_n1).single().expect("valid datetime");
+        let entry_n1 = DiaryEntry {
+            timestamp: ts_n1,
+            trigger_type: "cron".into(),
+            trigger_source: "digest".into(),
+            channel_source: "cron".into(),
+            trigger_count: 1,
+            tools_called: vec![],
+            sources_checked: "none".into(),
+            result_summary: "midnight rollover".into(),
+            tokens_in: 20,
+            tokens_out: 10,
+            response_latency_ms: 200,
+            slug: "midnight-rollover".into(),
+        };
+
+        writer.write_entry(&entry_n).unwrap();
+        writer.write_entry(&entry_n1).unwrap();
+
+        let file_day_n = diary_path.join("2026-03-24.md");
+        let file_day_n1 = diary_path.join("2026-03-25.md");
+
+        assert!(file_day_n.exists(), "day N file must exist");
+        assert!(file_day_n1.exists(), "day N+1 file must exist");
+
+        let content_n = fs::read_to_string(&file_day_n).unwrap();
+        let content_n1 = fs::read_to_string(&file_day_n1).unwrap();
+
+        assert!(content_n.contains("end of day"), "day N file must contain day N entry");
+        assert!(content_n1.contains("midnight rollover"), "day N+1 file must contain day N+1 entry");
+        assert!(!content_n.contains("midnight rollover"), "day N file must not contain day N+1 entry");
     }
 }

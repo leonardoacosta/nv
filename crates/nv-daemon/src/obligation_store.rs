@@ -8,6 +8,8 @@ use std::path::Path;
 use std::str::FromStr;
 
 use anyhow::Result;
+use chrono::DateTime;
+use chrono::Utc;
 use nv_core::types::{Obligation, ObligationOwner, ObligationStatus};
 use rusqlite::{params, Connection};
 
@@ -32,6 +34,8 @@ pub struct NewObligation {
     pub owner: ObligationOwner,
     /// Optional reasoning for the owner assignment.
     pub owner_reason: Option<String>,
+    /// Optional deadline — RFC 3339 UTC string; `None` means no explicit deadline.
+    pub deadline: Option<String>,
 }
 
 // ── Store ─────────────────────────────────────────────────────────────
@@ -65,9 +69,9 @@ impl ObligationStore {
             "INSERT INTO obligations
                 (id, source_channel, source_message, detected_action, project_code,
                  priority, status, owner, owner_reason,
-                 created_at, updated_at)
+                 deadline, created_at, updated_at)
              VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'), datetime('now'))",
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'), datetime('now'))",
             params![
                 new.id,
                 new.source_channel,
@@ -78,6 +82,7 @@ impl ObligationStore {
                 ObligationStatus::Open.as_str(),
                 new.owner.as_str(),
                 new.owner_reason,
+                new.deadline,
             ],
         )?;
 
@@ -90,7 +95,7 @@ impl ObligationStore {
     pub fn get_by_id(&self, id: &str) -> Result<Option<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at
              FROM obligations
              WHERE id = ?1",
         )?;
@@ -110,7 +115,7 @@ impl ObligationStore {
     pub fn list_by_status(&self, status: &ObligationStatus) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at
              FROM obligations
              WHERE status = ?1
              ORDER BY priority ASC, created_at ASC",
@@ -137,7 +142,7 @@ impl ObligationStore {
     pub fn list_by_owner(&self, owner: &ObligationOwner) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at
              FROM obligations
              WHERE owner = ?1
              ORDER BY priority ASC, created_at ASC",
@@ -162,7 +167,7 @@ impl ObligationStore {
     pub fn list_all(&self) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at
              FROM obligations
              ORDER BY priority ASC, created_at ASC",
         )?;
@@ -256,11 +261,84 @@ impl ObligationStore {
 
         Ok(count)
     }
+
+    /// Reset the staleness clock of an open obligation by touching `updated_at`.
+    ///
+    /// Returns `true` if a row was updated (i.e., the obligation exists and is open),
+    /// `false` otherwise.
+    pub fn snooze(&self, id: &str) -> Result<bool> {
+        let rows_changed = self.conn.execute(
+            "UPDATE obligations SET updated_at = datetime('now') WHERE id = ?1 AND status = 'open'",
+            params![id],
+        )?;
+        Ok(rows_changed > 0)
+    }
+
+    /// List open obligations whose deadline is set and is at or before `cutoff`.
+    ///
+    /// Ordered by priority ASC, deadline ASC.
+    pub fn list_open_with_deadline_before(&self, cutoff: &DateTime<Utc>) -> Result<Vec<Obligation>> {
+        let cutoff_str = cutoff.to_rfc3339();
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+             FROM obligations
+             WHERE status = 'open'
+               AND deadline IS NOT NULL
+               AND deadline <= ?1
+             ORDER BY priority ASC, deadline ASC",
+        )?;
+
+        let rows = stmt.query_map(params![cutoff_str], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::other(e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_open_with_deadline_before query failed: {e}"))
+    }
+
+    /// List open obligations last updated before `since` (stale obligations).
+    ///
+    /// Ordered by priority ASC, updated_at ASC.
+    pub fn list_stale_open(&self, since: &DateTime<Utc>) -> Result<Vec<Obligation>> {
+        let since_str = since.to_rfc3339();
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+             FROM obligations
+             WHERE status = 'open'
+               AND updated_at <= ?1
+             ORDER BY priority ASC, updated_at ASC",
+        )?;
+
+        let rows = stmt.query_map(params![since_str], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::other(e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_stale_open query failed: {e}"))
+    }
 }
 
 // ── Row Mapper ───────────────────────────────────────────────────────
 
 /// Map a SQLite row to an `Obligation`.
+///
+/// Column order (0-based):
+///   0  id, 1 source_channel, 2 source_message, 3 detected_action, 4 project_code,
+///   5  priority, 6 status, 7 owner, 8 owner_reason, 9 deadline, 10 created_at, 11 updated_at
 fn row_to_obligation(row: &rusqlite::Row<'_>) -> Result<Obligation> {
     let status_str: String = row.get(6)?;
     let owner_str: String = row.get(7)?;
@@ -277,8 +355,9 @@ fn row_to_obligation(row: &rusqlite::Row<'_>) -> Result<Obligation> {
         owner: ObligationOwner::from_str(&owner_str)
             .map_err(|e| anyhow::anyhow!("invalid owner in DB: {e}"))?,
         owner_reason: row.get(8)?,
-        created_at: row.get(9)?,
-        updated_at: row.get(10)?,
+        deadline: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
     })
 }
 
@@ -306,6 +385,7 @@ mod tests {
                 status TEXT NOT NULL DEFAULT 'open',
                 owner TEXT NOT NULL DEFAULT 'nova',
                 owner_reason TEXT,
+                deadline TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -327,6 +407,7 @@ mod tests {
             priority,
             owner: ObligationOwner::Nova,
             owner_reason: None,
+            deadline: None,
         }
     }
 
@@ -577,5 +658,91 @@ mod tests {
         assert!(statuses.contains(&&ObligationStatus::Open));
         assert!(statuses.contains(&&ObligationStatus::Done));
         assert!(statuses.contains(&&ObligationStatus::Dismissed));
+    }
+
+    #[test]
+    fn snooze_refreshes_updated_at_for_open_obligation() {
+        let (store, _f) = temp_store();
+
+        store.create(new_obligation("sn1", "telegram", "do something", 2)).unwrap();
+
+        // Sleep briefly to ensure the clock advances between insert and update.
+        // SQLite datetime('now') has 1-second granularity — use a direct SQL update
+        // to back-date updated_at so snooze moves it forward noticeably.
+        store.conn.execute(
+            "UPDATE obligations SET updated_at = datetime('now', '-10 seconds') WHERE id = 'sn1'",
+            [],
+        ).unwrap();
+
+        let before = store.get_by_id("sn1").unwrap().unwrap().updated_at;
+        let updated = store.snooze("sn1").unwrap();
+        assert!(updated, "snooze should return true for an open obligation");
+
+        let after = store.get_by_id("sn1").unwrap().unwrap().updated_at;
+        // updated_at must be >= the back-dated value (it was refreshed)
+        assert!(after >= before, "updated_at should be refreshed by snooze");
+    }
+
+    #[test]
+    fn snooze_returns_false_for_missing_id() {
+        let (store, _f) = temp_store();
+        let result = store.snooze("does-not-exist").unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn snooze_returns_false_for_closed_obligation() {
+        let (store, _f) = temp_store();
+        store.create(new_obligation("sn2", "telegram", "closed task", 2)).unwrap();
+        store.update_status("sn2", &ObligationStatus::Done).unwrap();
+        let result = store.snooze("sn2").unwrap();
+        assert!(!result, "snooze must not affect non-open obligations");
+    }
+
+    #[test]
+    fn list_open_with_deadline_before_returns_overdue() {
+        let (store, _f) = temp_store();
+
+        // Obligation with a deadline in the past
+        let past_deadline = "2020-01-01T00:00:00+00:00".to_string();
+        let future_deadline = "2099-12-31T00:00:00+00:00".to_string();
+
+        let mut ob_past = new_obligation("dl_past", "telegram", "past deadline", 1);
+        ob_past.deadline = Some(past_deadline);
+        store.create(ob_past).unwrap();
+
+        let mut ob_future = new_obligation("dl_future", "telegram", "future deadline", 1);
+        ob_future.deadline = Some(future_deadline);
+        store.create(ob_future).unwrap();
+
+        // Obligation with no deadline
+        store.create(new_obligation("dl_none", "telegram", "no deadline", 1)).unwrap();
+
+        let now = Utc::now();
+        let results = store.list_open_with_deadline_before(&now).unwrap();
+
+        assert_eq!(results.len(), 1, "should only return the overdue obligation");
+        assert_eq!(results[0].id, "dl_past");
+    }
+
+    #[test]
+    fn list_stale_open_returns_old_obligations() {
+        let (store, _f) = temp_store();
+
+        store.create(new_obligation("stale1", "telegram", "stale task", 2)).unwrap();
+        store.create(new_obligation("stale2", "telegram", "fresh task", 2)).unwrap();
+
+        // Back-date stale1's updated_at to 3 days ago
+        store.conn.execute(
+            "UPDATE obligations SET updated_at = datetime('now', '-3 days') WHERE id = 'stale1'",
+            [],
+        ).unwrap();
+
+        // Threshold: 2 days ago
+        let threshold = Utc::now() - chrono::Duration::days(2);
+        let results = store.list_stale_open(&threshold).unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "stale1");
     }
 }

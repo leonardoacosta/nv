@@ -38,6 +38,7 @@ mod obligation_store;
 mod orchestrator;
 mod query;
 mod reminders;
+mod proactive_watcher;
 mod scheduler;
 mod speech_to_text;
 mod shutdown;

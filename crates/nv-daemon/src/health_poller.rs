@@ -136,6 +136,7 @@ async fn handle_crash_detected(
         priority: 1, // P1 — Critical
         owner: nv_core::types::ObligationOwner::Nova,
         owner_reason: Some("Automated crash detection".into()),
+        deadline: None,
     };
 
     let obligation_result = {

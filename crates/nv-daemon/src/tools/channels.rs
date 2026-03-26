@@ -288,11 +288,23 @@ mod tests {
 
         #[async_trait::async_trait]
         impl nv_core::channel::Channel for MockChannel {
+            fn name(&self) -> &str {
+                "mock"
+            }
+            async fn connect(&mut self) -> anyhow::Result<()> {
+                Ok(())
+            }
             async fn poll_messages(&self) -> anyhow::Result<Vec<nv_core::types::InboundMessage>> {
                 Ok(vec![])
             }
             async fn send_message(&self, _msg: nv_core::types::OutboundMessage) -> anyhow::Result<()> {
                 Ok(())
+            }
+            async fn disconnect(&mut self) -> anyhow::Result<()> {
+                Ok(())
+            }
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
             }
         }
 

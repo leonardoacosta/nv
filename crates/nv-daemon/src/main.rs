@@ -27,6 +27,7 @@ mod obligation_store;
 mod orchestrator;
 mod query;
 mod reminders;
+mod proactive_watcher;
 mod scheduler;
 mod speech_to_text;
 mod shutdown;
@@ -833,6 +834,28 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("reminder scheduler started");
     }
 
+    // Spawn proactive watcher (scans obligations for overdue/stale/approaching-deadline items)
+    let pw_enabled = config
+        .proactive_watcher
+        .as_ref()
+        .map(|c| c.enabled)
+        .unwrap_or(true);
+    if pw_enabled {
+        let pw_config = config.proactive_watcher.clone().unwrap_or_default();
+        let pw_interval = pw_config.interval_minutes;
+        let _pw_handle = proactive_watcher::spawn_proactive_watcher(
+            trigger_tx.clone(),
+            pw_config,
+            &nv_base,
+        );
+        tracing::info!(
+            interval_minutes = pw_interval,
+            "proactive watcher started"
+        );
+    } else {
+        tracing::info!("proactive watcher disabled by config");
+    }
+
     // Build Jira webhook state if configured
     let jira_webhook_state = config.jira.as_ref().map(|jira_config| {
         let secret = jira_config.webhook_secret().map(String::from);
@@ -1177,6 +1200,7 @@ async fn main() -> anyhow::Result<()> {
         cold_start_store,
         contact_store: contact_store_for_workers,
         tool_cache: crate::tool_cache::ToolResultCache::new(),
+        proactive_watcher_config: config.proactive_watcher.clone(),
     });
 
     // Extract Telegram client and chat_id for reactions

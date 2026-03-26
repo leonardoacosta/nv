@@ -155,6 +155,8 @@ pub struct Config {
     /// Optional alert rules configuration. When present, rules are seeded
     /// into the DB on startup and watchers poll at `interval_secs`.
     pub alert_rules: Option<AlertRulesConfig>,
+    /// Optional proactive follow-up watcher configuration.
+    pub proactive_watcher: Option<ProactiveWatcherConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -583,6 +585,90 @@ pub struct DaemonConfig {
     /// Default: 24 hours.  Set to 0 to disable expiry.
     #[serde(default = "default_conversation_ttl_hours")]
     pub conversation_ttl_hours: u64,
+}
+
+// ── Proactive Watcher Config ─────────────────────────────────────────
+
+fn default_pw_enabled() -> bool {
+    true
+}
+
+fn default_pw_interval() -> u64 {
+    120
+}
+
+fn default_pw_quiet_start() -> String {
+    "22:00".to_string()
+}
+
+fn default_pw_quiet_end() -> String {
+    "08:00".to_string()
+}
+
+fn default_pw_stale_hours() -> u64 {
+    48
+}
+
+fn default_pw_approaching_hours() -> u64 {
+    24
+}
+
+fn default_pw_max_reminders() -> u32 {
+    1
+}
+
+/// Configuration for the proactive follow-up watcher.
+///
+/// The watcher scans open obligations for overdue, approaching-deadline, and stale
+/// items, then sends Telegram reminders with action buttons.
+///
+/// ```toml
+/// [proactive_watcher]
+/// enabled = true
+/// interval_minutes = 120
+/// quiet_start = "22:00"
+/// quiet_end = "08:00"
+/// stale_threshold_hours = 48
+/// approaching_deadline_hours = 24
+/// max_reminders_per_interval = 1
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProactiveWatcherConfig {
+    /// Whether the watcher is active. Default: true.
+    #[serde(default = "default_pw_enabled")]
+    pub enabled: bool,
+    /// How often to scan obligations, in minutes. Default: 120.
+    #[serde(default = "default_pw_interval")]
+    pub interval_minutes: u64,
+    /// Start of quiet window (local time). No reminders during quiet hours. Default: "22:00".
+    #[serde(default = "default_pw_quiet_start")]
+    pub quiet_start: String,
+    /// End of quiet window (local time). Default: "08:00".
+    #[serde(default = "default_pw_quiet_end")]
+    pub quiet_end: String,
+    /// Hours since `updated_at` before an obligation is considered stale. Default: 48.
+    #[serde(default = "default_pw_stale_hours")]
+    pub stale_threshold_hours: u64,
+    /// Hours before deadline at which an obligation is flagged as "approaching". Default: 24.
+    #[serde(default = "default_pw_approaching_hours")]
+    pub approaching_deadline_hours: u64,
+    /// Maximum reminders per obligation per day (dedup guard). Default: 1.
+    #[serde(default = "default_pw_max_reminders")]
+    pub max_reminders_per_interval: u32,
+}
+
+impl Default for ProactiveWatcherConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_pw_enabled(),
+            interval_minutes: default_pw_interval(),
+            quiet_start: default_pw_quiet_start(),
+            quiet_end: default_pw_quiet_end(),
+            stale_threshold_hours: default_pw_stale_hours(),
+            approaching_deadline_hours: default_pw_approaching_hours(),
+            max_reminders_per_interval: default_pw_max_reminders(),
+        }
+    }
 }
 
 // ── Alert Rules Config ───────────────────────────────────────────────
@@ -1668,5 +1754,69 @@ model = "test-model"
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.team_agents.is_none());
+    }
+
+    // ── ProactiveWatcherConfig tests ─────────────────────────────────
+
+    #[test]
+    fn proactive_watcher_config_defaults_when_absent() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.proactive_watcher.is_none());
+        // Default via ProactiveWatcherConfig::default()
+        let pw = ProactiveWatcherConfig::default();
+        assert!(pw.enabled);
+        assert_eq!(pw.interval_minutes, 120);
+        assert_eq!(pw.quiet_start, "22:00");
+        assert_eq!(pw.quiet_end, "08:00");
+        assert_eq!(pw.stale_threshold_hours, 48);
+        assert_eq!(pw.approaching_deadline_hours, 24);
+        assert_eq!(pw.max_reminders_per_interval, 1);
+    }
+
+    #[test]
+    fn proactive_watcher_config_explicit_values() {
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[proactive_watcher]
+enabled = false
+interval_minutes = 60
+quiet_start = "23:00"
+quiet_end = "07:00"
+stale_threshold_hours = 72
+approaching_deadline_hours = 48
+max_reminders_per_interval = 3
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let pw = config.proactive_watcher.unwrap();
+        assert!(!pw.enabled);
+        assert_eq!(pw.interval_minutes, 60);
+        assert_eq!(pw.quiet_start, "23:00");
+        assert_eq!(pw.quiet_end, "07:00");
+        assert_eq!(pw.stale_threshold_hours, 72);
+        assert_eq!(pw.approaching_deadline_hours, 48);
+        assert_eq!(pw.max_reminders_per_interval, 3);
+    }
+
+    #[test]
+    fn proactive_watcher_config_partial_with_defaults() {
+        // Only enabled is set — all other fields should use defaults via serde(default)
+        let toml_str = r#"
+[agent]
+model = "test-model"
+
+[proactive_watcher]
+enabled = true
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        let pw = config.proactive_watcher.unwrap();
+        assert!(pw.enabled);
+        assert_eq!(pw.interval_minutes, 120);
+        assert_eq!(pw.stale_threshold_hours, 48);
     }
 }

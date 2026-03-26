@@ -163,6 +163,7 @@ pub fn build_obligation_from_failures(
         priority: 1, // Critical — deploy failures block users
         owner: ObligationOwner::Nova,
         owner_reason: Some("deploy_failure alert rule triggered".to_string()),
+        deadline: None,
     })
 }
 

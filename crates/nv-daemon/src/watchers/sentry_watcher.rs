@@ -132,6 +132,7 @@ impl RuleEvaluator for SentryWatcher {
             priority: 1, // High — error spikes need investigation
             owner: ObligationOwner::Nova,
             owner_reason: Some("sentry_spike alert rule triggered".to_string()),
+            deadline: None,
         })
     }
 }

@@ -178,6 +178,7 @@ impl RuleEvaluator for StaleTicketWatcher {
             owner_reason: Some(format!(
                 "stale_ticket alert rule triggered ({stale_days}+ days without activity)"
             )),
+            deadline: None,
         })
     }
 }

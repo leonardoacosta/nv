@@ -276,6 +276,8 @@ pub struct SharedDeps {
     pub contact_store: Option<Arc<crate::contact_store::ContactStore>>,
     /// In-memory TTL cache for tool results. Shared across workers in the pool.
     pub tool_cache: ToolResultCache,
+    /// Proactive watcher configuration. Used by `handle_proactive_followup`.
+    pub proactive_watcher_config: Option<nv_core::config::ProactiveWatcherConfig>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────
@@ -353,6 +355,7 @@ pub fn generate_slug_for_triggers(triggers: &[Trigger]) -> String {
                 nv_core::types::CronEvent::MemoryCleanup => "memory-cleanup",
                 nv_core::types::CronEvent::MorningBriefing => "morning-briefing",
                 nv_core::types::CronEvent::UserSchedule { name, .. } => name.as_str(),
+                nv_core::types::CronEvent::ProactiveFollowup => "proactive-followup",
             };
             name.to_string()
         }

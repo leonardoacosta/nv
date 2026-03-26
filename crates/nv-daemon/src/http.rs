@@ -1396,6 +1396,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: Some(briefing_store),
             cold_start_store: None,
+            contact_store: None,
             event_tx,
             cc_session_manager: None,
         });
@@ -1447,6 +1448,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: Some(Arc::clone(&briefing_store)),
             cold_start_store: None,
+            contact_store: None,
             event_tx,
             cc_session_manager: None,
         });
@@ -1500,6 +1502,7 @@ mod tests {
             teams_client_state: None,
             briefing_store: Some(Arc::clone(&briefing_store)),
             cold_start_store: None,
+            contact_store: None,
             event_tx,
             cc_session_manager: None,
         });

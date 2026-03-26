@@ -152,6 +152,7 @@ impl RuleEvaluator for HaWatcher {
             priority: 2, // Important — HA anomalies need attention but aren't critical
             owner: ObligationOwner::Nova,
             owner_reason: Some("ha_anomaly alert rule triggered".to_string()),
+            deadline: None,
         })
     }
 }

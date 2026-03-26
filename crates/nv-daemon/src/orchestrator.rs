@@ -441,6 +441,13 @@ impl Orchestrator {
                         return;
                     }
                 }
+                // ProactiveFollowup: scan obligations and send Telegram reminders inline.
+                for trigger in triggers.iter() {
+                    if let Trigger::Cron(nv_core::types::CronEvent::ProactiveFollowup) = trigger {
+                        self.handle_proactive_followup().await;
+                        return;
+                    }
+                }
                 // CronEvent::Digest runs the full gather → synthesize → send pipeline inline.
                 for trigger in triggers.iter() {
                     if let Trigger::Cron(nv_core::types::CronEvent::Digest) = trigger {
@@ -542,6 +549,7 @@ impl Orchestrator {
                                 nv_core::types::ObligationOwner::Nova
                             },
                             owner_reason: detected.owner_reason,
+                            deadline: None,
                         };
 
                         // Store the obligation — lock is held briefly, dropped before any await.
@@ -1102,6 +1110,21 @@ impl Orchestrator {
                             }
                         } else {
                             tracing::warn!(data, "ob_snooze callback data missing offset separator");
+                        }
+                        continue;
+                    }
+
+                    // Proactive follow-up callbacks: followup:{action}:{obligation_id}
+                    if let Some(rest) = data.strip_prefix("followup:") {
+                        let chat_id = tg_chat_id.or(self.telegram_chat_id);
+                        if let Some(tg_channel) = self
+                            .channels
+                            .get("telegram")
+                            .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>())
+                        {
+                            if let Some(cid) = chat_id {
+                                self.handle_followup_callback(rest, &tg_channel.client, cid).await;
+                            }
                         }
                         continue;
                     }
@@ -1784,6 +1807,311 @@ impl Orchestrator {
         }
     }
 
+    // ── Proactive Follow-Up ──────────────────────────────────────────
+
+    /// Scan open obligations for overdue/approaching-deadline/stale items and send
+    /// Telegram reminders with action buttons.
+    ///
+    /// Deduplicates using `ProactiveWatcherState::reminder_counts`. Caps at 5 reminders
+    /// per run to prevent flooding when many obligations are simultaneously stale.
+    async fn handle_proactive_followup(&self) {
+        tracing::info!("proactive_followup: starting scan");
+
+        let ob_store = match &self.deps.obligation_store {
+            Some(arc) => arc,
+            None => {
+                tracing::debug!("proactive_followup: obligation store not configured, skipping");
+                return;
+            }
+        };
+
+        let now = chrono::Utc::now();
+
+        // Load proactive watcher config from shared deps (use defaults if absent).
+        let pw_config = self
+            .deps
+            .proactive_watcher_config
+            .clone()
+            .unwrap_or_default();
+
+        // Load persisted watcher state.
+        let mut pw_state =
+            crate::proactive_watcher::ProactiveWatcherState::load(&self.deps.nv_base_path)
+                .unwrap_or_default();
+
+        // Reset reminder_counts if last_run_at was on a different calendar day.
+        if let Some(last) = pw_state.last_run_at {
+            if last.date_naive() < now.date_naive() {
+                pw_state.reminder_counts.clear();
+            }
+        }
+
+        // Collect matches in priority order: overdue → approaching → stale.
+        let mut candidates: Vec<(nv_core::types::Obligation, &'static str)> = Vec::new();
+
+        // --- 1. Overdue (deadline IS NOT NULL AND deadline < now) ---
+        let approaching_cutoff =
+            now + chrono::Duration::hours(pw_config.approaching_deadline_hours as i64);
+        let stale_threshold =
+            now - chrono::Duration::hours(pw_config.stale_threshold_hours as i64);
+
+        {
+            match ob_store.lock() {
+                Ok(store) => {
+                    // Overdue: deadline set and <= now.
+                    match store.list_open_with_deadline_before(&now) {
+                        Ok(overdue) => {
+                            for ob in overdue {
+                                candidates.push((ob, "overdue"));
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "proactive_followup: overdue query failed");
+                        }
+                    }
+                    // Approaching deadline: deadline set and now < deadline <= approaching_cutoff.
+                    // list_open_with_deadline_before(approaching_cutoff) includes overdue ones;
+                    // we filter out already-found overdue items by checking deadline > now.
+                    match store.list_open_with_deadline_before(&approaching_cutoff) {
+                        Ok(approaching) => {
+                            for ob in approaching {
+                                let is_already_overdue = ob.deadline.as_deref().map(|d| {
+                                    chrono::DateTime::parse_from_rfc3339(d)
+                                        .map(|dt| dt.with_timezone(&chrono::Utc) <= now)
+                                        .unwrap_or(false)
+                                }).unwrap_or(false);
+                                if !is_already_overdue && candidates.iter().all(|(c, _)| c.id != ob.id) {
+                                    candidates.push((ob, "due soon"));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "proactive_followup: approaching query failed");
+                        }
+                    }
+                    // Stale: updated_at <= stale_threshold.
+                    match store.list_stale_open(&stale_threshold) {
+                        Ok(stale) => {
+                            for ob in stale {
+                                if candidates.iter().all(|(c, _)| c.id != ob.id) {
+                                    let hours = pw_config.stale_threshold_hours;
+                                    // Use Box::leak to get a 'static str — small, bounded allocation.
+                                    let label: &'static str = Box::leak(
+                                        format!("no update in {hours}h").into_boxed_str(),
+                                    );
+                                    candidates.push((ob, label));
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "proactive_followup: stale query failed");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "proactive_followup: obligation store mutex poisoned");
+                    return;
+                }
+            }
+        }
+
+        if candidates.is_empty() {
+            tracing::debug!("proactive_followup: no matching obligations");
+            // Update last_run_at.
+            pw_state.last_run_at = Some(now);
+            let _ = pw_state.save(&self.deps.nv_base_path);
+            return;
+        }
+
+        tracing::info!(candidates = candidates.len(), "proactive_followup: found candidates");
+
+        let chat_id = match self.telegram_chat_id {
+            Some(id) => id,
+            None => {
+                tracing::warn!("proactive_followup: no telegram chat_id configured");
+                return;
+            }
+        };
+
+        // Send reminders — cap at 5 per run.
+        let mut sent = 0u32;
+        const MAX_PER_RUN: u32 = 5;
+
+        for (ob, status_label) in &candidates {
+            if sent >= MAX_PER_RUN {
+                tracing::debug!(
+                    remaining = candidates.len() as u32 - sent,
+                    "proactive_followup: cap reached, deferring remaining"
+                );
+                break;
+            }
+
+            // Dedup guard.
+            let count = *pw_state.reminder_counts.get(&ob.id).unwrap_or(&0);
+            if count >= pw_config.max_reminders_per_interval {
+                tracing::debug!(
+                    obligation_id = %ob.id,
+                    count,
+                    "proactive_followup: dedup guard — already reminded"
+                );
+                continue;
+            }
+
+            // Build message.
+            let priority_label = match ob.priority {
+                0 => "P0",
+                1 => "P1",
+                2 => "P2",
+                3 => "P3",
+                _ => "P4",
+            };
+            let body = format!(
+                "Follow-up: {}\n\nStatus: {}\nChannel: {}\nPriority: {}\n\nWhat would you like to do?",
+                ob.detected_action,
+                status_label,
+                ob.source_channel,
+                priority_label,
+            );
+            let keyboard = followup_keyboard(&ob.id);
+
+            if let Some(channel) = self.channels.get("telegram") {
+                let msg = OutboundMessage {
+                    channel: "telegram".into(),
+                    content: body,
+                    reply_to: None,
+                    keyboard: Some(keyboard),
+                };
+                match channel.send_message(msg).await {
+                    Ok(()) => {
+                        tracing::info!(
+                            obligation_id = %ob.id,
+                            status = status_label,
+                            "proactive_followup: reminder sent"
+                        );
+                        *pw_state.reminder_counts.entry(ob.id.clone()).or_insert(0) += 1;
+                        sent += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            obligation_id = %ob.id,
+                            "proactive_followup: failed to send reminder"
+                        );
+                    }
+                }
+            } else {
+                tracing::warn!("proactive_followup: no telegram channel — reminders not delivered");
+                break;
+            }
+
+            let _ = chat_id; // suppress unused warning; chat_id used implicitly via channel registry
+        }
+
+        // Persist updated state.
+        pw_state.last_run_at = Some(now);
+        if let Err(e) = pw_state.save(&self.deps.nv_base_path) {
+            tracing::warn!(error = %e, "proactive_followup: failed to persist watcher state");
+        }
+
+        tracing::info!(sent, "proactive_followup: scan complete");
+    }
+
+    /// Handle a `followup:{action}:{obligation_id}` callback from an inline keyboard button.
+    ///
+    /// Actions:
+    /// - `done` → `ObligationStore::update_status(id, Done)`
+    /// - `snooze` → `ObligationStore::snooze(id)` (resets staleness clock)
+    /// - `dismiss` → `ObligationStore::update_status(id, Dismissed)`
+    async fn handle_followup_callback(
+        &self,
+        rest: &str,
+        telegram: &crate::channels::telegram::client::TelegramClient,
+        chat_id: i64,
+    ) {
+        // rest = "{action}:{obligation_id}"
+        let (action, ob_id) = match rest.split_once(':') {
+            Some(pair) => pair,
+            None => {
+                tracing::warn!(data = rest, "followup callback: malformed data (expected action:id)");
+                return;
+            }
+        };
+
+        let ob_store = match &self.deps.obligation_store {
+            Some(arc) => arc,
+            None => {
+                tracing::warn!("followup callback: obligation store not configured");
+                let _ = telegram.send_message(chat_id, "Obligation store unavailable.", None, None).await;
+                return;
+            }
+        };
+
+        let result = match action {
+            "done" => {
+                ob_store
+                    .lock()
+                    .ok()
+                    .map(|store| store.update_status(ob_id, &nv_core::types::ObligationStatus::Done))
+                    .unwrap_or_else(|| Err(anyhow::anyhow!("mutex poisoned")))
+                    .map(|updated| {
+                        if updated {
+                            "Marked as done."
+                        } else {
+                            "Obligation not found."
+                        }
+                    })
+            }
+            "snooze" => {
+                ob_store
+                    .lock()
+                    .ok()
+                    .map(|store| store.snooze(ob_id))
+                    .unwrap_or_else(|| Err(anyhow::anyhow!("mutex poisoned")))
+                    .map(|updated| {
+                        if updated {
+                            "Snoozed 24h (staleness clock reset)."
+                        } else {
+                            "Obligation not found or not open."
+                        }
+                    })
+            }
+            "dismiss" => {
+                ob_store
+                    .lock()
+                    .ok()
+                    .map(|store| {
+                        store.update_status(ob_id, &nv_core::types::ObligationStatus::Dismissed)
+                    })
+                    .unwrap_or_else(|| Err(anyhow::anyhow!("mutex poisoned")))
+                    .map(|updated| {
+                        if updated {
+                            "Dismissed."
+                        } else {
+                            "Obligation not found."
+                        }
+                    })
+            }
+            other => {
+                tracing::warn!(action = other, ob_id, "followup callback: unknown action");
+                let _ = telegram
+                    .send_message(chat_id, &format!("Unknown followup action: {other}"), None, None)
+                    .await;
+                return;
+            }
+        };
+
+        let reply = match result {
+            Ok(msg) => msg.to_string(),
+            Err(e) => {
+                tracing::warn!(error = %e, action, ob_id, "followup callback: store operation failed");
+                format!("Error: {e}")
+            }
+        };
+
+        let _ = telegram.send_message(chat_id, &reply, None, None).await;
+        tracing::info!(action, ob_id, "followup callback: handled");
+    }
+
     // ── Digest Pipeline ─────────────────────────────────────────────
 
     /// Run the full digest pipeline: gather → synthesize → should_send → send → record_sent.
@@ -2175,6 +2503,28 @@ fn obligation_keyboard(obligation_id: &str) -> nv_core::types::InlineKeyboard {
                 },
             ],
         ],
+    }
+}
+
+/// Build the proactive follow-up inline keyboard.
+///
+/// Three buttons: `[Mark Done]` `[Snooze 24h]` `[Dismiss]`
+fn followup_keyboard(obligation_id: &str) -> nv_core::types::InlineKeyboard {
+    nv_core::types::InlineKeyboard {
+        rows: vec![vec![
+            nv_core::types::InlineButton {
+                text: "Mark Done".to_string(),
+                callback_data: format!("followup:done:{obligation_id}"),
+            },
+            nv_core::types::InlineButton {
+                text: "Snooze 24h".to_string(),
+                callback_data: format!("followup:snooze:{obligation_id}"),
+            },
+            nv_core::types::InlineButton {
+                text: "Dismiss".to_string(),
+                callback_data: format!("followup:dismiss:{obligation_id}"),
+            },
+        ]],
     }
 }
 
@@ -2719,6 +3069,7 @@ mod tests {
             status: nv_core::types::ObligationStatus::Open,
             owner: nv_core::types::ObligationOwner::Nova,
             owner_reason: owner_reason.map(String::from),
+            deadline: None,
             created_at: "2026-03-24T00:00:00Z".to_string(),
             updated_at: "2026-03-24T00:00:00Z".to_string(),
         }

@@ -144,6 +144,8 @@ pub enum CronEvent {
     MorningBriefing,
     /// A user-created recurring schedule fired from the scheduler loop.
     UserSchedule { name: String, action: String },
+    /// Proactive follow-up scan: checks for overdue/stale/approaching-deadline obligations.
+    ProactiveFollowup,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -369,6 +371,8 @@ pub struct Obligation {
     pub owner: ObligationOwner,
     /// Optional reasoning for the owner assignment.
     pub owner_reason: Option<String>,
+    /// Optional deadline — RFC 3339 UTC string; `None` means no explicit deadline.
+    pub deadline: Option<String>,
     /// ISO 8601 UTC creation timestamp.
     pub created_at: String,
     /// ISO 8601 UTC last-updated timestamp.

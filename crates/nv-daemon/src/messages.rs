@@ -258,6 +258,8 @@ fn messages_migrations() -> Migrations<'static> {
                )
             WHERE sender IS NOT NULL;",
         ),
+        // v11: add deadline column to obligations for proactive watcher
+        M::up("ALTER TABLE obligations ADD COLUMN deadline TEXT;"),
     ])
 }
 

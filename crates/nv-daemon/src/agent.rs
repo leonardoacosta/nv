@@ -246,6 +246,12 @@ pub fn format_trigger_batch(triggers: &[Trigger]) -> String {
             Trigger::CliCommand(req) => {
                 parts.push(format!("[cli] {:?}", req.command));
             }
+            Trigger::ObligationResearch(rt) => {
+                parts.push(format!(
+                    "[research] obligation {} — {}",
+                    rt.obligation_id, rt.detected_action
+                ));
+            }
         }
     }
     parts.join("\n")

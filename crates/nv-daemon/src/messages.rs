@@ -260,6 +260,20 @@ fn messages_migrations() -> Migrations<'static> {
         ),
         // v11: add deadline column to obligations for proactive watcher
         M::up("ALTER TABLE obligations ADD COLUMN deadline TEXT;"),
+        // v12: obligation_notes — stores proactive research results per obligation
+        M::up(
+            "CREATE TABLE IF NOT EXISTS obligation_notes (
+                id            TEXT PRIMARY KEY,
+                obligation_id TEXT NOT NULL,
+                summary       TEXT NOT NULL,
+                findings_json TEXT NOT NULL DEFAULT '[]',
+                tools_used    TEXT NOT NULL DEFAULT '[]',
+                error         TEXT,
+                researched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_obligation_notes_obligation
+                ON obligation_notes(obligation_id);",
+        ),
     ])
 }
 
@@ -1132,10 +1146,10 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 10, "user_version should be 10 after all migrations");
+        assert_eq!(version, 12, "user_version should be 12 after all migrations");
 
         // Verify all expected tables exist.
-        for table in &["messages", "tool_usage", "api_usage", "budget_alert_sent"] {
+        for table in &["messages", "tool_usage", "api_usage", "budget_alert_sent", "obligation_notes"] {
             let exists: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",

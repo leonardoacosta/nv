@@ -96,6 +96,9 @@ pub fn classify_trigger(trigger: &Trigger) -> TriggerClass {
         Trigger::Cron(_) => TriggerClass::Digest,
         Trigger::NexusEvent(_) => TriggerClass::NexusEvent,
         Trigger::CliCommand(_) => TriggerClass::Command,
+        // ObligationResearch tasks are handled directly in the worker branch;
+        // classify as Query so they flow through the standard dispatch path.
+        Trigger::ObligationResearch(_) => TriggerClass::Query,
         Trigger::Message(msg) => {
             // Check for callback
             if msg.content.starts_with("[callback] ") {
@@ -455,6 +458,14 @@ impl Orchestrator {
                         return;
                     }
                 }
+                // WeeklySelfAssessment: dispatched to a worker with a fixed action prompt.
+                for trigger in triggers.iter() {
+                    if let Trigger::Cron(nv_core::types::CronEvent::WeeklySelfAssessment) = trigger {
+                        // Fall through to normal worker dispatch below — the worker's
+                        // system prompt context includes the "weekly_self_assessment" action.
+                        break;
+                    }
+                }
             }
             _ => {}
         }
@@ -530,6 +541,8 @@ impl Orchestrator {
             let obligation_store = self.deps.obligation_store.clone();
             let telegram_client = self.telegram_client.clone();
             let telegram_chat_id = self.telegram_chat_id;
+            let research_deps = Arc::clone(&self.deps);
+            let research_pool = Arc::new(self.worker_pool.clone());
 
             tokio::spawn(async move {
                 match obligation_detector::detect_obligation(&msg_content, &msg_channel).await {
@@ -599,6 +612,22 @@ impl Orchestrator {
                                             "failed to send P0-P1 obligation notification"
                                         );
                                     }
+                                }
+                            }
+
+                            // Schedule background research if config is present and enabled.
+                            if let Some(cfg) = research_deps.obligation_research_config.clone() {
+                                if cfg.enabled {
+                                    crate::obligation_research::schedule_research(
+                                        ob.id.clone(),
+                                        ob.detected_action.clone(),
+                                        ob.project_code.clone(),
+                                        ob.source_channel.clone(),
+                                        ob.priority,
+                                        Arc::clone(&research_deps),
+                                        Arc::clone(&research_pool),
+                                        cfg,
+                                    );
                                 }
                             }
                         }
@@ -1343,12 +1372,31 @@ impl Orchestrator {
             }
         }
 
-        if lines.is_empty() {
+        let projects_section = if lines.is_empty() {
             "No projects registered.".to_string()
         } else {
             lines.sort();
             format!("\u{1F4CA} Project Status\n\n{}", lines.join("\n"))
-        }
+        };
+
+        // Append self-assessment section.
+        let self_assessment_section = if let Some(ref store) = self.deps.self_assessment_store {
+            match store.get_latest() {
+                Ok(Some(entry)) => {
+                    let summary = crate::self_assessment::format_status_summary(&entry);
+                    format!("\n\n\u{1F50D} Self-Assessment\n{summary}")
+                }
+                Ok(None) => "\n\n\u{1F50D} Self-Assessment\nNo assessment yet. Will run Sunday.".to_string(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to read self-assessment for /status");
+                    String::new()
+                }
+            }
+        } else {
+            String::new()
+        };
+
+        format!("{projects_section}{self_assessment_section}")
     }
 
     /// /digest — trigger an immediate digest.
@@ -1779,7 +1827,23 @@ impl Orchestrator {
             }
         };
 
-        let message = format_morning_briefing(&by_priority, total_open);
+        let mut message = format_morning_briefing(&by_priority, total_open);
+
+        // Inject self-assessment section if there's a recent entry (within last 7 days).
+        if let Some(ref sa_store) = self.deps.self_assessment_store {
+            let seven_days_ago = chrono::Utc::now() - chrono::Duration::days(7);
+            match sa_store.get_latest() {
+                Ok(Some(entry)) if entry.generated_at > seven_days_ago => {
+                    let section = crate::self_assessment::format_briefing_section(&entry);
+                    message.push_str("\n\n");
+                    message.push_str(&section);
+                }
+                Ok(_) => {} // No recent assessment — omit section.
+                Err(e) => {
+                    tracing::warn!(error = %e, "morning briefing: failed to read self-assessment");
+                }
+            }
+        }
 
         // Persist the briefing entry before sending so the dashboard can read it even
         // if the Telegram send fails.

@@ -435,6 +435,17 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add cross-channel routing tools (list_channels, send_to_channel)
     tools.extend(channels::channels_tool_definitions());
 
+    // Self-assessment tool (no parameters)
+    tools.push(ToolDefinition {
+        name: "self_assessment_run".into(),
+        description: "Run a weekly self-assessment analyzing Nova's performance over the past 7 days. Returns a summary report covering cold-start latency trends, tool error rates, usage patterns, and actionable suggestions.".into(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        }),
+    });
+
     tools
 }
 
@@ -2805,8 +2816,11 @@ mod tests {
         // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
         // + 2 outlook (read_outlook_inbox, read_outlook_calendar)
         // + 1 ado work items (query_ado_work_items)
-        // = 98 - 3 (removed duplicate query_nexus_health/projects/agents) = 95 + 3 = 98
-        assert_eq!(tools.len(), 98);
+        // + 5 proactive-followups (list_obligations, dismiss_obligation, snooze_obligation,
+        //       reassign_obligation, obligation_research_status) — feat(proactive-followups)
+        // + 1 self-assessment (self_assessment_run) — feat(self-improvement-research)
+        // = 98 + 5 + 1 = 104
+        assert_eq!(tools.len(), 104);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));

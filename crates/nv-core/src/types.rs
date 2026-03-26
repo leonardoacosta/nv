@@ -134,6 +134,26 @@ pub enum Trigger {
     NexusEvent(SessionEvent),
     /// Command from the CLI.
     CliCommand(CliRequest),
+    /// Background research task for a detected obligation.
+    ObligationResearch(ObligationResearchTrigger),
+}
+
+/// Payload for the `Trigger::ObligationResearch` variant.
+///
+/// Carries the fields needed to build the research system prompt and
+/// dispatch the result back to `ObligationStore`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObligationResearchTrigger {
+    /// UUID of the obligation being researched.
+    pub obligation_id: String,
+    /// The detected action text (used in the research prompt).
+    pub detected_action: String,
+    /// Optional project code (e.g. "OO", "NV").
+    pub project_code: Option<String>,
+    /// Channel the obligation was detected in.
+    pub source_channel: String,
+    /// Obligation priority (0 = highest, 4 = backlog).
+    pub priority: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,6 +166,9 @@ pub enum CronEvent {
     UserSchedule { name: String, action: String },
     /// Proactive follow-up scan: checks for overdue/stale/approaching-deadline obligations.
     ProactiveFollowup,
+    /// Weekly self-assessment: analyzes Nova's own performance (latency, errors, diary patterns).
+    /// Fires on Sunday between 00:00–01:00 local time.
+    WeeklySelfAssessment,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -278,6 +278,12 @@ pub struct SharedDeps {
     pub tool_cache: ToolResultCache,
     /// Proactive watcher configuration. Used by `handle_proactive_followup`.
     pub proactive_watcher_config: Option<nv_core::config::ProactiveWatcherConfig>,
+    /// Obligation research configuration. Used by `obligation_research::schedule_research`.
+    pub obligation_research_config: Option<nv_core::config::ObligationResearchConfig>,
+    /// Weekly self-assessment engine. None if stores failed to initialize.
+    pub self_assessment_engine: Option<Arc<crate::self_assessment::SelfAssessmentEngine>>,
+    /// Weekly self-assessment JSONL store. None if initialization failed.
+    pub self_assessment_store: Option<Arc<crate::self_assessment::SelfAssessmentStore>>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────
@@ -356,6 +362,7 @@ pub fn generate_slug_for_triggers(triggers: &[Trigger]) -> String {
                 nv_core::types::CronEvent::MorningBriefing => "morning-briefing",
                 nv_core::types::CronEvent::UserSchedule { name, .. } => name.as_str(),
                 nv_core::types::CronEvent::ProactiveFollowup => "proactive-followup",
+                nv_core::types::CronEvent::WeeklySelfAssessment => "weekly-self-assessment",
             };
             name.to_string()
         }
@@ -369,6 +376,9 @@ pub fn generate_slug_for_triggers(triggers: &[Trigger]) -> String {
             format!("cli-{base}")
         }
         Some(Trigger::NexusEvent(evt)) => evt.agent_name.clone(),
+        Some(Trigger::ObligationResearch(rt)) => {
+            format!("research-{}", &rt.obligation_id[..8.min(rt.obligation_id.len())])
+        }
         None => "session".to_string(),
     }
 }
@@ -387,6 +397,20 @@ pub struct WorkerPool {
     telegram_client: Option<TelegramClient>,
     /// Default Telegram chat ID for reactions.
     telegram_chat_id: Option<i64>,
+}
+
+impl Clone for WorkerPool {
+    fn clone(&self) -> Self {
+        Self {
+            max_concurrent: self.max_concurrent,
+            active: Arc::clone(&self.active),
+            queue: Arc::clone(&self.queue),
+            deps: Arc::clone(&self.deps),
+            client_template: self.client_template.clone(),
+            telegram_client: self.telegram_client.clone(),
+            telegram_chat_id: self.telegram_chat_id,
+        }
+    }
 }
 
 impl WorkerPool {
@@ -1040,6 +1064,13 @@ impl Worker {
             ));
         }
 
+        // Inject obligation research notes for any open obligations that have been researched.
+        if let Some(research_ctx) = query::obligation_research_context(&deps.obligation_store) {
+            user_message.push_str(&format!(
+                "<obligation_research_context>\n{research_ctx}\n</obligation_research_context>\n\n"
+            ));
+        }
+
         user_message.push_str(&trigger_text);
 
         // Inject budget context for digest triggers (>80% of weekly budget)
@@ -1077,6 +1108,204 @@ impl Worker {
             stage: "context_build".into(),
             duration_ms: context_build_ms,
         });
+
+        // ── ObligationResearch early-return ───────────────────────────────────
+        //
+        // If this task was dispatched for proactive obligation research, handle it
+        // inline: build a focused research prompt, run Claude with a capped tool
+        // loop, parse the JSON result, and store it. No outbound message is sent.
+        if let Some(Trigger::ObligationResearch(ref research_trigger)) = task.triggers.first() {
+            let research_trigger = research_trigger.clone();
+            let max_tools = deps
+                .obligation_research_config
+                .as_ref()
+                .map(|c| c.max_tools)
+                .unwrap_or(5);
+
+            let has_jira = deps.jira_registry.is_some();
+            let has_calendar = deps.calendar_credentials.is_some();
+
+            let research_prompt = crate::obligation_research::build_research_prompt(
+                &research_trigger,
+                has_jira,
+                has_calendar,
+            );
+
+            // Build research system prompt: inject supplement after base context.
+            let research_system = format!("{system_prompt}\n\n{research_prompt}");
+
+            // Single user message kicks off the research.
+            let research_user_msg = format!(
+                "Research this obligation now and return JSON only.\nObligation: {}",
+                research_trigger.detected_action
+            );
+            let research_conversation = vec![Message::user(&research_user_msg)];
+
+            // Run a capped tool loop (max_tools iterations).
+            let tool_definitions = tools::register_tools();
+            let mut loop_msgs = research_conversation;
+            let mut iterations = 0;
+            let mut final_text = String::new();
+
+            'research_loop: loop {
+                if iterations >= max_tools {
+                    tracing::debug!(
+                        obligation_id = %research_trigger.obligation_id,
+                        max_tools,
+                        "research tool loop hit max_tools cap"
+                    );
+                    break 'research_loop;
+                }
+
+                let response = client
+                    .send_messages(
+                        &research_system,
+                        &loop_msgs,
+                        &tool_definitions,
+                    )
+                    .await;
+
+                match response {
+                    Err(e) => {
+                        tracing::warn!(
+                            obligation_id = %research_trigger.obligation_id,
+                            error = %e,
+                            "research Claude call failed"
+                        );
+                        final_text = format!("{{\"summary\": \"Research failed: {e}\", \"findings\": [], \"tools_used\": []}}");
+                        break 'research_loop;
+                    }
+                    Ok(api_response) => {
+                        let content_blocks = api_response.content;
+                        let stop_reason = api_response.stop_reason;
+
+                        // Collect text blocks.
+                        for block in &content_blocks {
+                            if let crate::claude::ContentBlock::Text { text } = block {
+                                final_text = text.clone();
+                            }
+                        }
+
+                        // If stop_reason is end_turn or no tool_use blocks, we're done.
+                        let tool_uses: Vec<(String, String, serde_json::Value)> = content_blocks
+                            .iter()
+                            .filter_map(|b| {
+                                if let crate::claude::ContentBlock::ToolUse { id, name, input } = b {
+                                    Some((id.clone(), name.clone(), input.clone()))
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if tool_uses.is_empty()
+                            || matches!(stop_reason, StopReason::EndTurn)
+                        {
+                            break 'research_loop;
+                        }
+
+                        // Execute tool calls using the standard tool dispatch.
+                        let svc_regs = tools::ServiceRegistries {
+                            stripe: deps.stripe_registry.as_ref(),
+                            vercel: deps.vercel_registry.as_ref(),
+                            sentry: deps.sentry_registry.as_ref(),
+                            resend: deps.resend_registry.as_ref(),
+                            ha: deps.ha_registry.as_ref(),
+                            upstash: deps.upstash_registry.as_ref(),
+                            ado: deps.ado_registry.as_ref(),
+                            cloudflare: deps.cloudflare_registry.as_ref(),
+                            doppler: deps.doppler_registry.as_ref(),
+                            teams: deps.teams_client.as_deref(),
+                        };
+                        let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
+                            deps.team_agent_dispatcher
+                                .as_ref()
+                                .map(|d| nexus::backend::NexusBackend::new(d.clone()));
+                        let nexus_backend_ref = nexus_backend_owned.as_ref();
+
+                        let assistant_blocks = content_blocks.clone();
+                        let mut tool_results = Vec::new();
+
+                        for (tool_id, tool_name, tool_input) in &tool_uses {
+                            let _ = event_tx.send(WorkerEvent::ToolCalled {
+                                worker_id: task_id,
+                                tool: tool_name.clone(),
+                            });
+
+                            let tool_result = match tools::execute_tool_send_with_backend(
+                                tool_name,
+                                tool_input,
+                                &deps.memory,
+                                deps.jira_registry.as_ref(),
+                                nexus_backend_ref,
+                                &deps.project_registry,
+                                &deps.channels,
+                                deps.calendar_credentials.as_deref(),
+                                &deps.calendar_id,
+                                &svc_regs,
+                            )
+                            .await
+                            {
+                                Ok(tools::ToolResult::Immediate(text)) => text,
+                                Ok(tools::ToolResult::PendingAction { .. }) => {
+                                    "Action requires confirmation — not available in research mode.".to_string()
+                                }
+                                Err(e) => format!("Tool error: {e}"),
+                            };
+
+                            tool_results.push(crate::claude::ToolResultBlock {
+                                tool_use_id: tool_id.clone(),
+                                content: tool_result,
+                                is_error: false,
+                            });
+                        }
+
+                        loop_msgs.push(Message::assistant_blocks(assistant_blocks));
+                        loop_msgs.push(Message::tool_results(tool_results));
+                        iterations += 1;
+                    }
+                }
+            }
+
+            // Parse and store the result.
+            let result = crate::obligation_research::parse_research_response(
+                &research_trigger.obligation_id,
+                &final_text,
+            );
+
+            if let Some(store_arc) = &deps.obligation_store {
+                match store_arc.lock() {
+                    Ok(store) => {
+                        if let Err(e) = store.save_research_result(&result) {
+                            tracing::warn!(
+                                obligation_id = %research_trigger.obligation_id,
+                                error = %e,
+                                "failed to save research result"
+                            );
+                        } else {
+                            tracing::info!(
+                                obligation_id = %research_trigger.obligation_id,
+                                summary_len = result.summary.len(),
+                                tools_used = ?result.tools_used,
+                                "research result stored"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "obligation store mutex poisoned when saving research result"
+                        );
+                    }
+                }
+            }
+
+            let _ = event_tx.send(WorkerEvent::Complete {
+                worker_id: task_id,
+                response_len: result.summary.len(),
+            });
+            return Ok(());
+        }
 
         // Extract image_path from trigger metadata (photo messages)
         let image_path: Option<String> = task.triggers.iter().find_map(|t| {
@@ -2062,6 +2291,35 @@ impl Worker {
                             Err(e)
                         }
                     }
+                } else if name == "self_assessment_run" {
+                    // Run the weekly self-assessment (synchronous — local SQLite + FS only).
+                    match (&deps.self_assessment_engine, &deps.self_assessment_store) {
+                        (Some(engine), Some(store)) => {
+                            match engine.analyze(7) {
+                                Ok(entry) => {
+                                    let summary = crate::self_assessment::format_assessment(&entry);
+                                    if let Err(e) = store.append(&entry) {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "self_assessment_run: failed to append entry to JSONL"
+                                        );
+                                    }
+                                    Ok(tools::ToolResult::Immediate(summary))
+                                }
+                                Err(e) => {
+                                    let _ = deps.event_tx.send(WorkerEvent::Error {
+                                        worker_id,
+                                        error: format!("self_assessment_run error: {e}"),
+                                    });
+                                    Err(e)
+                                }
+                            }
+                        }
+                        _ => Ok(tools::ToolResult::Immediate(
+                            "Self-assessment engine not initialized. Check daemon startup logs."
+                                .to_string(),
+                        )),
+                    }
                 } else {
                     // ── Cache lookup ─────────────────────────────────────────
                     // Check the in-memory tool result cache before hitting the
@@ -2767,6 +3025,9 @@ fn classify_triggers(triggers: &[Trigger]) -> (String, String) {
         Some(Trigger::Cron(event)) => ("cron".into(), format!("{event:?}")),
         Some(Trigger::NexusEvent(event)) => ("nexus".into(), event.agent_name.clone()),
         Some(Trigger::CliCommand(req)) => ("cli".into(), format!("{:?}", req.command)),
+        Some(Trigger::ObligationResearch(rt)) => {
+            ("research".into(), rt.obligation_id.clone())
+        }
         None => ("unknown".into(), "none".into()),
     }
 }

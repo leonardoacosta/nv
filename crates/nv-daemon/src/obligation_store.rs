@@ -12,6 +12,9 @@ use chrono::DateTime;
 use chrono::Utc;
 use nv_core::types::{Obligation, ObligationOwner, ObligationStatus};
 use rusqlite::{params, Connection};
+use uuid::Uuid;
+
+use crate::obligation_research::{Finding, ResearchResult};
 
 // ── Input Type ───────────────────────────────────────────────────────
 
@@ -303,6 +306,82 @@ impl ObligationStore {
             .map_err(|e| anyhow::anyhow!("list_open_with_deadline_before query failed: {e}"))
     }
 
+    // ── Research Notes ────────────────────────────────────────────────
+
+    /// Persist a `ResearchResult` to the `obligation_notes` table.
+    pub fn save_research_result(&self, result: &ResearchResult) -> Result<()> {
+        let findings_json = serde_json::to_string(&result.raw_findings)
+            .map_err(|e| anyhow::anyhow!("failed to serialize findings: {e}"))?;
+        let tools_used_json = serde_json::to_string(&result.tools_used)
+            .map_err(|e| anyhow::anyhow!("failed to serialize tools_used: {e}"))?;
+        let researched_at = result.researched_at.to_rfc3339();
+
+        self.conn.execute(
+            "INSERT INTO obligation_notes
+                (id, obligation_id, summary, findings_json, tools_used, error, researched_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                Uuid::new_v4().to_string(),
+                result.obligation_id,
+                result.summary,
+                findings_json,
+                tools_used_json,
+                result.error,
+                researched_at,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Retrieve the most recent `ResearchResult` for a given obligation.
+    ///
+    /// Returns `None` if no notes exist for the obligation.
+    #[allow(dead_code)] // wired up by proactive-obligation-research spec
+    pub fn get_latest_research(&self, obligation_id: &str) -> Result<Option<ResearchResult>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT obligation_id, summary, findings_json, tools_used, error, researched_at
+             FROM obligation_notes
+             WHERE obligation_id = ?1
+             ORDER BY researched_at DESC
+             LIMIT 1",
+        )?;
+
+        let mut rows = stmt.query(params![obligation_id])?;
+
+        match rows.next()? {
+            Some(row) => Ok(Some(row_to_research_result(row)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// List all research results for a given obligation, newest first.
+    #[allow(dead_code)] // reserved for dashboard/API exposure
+    pub fn list_research_by_obligation(
+        &self,
+        obligation_id: &str,
+    ) -> Result<Vec<ResearchResult>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT obligation_id, summary, findings_json, tools_used, error, researched_at
+             FROM obligation_notes
+             WHERE obligation_id = ?1
+             ORDER BY researched_at DESC",
+        )?;
+
+        let rows = stmt.query_map(params![obligation_id], |row| {
+            row_to_research_result(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::other(e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_research_by_obligation failed: {e}"))
+    }
+
     /// List open obligations last updated before `since` (stale obligations).
     ///
     /// Ordered by priority ASC, updated_at ASC.
@@ -332,7 +411,37 @@ impl ObligationStore {
     }
 }
 
-// ── Row Mapper ───────────────────────────────────────────────────────
+// ── Row Mappers ───────────────────────────────────────────────────────
+
+/// Map a SQLite row to a `ResearchResult`.
+///
+/// Column order (0-based):
+///   0 obligation_id, 1 summary, 2 findings_json, 3 tools_used, 4 error, 5 researched_at
+fn row_to_research_result(row: &rusqlite::Row<'_>) -> Result<ResearchResult> {
+    let obligation_id: String = row.get(0)?;
+    let summary: String = row.get(1)?;
+    let findings_json: String = row.get(2)?;
+    let tools_used_json: String = row.get(3)?;
+    let error: Option<String> = row.get(4)?;
+    let researched_at_str: String = row.get(5)?;
+
+    let raw_findings: Vec<Finding> = serde_json::from_str(&findings_json)
+        .map_err(|e| anyhow::anyhow!("failed to deserialize findings: {e}"))?;
+    let tools_used: Vec<String> = serde_json::from_str(&tools_used_json)
+        .map_err(|e| anyhow::anyhow!("failed to deserialize tools_used: {e}"))?;
+    let researched_at: DateTime<Utc> = researched_at_str
+        .parse::<DateTime<Utc>>()
+        .unwrap_or_else(|_| Utc::now());
+
+    Ok(ResearchResult {
+        obligation_id,
+        summary,
+        raw_findings,
+        researched_at,
+        tools_used,
+        error,
+    })
+}
 
 /// Map a SQLite row to an `Obligation`.
 ///
@@ -391,7 +500,18 @@ mod tests {
             );
             CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
             CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
-            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);"
+            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);
+            CREATE TABLE IF NOT EXISTS obligation_notes (
+                id            TEXT PRIMARY KEY,
+                obligation_id TEXT NOT NULL,
+                summary       TEXT NOT NULL,
+                findings_json TEXT NOT NULL DEFAULT '[]',
+                tools_used    TEXT NOT NULL DEFAULT '[]',
+                error         TEXT,
+                researched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_obligation_notes_obligation
+                ON obligation_notes(obligation_id);"
         ).expect("test schema setup");
 
         (store, file)
@@ -744,5 +864,91 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "stale1");
+    }
+
+    // ── Research Notes ────────────────────────────────────────────────
+
+    fn make_research_result(obligation_id: &str) -> ResearchResult {
+        use crate::obligation_research::Finding;
+        ResearchResult {
+            obligation_id: obligation_id.to_string(),
+            summary: "OO-42 is in code review, assigned to alice.".to_string(),
+            raw_findings: vec![Finding {
+                tool: "jira".to_string(),
+                label: "OO-42 status: In Review".to_string(),
+                detail: Some("Assigned to alice, 2 comments.".to_string()),
+            }],
+            researched_at: Utc::now(),
+            tools_used: vec!["jira".to_string()],
+            error: None,
+        }
+    }
+
+    #[test]
+    fn save_and_get_latest_research_round_trip() {
+        let (store, _f) = temp_store();
+        store.create(new_obligation("rr1", "telegram", "merge OO-42", 1)).unwrap();
+
+        let result = make_research_result("rr1");
+        store.save_research_result(&result).unwrap();
+
+        let fetched = store.get_latest_research("rr1").unwrap();
+        assert!(fetched.is_some(), "should find research note");
+        let note = fetched.unwrap();
+        assert_eq!(note.obligation_id, "rr1");
+        assert_eq!(note.summary, "OO-42 is in code review, assigned to alice.");
+        assert_eq!(note.raw_findings.len(), 1);
+        assert_eq!(note.tools_used, vec!["jira"]);
+        assert!(note.error.is_none());
+    }
+
+    #[test]
+    fn get_latest_research_returns_none_for_missing() {
+        let (store, _f) = temp_store();
+        store.create(new_obligation("rr2", "telegram", "do thing", 2)).unwrap();
+
+        let result = store.get_latest_research("rr2").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn list_research_by_obligation_returns_all() {
+        let (store, _f) = temp_store();
+        store.create(new_obligation("rr3", "telegram", "deploy app", 1)).unwrap();
+
+        let r1 = make_research_result("rr3");
+        store.save_research_result(&r1).unwrap();
+        let r2 = ResearchResult {
+            obligation_id: "rr3".to_string(),
+            summary: "Second research pass.".to_string(),
+            raw_findings: vec![],
+            researched_at: Utc::now(),
+            tools_used: vec![],
+            error: None,
+        };
+        store.save_research_result(&r2).unwrap();
+
+        let all = store.list_research_by_obligation("rr3").unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn save_research_result_with_error_field() {
+        let (store, _f) = temp_store();
+        store.create(new_obligation("rr4", "discord", "fix bug", 0)).unwrap();
+
+        let result = ResearchResult {
+            obligation_id: "rr4".to_string(),
+            summary: "Research failed: JSON parse error: ...".to_string(),
+            raw_findings: vec![],
+            researched_at: Utc::now(),
+            tools_used: vec![],
+            error: Some("JSON parse error: unexpected token".to_string()),
+        };
+        store.save_research_result(&result).unwrap();
+
+        let fetched = store.get_latest_research("rr4").unwrap().unwrap();
+        assert!(fetched.error.is_some());
+        assert!(fetched.error.unwrap().contains("JSON parse error"));
     }
 }

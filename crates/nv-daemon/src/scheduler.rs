@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::Timelike;
+use chrono::{Datelike, Timelike};
 use nv_core::types::{CronEvent, Trigger};
 use tokio::sync::mpsc;
 
@@ -19,6 +19,16 @@ const USER_SCHEDULE_POLL_SECS: u64 = 60;
 /// How often to poll for morning briefing fires (seconds).
 /// We check every 60 seconds — same cadence as user schedules.
 const MORNING_BRIEFING_POLL_SECS: u64 = 60;
+
+/// How often to poll for weekly self-assessment fires (seconds).
+const SELF_ASSESSMENT_POLL_SECS: u64 = 60;
+
+/// Day-of-week for weekly self-assessment (0 = Sunday in chrono).
+const SELF_ASSESSMENT_WEEKDAY: u32 = 0;
+
+/// Hour range [start, end) during which the self-assessment may fire (local time).
+const SELF_ASSESSMENT_HOUR_START: u32 = 0;
+const SELF_ASSESSMENT_HOUR_END: u32 = 1;
 
 /// Hour (24-hour, local time) at which the morning briefing fires.
 const MORNING_BRIEFING_HOUR: u32 = 7;
@@ -87,10 +97,17 @@ pub fn spawn_scheduler(
             tokio::time::interval(Duration::from_secs(MORNING_BRIEFING_POLL_SECS));
         morning_briefing_interval.tick().await;
 
+        // Weekly self-assessment poll interval (60 seconds)
+        let mut self_assessment_interval =
+            tokio::time::interval(Duration::from_secs(SELF_ASSESSMENT_POLL_SECS));
+        self_assessment_interval.tick().await;
+
         // Track the last date we sent a morning briefing to prevent duplicate fires.
         let mut last_briefing_date: Option<chrono::NaiveDate> = None;
         // Track the last date we pruned latency_spans to fire once per day.
         let mut last_latency_prune_date: Option<chrono::NaiveDate> = None;
+        // Track the last date we fired the weekly self-assessment.
+        let mut last_assessment_date: Option<chrono::NaiveDate> = None;
 
         loop {
             tokio::select! {
@@ -156,6 +173,34 @@ pub fn spawn_scheduler(
                                     );
                                 }
                             }
+                        }
+                    }
+                }
+                _ = self_assessment_interval.tick() => {
+                    let now = chrono::Local::now();
+                    let today = now.date_naive();
+                    let current_hour = now.hour();
+                    // weekday_from_monday(): Mon=0 .. Sun=6.
+                    // We want Sunday, which is weekday index 6 in chrono.
+                    let is_sunday = now.weekday().num_days_from_sunday() == SELF_ASSESSMENT_WEEKDAY;
+
+                    // Fire once per week on Sunday in the 00:00–01:00 window.
+                    if is_sunday
+                        && (SELF_ASSESSMENT_HOUR_START..SELF_ASSESSMENT_HOUR_END).contains(&current_hour)
+                        && last_assessment_date.is_none_or(|d| d < today)
+                    {
+                        last_assessment_date = Some(today);
+                        tracing::info!(
+                            hour = current_hour,
+                            date = %today,
+                            "scheduler: weekly self-assessment tick"
+                        );
+                        if trigger_tx
+                            .send(Trigger::Cron(CronEvent::WeeklySelfAssessment))
+                            .is_err()
+                        {
+                            tracing::info!("scheduler: trigger channel closed on self-assessment tick");
+                            break;
                         }
                     }
                 }
@@ -329,6 +374,73 @@ mod tests {
         assert!(
             !would_fire_with_eq,
             "New == check must NOT fire at hour 8 — only fires at exactly hour 7"
+        );
+    }
+
+    // ── Weekly self-assessment fire-condition unit tests ───────────────
+
+    /// Simulate the fire-condition logic for WeeklySelfAssessment.
+    fn should_fire_assessment(
+        is_sunday: bool,
+        current_hour: u32,
+        last_assessment_date: Option<chrono::NaiveDate>,
+        today: chrono::NaiveDate,
+    ) -> bool {
+        is_sunday
+            && (SELF_ASSESSMENT_HOUR_START..SELF_ASSESSMENT_HOUR_END).contains(&current_hour)
+            && last_assessment_date.is_none_or(|d| d < today)
+    }
+
+    #[test]
+    fn assessment_fires_on_sunday_hour_zero_no_prior() {
+        let today = chrono::NaiveDate::from_ymd_opt(2025, 1, 5).unwrap(); // Sunday
+        assert!(
+            should_fire_assessment(true, 0, None, today),
+            "must fire on Sunday hour 0 with no prior date"
+        );
+    }
+
+    #[test]
+    fn assessment_does_not_fire_on_non_sunday() {
+        let today = chrono::NaiveDate::from_ymd_opt(2025, 1, 6).unwrap(); // Monday
+        assert!(
+            !should_fire_assessment(false, 0, None, today),
+            "must NOT fire on a non-Sunday"
+        );
+    }
+
+    #[test]
+    fn assessment_does_not_fire_outside_hour_window() {
+        let today = chrono::NaiveDate::from_ymd_opt(2025, 1, 5).unwrap(); // Sunday
+        // Hour 1 is outside the [0, 1) window.
+        assert!(
+            !should_fire_assessment(true, 1, None, today),
+            "must NOT fire at hour 1 (outside window)"
+        );
+        // Hour 23 also outside window.
+        assert!(
+            !should_fire_assessment(true, 23, None, today),
+            "must NOT fire at hour 23"
+        );
+    }
+
+    #[test]
+    fn assessment_does_not_fire_twice_same_day() {
+        let today = chrono::NaiveDate::from_ymd_opt(2025, 1, 5).unwrap(); // Sunday
+        // Already ran today.
+        assert!(
+            !should_fire_assessment(true, 0, Some(today), today),
+            "must NOT fire twice on the same day"
+        );
+    }
+
+    #[test]
+    fn assessment_fires_again_next_sunday() {
+        let last_sunday = chrono::NaiveDate::from_ymd_opt(2025, 1, 5).unwrap();
+        let this_sunday = chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap();
+        assert!(
+            should_fire_assessment(true, 0, Some(last_sunday), this_sunday),
+            "must fire on a new Sunday when last_assessment_date is a prior week"
         );
     }
 }

@@ -144,11 +144,7 @@ pub fn spawn_proactive_watcher(
         let initial_delay_secs = match state.last_run_at {
             Some(last) => {
                 let elapsed = (Utc::now() - last).num_seconds().max(0) as u64;
-                if elapsed >= interval_secs {
-                    0
-                } else {
-                    interval_secs - elapsed
-                }
+                interval_secs.saturating_sub(elapsed)
             }
             None => 0,
         };

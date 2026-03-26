@@ -157,6 +157,8 @@ pub struct Config {
     pub alert_rules: Option<AlertRulesConfig>,
     /// Optional proactive follow-up watcher configuration.
     pub proactive_watcher: Option<ProactiveWatcherConfig>,
+    /// Optional proactive obligation research configuration.
+    pub obligation_research: Option<ObligationResearchConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -720,6 +722,57 @@ pub struct AlertRulesConfig {
     /// Rules to seed into the DB on startup.
     #[serde(default)]
     pub rules: Vec<AlertRuleEntry>,
+}
+
+// ── Obligation Research Config ────────────────────────────────────────
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_tools() -> usize {
+    5
+}
+
+fn default_min_priority() -> i32 {
+    2
+}
+
+fn default_research_delay_secs() -> u64 {
+    10
+}
+
+/// Configuration for the proactive obligation research subsystem.
+///
+/// After an obligation is created, Nova schedules a background worker to
+/// gather context from connected tools (Jira, GitHub, calendar, email) and
+/// stores the findings as notes on the obligation.
+///
+/// ```toml
+/// [obligation_research]
+/// enabled = true
+/// trigger_channels = []
+/// max_tools = 5
+/// min_priority = 2
+/// research_delay_secs = 10
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct ObligationResearchConfig {
+    /// Whether proactive research is active. Default: true.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Obligation channels that trigger research. Empty = all channels.
+    #[serde(default)]
+    pub trigger_channels: Vec<String>,
+    /// Maximum tool calls per research session (caps worker loop iterations). Default: 5.
+    #[serde(default = "default_max_tools")]
+    pub max_tools: usize,
+    /// Minimum obligation priority that triggers research (0 = all, 2 = P2+). Default: 2.
+    #[serde(default = "default_min_priority")]
+    pub min_priority: i32,
+    /// Seconds to wait before firing research (lets obligation settle). Default: 10.
+    #[serde(default = "default_research_delay_secs")]
+    pub research_delay_secs: u64,
 }
 
 // ── Config loading ──────────────────────────────────────────────────

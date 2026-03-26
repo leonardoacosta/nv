@@ -3,6 +3,7 @@ mod anthropic;
 mod contact_store;
 mod error_recovery;
 mod agent;
+mod self_assessment;
 mod aggregation;
 mod briefing_store;
 mod cc_sessions;
@@ -22,6 +23,7 @@ mod memory;
 mod messages;
 mod nexus;
 mod obligation_detector;
+mod obligation_research;
 mod team_agent;
 mod obligation_store;
 mod orchestrator;
@@ -721,6 +723,34 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // Initialize self-assessment store and engine.
+    let (self_assessment_store_arc, self_assessment_engine_arc) = {
+        let sa_path = nv_base.join("state/self-assessment.jsonl");
+        match self_assessment::SelfAssessmentStore::new(&sa_path) {
+            Ok(store) => {
+                let store_arc = std::sync::Arc::new(store);
+                tracing::info!("self-assessment store initialized");
+                if let Some(ref cs_arc) = cold_start_store {
+                    let engine = self_assessment::SelfAssessmentEngine::new(
+                        std::sync::Arc::clone(cs_arc),
+                        std::sync::Arc::clone(&message_store),
+                        nv_base.join("diary"),
+                        std::sync::Arc::clone(&store_arc),
+                    );
+                    tracing::info!("self-assessment engine initialized");
+                    (Some(store_arc), Some(std::sync::Arc::new(engine)))
+                } else {
+                    tracing::warn!("self-assessment engine skipped — cold-start store unavailable");
+                    (Some(store_arc), None)
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to initialize self-assessment store — self-assessment disabled");
+                (None, None)
+            }
+        }
+    };
+
     // Spawn proactive watchers if alert_rules are configured
     if let Some(ref ar_config) = config.alert_rules {
         // Seed configured rules into the DB (idempotent — INSERT OR IGNORE).
@@ -1201,6 +1231,9 @@ async fn main() -> anyhow::Result<()> {
         contact_store: contact_store_for_workers,
         tool_cache: crate::tool_cache::ToolResultCache::new(),
         proactive_watcher_config: config.proactive_watcher.clone(),
+        obligation_research_config: config.obligation_research.clone(),
+        self_assessment_store: self_assessment_store_arc,
+        self_assessment_engine: self_assessment_engine_arc,
     });
 
     // Extract Telegram client and chat_id for reactions

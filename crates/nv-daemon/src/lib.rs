@@ -11,6 +11,7 @@
 // Declare all modules so the library target compiles cleanly.
 // These are needed because `tools` imports from sibling modules.
 mod account;
+mod self_assessment;
 mod contact_store;
 mod error_recovery;
 mod aggregation;
@@ -33,6 +34,7 @@ mod memory;
 mod messages;
 mod nexus;
 mod obligation_detector;
+mod obligation_research;
 mod team_agent;
 mod obligation_store;
 mod orchestrator;

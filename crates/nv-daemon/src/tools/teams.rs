@@ -21,7 +21,7 @@ use anyhow::{anyhow, Result};
 use nv_core::config::{Secrets, TeamsConfig};
 
 use crate::channels::teams::client::TeamsClient;
-use crate::channels::teams::oauth::MsGraphAuth;
+use crate::channels::teams::oauth::{graph_token_path, MsGraphAuth, MsGraphUserAuth};
 use crate::claude::ToolDefinition;
 
 // ── Client Construction ───────────────────────────────────────────────
@@ -61,7 +61,22 @@ pub fn build_teams_client(
         .ok_or_else(|| anyhow!("MS_GRAPH_CLIENT_SECRET not set"))?;
 
     let auth = Arc::new(MsGraphAuth::new(tenant_id, client_id, client_secret));
-    Ok(TeamsClient::new(auth))
+    let mut client = TeamsClient::new(auth);
+
+    // Try to load a cached delegated token for chat access (/me/chats).
+    // Chat tools require delegated (user) auth; app-only tokens are rejected by
+    // the /me/chats endpoint. The token is acquired via device-code flow and
+    // cached at ~/.config/nv/graph-token.json (or NV_GRAPH_TOKEN_PATH).
+    let token_path = graph_token_path();
+    if let Some(user_auth) = MsGraphUserAuth::from_cache(&token_path) {
+        client.delegated_token = Some(user_auth.access_token);
+        tracing::debug!(
+            path = %token_path.display(),
+            "Loaded delegated token for Teams chat access"
+        );
+    }
+
+    Ok(client)
 }
 
 // ── Tool Handlers ────────────────────────────────────────────────────
@@ -181,7 +196,7 @@ pub async fn teams_list_chats(client: &TeamsClient, limit: usize) -> Result<Stri
     let chats = client.list_chats(limit).await?;
 
     if chats.is_empty() {
-        return Ok("No chats found. Ensure the Azure AD app has Chat.Read.All permission.".to_string());
+        return Ok("No chats found. Ensure the delegated token has Chat.Read scope and is cached at ~/.config/nv/graph-token.json.".to_string());
     }
 
     let mut lines = vec![format!(
@@ -386,10 +401,10 @@ pub fn teams_tool_definitions() -> Vec<ToolDefinition> {
         },
         ToolDefinition {
             name: "teams_list_chats".into(),
-            description: "List Microsoft Teams chats (DMs and group chats) accessible to the app. \
+            description: "List Microsoft Teams chats (DMs and group chats) for the authenticated user. \
                 Returns chat type (DM/Group/Meeting), topic or member name for DMs, and last activity time. \
                 Use the returned chat ID with teams_read_chat to read messages. \
-                Requires Chat.Read.All Azure AD application permission."
+                Requires a cached delegated token (Chat.Read scope) at ~/.config/nv/graph-token.json."
                 .into(),
             input_schema: serde_json::json!({
                 "type": "object",
@@ -407,7 +422,7 @@ pub fn teams_tool_definitions() -> Vec<ToolDefinition> {
             description: "Read recent messages from a Microsoft Teams chat (DM or group chat). \
                 Returns sender, timestamp, and content (HTML stripped, truncated to 500 chars per message). \
                 Use teams_list_chats to find chat IDs. \
-                Requires Chat.Read.All Azure AD application permission."
+                Requires a cached delegated token (Chat.Read scope) at ~/.config/nv/graph-token.json."
                 .into(),
             input_schema: serde_json::json!({
                 "type": "object",

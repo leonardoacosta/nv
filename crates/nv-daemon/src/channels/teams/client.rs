@@ -18,20 +18,30 @@ const MAX_RATE_LIMIT_RETRIES: u32 = 3;
 
 /// REST client for MS Graph Teams API.
 ///
-/// All requests use a Bearer token from the shared `MsGraphAuth` instance.
+/// Channel tools (`teams_channels`, `teams_messages`, `teams_send`, `teams_presence`)
+/// use the app-only `MsGraphAuth` token (client credentials).
+///
+/// Chat tools (`teams_list_chats`, `teams_read_chat`) require delegated (user) auth
+/// because the `/me/chats` endpoint is only accessible with a user token. Set
+/// `delegated_token` to a valid access token before calling these methods. The token
+/// is loaded from the cache at `~/.config/nv/graph-token.json` by `build_teams_client`.
+///
 /// Handles 429 rate limiting with Retry-After header.
 #[derive(Debug)]
 pub struct TeamsClient {
     http: Client,
     auth: Arc<MsGraphAuth>,
+    /// Optional delegated (user) access token for `/me/chats` endpoints.
+    pub delegated_token: Option<String>,
 }
 
 impl TeamsClient {
-    /// Create a new Teams REST client.
+    /// Create a new Teams REST client with app-only auth.
     pub fn new(auth: Arc<MsGraphAuth>) -> Self {
         Self {
             http: Client::new(),
             auth,
+            delegated_token: None,
         }
     }
 
@@ -308,20 +318,32 @@ impl TeamsClient {
 
     // ── Chat Operations ───────────────────────────────────────────
 
-    /// List chats the authenticated identity can access.
+    /// List chats for the authenticated user.
     ///
-    /// Uses `GET /chats?$top={limit}&$expand=members&$orderby=lastUpdatedDateTime desc`
-    /// which requires the `Chat.Read.All` **application** permission (not delegated).
+    /// Uses `GET /me/chats?$top={limit}&$expand=members&$orderby=lastUpdatedDateTime desc`
+    /// which requires a **delegated** (user) token with `Chat.Read` scope.
     ///
-    /// Returns a 403 error with a descriptive message if the Azure AD app is missing the
-    /// `Chat.Read.All` permission or if the token is delegated-only.
+    /// The delegated token must be set via `self.delegated_token` before calling this method.
+    /// It is loaded from the cache at `~/.config/nv/graph-token.json` by `build_teams_client`.
+    /// To populate the cache, run the device-code flow with client_id
+    /// `14d82eec-204b-4c2f-b7e8-296a70dab67e` (tenant `common`) and scopes
+    /// `Chat.Read User.Read offline_access`.
     pub async fn list_chats(&self, limit: usize) -> anyhow::Result<Vec<ChatInfo>> {
+        let token = match &self.delegated_token {
+            Some(t) => t.clone(),
+            None => bail!(
+                "Chat access requires delegated (user) auth. \
+                Run the device-code login first to populate ~/.config/nv/graph-token.json. \
+                Use client_id 14d82eec-204b-4c2f-b7e8-296a70dab67e with tenant 'common' \
+                and scopes 'Chat.Read User.Read offline_access'."
+            ),
+        };
+
         let url = format!(
-            "{GRAPH_API_BASE}/chats?$top={limit}&$expand=members\
+            "{GRAPH_API_BASE}/me/chats?$top={limit}&$expand=members\
              &$orderby=lastUpdatedDateTime desc"
         );
 
-        let token = self.auth.get_token().await?;
         let resp = self
             .http
             .get(&url)
@@ -330,12 +352,19 @@ impl TeamsClient {
             .await?;
 
         let status = resp.status();
+        if status.as_u16() == 401 {
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Delegated token rejected (401) for /me/chats. \
+                The cached token may be expired — re-run the device-code login. Details: {}",
+                body
+            );
+        }
         if status.as_u16() == 403 {
             let body = resp.text().await.unwrap_or_default();
             bail!(
                 "Insufficient permissions to list chats (403). \
-                Ensure the Azure AD app has Chat.Read.All application permission \
-                (not delegated — this endpoint requires app-only auth). Details: {}",
+                Ensure the delegated token has Chat.Read scope. Details: {}",
                 body
             );
         }
@@ -350,19 +379,31 @@ impl TeamsClient {
 
     /// Get recent messages from a Teams chat (DM or group chat).
     ///
-    /// Calls `GET /chats/{chat_id}/messages?$top={limit}&$orderby=createdDateTime desc`.
-    /// Reuses the existing `ChatMessage` type.
+    /// Calls `GET /me/chats/{chat_id}/messages?$top={limit}&$orderby=createdDateTime desc`
+    /// using a delegated (user) token. Requires `Chat.Read` delegated scope.
+    ///
+    /// The delegated token must be set via `self.delegated_token`. See `list_chats` for
+    /// setup instructions.
     pub async fn get_chat_messages(
         &self,
         chat_id: &str,
         limit: usize,
     ) -> anyhow::Result<Vec<ChatMessage>> {
+        let token = match &self.delegated_token {
+            Some(t) => t.clone(),
+            None => bail!(
+                "Chat access requires delegated (user) auth. \
+                Run the device-code login first to populate ~/.config/nv/graph-token.json. \
+                Use client_id 14d82eec-204b-4c2f-b7e8-296a70dab67e with tenant 'common' \
+                and scopes 'Chat.Read User.Read offline_access'."
+            ),
+        };
+
         let url = format!(
-            "{GRAPH_API_BASE}/chats/{chat_id}/messages\
+            "{GRAPH_API_BASE}/me/chats/{chat_id}/messages\
              ?$top={limit}&$orderby=createdDateTime desc"
         );
 
-        let token = self.auth.get_token().await?;
         let resp = self
             .http
             .get(&url)
@@ -371,11 +412,19 @@ impl TeamsClient {
             .await?;
 
         let status = resp.status();
+        if status.as_u16() == 401 {
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Delegated token rejected (401) for /me/chats. \
+                The cached token may be expired — re-run the device-code login. Details: {}",
+                body
+            );
+        }
         if status.as_u16() == 403 {
             let body = resp.text().await.unwrap_or_default();
             bail!(
                 "Insufficient permissions to read chat messages (403). \
-                Ensure the Azure AD app has Chat.Read.All application permission. Details: {}",
+                Ensure the delegated token has Chat.Read scope. Details: {}",
                 body
             );
         }

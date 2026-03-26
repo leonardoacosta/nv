@@ -254,29 +254,6 @@ pub fn register_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "query_nexus".into(),
-            description: "Get the status of running Nexus agent sessions. Returns session IDs, agent names, and states.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "query_session".into(),
-            description: "Get detailed information about a specific Nexus session by ID. Returns project, status, duration, command, branch, model, and cost.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "session_id": {
-                        "type": "string",
-                        "description": "The session ID to look up"
-                    }
-                },
-                "required": ["session_id"]
-            }),
-        },
-        ToolDefinition {
             name: "complete_bootstrap".into(),
             description: "Mark first-run bootstrap as complete. Call this after writing identity.md, user.md, and soul.md during the bootstrap conversation. Writes a state file so bootstrap is skipped on future startups.".into(),
             input_schema: serde_json::json!({
@@ -381,8 +358,43 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add aggregation composite tools
     tools.extend(aggregation::aggregation_tool_definitions());
 
-    // Add Nexus project-scoped and session lifecycle tools
-    tools.extend(nexus_tool_definitions());
+    // Add session lifecycle tools (start/stop CC sessions via TeamAgentDispatcher)
+    tools.push(ToolDefinition {
+        name: "start_session".into(),
+        description: "Start a new Claude Code session on a project. Requires confirmation before execution. Example: start_session('oo', '/apply fix-chat-bugs')".into(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "project": {
+                    "type": "string",
+                    "description": "Project code (e.g. 'oo', 'tc', 'tl')"
+                },
+                "command": {
+                    "type": "string",
+                    "description": "Command to run in the session (e.g. '/apply fix-chat-bugs', '/feature')"
+                },
+                "agent": {
+                    "type": "string",
+                    "description": "Target a specific agent by name instead of round-robin. Optional."
+                }
+            },
+            "required": ["project", "command"]
+        }),
+    });
+    tools.push(ToolDefinition {
+        name: "stop_session".into(),
+        description: "Stop a running CC session. Requires confirmation before execution. Use to kill runaway sessions.".into(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "The session ID to stop"
+                }
+            },
+            "required": ["session_id"]
+        }),
+    });
 
     // Add schedule management tools
     tools.extend(schedule_tool_definitions());
@@ -847,121 +859,6 @@ fn posthog_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-/// Tool definitions for Nexus project-scoped queries and session lifecycle.
-fn nexus_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "nexus_project_ready".into(),
-            description: "Get the beads ready queue for a project via Nexus. Returns issues ready for work, scoped to the project.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project_code": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl', 'nv')"
-                    }
-                },
-                "required": ["project_code"]
-            }),
-        },
-        ToolDefinition {
-            name: "nexus_project_proposals".into(),
-            description: "List open proposals in openspec/changes/ for a project. Returns proposal names and statuses (ready, proposal only, incomplete).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project_code": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl', 'nv')"
-                    }
-                },
-                "required": ["project_code"]
-            }),
-        },
-        ToolDefinition {
-            name: "start_session".into(),
-            description: "Start a new Claude Code session on a project via Nexus. Requires confirmation before execution. Example: start_session('oo', '/apply fix-chat-bugs')".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    },
-                    "command": {
-                        "type": "string",
-                        "description": "Command to run in the session (e.g. '/apply fix-chat-bugs', '/feature')"
-                    },
-                    "agent": {
-                        "type": "string",
-                        "description": "Target a specific Nexus agent by name instead of round-robin. Optional."
-                    }
-                },
-                "required": ["project", "command"]
-            }),
-        },
-        ToolDefinition {
-            name: "send_command".into(),
-            description: "Send a command to a running Nexus session. Use for remote /apply, /feature, /ci:gh execution.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "session_id": {
-                        "type": "string",
-                        "description": "The session ID to send the command to"
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "The command text to send"
-                    }
-                },
-                "required": ["session_id", "text"]
-            }),
-        },
-        ToolDefinition {
-            name: "stop_session".into(),
-            description: "Stop a running Nexus session. Requires confirmation before execution. Use to kill runaway sessions.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "session_id": {
-                        "type": "string",
-                        "description": "The session ID to stop"
-                    }
-                },
-                "required": ["session_id"]
-            }),
-        },
-        ToolDefinition {
-            name: "query_nexus_health".into(),
-            description: "Get machine health stats (CPU, memory, disk, load, uptime, docker containers) for all connected Nexus agents. Use to check machine load before starting sessions.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "query_nexus_projects".into(),
-            description: "List available projects on all connected Nexus agents. Returns project names grouped by agent.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "query_nexus_agents".into(),
-            description: "Get connection status of all configured Nexus agents. Shows which agents are connected, disconnected, or reconnecting.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-    ]
-}
-
 /// Tool definitions for schedule management (list, add, modify, remove).
 fn schedule_tool_definitions() -> Vec<ToolDefinition> {
     vec![
@@ -1328,7 +1225,7 @@ fn is_sensitive_path(path: &str) -> bool {
 }
 
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
-/// Used during first-run to prevent Claude from searching Jira/Nexus/memory
+/// Used during first-run to prevent Claude from searching Jira/memory
 /// instead of focusing on the onboarding conversation.
 pub fn register_bootstrap_tools() -> Vec<ToolDefinition> {
     vec![
@@ -1348,15 +1245,6 @@ pub fn register_bootstrap_tools() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["topic", "content"]
-            }),
-        },
-        ToolDefinition {
-            name: "complete_bootstrap".into(),
-            description: "Mark first-run bootstrap as complete. Call this AFTER writing identity.md, user.md, and soul.md.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
             }),
         },
         ToolDefinition {
@@ -1626,48 +1514,6 @@ pub async fn execute_tool_send_with_backend(
             Ok(ToolResult::Immediate("Soul updated. Notification sent to Leo.".into()))
         }
         "get_recent_messages" => Err(anyhow!("get_recent_messages must be handled by the worker directly")),
-        "query_nexus" => {
-            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = backend.format_query_sessions().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "query_session" => {
-            let session_id = input["session_id"].as_str().ok_or_else(|| anyhow!("missing 'session_id' parameter"))?;
-            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = backend.format_query_session(session_id).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "query_nexus_health" => {
-            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = backend.format_query_health().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "query_nexus_projects" => {
-            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = backend.format_query_projects().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "query_nexus_agents" => {
-            let backend = nexus_backend.ok_or_else(|| anyhow!("Nexus not configured"))?;
-            let output = backend.format_query_agents().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Nexus Project-Scoped Queries ─────────────────────────
-        "nexus_project_ready" => {
-            let project_code = input["project_code"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project_code' parameter"))?;
-            let output = nexus::tools::format_project_ready(project_code, project_registry).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "nexus_project_proposals" => {
-            let project_code = input["project_code"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project_code' parameter"))?;
-            let output = nexus::tools::format_project_proposals(project_code, project_registry).await?;
-            Ok(ToolResult::Immediate(output))
-        }
 
         // ── Session Lifecycle ──────────────────────────────────────
         "start_session" => {
@@ -1701,11 +1547,6 @@ pub async fn execute_tool_send_with_backend(
                 action_type: nv_core::types::ActionType::NexusStartSession,
                 payload: input.clone(),
             })
-        }
-        "send_command" => {
-            // send_command is not supported by TeamAgentDispatcher (no persistent stdin).
-            // Return a clear error so callers know to use start_session instead.
-            anyhow::bail!("send_command is not supported by team-agent backend; use start_session");
         }
         "stop_session" => {
             // Validate that a backend is configured before queuing the action
@@ -2862,30 +2703,29 @@ mod tests {
     #[test]
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
-        // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul + 5 nexus (query + session + health + projects + agents)
+        // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul
         // + 6 jira + 8 bash
-        // + 2 docker + 2 tailscale + 3 github + 2 sentry + 2 posthog + 2 vercel
+        // + 2 docker + 2 tailscale + 7 github + 2 sentry + 2 posthog + 2 vercel
         // + 4 neon (neon_query + neon_projects + neon_branches + neon_compute) + 2 stripe + 2 resend + 2 upstash
-        // + 3 ha + 3 ado + 2 plaid + 3 aggregation
-        // + 5 nexus lifecycle (project_ready, project_proposals, start_session, send_command, stop_session)
+        // + 3 ha + 4 ado + 2 plaid + 3 aggregation
+        // + 2 session lifecycle (start_session, stop_session)
         // + 2 cross-channel (list_channels, send_to_channel)
         // + 3 calendar (calendar_today, calendar_upcoming, calendar_next)
         // + 3 reminders (set_reminder, list_reminders, cancel_reminder)
+        // + 4 schedule (list_schedules, add_schedule, modify_schedule, remove_schedule)
         // + 3 web (fetch_url, check_url, search_web)
         // + 3 doppler (doppler_secrets, doppler_compare, doppler_activity)
         // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status)
-        // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
         // + 6 teams (teams_channels, teams_messages, teams_send, teams_presence,
         //       teams_list_chats, teams_read_chat)
         // + 3 discord (discord_list_guilds, discord_list_channels, discord_read_messages)
         // + 2 outlook (read_outlook_inbox, read_outlook_calendar)
-        // + 1 ado work items (query_ado_work_items)
-        // + 5 proactive-followups (list_obligations, dismiss_obligation, snooze_obligation,
-        //       reassign_obligation, obligation_research_status) — feat(proactive-followups)
-        // + 1 self-assessment (self_assessment_run) — feat(self-improvement-research)
-        // = 98 + 5 + 1 + 2 + 3 = 109
-        assert_eq!(tools.len(), 109);
+        // + 1 self-assessment (self_assessment_run)
+        // = 101 (removed 8 dead nexus tools: query_nexus, query_session, query_nexus_health,
+        //        query_nexus_projects, query_nexus_agents, nexus_project_ready,
+        //        nexus_project_proposals, send_command)
+        assert_eq!(tools.len(), 101);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2895,11 +2735,6 @@ mod tests {
         assert!(names.contains(&"search_messages"));
         assert!(names.contains(&"complete_bootstrap"));
         assert!(names.contains(&"update_soul"));
-        assert!(names.contains(&"query_nexus"));
-        assert!(names.contains(&"query_session"));
-        assert!(names.contains(&"query_nexus_health"));
-        assert!(names.contains(&"query_nexus_projects"));
-        assert!(names.contains(&"query_nexus_agents"));
         assert!(names.contains(&"jira_search"));
         assert!(names.contains(&"jira_get"));
         assert!(names.contains(&"jira_create"));
@@ -2959,11 +2794,8 @@ mod tests {
         assert!(names.contains(&"project_health"));
         assert!(names.contains(&"homelab_status"));
         assert!(names.contains(&"financial_summary"));
-        // Nexus lifecycle tools
-        assert!(names.contains(&"nexus_project_ready"));
-        assert!(names.contains(&"nexus_project_proposals"));
+        // Session lifecycle tools
         assert!(names.contains(&"start_session"));
-        assert!(names.contains(&"send_command"));
         assert!(names.contains(&"stop_session"));
         // Cross-channel routing tools
         assert!(names.contains(&"list_channels"));
@@ -3013,14 +2845,6 @@ mod tests {
         let required = wm.input_schema["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v.as_str() == Some("topic")));
         assert!(required.iter().any(|v| v.as_str() == Some("content")));
-    }
-
-    #[test]
-    fn query_nexus_schema_has_no_required_params() {
-        let tools = register_tools();
-        let qn = tools.iter().find(|t| t.name == "query_nexus").unwrap();
-        let required = qn.input_schema["required"].as_array().unwrap();
-        assert!(required.is_empty());
     }
 
     #[tokio::test]
@@ -3342,94 +3166,6 @@ mod tests {
         assert!(validate_jira_project_key("ABCDEFGHIJK").is_err());
         // Full project name (lowercase + spaces)
         assert!(validate_jira_project_key("Otaku Odyssey").is_err());
-    }
-
-    fn make_test_backend() -> nexus::backend::NexusBackend {
-        use nv_core::config::{TeamAgentMachine, TeamAgentsConfig};
-        let config = TeamAgentsConfig {
-            machines: vec![TeamAgentMachine {
-                name: "local".to_string(),
-                ssh_host: None,
-                working_dir: Some("/tmp".to_string()),
-            }],
-            cc_binary: "/bin/true".to_string(),
-        };
-        nexus::backend::NexusBackend::new(crate::team_agent::TeamAgentDispatcher::new(&config))
-    }
-
-    #[tokio::test]
-    async fn execute_query_nexus_without_backend_returns_error() {
-        let (_dir, memory) = setup();
-        let result = execute_tool_send("query_nexus", &serde_json::json!({}), &memory, None, &empty_registry(), &empty_channels(), None, "primary", &empty_service_registries())
-            .await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
-    }
-
-    #[tokio::test]
-    async fn execute_query_nexus_with_backend_returns_immediate() {
-        let (_dir, memory) = setup();
-        let backend = make_test_backend();
-        let result = execute_tool_send_with_backend(
-            "query_nexus",
-            &serde_json::json!({}),
-            &memory,
-            None,
-            Some(&backend),
-            &empty_registry(),
-            &empty_channels(),
-            None,
-            "primary",
-            &empty_service_registries(),
-        )
-        .await
-        .unwrap();
-        match result {
-            ToolResult::Immediate(s) => {
-                assert!(s.contains("No active") || s.contains("session"));
-            }
-            _ => panic!("expected Immediate"),
-        }
-    }
-
-    #[tokio::test]
-    async fn execute_query_session_without_backend_returns_error() {
-        let (_dir, memory) = setup();
-        let result = execute_tool_send(
-            "query_session",
-            &serde_json::json!({"session_id": "s-1"}),
-            &memory,
-            None,
-            &empty_registry(),
-            &empty_channels(),
-            None,
-            "primary",
-            &empty_service_registries(),
-        )
-        .await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Nexus not configured"));
-    }
-
-    #[tokio::test]
-    async fn execute_query_session_missing_param() {
-        let (_dir, memory) = setup();
-        let backend = make_test_backend();
-        let result = execute_tool_send_with_backend(
-            "query_session",
-            &serde_json::json!({}),
-            &memory,
-            None,
-            Some(&backend),
-            &empty_registry(),
-            &empty_channels(),
-            None,
-            "primary",
-            &empty_service_registries(),
-        )
-        .await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("session_id"));
     }
 
     #[tokio::test]

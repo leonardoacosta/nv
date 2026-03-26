@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Nova - Pre-push deploy hook
 #
-# Automatically deploys the Nova TS daemon (systemd) and dashboard
-# (Docker container) when pushing to main. TTS announces success or
-# failure. Deploy failures warn but do NOT block the push — the code
-# always lands.
+# Automatically deploys the Nova TS daemon (systemd), tool fleet (systemd),
+# and dashboard (Docker container) when pushing to main. TTS announces
+# success or failure. Deploy failures warn but do NOT block the push —
+# the code always lands.
 #
 # Skip deployment:  SKIP_DEPLOY=1 git push
 #
@@ -40,15 +40,21 @@ if [[ ! -f "$DEPLOY_SCRIPT" ]]; then
     exit 0
 fi
 
-echo "=== Nova: Deploying TS daemon to homelab ==="
+echo "=== Nova: Deploying TS daemon + tool fleet to homelab ==="
 echo "    Log: ${LOG_FILE}"
 echo ""
 
-# ── Deploy TS Daemon ─────────────────────────────────────────────────────────
+DAEMON_OK=false
+TOOLS_OK=false
+
+# ── Deploy TS Daemon + Tool Fleet ────────────────────────────────────────────
+# install-ts.sh calls install-tools.sh internally after the daemon health check.
 
 if bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
     echo ""
-    echo "Daemon deploy succeeded."
+    echo "Daemon + tool fleet deploy succeeded."
+    DAEMON_OK=true
+    TOOLS_OK=true
 else
     DEPLOY_EXIT="${PIPESTATUS[0]}"
     echo ""
@@ -58,7 +64,7 @@ else
     echo ""
     echo "Re-deploy manually:  bash deploy/install-ts.sh"
     echo "Skip next time:      SKIP_DEPLOY=1 git push"
-    _notify "Nova daemon deploy failed, check logs"
+    _notify "Nova deploy failed, check logs"
 fi
 
 # ── Deploy Dashboard ─────────────────────────────────────────────────────────
@@ -88,18 +94,18 @@ if [[ -f "$COMPOSE_FILE" ]]; then
 
         if $DASH_HEALTHY; then
             echo "    Dashboard deploy succeeded."
-            _notify "Nova deploy succeeded — daemon + dashboard"
+            _notify "Nova deploy succeeded — daemon + tools + dashboard"
         else
             echo "    Dashboard container not running. Check: docker compose -f $COMPOSE_FILE logs dashboard"
-            _notify "Nova daemon OK, dashboard failed"
+            _notify "Nova daemon + tools OK, dashboard failed"
         fi
     else
         echo "    Dashboard build failed. Check logs: ${LOG_FILE}"
-        _notify "Nova daemon OK, dashboard build failed"
+        _notify "Nova daemon + tools OK, dashboard build failed"
     fi
 else
     echo "    No docker-compose.yml found — skipping dashboard deploy"
-    _notify "Nova daemon deployed (no dashboard compose file)"
+    _notify "Nova deployed — daemon + tools (no dashboard compose file)"
 fi
 
 exit 0

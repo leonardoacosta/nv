@@ -147,6 +147,27 @@ if ! curl -sf "http://127.0.0.1:${HEALTH_PORT}/health" > /dev/null 2>&1; then
     exit 1
 fi
 
+# ── Tool Fleet Deploy ────────────────────────────────────────────────────────
+
+TOOLS_SCRIPT="${SCRIPT_DIR}/install-tools.sh"
+TOOLS_STATUS="skipped"
+
+if [ -f "$TOOLS_SCRIPT" ]; then
+    echo ""
+    echo "==> Deploying tool fleet..."
+    if bash "$TOOLS_SCRIPT"; then
+        TOOLS_STATUS="success"
+    else
+        TOOLS_STATUS="failed (exit $?)"
+        echo ""
+        echo "WARNING: Tool fleet deploy failed. Daemon is running normally."
+        echo "  Re-run: bash ${TOOLS_SCRIPT}"
+    fi
+else
+    echo ""
+    echo "==> Skipping tool fleet deploy (install-tools.sh not found)"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 VERSION=$(node -e "const p=require('${INSTALL_DIR}/packages/daemon/package.json'); process.stdout.write(p.version)" 2>/dev/null || echo "unknown")
@@ -157,6 +178,7 @@ echo "  Version:  ${VERSION}"
 echo "  Install:  ${INSTALL_DIR}"
 echo "  Service:  nova-ts.service (active)"
 echo "  Health:   http://127.0.0.1:${HEALTH_PORT}/health"
+echo "  Tools:    ${TOOLS_STATUS}"
 echo "  Logs:     journalctl --user -u nova-ts.service -f"
 echo ""
 echo "Migration note:"

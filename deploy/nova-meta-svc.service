@@ -1,0 +1,20 @@
+[Unit]
+Description=Nova Tool Service: meta-svc
+After=network-online.target
+Wants=network-online.target
+PartOf=nova-tools.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/lib/nova-ts
+ExecStart=doppler run --project nova --config prd -- node %h/.local/lib/nova-ts/packages/tools/meta-svc/dist/index.js
+Environment=NODE_ENV=production
+Environment=PORT=4008
+Environment=PATH=%h/.local/bin:%h/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=nova-tools.target

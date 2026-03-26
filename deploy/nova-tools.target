@@ -1,0 +1,4 @@
+[Unit]
+Description=Nova Tool Fleet
+Wants=nova-tool-router.service nova-memory-svc.service nova-messages-svc.service nova-channels-svc.service nova-discord-svc.service nova-teams-svc.service nova-schedule-svc.service nova-graph-svc.service nova-meta-svc.service
+After=network-online.target

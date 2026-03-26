@@ -179,7 +179,7 @@ function ObligationsSidebar({
   const done = obligations.filter((o) => o.status === "completed");
 
   return (
-    <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-4">
+    <div className="surface-card p-4 space-y-4">
       <div className="flex items-center justify-between">
         <SectionHeader label="Obligations" count={obligations.length} />
         <Link
@@ -426,7 +426,7 @@ export default function DashboardPage() {
       subtitle="Nova activity overview"
       action={headerAction}
     >
-      <div className="space-y-6">
+      <div className="space-y-6 animate-fade-in-up">
         {error && (
           <ErrorBanner
             message="Failed to load dashboard data"
@@ -446,51 +446,63 @@ export default function DashboardPage() {
             ))
           ) : (
             <>
-              <StatCard
-                icon={<CheckSquare size={16} />}
-                label="Obligations"
-                value={summary?.obligations_count ?? 0}
-              />
-              <StatCard
-                icon={<Layers size={16} />}
-                label="Active"
-                value={summary?.active_sessions ?? 0}
-                variant="success"
-              />
-              <StatCard
-                icon={<TrendingUp size={16} />}
-                label="Projects"
-                value={summary?.projects_count ?? 0}
-              />
-              <StatCard
-                icon={<Heart size={16} />}
-                label="Health"
-                value={health?.status ?? "—"}
-                variant={hVariant}
-              />
-              <StatCard
-                icon={<Cpu size={16} />}
-                label="CPU"
-                value={
-                  health ? `${health.cpu_percent.toFixed(1)}%` : "—"
-                }
-                variant={cVariant}
-              />
-              <StatCard
-                icon={<MemoryStick size={16} />}
-                label="Memory"
-                value={
-                  health && health.memory_total_mb > 0
-                    ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
-                    : "—"
-                }
-                variant={mVariant}
-                sublabel={
-                  health?.uptime_seconds
-                    ? `up ${formatUptime(health.uptime_seconds)}`
-                    : undefined
-                }
-              />
+              <div className="animate-fade-in-up stagger-1">
+                <StatCard
+                  icon={<CheckSquare size={16} />}
+                  label="Obligations"
+                  value={summary?.obligations_count ?? 0}
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-2">
+                <StatCard
+                  icon={<Layers size={16} />}
+                  label="Active"
+                  value={summary?.active_sessions ?? 0}
+                  variant="success"
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-3">
+                <StatCard
+                  icon={<TrendingUp size={16} />}
+                  label="Projects"
+                  value={summary?.projects_count ?? 0}
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-4">
+                <StatCard
+                  icon={<Heart size={16} />}
+                  label="Health"
+                  value={health?.status ?? "—"}
+                  variant={hVariant}
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-5">
+                <StatCard
+                  icon={<Cpu size={16} />}
+                  label="CPU"
+                  value={
+                    health ? `${health.cpu_percent.toFixed(1)}%` : "—"
+                  }
+                  variant={cVariant}
+                />
+              </div>
+              <div className="animate-fade-in-up stagger-6">
+                <StatCard
+                  icon={<MemoryStick size={16} />}
+                  label="Memory"
+                  value={
+                    health && health.memory_total_mb > 0
+                      ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
+                      : "—"
+                  }
+                  variant={mVariant}
+                  sublabel={
+                    health?.uptime_seconds
+                      ? `up ${formatUptime(health.uptime_seconds)}`
+                      : undefined
+                  }
+                />
+              </div>
             </>
           )}
         </div>
@@ -552,7 +564,7 @@ export default function DashboardPage() {
                 label="Recent Activity"
                 count={activityFeed.length}
               />
-              <div className="rounded-xl bg-ds-gray-100 border border-ds-gray-400 p-2">
+              <div className="surface-card p-2">
                 <ActivityFeed events={activityFeed} />
               </div>
             </div>
@@ -566,7 +578,7 @@ export default function DashboardPage() {
             />
 
             {/* Quick session stats */}
-            <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-3">
+            <div className="surface-card p-4 space-y-3">
               <SectionHeader label="Session Breakdown" />
               {[
                 {
@@ -612,7 +624,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Messages link */}
-            <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-3">
+            <div className="surface-card p-4 space-y-3">
               <SectionHeader label="Messages" />
               <p className="text-xs text-ds-gray-900">
                 View channel messages, search history, and filter by date.

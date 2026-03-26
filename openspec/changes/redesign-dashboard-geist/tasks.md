@@ -24,14 +24,14 @@
 
 ## Page Updates — Apply Geist Everywhere
 
-- [ ] [4.1] [P-2] Update `apps/dashboard/app/page.tsx` (Home) — .text-heading-24 page title; .text-label-12 uppercase section headers; StatCard with icons; staggered fade-in on stat grid; surface-card for list sections [owner:ui-engineer]
-- [ ] [4.2] [P-2] Update `apps/dashboard/app/briefing/page.tsx` — surface-card for sections; EmptyState with Sun icon; ErrorBanner for API failures [owner:ui-engineer]
-- [ ] [4.3] [P-2] Update `apps/dashboard/app/obligations/page.tsx` — surface-card items; tab active/hover states per Geist interactive pattern; staggered list items [owner:ui-engineer]
-- [ ] [4.4] [P-2] Update `apps/dashboard/app/approvals/page.tsx` — EmptyState with ShieldCheck icon; surface-card queue items; surface-raised for detail panel [owner:ui-engineer]
-- [ ] [4.5] [P-2] Update `apps/dashboard/app/diary/page.tsx` — surface-card entries; .text-label-13-mono for timestamps; summary bar with StatCard [owner:ui-engineer]
-- [ ] [4.6] [P-2] Update `apps/dashboard/app/sessions/page.tsx` — surface-card session cards; status dots ds-green/amber/red-700; filter tabs Geist interactive; EmptyState with Layers icon [owner:ui-engineer]
-- [ ] [4.7] [P-2] Update `apps/dashboard/app/messages/page.tsx` — surface-base rows with hover bg-ds-gray-200; filter chips as pills; pagination with interactive states [owner:ui-engineer]
-- [ ] [4.8] [P-2] Update `apps/dashboard/app/projects/page.tsx` — surface-card cards; EmptyState with FolderOpen; search input surface-inset [owner:ui-engineer]
+- [x] [4.1] [P-2] Update `apps/dashboard/app/page.tsx` (Home) — .text-heading-24 page title; .text-label-12 uppercase section headers; StatCard with icons; staggered fade-in on stat grid; surface-card for list sections [owner:ui-engineer]
+- [x] [4.2] [P-2] Update `apps/dashboard/app/briefing/page.tsx` — surface-card for sections; EmptyState with Sun icon; ErrorBanner for API failures [owner:ui-engineer]
+- [x] [4.3] [P-2] Update `apps/dashboard/app/obligations/page.tsx` — surface-card items; tab active/hover states per Geist interactive pattern; staggered list items [owner:ui-engineer]
+- [x] [4.4] [P-2] Update `apps/dashboard/app/approvals/page.tsx` — EmptyState with ShieldCheck icon; surface-card queue items; surface-raised for detail panel [owner:ui-engineer]
+- [x] [4.5] [P-2] Update `apps/dashboard/app/diary/page.tsx` — surface-card entries; .text-label-13-mono for timestamps; summary bar with StatCard [owner:ui-engineer]
+- [x] [4.6] [P-2] Update `apps/dashboard/app/sessions/page.tsx` — surface-card session cards; status dots ds-green/amber/red-700; filter tabs Geist interactive; EmptyState with Layers icon [owner:ui-engineer]
+- [x] [4.7] [P-2] Update `apps/dashboard/app/messages/page.tsx` — surface-base rows with hover bg-ds-gray-200; filter chips as pills; pagination with interactive states [owner:ui-engineer]
+- [x] [4.8] [P-2] Update `apps/dashboard/app/projects/page.tsx` — surface-card cards; EmptyState with FolderOpen; search input surface-inset [owner:ui-engineer]
 - [ ] [4.9] [P-2] Update `apps/dashboard/app/nexus/page.tsx` — surface-card health tiles with accent bars (green/amber/red per status) [owner:ui-engineer]
 - [ ] [4.10] [P-2] Update `apps/dashboard/app/integrations/page.tsx` — surface-card integration cards; .text-label-12 section headers [owner:ui-engineer]
 - [ ] [4.11] [P-2] Update `apps/dashboard/app/usage/page.tsx` — StatCard for cost/token values with DollarSign icon; .text-heading-32 tabular-nums [owner:ui-engineer]

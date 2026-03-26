@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FolderOpen, AlertCircle, RefreshCw, Search } from "lucide-react";
+import { FolderOpen, RefreshCw, Search } from "lucide-react";
 import ProjectAccordion, {
   type Project,
   type ProjectError,
 } from "@/components/ProjectAccordion";
+import ErrorBanner from "@/components/layout/ErrorBanner";
+import EmptyState from "@/components/layout/EmptyState";
 import type { ApiProject, ProjectsGetResponse } from "@/types/api";
 
 /** Map daemon ApiProject ({ code, path }) to the component Project interface. */
@@ -88,13 +90,13 @@ export default function ProjectsPage() {
   );
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-8 space-y-6 max-w-4xl animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ds-gray-1000">
+          <h1 className="text-heading-24 text-ds-gray-1000">
             Projects
           </h1>
-          <p className="mt-1 text-sm text-ds-gray-900">
+          <p className="mt-1 text-copy-14 text-ds-gray-900">
             {loading
               ? "Loading..."
               : `${projects.length} projects · ${errorCount} issues`}
@@ -104,7 +106,7 @@ export default function ProjectsPage() {
           type="button"
           onClick={() => void fetchProjects()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -122,7 +124,7 @@ export default function ProjectsPage() {
           placeholder="Search projects..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+          className="w-full pl-9 pr-4 py-2 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
         />
       </div>
 
@@ -133,10 +135,11 @@ export default function ProjectsPage() {
       )}
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
-        </div>
+        <ErrorBanner
+          message="Failed to load projects"
+          detail={error}
+          onRetry={() => void fetchProjects()}
+        />
       )}
 
       {loading ? (
@@ -149,20 +152,27 @@ export default function ProjectsPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
-          <FolderOpen size={36} />
-          <p className="text-sm">
-            {search ? "No projects match your search" : "No projects found"}
-          </p>
-        </div>
+        <EmptyState
+          title={search ? "No projects match your search" : "No projects found"}
+          description={
+            search
+              ? "Try a different search term."
+              : "Projects registered with the daemon will appear here."
+          }
+          icon={<FolderOpen size={40} aria-hidden="true" />}
+        />
       ) : (
         <div className="space-y-2">
-          {filtered.map((project) => (
-            <ProjectAccordion
+          {filtered.map((project, idx) => (
+            <div
               key={project.id}
-              project={project}
-              onSolveWithNexus={handleSolveWithNexus}
-            />
+              className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+            >
+              <ProjectAccordion
+                project={project}
+                onSolveWithNexus={handleSolveWithNexus}
+              />
+            </div>
           ))}
         </div>
       )}

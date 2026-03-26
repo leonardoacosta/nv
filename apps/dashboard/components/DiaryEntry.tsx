@@ -34,10 +34,10 @@ function ToolPill({ name }: { name: string }) {
 
 export default function DiaryEntry({ entry }: DiaryEntryProps) {
   return (
-    <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 hover:border-ds-gray-1000/30 transition-colors">
+    <div className="surface-card p-4">
       {/* Heading row */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
-        <span className="text-sm font-mono font-semibold text-ds-gray-1000 tabular-nums">
+        <span className="text-label-13-mono text-ds-gray-1000 tabular-nums">
           {entry.time}
         </span>
         <TriggerTypeBadge type={entry.trigger_type} />

@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Sun,
   RefreshCw,
-  AlertCircle,
 } from "lucide-react";
 import { parseBriefingSections } from "@/lib/briefing";
+import ErrorBanner from "@/components/layout/ErrorBanner";
+import EmptyState from "@/components/layout/EmptyState";
 import type {
   BriefingEntry,
   BriefingGetResponse,
@@ -75,11 +76,11 @@ function BriefingSectionCard({
   body: string;
 }) {
   return (
-    <div className="rounded-xl bg-ds-gray-100 border border-ds-gray-400 p-5 space-y-2">
-      <h3 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
+    <div className="surface-card p-5 space-y-2">
+      <h3 className="text-label-12 text-ds-gray-700">
         {title}
       </h3>
-      <p className="text-sm text-ds-gray-1000 leading-relaxed whitespace-pre-wrap">
+      <p className="text-copy-14 text-ds-gray-1000 leading-relaxed whitespace-pre-wrap">
         {body}
       </p>
     </div>
@@ -213,14 +214,14 @@ export default function BriefingPage() {
 
   // 8. Render
   return (
-    <div className="p-8 space-y-6 max-w-6xl">
+    <div className="p-8 space-y-6 max-w-6xl animate-fade-in-up">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ds-gray-1000">
+          <h1 className="text-heading-24 text-ds-gray-1000">
             Morning Briefing
           </h1>
-          <p className="mt-1 text-sm text-ds-gray-900">
+          <p className="mt-1 text-copy-14 text-ds-gray-900">
             {displayEntry
               ? formatGeneratedAt(displayEntry.generated_at)
               : "Nova generates a briefing each morning at 7am"}
@@ -230,7 +231,7 @@ export default function BriefingPage() {
           type="button"
           onClick={handleRefresh}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -247,10 +248,11 @@ export default function BriefingPage() {
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
-        </div>
+        <ErrorBanner
+          message="Failed to load briefing"
+          detail={error}
+          onRetry={handleRefresh}
+        />
       )}
 
       {/* Sources status */}
@@ -281,19 +283,11 @@ export default function BriefingPage() {
             <LoadingSkeleton />
           ) : !displayEntry ? (
             /* Empty state */
-            <div className="flex flex-col items-center gap-4 py-20 text-ds-gray-900">
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-ds-gray-100 border border-ds-gray-400">
-                <Sun size={28} className="text-ds-gray-1000/60" />
-              </div>
-              <div className="text-center space-y-1">
-                <p className="text-base font-medium text-ds-gray-1000">
-                  No briefing yet today
-                </p>
-                <p className="text-sm text-ds-gray-900">
-                  Nova generates a briefing each morning at 7am
-                </p>
-              </div>
-            </div>
+            <EmptyState
+              title="No briefing yet today"
+              description="Nova generates a briefing each morning at 7am"
+              icon={<Sun size={40} aria-hidden="true" />}
+            />
           ) : (
             <>
               {/* Section cards */}
@@ -312,7 +306,7 @@ export default function BriefingPage() {
               {/* Suggested actions chips */}
               {displayEntry.suggested_actions.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-ds-gray-900 uppercase tracking-wide font-medium">
+                  <p className="text-label-12 text-ds-gray-700">
                     Suggested Actions
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -342,7 +336,7 @@ export default function BriefingPage() {
         {/* History rail */}
         {history.length > 0 && (
           <div className="w-52 shrink-0 space-y-1">
-            <p className="text-xs text-ds-gray-900 uppercase tracking-wide font-medium mb-2 px-1">
+            <p className="text-label-12 text-ds-gray-700 mb-2 px-1">
               History
             </p>
             {history.map((h) => {

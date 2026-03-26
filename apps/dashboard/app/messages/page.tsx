@@ -112,7 +112,7 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-ds-gray-100/50 transition-colors group"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-ds-gray-200 transition-colors group"
       >
         {/* Direction icon */}
         <div className="shrink-0 text-ds-gray-900">
@@ -401,7 +401,7 @@ export default function MessagesPage() {
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Full-text search…"
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="w-full pl-9 pr-8 py-2 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
             />
             {searchInput && (
               <button
@@ -487,7 +487,7 @@ export default function MessagesPage() {
         )}
 
         {/* Messages list */}
-        <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 overflow-hidden">
+        <div className="surface-card overflow-hidden">
           {loading ? (
             <ul className="divide-y divide-ds-gray-400">
               {Array.from({ length: 8 }).map((_, i) => (

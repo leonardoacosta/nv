@@ -6,11 +6,14 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  AlertCircle,
   Clock,
   Zap,
+  Hash,
 } from "lucide-react";
 import DiaryEntryCard from "@/components/DiaryEntry";
+import ErrorBanner from "@/components/layout/ErrorBanner";
+import EmptyState from "@/components/layout/EmptyState";
+import StatCard from "@/components/layout/StatCard";
 import type { DiaryGetResponse, DiaryEntryItem } from "@/types/api";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -96,7 +99,7 @@ export default function DiaryPage() {
   const stats = data ? computeStats(data.entries) : null;
 
   return (
-    <div className="p-6 sm:p-8 space-y-6 max-w-3xl">
+    <div className="p-6 sm:p-8 space-y-6 max-w-3xl animate-fade-in-up">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -104,10 +107,10 @@ export default function DiaryPage() {
             <BookOpen size={18} className="text-ds-gray-1000" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-ds-gray-1000">
+            <h1 className="text-heading-24 text-ds-gray-1000">
               Interaction Diary
             </h1>
-            <p className="text-sm text-ds-gray-900 mt-0.5">
+            <p className="text-copy-14 text-ds-gray-900 mt-0.5">
               A log of every interaction Nova handled
             </p>
           </div>
@@ -117,7 +120,7 @@ export default function DiaryPage() {
           type="button"
           onClick={() => void fetchDiary(dateStr)}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50 shrink-0"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50 shrink-0"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -157,45 +160,37 @@ export default function DiaryPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
-          <AlertCircle size={16} className="shrink-0" />
-          <span className="text-sm">{error}</span>
-        </div>
+        <ErrorBanner
+          message="Failed to load diary"
+          detail={error}
+          onRetry={() => void fetchDiary(dateStr)}
+        />
       )}
 
       {/* Summary bar */}
       {!loading && !error && stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
-            <p className="text-xs text-ds-gray-900 uppercase tracking-wide mb-1">
-              Entries
-            </p>
-            <p className="text-xl font-mono font-semibold text-ds-gray-1000">
-              {stats.total}
-            </p>
-          </div>
-          <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
-            <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 uppercase tracking-wide mb-1">
-              <Zap size={11} />
-              Tokens
-            </div>
-            <p className="text-xl font-mono font-semibold text-ds-gray-1000">
-              {stats.totalTokens.toLocaleString()}
-            </p>
-          </div>
-          <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
-            <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 uppercase tracking-wide mb-1">
-              <Clock size={11} />
-              Avg Latency
-            </div>
-            <p className="text-xl font-mono font-semibold text-ds-gray-1000">
-              {stats.avgLatencyMs > 0
+          <StatCard
+            icon={<Hash size={16} />}
+            label="Entries"
+            value={stats.total}
+          />
+          <StatCard
+            icon={<Zap size={16} />}
+            label="Tokens"
+            value={stats.totalTokens.toLocaleString()}
+          />
+          <StatCard
+            icon={<Clock size={16} />}
+            label="Avg Latency"
+            value={
+              stats.avgLatencyMs > 0
                 ? stats.avgLatencyMs >= 1000
                   ? `${(stats.avgLatencyMs / 1000).toFixed(1)}s`
                   : `${stats.avgLatencyMs}ms`
-                : "—"}
-            </p>
-          </div>
+                : "—"
+            }
+          />
         </div>
       )}
 
@@ -213,17 +208,23 @@ export default function DiaryPage() {
 
       {/* Empty state */}
       {!loading && !error && data && data.entries.length === 0 && (
-        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
-          <BookOpen size={36} className="opacity-40" />
-          <p className="text-sm">No diary entries for this day.</p>
-        </div>
+        <EmptyState
+          title="No entries for this day"
+          description="Diary entries appear here as Nova processes interactions."
+          icon={<BookOpen size={40} aria-hidden="true" />}
+        />
       )}
 
       {/* Diary entries — reverse-chronological (API already returns newest first) */}
       {!loading && !error && data && data.entries.length > 0 && (
         <div className="space-y-3">
           {data.entries.map((entry, idx) => (
-            <DiaryEntryCard key={`${entry.time}-${idx}`} entry={entry} />
+            <div
+              key={`${entry.time}-${idx}`}
+              className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+            >
+              <DiaryEntryCard entry={entry} />
+            </div>
           ))}
         </div>
       )}

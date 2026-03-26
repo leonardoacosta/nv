@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckSquare, AlertCircle, RefreshCw, Clock } from "lucide-react";
+import { CheckSquare, RefreshCw, Clock } from "lucide-react";
 import ObligationItem, {
   type Obligation,
 } from "@/components/ObligationItem";
+import ErrorBanner from "@/components/layout/ErrorBanner";
+import EmptyState from "@/components/layout/EmptyState";
 import type { DaemonObligation, ObligationsGetResponse } from "@/types/api";
 
 type TabKey = "open" | "history";
@@ -67,13 +69,13 @@ export default function ObligationsPage() {
     [...items].sort((a, b) => a.priority - b.priority);
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-8 space-y-6 max-w-4xl animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ds-gray-1000">
+          <h1 className="text-heading-24 text-ds-gray-1000">
             Obligations
           </h1>
-          <p className="mt-1 text-sm text-ds-gray-900">
+          <p className="mt-1 text-copy-14 text-ds-gray-900">
             Active tasks and commitments
           </p>
         </div>
@@ -81,7 +83,7 @@ export default function ObligationsPage() {
           type="button"
           onClick={() => void fetchObligations()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -113,10 +115,11 @@ export default function ObligationsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
-        </div>
+        <ErrorBanner
+          message="Failed to load obligations"
+          detail={error}
+          onRetry={() => void fetchObligations()}
+        />
       )}
 
       {loading ? (
@@ -146,13 +149,18 @@ export default function ObligationsPage() {
               </span>
             </div>
             {nova.length === 0 ? (
-              <p className="text-sm text-ds-gray-900 py-4 pl-2">
+              <p className="text-copy-14 text-ds-gray-900 py-4 pl-2">
                 No obligations assigned to Nova
               </p>
             ) : (
               <div className="space-y-2">
-                {sortByPriority(nova).map((o) => (
-                  <ObligationItem key={o.id} obligation={o} />
+                {sortByPriority(nova).map((o, idx) => (
+                  <div
+                    key={o.id}
+                    className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                  >
+                    <ObligationItem obligation={o} />
+                  </div>
                 ))}
               </div>
             )}
@@ -174,13 +182,18 @@ export default function ObligationsPage() {
               </span>
             </div>
             {leo.length === 0 ? (
-              <p className="text-sm text-ds-gray-900 py-4 pl-2">
+              <p className="text-copy-14 text-ds-gray-900 py-4 pl-2">
                 No obligations assigned to Leo
               </p>
             ) : (
               <div className="space-y-2">
-                {sortByPriority(leo).map((o) => (
-                  <ObligationItem key={o.id} obligation={o} />
+                {sortByPriority(leo).map((o, idx) => (
+                  <div
+                    key={o.id}
+                    className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                  >
+                    <ObligationItem obligation={o} />
+                  </div>
                 ))}
               </div>
             )}
@@ -201,23 +214,30 @@ export default function ObligationsPage() {
           )}
 
           {open.length === 0 && (
-            <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
-              <CheckSquare size={36} />
-              <p className="text-sm">No active obligations found</p>
-            </div>
+            <EmptyState
+              title="No active obligations"
+              description="All clear. New obligations will appear here when detected."
+              icon={<CheckSquare size={40} aria-hidden="true" />}
+            />
           )}
         </div>
       ) : (
         /* History tab */
         <div className="space-y-2">
           {history.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
-              <Clock size={36} />
-              <p className="text-sm">No completed or dismissed obligations</p>
-            </div>
+            <EmptyState
+              title="No history yet"
+              description="Completed and dismissed obligations will appear here."
+              icon={<Clock size={40} aria-hidden="true" />}
+            />
           ) : (
-            sortByPriority(history).map((o) => (
-              <ObligationItem key={o.id} obligation={o} />
+            sortByPriority(history).map((o, idx) => (
+              <div
+                key={o.id}
+                className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+              >
+                <ObligationItem obligation={o} />
+              </div>
             ))
           )}
         </div>

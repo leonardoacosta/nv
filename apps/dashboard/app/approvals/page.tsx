@@ -12,6 +12,7 @@ import {
   Terminal,
   HelpCircle,
   ChevronRight,
+  ShieldCheck,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
@@ -434,12 +435,12 @@ export default function ApprovalsPage() {
         <EmptyState
           title="No pending approvals"
           description="All requests have been actioned."
-          icon={<CheckCircle size={24} />}
+          icon={<ShieldCheck size={40} aria-hidden="true" />}
         />
       ) : (
         // Split view: list (left) + detail (right)
         // On mobile (<md): list only, tapping opens detail overlay
-        <div className="flex gap-0 rounded-xl border border-ds-gray-400 overflow-hidden min-h-[500px]">
+        <div className="flex gap-0 surface-card overflow-hidden min-h-[500px]">
           {/* Queue list */}
           <div
             className={[
@@ -472,7 +473,7 @@ export default function ApprovalsPage() {
           {/* Detail panel */}
           <div
             className={[
-              "flex-1 bg-ds-gray-100",
+              "flex-1 surface-raised rounded-none",
               // Mobile: shown as full-width overlay when open
               mobileDetailOpen
                 ? "flex flex-col w-full md:flex"

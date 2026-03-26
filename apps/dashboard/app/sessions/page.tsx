@@ -88,8 +88,8 @@ function elapsed(startedAt: string): string {
 // ---------------------------------------------------------------------------
 
 const STATUS_DOT: Record<SessionItem["status"], string> = {
-  active: "bg-emerald-400 animate-pulse",
-  idle: "bg-amber-400",
+  active: "bg-green-700 animate-pulse",
+  idle: "bg-amber-700",
   completed: "bg-ds-gray-600",
 };
 
@@ -100,8 +100,8 @@ const STATUS_LABEL: Record<SessionItem["status"], string> = {
 };
 
 const STATUS_TEXT: Record<SessionItem["status"], string> = {
-  active: "text-emerald-400",
-  idle: "text-amber-400",
+  active: "text-green-700",
+  idle: "text-amber-700",
   completed: "text-ds-gray-900",
 };
 
@@ -130,10 +130,10 @@ function EnhancedSessionCard({
       type="button"
       onClick={() => onSelect(session)}
       className={[
-        "w-full text-left p-4 rounded-xl border transition-colors space-y-3",
+        "w-full text-left p-4 space-y-3 surface-card",
         selected
-          ? "border-ds-gray-1000/60 bg-ds-gray-alpha-100"
-          : "border-ds-gray-400 bg-ds-gray-100 hover:border-ds-gray-1000/40",
+          ? "!border-ds-gray-1000/60 !bg-ds-gray-alpha-100"
+          : "",
       ].join(" ")}
     >
       {/* Header row */}
@@ -362,9 +362,9 @@ function SessionDetailDrawer({
 // ---------------------------------------------------------------------------
 
 const CC_STATE_DOT: Record<string, string> = {
-  running: "bg-emerald-400 animate-pulse",
+  running: "bg-green-700 animate-pulse",
   completed: "bg-ds-gray-600",
-  stopped: "bg-amber-400",
+  stopped: "bg-amber-700",
 };
 
 function ProjectSessionsTable() {
@@ -731,17 +731,21 @@ export default function SessionsPage() {
                     statusLabel="Active sessions"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {active.map((s) => (
-                      <EnhancedSessionCard
+                    {active.map((s, idx) => (
+                      <div
                         key={s.id}
-                        session={s}
-                        selected={selectedId === s.id}
-                        onSelect={(sess) =>
-                          setSelectedId((prev) =>
-                            prev === sess.id ? null : sess.id,
-                          )
-                        }
-                      />
+                        className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                      >
+                        <EnhancedSessionCard
+                          session={s}
+                          selected={selectedId === s.id}
+                          onSelect={(sess) =>
+                            setSelectedId((prev) =>
+                              prev === sess.id ? null : sess.id,
+                            )
+                          }
+                        />
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -757,17 +761,21 @@ export default function SessionsPage() {
                     statusLabel="Idle sessions"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {idle.map((s) => (
-                      <EnhancedSessionCard
+                    {idle.map((s, idx) => (
+                      <div
                         key={s.id}
-                        session={s}
-                        selected={selectedId === s.id}
-                        onSelect={(sess) =>
-                          setSelectedId((prev) =>
-                            prev === sess.id ? null : sess.id,
-                          )
-                        }
-                      />
+                        className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                      >
+                        <EnhancedSessionCard
+                          session={s}
+                          selected={selectedId === s.id}
+                          onSelect={(sess) =>
+                            setSelectedId((prev) =>
+                              prev === sess.id ? null : sess.id,
+                            )
+                          }
+                        />
+                      </div>
                     ))}
                   </div>
                 </section>
@@ -783,17 +791,21 @@ export default function SessionsPage() {
                     statusLabel="Completed sessions"
                   />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {completed.map((s) => (
-                      <EnhancedSessionCard
+                    {completed.map((s, idx) => (
+                      <div
                         key={s.id}
-                        session={s}
-                        selected={selectedId === s.id}
-                        onSelect={(sess) =>
-                          setSelectedId((prev) =>
-                            prev === sess.id ? null : sess.id,
-                          )
-                        }
-                      />
+                        className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                      >
+                        <EnhancedSessionCard
+                          session={s}
+                          selected={selectedId === s.id}
+                          onSelect={(sess) =>
+                            setSelectedId((prev) =>
+                              prev === sess.id ? null : sess.id,
+                            )
+                          }
+                        />
+                      </div>
                     ))}
                   </div>
                 </section>

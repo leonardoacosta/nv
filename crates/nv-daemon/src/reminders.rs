@@ -15,7 +15,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Datelike, Duration as ChronoDuration, NaiveDate, NaiveDateTime, NaiveTime, Utc, Weekday};
 use nv_core::channel::Channel;
-use nv_core::types::OutboundMessage;
+use nv_core::types::{InlineKeyboard, OutboundMessage};
 use rusqlite::{params, Connection};
 use rusqlite_migration::{Migrations, M};
 use tracing::{error, info, warn};
@@ -264,6 +264,8 @@ pub struct Reminder {
     pub created_at: String,
     pub delivered_at: Option<String>,
     pub cancelled: bool,
+    /// Optional obligation this reminder is linked to (for Mark Done / Backlog callbacks).
+    pub obligation_id: Option<String>,
 }
 
 /// Versioned migrations for reminders.db (schedules.db also uses reminders).
@@ -287,6 +289,7 @@ fn reminders_migrations() -> Migrations<'static> {
 
             CREATE INDEX IF NOT EXISTS idx_reminders_active ON reminders(cancelled, delivered_at);",
         ),
+        M::up("ALTER TABLE reminders ADD COLUMN obligation_id TEXT;"),
     ])
 }
 
@@ -348,28 +351,55 @@ impl ReminderStore {
     }
 
     /// Insert a new reminder and return its auto-increment ID.
+    ///
+    /// `obligation_id` is optional. Pass `None` for reminders not linked to an obligation.
     pub fn create_reminder(
         &self,
         message: &str,
         due_at: &DateTime<Utc>,
         channel: &str,
+        obligation_id: Option<&str>,
     ) -> Result<i64> {
         let due_str = due_at.to_rfc3339();
         let now = Utc::now().to_rfc3339();
 
         self.conn.execute(
-            "INSERT INTO reminders (message, due_at, channel, created_at)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![message, due_str, channel, now],
+            "INSERT INTO reminders (message, due_at, channel, created_at, obligation_id)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![message, due_str, channel, now, obligation_id],
         )?;
 
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Look up a single reminder by ID. Returns `None` if not found.
+    pub fn get_reminder(&self, id: i64) -> Result<Option<Reminder>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, message, due_at, channel, created_at, delivered_at, cancelled, obligation_id
+             FROM reminders
+             WHERE id = ?1",
+        )?;
+
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(Reminder {
+                id: row.get(0)?,
+                message: row.get(1)?,
+                due_at: row.get(2)?,
+                channel: row.get(3)?,
+                created_at: row.get(4)?,
+                delivered_at: row.get(5)?,
+                cancelled: row.get::<_, i64>(6)? != 0,
+                obligation_id: row.get(7)?,
+            })
+        })?;
+
+        Ok(rows.next().transpose()?)
+    }
+
     /// Return all active (not cancelled, not delivered) reminders ordered by due_at.
     pub fn list_active_reminders(&self) -> Result<Vec<Reminder>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, message, due_at, channel, created_at, delivered_at, cancelled
+            "SELECT id, message, due_at, channel, created_at, delivered_at, cancelled, obligation_id
              FROM reminders
              WHERE cancelled = 0 AND delivered_at IS NULL
              ORDER BY due_at ASC",
@@ -384,6 +414,7 @@ impl ReminderStore {
                 created_at: row.get(4)?,
                 delivered_at: row.get(5)?,
                 cancelled: row.get::<_, i64>(6)? != 0,
+                obligation_id: row.get(7)?,
             })
         })?;
 
@@ -405,7 +436,7 @@ impl ReminderStore {
         let now = Utc::now().to_rfc3339();
 
         let mut stmt = self.conn.prepare(
-            "SELECT id, message, due_at, channel, created_at, delivered_at, cancelled
+            "SELECT id, message, due_at, channel, created_at, delivered_at, cancelled, obligation_id
              FROM reminders
              WHERE due_at <= ?1
                AND cancelled = 0
@@ -422,6 +453,7 @@ impl ReminderStore {
                 created_at: row.get(4)?,
                 delivered_at: row.get(5)?,
                 cancelled: row.get::<_, i64>(6)? != 0,
+                obligation_id: row.get(7)?,
             })
         })?;
 
@@ -494,7 +526,7 @@ pub fn spawn_reminder_scheduler(
                     channel: reminder.channel.clone(),
                     content: text,
                     reply_to: None,
-                    keyboard: None,
+                    keyboard: Some(InlineKeyboard::reminder_actions(reminder.id)),
                 };
 
                 match channel.send_message(msg).await {
@@ -637,8 +669,8 @@ mod tests {
 
         // Create
         let due = Utc::now() + ChronoDuration::hours(1);
-        let id1 = store.create_reminder("check deploy", &due, "telegram").unwrap();
-        let id2 = store.create_reminder("meeting prep", &due, "discord").unwrap();
+        let id1 = store.create_reminder("check deploy", &due, "telegram", None).unwrap();
+        let id2 = store.create_reminder("meeting prep", &due, "discord", None).unwrap();
         assert!(id2 > id1);
 
         // List active
@@ -660,6 +692,34 @@ mod tests {
     }
 
     #[test]
+    fn create_reminder_with_obligation_id_round_trips() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let db_path = dir.path().join("test.db");
+        let store = ReminderStore::new(&db_path).unwrap();
+
+        let due = Utc::now() + ChronoDuration::hours(2);
+        let id = store
+            .create_reminder("linked reminder", &due, "telegram", Some("obl-abc-123"))
+            .unwrap();
+
+        let active = store.list_active_reminders().unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, id);
+        assert_eq!(active[0].obligation_id.as_deref(), Some("obl-abc-123"));
+
+        // get_reminder also round-trips
+        let fetched = store.get_reminder(id).unwrap().expect("should find reminder");
+        assert_eq!(fetched.obligation_id.as_deref(), Some("obl-abc-123"));
+
+        // Without obligation_id, the field is None
+        let id2 = store
+            .create_reminder("no-link reminder", &due, "telegram", None)
+            .unwrap();
+        let fetched2 = store.get_reminder(id2).unwrap().expect("should find reminder 2");
+        assert!(fetched2.obligation_id.is_none());
+    }
+
+    #[test]
     fn get_due_reminders_filters_by_time() {
         let dir = tempfile::TempDir::new().unwrap();
         let db_path = dir.path().join("test.db");
@@ -667,11 +727,11 @@ mod tests {
 
         // Past (due)
         let past = Utc::now() - ChronoDuration::minutes(5);
-        let id_past = store.create_reminder("past", &past, "telegram").unwrap();
+        let id_past = store.create_reminder("past", &past, "telegram", None).unwrap();
 
         // Future (not due)
         let future = Utc::now() + ChronoDuration::hours(2);
-        let _id_future = store.create_reminder("future", &future, "telegram").unwrap();
+        let _id_future = store.create_reminder("future", &future, "telegram", None).unwrap();
 
         let due = store.get_due_reminders().unwrap();
         assert_eq!(due.len(), 1);
@@ -687,7 +747,7 @@ mod tests {
 
         // Verify the store is functional
         let due = Utc::now() + ChronoDuration::hours(1);
-        let id = store.create_reminder("test", &due, "telegram").unwrap();
+        let id = store.create_reminder("test", &due, "telegram", None).unwrap();
         assert!(id > 0);
     }
 
@@ -710,28 +770,28 @@ mod tests {
 
         // Verify schema is functional (the recreated DB should accept inserts).
         let due = Utc::now() + ChronoDuration::hours(1);
-        let id = store.create_reminder("post-recovery reminder", &due, "telegram").unwrap();
+        let id = store.create_reminder("post-recovery reminder", &due, "telegram", None).unwrap();
         assert!(id > 0);
 
-        // Verify user_version was reset to 1 (one migration).
+        // Verify user_version was reset to 2 (two migrations: initial schema + obligation_id).
         let version: i64 = store
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1, "user_version should be 1 after recreation");
+        assert_eq!(version, 2, "user_version should be 2 after recreation");
     }
 
     #[test]
     fn migrations_set_user_version() {
         // Run migrations against an in-memory database and verify that
-        // rusqlite_migration set PRAGMA user_version = 1 (one migration version).
+        // rusqlite_migration set PRAGMA user_version = 2 (two migration versions).
         let mut conn = rusqlite::Connection::open_in_memory().unwrap();
         reminders_migrations().to_latest(&mut conn).unwrap();
 
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1, "user_version should be 1 after v1 migration");
+        assert_eq!(version, 2, "user_version should be 2 after v1+v2 migrations");
 
         // Verify the reminders table and its indexes exist.
         let table_exists: i64 = conn

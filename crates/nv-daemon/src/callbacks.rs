@@ -470,7 +470,7 @@ pub async fn handle_ob_expiry(
                 if let Ok(due_at) = parse_relative_time("24h", timezone) {
                     if let Ok(store) = store_lock.lock() {
                         let message = format!("Obligation still open: {}", ob.detected_action);
-                        let _ = store.create_reminder(&message, &due_at, "telegram");
+                        let _ = store.create_reminder(&message, &due_at, "telegram", None);
                     }
                 }
             }
@@ -511,7 +511,7 @@ pub async fn handle_ob_snooze(
             .lock()
             .map_err(|_| anyhow::anyhow!("reminder store mutex poisoned"))?;
         let message = format!("Obligation: {detected_action}");
-        store.create_reminder(&message, &due_at, "telegram")?;
+        store.create_reminder(&message, &due_at, "telegram", None)?;
     }
 
     if let Some(msg_id) = original_message_id {

@@ -230,6 +230,30 @@ async fn main() -> anyhow::Result<()> {
     ));
     tracing::info!("message store initialized");
 
+    // Initialize obligation store (shares messages.db — migration run by MessageStore above)
+    let obligation_store = match obligation_store::ObligationStore::new(&nv_base.join("messages.db")) {
+        Ok(store) => {
+            tracing::info!("obligation store initialized");
+            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to initialize obligation store — obligation tools disabled");
+            None
+        }
+    };
+
+    // Initialize reminder store (shares messages.db path)
+    let reminder_store = match reminders::ReminderStore::new(&nv_base.join("messages.db")) {
+        Ok(store) => {
+            tracing::info!("reminder store initialized");
+            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to initialize reminder store — reminder tools disabled");
+            None
+        }
+    };
+
     // Background: refresh account info cache (non-blocking)
     tokio::spawn(async {
         match account::query_account_info().await {
@@ -300,9 +324,20 @@ async fn main() -> anyhow::Result<()> {
         // Create a separate sender for the poll loop (bounded for backpressure on poll side)
         let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
 
+        let tg_timezone = config
+            .daemon
+            .as_ref()
+            .map(|d| d.timezone.clone())
+            .unwrap_or_else(|| "America/Chicago".to_string());
+
         let mut tg_channel =
             TelegramChannel::new(bot_token, tg_config.chat_id, poll_tx)
-                .with_authorized_user_id(tg_config.authorized_user_id);
+                .with_authorized_user_id(tg_config.authorized_user_id)
+                .with_reminder_stores(
+                    reminder_store.clone(),
+                    obligation_store.clone(),
+                    tg_timezone,
+                );
 
         // Validate bot token at startup
         use nv_core::channel::Channel;
@@ -678,30 +713,6 @@ async fn main() -> anyhow::Result<()> {
         }
         Err(e) => {
             tracing::warn!(error = %e, "failed to initialize cold-start store — cold-start logging disabled");
-            None
-        }
-    };
-
-    // Initialize obligation store (shares messages.db — migration already run by MessageStore)
-    let obligation_store = match obligation_store::ObligationStore::new(&nv_base.join("messages.db")) {
-        Ok(store) => {
-            tracing::info!("obligation store initialized");
-            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to initialize obligation store — obligation tools disabled");
-            None
-        }
-    };
-
-    // Initialize reminder store (shares messages.db path)
-    let reminder_store = match reminders::ReminderStore::new(&nv_base.join("messages.db")) {
-        Ok(store) => {
-            tracing::info!("reminder store initialized");
-            Some(std::sync::Arc::new(std::sync::Mutex::new(store)))
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "failed to initialize reminder store — reminder tools disabled");
             None
         }
     };

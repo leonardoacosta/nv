@@ -1437,7 +1437,7 @@ fn set_reminder_impl(
         .unwrap_or(trigger_channel);
 
     let due_at = reminders::parse_relative_time(due_at_str, timezone)?;
-    let id = store.create_reminder(message, &due_at, channel)?;
+    let id = store.create_reminder(message, &due_at, channel, None)?;
 
     let due_display = due_at.format("%Y-%m-%d %H:%M UTC").to_string();
     Ok(ToolResult::Immediate(format!(

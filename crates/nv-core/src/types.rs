@@ -77,6 +77,28 @@ impl InlineKeyboard {
         }
     }
 
+    /// Reminder action keyboard attached to fired reminder notifications.
+    ///
+    /// Layout: `[Mark Done | Snooze | Backlog]`
+    pub fn reminder_actions(reminder_id: i64) -> Self {
+        Self {
+            rows: vec![vec![
+                InlineButton {
+                    text: "Mark Done".to_string(),
+                    callback_data: format!("reminder_done:{reminder_id}"),
+                },
+                InlineButton {
+                    text: "Snooze".to_string(),
+                    callback_data: format!("reminder_snooze:{reminder_id}"),
+                },
+                InlineButton {
+                    text: "Backlog".to_string(),
+                    callback_data: format!("reminder_backlog:{reminder_id}"),
+                },
+            ]],
+        }
+    }
+
     /// Build a keyboard from pending actions -- one button per action.
     pub fn from_actions(actions: &[PendingAction]) -> Self {
         Self {
@@ -473,6 +495,22 @@ mod tests {
         assert_eq!(restored.id, action.id);
         assert_eq!(restored.status, ActionStatus::Pending);
         assert_eq!(restored.description, "Create JIRA ticket");
+    }
+
+    #[test]
+    fn reminder_actions_keyboard_layout() {
+        let kb = InlineKeyboard::reminder_actions(42);
+        assert_eq!(kb.rows.len(), 1);
+        assert_eq!(kb.rows[0].len(), 3);
+
+        assert_eq!(kb.rows[0][0].text, "Mark Done");
+        assert_eq!(kb.rows[0][0].callback_data, "reminder_done:42");
+
+        assert_eq!(kb.rows[0][1].text, "Snooze");
+        assert_eq!(kb.rows[0][1].callback_data, "reminder_snooze:42");
+
+        assert_eq!(kb.rows[0][2].text, "Backlog");
+        assert_eq!(kb.rows[0][2].callback_data, "reminder_backlog:42");
     }
 
     #[test]

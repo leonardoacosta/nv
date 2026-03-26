@@ -1,8 +1,9 @@
+pub mod callbacks;
 pub mod client;
 pub mod types;
 
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -11,6 +12,8 @@ use nv_core::types::{InboundMessage, OutboundMessage, Trigger};
 use tokio::sync::mpsc;
 
 use self::client::TelegramClient;
+use crate::obligation_store::ObligationStore;
+use crate::reminders::ReminderStore;
 
 /// Telegram Bot API channel adapter.
 ///
@@ -26,6 +29,12 @@ pub struct TelegramChannel {
     pub authorized_user_id: Option<i64>,
     trigger_tx: mpsc::Sender<Trigger>,
     offset: Arc<AtomicI64>,
+    /// Optional reminder store for in-process reminder callback handling.
+    pub reminder_store: Option<Arc<Mutex<ReminderStore>>>,
+    /// Optional obligation store for Mark Done / Backlog callbacks.
+    pub obligation_store: Option<Arc<Mutex<ObligationStore>>>,
+    /// Daemon timezone (for snooze "tomorrow" calculations).
+    pub timezone: String,
 }
 
 impl TelegramChannel {
@@ -41,12 +50,28 @@ impl TelegramChannel {
             authorized_user_id: None,
             trigger_tx,
             offset: Arc::new(AtomicI64::new(0)),
+            reminder_store: None,
+            obligation_store: None,
+            timezone: "UTC".to_string(),
         }
     }
 
     /// Set the authorized user ID for inline query filtering (builder pattern).
     pub fn with_authorized_user_id(mut self, user_id: Option<i64>) -> Self {
         self.authorized_user_id = user_id;
+        self
+    }
+
+    /// Attach optional stores for in-process reminder callback handling (builder pattern).
+    pub fn with_reminder_stores(
+        mut self,
+        reminder_store: Option<Arc<Mutex<ReminderStore>>>,
+        obligation_store: Option<Arc<Mutex<ObligationStore>>>,
+        timezone: String,
+    ) -> Self {
+        self.reminder_store = reminder_store;
+        self.obligation_store = obligation_store;
+        self.timezone = timezone;
         self
     }
 }
@@ -133,13 +158,40 @@ impl Channel for TelegramChannel {
             }
         }
 
-        // Answer callback queries for authorized updates.
+        // Answer callback queries for authorized updates, and handle reminder_ callbacks in-process.
         for update in &updates {
             if update.chat_id() == Some(self.chat_id) {
                 if let Some(cb) = &update.callback_query {
                     let label = callback_label(cb.data.as_deref());
                     if let Err(e) = self.client.answer_callback_query(&cb.id, Some(label)).await {
                         tracing::warn!("Failed to answer callback query: {e}");
+                    }
+
+                    // Reminder callbacks are handled in-process — no agent round-trip needed.
+                    if let Some(data) = &cb.data {
+                        if data.starts_with("reminder_") {
+                            if let Err(e) = callbacks::handle_reminder_callback(
+                                data,
+                                &self.reminder_store,
+                                &self.obligation_store,
+                                &self.client,
+                                self.chat_id,
+                                &self.timezone,
+                            )
+                            .await
+                            {
+                                tracing::warn!(error = %e, "reminder callback handler failed");
+                            }
+                            // Remove any InboundMessage representation of this callback from
+                            // the messages vec so it is not dispatched to the agent loop.
+                            messages.retain(|m| {
+                                m.metadata
+                                    .get("callback_data")
+                                    .and_then(|v| v.as_str())
+                                    .map(|d| d != data.as_str())
+                                    .unwrap_or(true)
+                            });
+                        }
                     }
                 }
             }
@@ -586,6 +638,18 @@ pub fn callback_label(data: Option<&str>) -> &'static str {
         "Extended."
     } else if data.starts_with("ob_snooze:") {
         "Snoozed."
+    } else if data.starts_with("reminder_done:") {
+        "Done. Closed."
+    } else if data.starts_with("reminder_snooze_1h:") {
+        "Snoozed 1 hour."
+    } else if data.starts_with("reminder_snooze_4h:") {
+        "Snoozed 4 hours."
+    } else if data.starts_with("reminder_snooze_tomorrow:") {
+        "Snoozed until tomorrow."
+    } else if data.starts_with("reminder_snooze:") {
+        "Choose snooze time..."
+    } else if data.starts_with("reminder_backlog:") {
+        "Moved to backlog."
     } else {
         "Got it."
     }
@@ -694,6 +758,13 @@ mod tests {
         assert_eq!(callback_label(Some("ob_snooze:ob-abc-123:1h")), "Snoozed.");
         assert_eq!(callback_label(Some("ob_snooze:ob-abc-123:4h")), "Snoozed.");
         assert_eq!(callback_label(Some("ob_snooze:ob-abc-123:tomorrow")), "Snoozed.");
+        // Reminder action prefixes
+        assert_eq!(callback_label(Some("reminder_done:42")), "Done. Closed.");
+        assert_eq!(callback_label(Some("reminder_snooze:42")), "Choose snooze time...");
+        assert_eq!(callback_label(Some("reminder_snooze_1h:42")), "Snoozed 1 hour.");
+        assert_eq!(callback_label(Some("reminder_snooze_4h:42")), "Snoozed 4 hours.");
+        assert_eq!(callback_label(Some("reminder_snooze_tomorrow:42")), "Snoozed until tomorrow.");
+        assert_eq!(callback_label(Some("reminder_backlog:42")), "Moved to backlog.");
     }
 
     /// Integration test against real Telegram Bot API.

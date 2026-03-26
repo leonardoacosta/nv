@@ -504,7 +504,7 @@
       "specs": [
         {
           "name": "add-proactive-watcher",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -513,12 +513,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T13:12:25.892271",
+          "merged_at": "2026-03-26T13:21:28.814795"
         },
         {
           "name": "add-memory-system",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -527,8 +527,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T13:12:25.892277",
+          "merged_at": "2026-03-26T13:21:28.814802"
         }
       ]
     },
@@ -586,7 +586,7 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 7,
+  "current_wave": 8,
   "started_at": "2026-03-26T12:21:27.410133",
   "completed_at": null,
   "completed_waves": [
@@ -595,7 +595,8 @@
     3,
     4,
     5,
-    6
+    6,
+    7
   ],
   "completed_specs": [
     "scaffold-ts-daemon",
@@ -610,7 +611,9 @@
     "add-ado-cli",
     "add-tool-documentation",
     "add-obligation-system",
-    "add-diary-system"
+    "add-diary-system",
+    "add-proactive-watcher",
+    "add-memory-system"
   ],
   "failed_specs": [],
   "mode": "consolidated",

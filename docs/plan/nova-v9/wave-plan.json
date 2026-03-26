@@ -436,7 +436,7 @@
       "specs": [
         {
           "name": "add-ado-cli",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -445,12 +445,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:57:34.637972",
+          "merged_at": "2026-03-26T13:01:26.141027"
         },
         {
           "name": "add-tool-documentation",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -459,8 +459,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:57:34.637978",
+          "merged_at": "2026-03-26T13:01:26.141035"
         }
       ]
     },
@@ -586,14 +586,15 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 5,
+  "current_wave": 6,
   "started_at": "2026-03-26T12:21:27.410133",
   "completed_at": null,
   "completed_waves": [
     1,
     2,
     3,
-    4
+    4,
+    5
   ],
   "completed_specs": [
     "scaffold-ts-daemon",
@@ -604,7 +605,9 @@
     "add-systemd-service",
     "add-teams-cli",
     "add-outlook-cli",
-    "add-discord-cli"
+    "add-discord-cli",
+    "add-ado-cli",
+    "add-tool-documentation"
   ],
   "failed_specs": [],
   "mode": "consolidated",

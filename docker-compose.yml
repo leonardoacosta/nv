@@ -16,7 +16,7 @@ services:
       - "traefik.http.routers.nova-dashboard.entrypoints=websecure"
       - "traefik.http.routers.nova-dashboard.tls=true"
       - "traefik.http.routers.nova-dashboard.tls.certresolver=cloudflare"
-      - "traefik.http.routers.nova-dashboard.middlewares=homelab-admin@file"
+      - "traefik.http.routers.nova-dashboard.middlewares=homelab-webapp@file"
       - "traefik.http.services.nova-dashboard.loadbalancer.server.port=3000"
     networks:
       - homelab

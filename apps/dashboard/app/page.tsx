@@ -14,6 +14,7 @@ import {
   Activity,
   ArrowRight,
   Timer,
+  WifiOff,
 } from "lucide-react";
 import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
@@ -25,7 +26,10 @@ import SessionWidget from "@/components/SessionWidget";
 import ActiveSession, {
   type ActiveSessionData,
 } from "@/components/ActiveSession";
-import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
+import {
+  useDaemonEvents,
+  useDaemonStatus,
+} from "@/components/providers/DaemonEventContext";
 import type {
   ObligationsGetResponse,
   ProjectsGetResponse,
@@ -121,6 +125,22 @@ function memVariant(used: number, total: number): StatCardVariant {
   if (pct >= 0.9) return "error";
   if (pct >= 0.8) return "warning";
   return "success";
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Good morning";
+  if (hour >= 12 && hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatSecondsAgo(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 5) return "just now";
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  return `${Math.floor(minutes / 60)}h ago`;
 }
 
 // ---------------------------------------------------------------------------
@@ -258,8 +278,15 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [briefingSummary, setBriefingSummary] = useState<string | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<number>(Date.now);
+  const [, setTick] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activityIdRef = useRef(0);
+
+  // Daemon connection status for offline overlay
+  const daemonStatus = useDaemonStatus();
+  const isDisconnected = daemonStatus !== "connected";
 
   // 2. WebSocket subscription — prepend events to activity feed (capped at 10)
   useDaemonEvents(
@@ -368,6 +395,9 @@ export default function DashboardPage() {
         cost_today_usd: 0,
       });
 
+      // Mark last-fetched timestamp for "Updated Xs ago"
+      setLastFetchedAt(Date.now());
+
       // Seed activity from sessions on first load if feed is empty
       setActivityFeed((prev) => {
         if (prev.length > 0) return prev;
@@ -401,6 +431,31 @@ export default function DashboardPage() {
     };
   }, [autoRefresh, fetchData]);
 
+  // 4b. Fire-and-forget briefing fetch (never blocks render)
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    fetch("/api/briefing", { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { summary?: string } | null) => {
+        if (data?.summary) setBriefingSummary(data.summary);
+      })
+      .catch(() => {
+        // Silently ignore — greeting shows without summary
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, []);
+
+  // 4c. 1-second tick to keep "Updated Xs ago" current
+  useEffect(() => {
+    const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(tickInterval);
+  }, []);
+
   // 5. Derived
   const topSessions = sessions.slice(0, 5);
   const hVariant = healthVariant(health?.status);
@@ -412,17 +467,37 @@ export default function DashboardPage() {
   const activeSessions = sessions.filter((s) => s.status === "active");
   const isRefreshing = loading;
 
-  // 6. Header action — refresh toggle
+  // 6. Derived: greeting and last-updated display
+  const greeting = getGreeting();
+  const todayDate = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+  const updatedAgo = formatSecondsAgo(Date.now() - lastFetchedAt);
+  const lastFetchedIso = new Date(lastFetchedAt).toISOString();
+
+  // 7. Header action — refresh toggle + last-updated timestamp
   const headerAction = (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
+      <span
+        className="text-xs text-ds-gray-900 tabular-nums"
+        title={lastFetchedIso}
+        suppressHydrationWarning
+      >
+        Updated {updatedAgo}
+      </span>
       <button
         type="button"
         onClick={() => setAutoRefresh((v) => !v)}
+        disabled={isDisconnected}
         className={[
           "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-          autoRefresh
-            ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/40 hover:bg-ds-gray-700/30"
-            : "text-ds-gray-900 border-ds-gray-400 hover:border-ds-gray-500 hover:text-ds-gray-1000",
+          isDisconnected
+            ? "opacity-50 cursor-not-allowed text-ds-gray-900 border-ds-gray-400"
+            : autoRefresh
+              ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/40 hover:bg-ds-gray-700/30"
+              : "text-ds-gray-900 border-ds-gray-400 hover:border-ds-gray-500 hover:text-ds-gray-1000",
         ].join(" ")}
         aria-label={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
       >
@@ -432,7 +507,7 @@ export default function DashboardPage() {
       <button
         type="button"
         onClick={() => void fetchData()}
-        disabled={isRefreshing}
+        disabled={isRefreshing || isDisconnected}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
@@ -443,8 +518,8 @@ export default function DashboardPage() {
 
   return (
     <PageShell
-      title="Dashboard"
-      subtitle="Nova activity overview"
+      title={`${greeting}, Leo`}
+      subtitle={briefingSummary ? `${todayDate} — ${briefingSummary}` : todayDate}
       action={headerAction}
     >
       <div className="space-y-6 animate-fade-in-up">
@@ -456,73 +531,128 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Stat cards — 3 columns on desktop */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 section-stagger-1">
+        {/* Stat cards — grouped into Operational + Performance rows */}
+        <div className={`space-y-4 section-stagger-1 transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
           {loading ? (
-            Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-              />
-            ))
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+                />
+              ))}
+            </div>
           ) : (
             <>
-              <div className="animate-fade-in-up stagger-1">
-                <StatCard
-                  icon={<CheckSquare size={16} />}
-                  label="Obligations"
-                  value={summary?.obligations_count ?? 0}
-                />
+              {/* Operational row */}
+              <div>
+                <p className="text-label-12 text-ds-gray-900 mb-2 uppercase tracking-wider">
+                  Operational
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="relative animate-fade-in-up stagger-1">
+                    <StatCard
+                      icon={<CheckSquare size={16} />}
+                      label="Obligations"
+                      value={summary?.obligations_count ?? 0}
+                    />
+                    {isDisconnected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
+                        <WifiOff size={10} aria-hidden="true" />
+                        Offline
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative animate-fade-in-up stagger-2">
+                    <StatCard
+                      icon={<Layers size={16} />}
+                      label="Active"
+                      value={summary?.active_sessions ?? 0}
+                      variant="success"
+                    />
+                    {isDisconnected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
+                        <WifiOff size={10} aria-hidden="true" />
+                        Offline
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative animate-fade-in-up stagger-3">
+                    <StatCard
+                      icon={<Heart size={16} />}
+                      label="Health"
+                      value={health?.status ?? "—"}
+                      variant={hVariant}
+                    />
+                    {isDisconnected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
+                        <WifiOff size={10} aria-hidden="true" />
+                        Offline
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="animate-fade-in-up stagger-2">
-                <StatCard
-                  icon={<Layers size={16} />}
-                  label="Active"
-                  value={summary?.active_sessions ?? 0}
-                  variant="success"
-                />
-              </div>
-              <div className="animate-fade-in-up stagger-3">
-                <StatCard
-                  icon={<TrendingUp size={16} />}
-                  label="Projects"
-                  value={summary?.projects_count ?? 0}
-                />
-              </div>
-              <div className="animate-fade-in-up stagger-4">
-                <StatCard
-                  icon={<Heart size={16} />}
-                  label="Health"
-                  value={health?.status ?? "—"}
-                  variant={hVariant}
-                />
-              </div>
-              <div className="animate-fade-in-up stagger-5">
-                <StatCard
-                  icon={<Cpu size={16} />}
-                  label="CPU"
-                  value={
-                    health ? `${health.cpu_percent.toFixed(1)}%` : "—"
-                  }
-                  variant={cVariant}
-                />
-              </div>
-              <div className="animate-fade-in-up stagger-6">
-                <StatCard
-                  icon={<MemoryStick size={16} />}
-                  label="Memory"
-                  value={
-                    health && health.memory_total_mb > 0
-                      ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
-                      : "—"
-                  }
-                  variant={mVariant}
-                  sublabel={
-                    health?.uptime_seconds
-                      ? `up ${formatUptime(health.uptime_seconds)}`
-                      : undefined
-                  }
-                />
+
+              {/* Performance row */}
+              <div>
+                <p className="text-label-12 text-ds-gray-900 mb-2 uppercase tracking-wider">
+                  Performance
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="relative animate-fade-in-up stagger-4">
+                    <StatCard
+                      icon={<TrendingUp size={16} />}
+                      label="Projects"
+                      value={summary?.projects_count ?? 0}
+                    />
+                    {isDisconnected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
+                        <WifiOff size={10} aria-hidden="true" />
+                        Offline
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative animate-fade-in-up stagger-5">
+                    <StatCard
+                      icon={<Cpu size={16} />}
+                      label="CPU"
+                      value={
+                        health ? `${health.cpu_percent.toFixed(1)}%` : "—"
+                      }
+                      variant={cVariant}
+                    />
+                    {isDisconnected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
+                        <WifiOff size={10} aria-hidden="true" />
+                        Offline
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative animate-fade-in-up stagger-6">
+                    <StatCard
+                      icon={<MemoryStick size={16} />}
+                      label="Memory"
+                      value={
+                        health && health.memory_total_mb > 0
+                          ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
+                          : "—"
+                      }
+                      variant={mVariant}
+                      sublabel={
+                        health?.uptime_seconds
+                          ? `up ${formatUptime(health.uptime_seconds)}`
+                          : undefined
+                      }
+                    />
+                    {isDisconnected && (
+                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
+                        <WifiOff size={10} aria-hidden="true" />
+                        Offline
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </>
           )}

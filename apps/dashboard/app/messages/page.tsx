@@ -12,6 +12,8 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   MessageSquare,
   Terminal,
   ArrowUpRight,
@@ -24,6 +26,7 @@ import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
+import { channelAccentColor } from "@/lib/channel-colors";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
 
 // ---------------------------------------------------------------------------
@@ -91,6 +94,68 @@ function isInRange(iso: string, range: DateRange): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Time Grouping
+// ---------------------------------------------------------------------------
+
+interface MessageGroup {
+  label: string;
+  messages: StoredMessage[];
+}
+
+function hourKey(iso: string): string {
+  const d = new Date(iso);
+  d.setMinutes(0, 0, 0);
+  return d.toISOString();
+}
+
+function formatGroupLabel(isoHourKey: string): string {
+  const d = new Date(isoHourKey);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+
+  const datePrefix = isToday
+    ? "Today"
+    : isYesterday
+      ? "Yesterday"
+      : d.toLocaleDateString([], { month: "short", day: "numeric" });
+
+  const hourStart = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const end = new Date(d);
+  end.setHours(end.getHours() + 1);
+  const hourEnd = end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return `${datePrefix}, ${hourStart} \u2013 ${hourEnd}`;
+}
+
+function groupMessagesByHour(messages: StoredMessage[]): MessageGroup[] {
+  const groups: MessageGroup[] = [];
+  let currentKey = "";
+  let currentGroup: MessageGroup | null = null;
+
+  for (const msg of messages) {
+    const key = hourKey(msg.timestamp);
+    if (key !== currentKey) {
+      currentKey = key;
+      currentGroup = { label: formatGroupLabel(key), messages: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup!.messages.push(msg);
+  }
+
+  return groups;
+}
+
+// ---------------------------------------------------------------------------
 // Message Row (collapsed + expanded inline)
 // ---------------------------------------------------------------------------
 
@@ -101,13 +166,21 @@ interface MessageRowProps {
 }
 
 function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
+  const [contentExpanded, setContentExpanded] = useState(false);
   const isInbound = msg.direction === "inbound";
   const channelKey = msg.channel.toLowerCase();
   const cColor = channelColor(channelKey);
   const cIcon = channelIcon(channelKey);
+  const accent = channelAccentColor(channelKey);
+
+  // Consider "long" if content exceeds ~180 chars (roughly 3 lines)
+  const isLongContent = msg.content.length > 180;
 
   return (
-    <li className="border-b border-ds-gray-400 last:border-0">
+    <li
+      className="border-b border-ds-gray-400 last:border-0"
+      style={{ borderLeft: `3px solid ${accent}` }}
+    >
       {/* Collapsed row */}
       <button
         type="button"
@@ -126,16 +199,17 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
         {/* Channel icon */}
         <div className={`shrink-0 ${cColor}`}>{cIcon}</div>
 
-        {/* Channel badge */}
+        {/* Channel badge with accent tint */}
         <span
-          className={`shrink-0 text-[11px] font-mono font-medium ${cColor} hidden sm:inline`}
+          className="shrink-0 text-[11px] font-mono font-medium rounded px-1.5 py-0.5 hidden sm:inline"
+          style={{ color: accent, backgroundColor: `${accent}15` }}
         >
           {msg.channel}
         </span>
 
         {/* Sender */}
         <span className="shrink-0 text-xs text-ds-gray-1000 font-medium min-w-[80px] truncate hidden md:inline">
-          {msg.sender || "—"}
+          {msg.sender || "\u2014"}
         </span>
 
         {/* Preview */}
@@ -160,8 +234,39 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
         </span>
       </button>
 
-      {/* Expanded inline content */}
-      {expanded && (
+      {/* Inline content expand/collapse (independent of metadata expand) */}
+      {isLongContent && !expanded && (
+        <div className="px-4 pb-2">
+          <div
+            className="overflow-hidden transition-[max-height] duration-200 ease-out"
+            style={{ maxHeight: contentExpanded ? "2000px" : "0px" }}
+          >
+            <pre className="text-xs text-ds-gray-1000 whitespace-pre-wrap break-words font-mono py-1">
+              {msg.content}
+            </pre>
+          </div>
+          <button
+            type="button"
+            onClick={() => setContentExpanded((prev) => !prev)}
+            className="flex items-center gap-1 text-[11px] text-ds-gray-900 hover:text-ds-gray-1000 transition-colors mt-1"
+          >
+            {contentExpanded ? (
+              <>
+                <ChevronUp size={11} />
+                Show less
+              </>
+            ) : (
+              <>
+                <ChevronDown size={11} />
+                Show more
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Expanded inline content (full metadata panel) */}
+      <div className={`height-reveal ${expanded ? "open" : ""}`}>
         <div className="px-4 pb-4 pt-1 space-y-4 bg-ds-gray-100/30">
           {/* Full content */}
           <section className="space-y-1.5">
@@ -196,7 +301,7 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
                 Sender
               </p>
               <p className="text-xs font-medium text-ds-gray-1000">
-                {msg.sender || "—"}
+                {msg.sender || "\u2014"}
               </p>
             </div>
             <div className="space-y-0.5">
@@ -239,7 +344,7 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
             )}
           </div>
         </div>
-      )}
+      </div>
     </li>
   );
 }
@@ -417,36 +522,49 @@ export default function MessagesPage() {
 
           {/* Filter chips row */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Channel filter */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400">
+            {/* Channel filter pills */}
+            <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
                 onClick={() => setChannelFilter("all")}
                 className={[
-                  "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
+                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
                   channelFilter === "all"
-                    ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
-                    : "text-ds-gray-900 hover:text-ds-gray-1000",
+                    ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-500"
+                    : "text-ds-gray-900 hover:text-ds-gray-1000 border-ds-gray-400 hover:border-ds-gray-500",
                 ].join(" ")}
               >
                 All channels
               </button>
-              {channels.map((ch) => (
-                <button
-                  key={ch}
-                  type="button"
-                  onClick={() => setChannelFilter(ch)}
-                  className={[
-                    "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors capitalize",
-                    channelFilter === ch
-                      ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
-                      : "text-ds-gray-900 hover:text-ds-gray-1000",
-                  ].join(" ")}
-                >
-                  {channelIcon(ch)}
-                  {ch}
-                </button>
-              ))}
+              {channels.map((ch) => {
+                const pillAccent = channelAccentColor(ch);
+                const isActive = channelFilter === ch;
+                return (
+                  <button
+                    key={ch}
+                    type="button"
+                    onClick={() => setChannelFilter(ch)}
+                    className={[
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors capitalize",
+                      isActive
+                        ? "text-ds-gray-1000"
+                        : "text-ds-gray-900 hover:text-ds-gray-1000 border-ds-gray-400 hover:border-ds-gray-500",
+                    ].join(" ")}
+                    style={
+                      isActive
+                        ? {
+                            borderColor: pillAccent,
+                            backgroundColor: `${pillAccent}15`,
+                            borderLeftWidth: "3px",
+                          }
+                        : undefined
+                    }
+                  >
+                    {channelIcon(ch)}
+                    {ch}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Date range chips */}
@@ -516,18 +634,35 @@ export default function MessagesPage() {
             </div>
           ) : (
             <>
-              <ul className="divide-y divide-ds-gray-400">
-                {filtered.map((msg) => (
-                  <MessageRow
-                    key={msg.id}
-                    msg={msg}
-                    expanded={expandedId === msg.id}
-                    onToggle={() =>
-                      setExpandedId((prev) =>
-                        prev === msg.id ? null : msg.id,
-                      )
-                    }
-                  />
+              <ul>
+                {groupMessagesByHour(filtered).map((group) => (
+                  <li key={group.label}>
+                    {/* Time group divider */}
+                    <div className="flex items-center gap-3 px-4 py-2 bg-ds-gray-100/60">
+                      <Clock size={11} className="text-ds-gray-900 shrink-0" />
+                      <span
+                        className="text-[11px] font-mono font-medium text-ds-gray-900 tracking-wide"
+                        suppressHydrationWarning
+                      >
+                        {group.label}
+                      </span>
+                      <div className="flex-1 h-px bg-ds-gray-400" />
+                    </div>
+                    <ul className="divide-y divide-ds-gray-400">
+                      {group.messages.map((msg) => (
+                        <MessageRow
+                          key={msg.id}
+                          msg={msg}
+                          expanded={expandedId === msg.id}
+                          onToggle={() =>
+                            setExpandedId((prev) =>
+                              prev === msg.id ? null : msg.id,
+                            )
+                          }
+                        />
+                      ))}
+                    </ul>
+                  </li>
                 ))}
               </ul>
               <PaginationControls

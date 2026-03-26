@@ -7,6 +7,7 @@ import {
   useRef,
   useDeferredValue,
 } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   RefreshCw,
   Layers,
@@ -17,11 +18,13 @@ import {
   GitBranch,
   MessageSquare,
   Terminal,
+  Monitor,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
+import CCSessionPanel from "@/components/CCSessionPanel";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import type {
   SessionsGetResponse,
@@ -497,7 +500,12 @@ function ProjectSessionsTable() {
 // ---------------------------------------------------------------------------
 
 export default function SessionsPage() {
-  // 1. State
+  // 1. Context/Routing
+  const searchParams = useSearchParams();
+  const showCcPanel = searchParams.get("panel") === "cc";
+  const [ccPanelOpen, setCcPanelOpen] = useState(showCcPanel);
+
+  // 2. Local State
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -620,6 +628,28 @@ export default function SessionsPage() {
         action={headerAction}
       >
         <div className="space-y-5">
+          {/* CC Session panel toggle + collapsible panel */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setCcPanelOpen((prev) => !prev)}
+              className={[
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                ccPanelOpen
+                  ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/30"
+                  : "text-ds-gray-900 border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500",
+              ].join(" ")}
+            >
+              <Monitor size={14} />
+              CC Session
+            </button>
+            {ccPanelOpen && (
+              <div className="surface-card p-5">
+                <CCSessionPanel />
+              </div>
+            )}
+          </div>
+
           {error && (
             <ErrorBanner
               message="Failed to load sessions"

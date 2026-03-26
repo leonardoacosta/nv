@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Terminal,
   CheckCircle,
@@ -18,7 +19,10 @@ import StatCard from "@/components/layout/StatCard";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import SectionHeader from "@/components/layout/SectionHeader";
+import ColdStartsPanel from "@/components/ColdStartsPanel";
 import type { StatsGetResponse } from "@/types/api";
+
+type UsageTab = "cost" | "performance";
 
 interface ToolUsage {
   name: string;
@@ -69,6 +73,9 @@ function SuccessBar({ rate }: { rate: number }) {
 }
 
 export default function UsagePage() {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab") === "performance" ? "performance" : "cost";
+  const [activeTab, setActiveTab] = useState<UsageTab>(initialTab);
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,8 +133,30 @@ export default function UsagePage() {
     <PageShell
       title="Usage"
       subtitle="Costs, token consumption, and tool metrics"
-      action={headerAction}
+      action={activeTab === "cost" ? headerAction : undefined}
     >
+      {/* Tab switcher */}
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit mb-6">
+        {(["cost", "performance"] as UsageTab[]).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            className={[
+              "px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize",
+              activeTab === tab
+                ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                : "text-ds-gray-900 hover:text-ds-gray-1000",
+            ].join(" ")}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "performance" ? (
+        <ColdStartsPanel />
+      ) : (
       <div className="space-y-8 animate-fade-in-up">
         {error && (
           <ErrorBanner
@@ -356,6 +385,7 @@ export default function UsagePage() {
           )}
         </div>
       </div>
+      )}
     </PageShell>
   );
 }

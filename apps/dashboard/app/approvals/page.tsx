@@ -16,9 +16,12 @@ import {
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import type { DaemonObligation, ObligationsGetResponse } from "@/types/api";
+import { useApprovalKeyboard } from "./components/useApprovalKeyboard";
+import ApprovalQueueItem from "./components/ApprovalQueueItem";
+import BatchActionBar from "./components/BatchActionBar";
+import QueueClearCelebration from "./components/QueueClearCelebration";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -112,73 +115,6 @@ function relativeTime(iso: string): string {
   const diffH = Math.floor(diffMin / 60);
   if (diffH < 24) return `${diffH}h ago`;
   return `${Math.floor(diffH / 24)}d ago`;
-}
-
-// ---------------------------------------------------------------------------
-// QueueItem
-// ---------------------------------------------------------------------------
-
-interface QueueItemProps {
-  approval: Approval;
-  selected: boolean;
-  onSelect: () => void;
-}
-
-function QueueItem({ approval, selected, onSelect }: QueueItemProps) {
-  const ActionIcon = ACTION_ICON[approval.action_type] ?? HelpCircle;
-  const urg = URGENCY_CONFIG[approval.urgency];
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={[
-        "w-full text-left flex items-start gap-3 px-4 py-3.5 min-h-11 transition-colors",
-        "border-b border-ds-gray-400 last:border-b-0",
-        selected
-          ? "bg-ds-gray-700/15"
-          : "hover:bg-ds-gray-100/60",
-      ].join(" ")}
-    >
-      {/* Action type icon */}
-      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ds-gray-100 border border-ds-gray-400 shrink-0 mt-0.5">
-        <ActionIcon size={14} className="text-ds-gray-900" />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-ds-gray-1000 truncate">
-            {approval.title}
-          </span>
-          {/* Urgency dot */}
-          <span
-            className={`inline-block w-2 h-2 rounded-full shrink-0 ${urg.dot}`}
-            aria-label={`Urgency: ${urg.label}`}
-            title={`Urgency: ${urg.label}`}
-          />
-        </div>
-
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          {approval.project && (
-            <span className="text-xs font-mono text-ds-gray-900 truncate">
-              {approval.project}
-            </span>
-          )}
-          <span className="text-xs text-ds-gray-900 flex items-center gap-1">
-            <Clock size={10} />
-            <span suppressHydrationWarning>{relativeTime(approval.created_at)}</span>
-          </span>
-        </div>
-      </div>
-
-      <ChevronRight
-        size={14}
-        className={`shrink-0 mt-1 transition-colors ${
-          selected ? "text-ds-gray-1000" : "text-ds-gray-900/40"
-        }`}
-      />
-    </button>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +249,12 @@ export default function ApprovalsPage() {
   const [dismissing, setDismissing] = useState(false);
   // Mobile detail panel open
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  // Batch selection: set of checked approval IDs
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  // Celebration: shown briefly when queue transitions from non-empty to empty
+  const [showCelebration, setShowCelebration] = useState(false);
+  // Batch action in-flight
+  const [batchBusy, setBatchBusy] = useState(false);
 
   // 2. Derived
   const pending = approvals.filter((a) => a.status === "pending");
@@ -363,7 +305,14 @@ export default function ApprovalsPage() {
         method: "POST",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setApprovals((prev) => prev.filter((a) => a.id !== id));
+      setApprovals((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
       setSelectedId(null);
       setMobileDetailOpen(false);
     } catch (err) {
@@ -382,7 +331,14 @@ export default function ApprovalsPage() {
         body: JSON.stringify({ status: "dismissed" }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setApprovals((prev) => prev.filter((a) => a.id !== id));
+      setApprovals((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
       setSelectedId(null);
       setMobileDetailOpen(false);
     } catch (err) {
@@ -396,6 +352,86 @@ export default function ApprovalsPage() {
     setSelectedId(id);
     setMobileDetailOpen(true);
   };
+
+  const handleToggleCheck = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBatchApprove = async () => {
+    setBatchBusy(true);
+    try {
+      const ids = Array.from(checkedIds);
+      await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`/api/approvals/${id}/approve`, { method: "POST" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }),
+      );
+      setApprovals((prev) => {
+        const next = prev.filter((a) => !checkedIds.has(a.id));
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds(new Set());
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to batch approve");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleBatchDismiss = async () => {
+    setBatchBusy(true);
+    try {
+      const ids = Array.from(checkedIds);
+      await Promise.all(
+        ids.map(async (id) => {
+          const res = await fetch(`/api/obligations/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "dismissed" }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }),
+      );
+      setApprovals((prev) => {
+        const next = prev.filter((a) => !checkedIds.has(a.id));
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds(new Set());
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to batch dismiss");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  // 6b. Keyboard shortcuts
+  useApprovalKeyboard({
+    pendingIds: pending.map((a) => a.id),
+    selectedId,
+    onNavigate: (id) => {
+      setSelectedId(id);
+      setMobileDetailOpen(true);
+    },
+    onApprove: (id) => void handleApprove(id),
+    onDismiss: (id) => void handleDismiss(id),
+    busy: approving || dismissing || batchBusy,
+  });
 
   // 7. Action slot
   const action = (
@@ -432,11 +468,19 @@ export default function ApprovalsPage() {
           ))}
         </div>
       ) : pending.length === 0 ? (
-        <EmptyState
-          title="No pending approvals"
-          description="All requests have been actioned."
-          icon={<ShieldCheck size={40} aria-hidden="true" />}
-        />
+        showCelebration ? (
+          <QueueClearCelebration />
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-ds-gray-100 border border-ds-gray-400">
+              <ShieldCheck size={32} className="text-ds-gray-900" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-ds-gray-1000">No pending approvals</h3>
+              <p className="text-sm text-ds-gray-900 mt-1">All requests have been actioned.</p>
+            </div>
+          </div>
+        )
       ) : (
         // Split view: list (left) + detail (right)
         // On mobile (<md): list only, tapping opens detail overlay
@@ -461,13 +505,23 @@ export default function ApprovalsPage() {
             </div>
 
             {pending.map((a) => (
-              <QueueItem
+              <ApprovalQueueItem
                 key={a.id}
                 approval={a}
                 selected={a.id === selectedId}
+                checked={checkedIds.has(a.id)}
                 onSelect={() => handleSelect(a.id)}
+                onToggleCheck={handleToggleCheck}
               />
             ))}
+
+            <BatchActionBar
+              selectedCount={checkedIds.size}
+              onApproveAll={() => void handleBatchApprove()}
+              onDismissAll={() => void handleBatchDismiss()}
+              onClearSelection={() => setCheckedIds(new Set())}
+              busy={batchBusy}
+            />
           </div>
 
           {/* Detail panel */}

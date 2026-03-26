@@ -5,26 +5,22 @@ import {
   CheckSquare,
   RefreshCw,
   Clock,
-  CheckCircle,
-  XCircle,
+  Check,
+  X,
+  RotateCcw,
   ChevronDown,
   ChevronUp,
   Play,
   Radio,
   FolderOpen,
-  AlertTriangle,
-  ListTodo,
-  Hourglass,
-  CalendarCheck,
 } from "lucide-react";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
-import StatCard from "@/components/layout/StatCard";
+import ObligationSummaryBar from "@/components/ObligationSummaryBar";
 import ActivityFeed from "@/components/ActivityFeed";
 import type {
   DaemonObligation,
   ObligationNote,
-  ObligationStats,
   ObligationsGetResponse,
 } from "@/types/api";
 
@@ -152,22 +148,67 @@ function NoteRow({ note, expanded }: { note: ObligationNote; expanded: boolean }
 }
 
 // ---------------------------------------------------------------------------
+// Deadline proximity helpers
+// ---------------------------------------------------------------------------
+
+/** Default threshold in hours; overridden by daemon config if available */
+const DEFAULT_APPROACHING_DEADLINE_HOURS = 24;
+
+type DeadlineProximity = "overdue" | "approaching" | "normal";
+
+function getDeadlineProximity(
+  deadline: string | null,
+  thresholdHours: number,
+): DeadlineProximity {
+  if (!deadline) return "normal";
+  const now = Date.now();
+  const deadlineMs = new Date(deadline).getTime();
+  if (deadlineMs <= now) return "overdue";
+  const hoursUntil = (deadlineMs - now) / (1000 * 60 * 60);
+  if (hoursUntil <= thresholdHours) return "approaching";
+  return "normal";
+}
+
+const DEADLINE_RING: Record<DeadlineProximity, string> = {
+  overdue: "ring-2 ring-red-700/60 border-red-700/40",
+  approaching: "ring-2 ring-amber-500/40 border-amber-500/30",
+  normal: "",
+};
+
+// ---------------------------------------------------------------------------
 // Rich obligation card
 // ---------------------------------------------------------------------------
 
 interface ObligationCardProps {
   obligation: DaemonObligation;
   onRefresh: () => void;
+  approachingDeadlineHours?: number;
+  /** Whether details section is expanded */
+  isExpanded: boolean;
+  /** Toggle expand callback */
+  onToggleExpand: () => void;
 }
 
-function ObligationCard({ obligation, onRefresh }: ObligationCardProps) {
-  const [expanded, setExpanded] = useState(false);
+function ObligationCard({
+  obligation,
+  onRefresh,
+  approachingDeadlineHours = DEFAULT_APPROACHING_DEADLINE_HOURS,
+  isExpanded,
+  onToggleExpand,
+}: ObligationCardProps) {
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [actionPending, setActionPending] = useState(false);
 
   const priorityBar = PRIORITY_BAR[obligation.priority] ?? PRIORITY_BAR[2];
   const priorityText = PRIORITY_TEXT[obligation.priority] ?? PRIORITY_TEXT[2];
   const statusBadge = STATUS_BADGE[obligation.status] ?? STATUS_BADGE["open"];
   const statusLabel = STATUS_LABEL[obligation.status] ?? obligation.status;
+
+  const deadlineProximity = getDeadlineProximity(
+    obligation.deadline,
+    approachingDeadlineHours,
+  );
+  const deadlineRing = DEADLINE_RING[deadlineProximity];
 
   const notes = obligation.notes ?? [];
   const mostRecentNote = notes[0];
@@ -206,14 +247,18 @@ function ObligationCard({ obligation, onRefresh }: ObligationCardProps) {
   return (
     <div
       id={`obligation-${obligation.id}`}
-      className="surface-card relative overflow-hidden scroll-mt-4"
+      className={`surface-card relative overflow-hidden scroll-mt-4 ${deadlineRing}`}
     >
       {/* Priority bar */}
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${priorityBar}`} aria-hidden="true" />
 
       <div className="pl-4 pr-4 pt-4 pb-3 space-y-3">
-        {/* Header row */}
-        <div className="flex items-start gap-2 flex-wrap">
+        {/* Header row — always visible, clickable to toggle details */}
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className="flex items-start gap-2 flex-wrap w-full text-left"
+        >
           <span className={`text-xs font-mono font-bold ${priorityText} shrink-0`}>
             P{obligation.priority}
           </span>
@@ -221,60 +266,30 @@ function ObligationCard({ obligation, onRefresh }: ObligationCardProps) {
             {obligation.detected_action}
           </span>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            {/* Deadline proximity indicator */}
+            {deadlineProximity === "overdue" && (
+              <span className="text-[10px] font-mono font-bold text-red-500 uppercase px-1.5 py-0.5 rounded bg-red-700/20">
+                Overdue
+              </span>
+            )}
+            {deadlineProximity === "approaching" && (
+              <span className="text-[10px] font-mono font-bold text-amber-500 uppercase px-1.5 py-0.5 rounded bg-amber-500/20">
+                Due Soon
+              </span>
+            )}
             <span className={`text-xs px-2 py-0.5 rounded font-mono ${statusBadge}`}>
               {statusLabel}
             </span>
             <OwnerBadge owner={obligation.owner} />
+            <ChevronDown
+              size={14}
+              className={`text-ds-gray-700 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
+            />
           </div>
-        </div>
+        </button>
 
-        {/* Context: source channel + message */}
-        {(obligation.source_channel || obligation.source_message) && (
-          <SourceContext
-            channel={obligation.source_channel}
-            message={obligation.source_message}
-          />
-        )}
-
-        {/* Execution history */}
-        {notes.length > 0 && (
-          <div className="space-y-1.5">
-            <span className="text-label-12 text-ds-gray-900 uppercase tracking-wide">
-              Execution History
-            </span>
-            <div className="space-y-2 pl-1">
-              {mostRecentNote && (
-                <NoteRow key={mostRecentNote.id} note={mostRecentNote} expanded />
-              )}
-              {olderNotes.length > 0 && (
-                <>
-                  {expanded &&
-                    olderNotes.map((n) => (
-                      <NoteRow key={n.id} note={n} expanded={false} />
-                    ))}
-                  <button
-                    type="button"
-                    onClick={() => setExpanded((v) => !v)}
-                    className="flex items-center gap-1 text-xs text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
-                  >
-                    {expanded ? (
-                      <>
-                        <ChevronUp size={11} /> Hide {olderNotes.length} older
-                      </>
-                    ) : (
-                      <>
-                        <ChevronDown size={11} /> Show {olderNotes.length} older
-                      </>
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Meta row */}
-        <div className="flex items-center gap-4 flex-wrap text-xs text-ds-gray-900">
+        {/* Compact meta — always visible */}
+        <div className="flex items-center gap-3 flex-wrap text-xs text-ds-gray-900">
           {obligation.project_code && (
             <span className="flex items-center gap-1 font-mono">
               <FolderOpen size={11} />
@@ -285,20 +300,86 @@ function ObligationCard({ obligation, onRefresh }: ObligationCardProps) {
             <Clock size={11} />
             <span suppressHydrationWarning>{relativeTime(obligation.created_at)}</span>
           </span>
+          {obligation.deadline && (
+            <span
+              className={`flex items-center gap-1 font-mono ${
+                deadlineProximity === "overdue"
+                  ? "text-red-500"
+                  : deadlineProximity === "approaching"
+                    ? "text-amber-500"
+                    : ""
+              }`}
+              suppressHydrationWarning
+            >
+              <Clock size={11} />
+              due {new Date(obligation.deadline).toLocaleDateString()}
+            </span>
+          )}
           {obligation.attempt_count > 0 && (
             <span className="flex items-center gap-1 font-mono text-ds-gray-700">
               {obligation.attempt_count} attempt{obligation.attempt_count !== 1 ? "s" : ""}
             </span>
           )}
+          {/* Inline action buttons in header area */}
+          <div className="ml-auto">
+            <ActionButtons
+              status={obligation.status}
+              pending={actionPending}
+              onStart={handleStart}
+              onPatch={patchStatus}
+            />
+          </div>
         </div>
 
-        {/* Action buttons */}
-        <ActionButtons
-          status={obligation.status}
-          pending={actionPending}
-          onStart={handleStart}
-          onPatch={patchStatus}
-        />
+        {/* Collapsible details section — uses height-reveal CSS animation */}
+        <div className={`height-reveal ${isExpanded ? "open" : ""}`}>
+          <div className="space-y-3">
+            {/* Context: source channel + message */}
+            {(obligation.source_channel || obligation.source_message) && (
+              <SourceContext
+                channel={obligation.source_channel}
+                message={obligation.source_message}
+              />
+            )}
+
+            {/* Execution history */}
+            {notes.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-label-12 text-ds-gray-900 uppercase tracking-wide">
+                  Execution History
+                </span>
+                <div className="space-y-2 pl-1">
+                  {mostRecentNote && (
+                    <NoteRow key={mostRecentNote.id} note={mostRecentNote} expanded />
+                  )}
+                  {olderNotes.length > 0 && (
+                    <>
+                      {notesExpanded &&
+                        olderNotes.map((n) => (
+                          <NoteRow key={n.id} note={n} expanded={false} />
+                        ))}
+                      <button
+                        type="button"
+                        onClick={() => setNotesExpanded((v) => !v)}
+                        className="flex items-center gap-1 text-xs text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
+                      >
+                        {notesExpanded ? (
+                          <>
+                            <ChevronUp size={11} /> Hide {olderNotes.length} older
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown size={11} /> Show {olderNotes.length} older
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -344,8 +425,117 @@ function SourceContext({
 }
 
 // ---------------------------------------------------------------------------
-// Action buttons
+// Tooltip wrapper
 // ---------------------------------------------------------------------------
+
+function Tooltip({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="relative group/tooltip">
+      {children}
+      <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-ds-gray-200 border border-ds-gray-400 px-2 py-1 text-[11px] text-ds-gray-1000 opacity-0 transition-opacity group-hover/tooltip:opacity-100">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Action buttons — contextual per obligation status
+// ---------------------------------------------------------------------------
+
+interface ActionDef {
+  icon: React.ReactNode;
+  tooltip: string;
+  onClick: () => void;
+  variant: "default" | "success" | "danger";
+}
+
+function getActionsForStatus(
+  status: string,
+  pending: boolean,
+  onStart: () => void,
+  onPatch: (status: string) => void,
+): ActionDef[] {
+  switch (status) {
+    case "open":
+      return [
+        {
+          icon: <Play size={13} />,
+          tooltip: "Start",
+          onClick: onStart,
+          variant: "default",
+        },
+        {
+          icon: <Check size={13} />,
+          tooltip: "Mark Done",
+          onClick: () => onPatch("done"),
+          variant: "success",
+        },
+        {
+          icon: <X size={13} />,
+          tooltip: "Cancel",
+          onClick: () => onPatch("dismissed"),
+          variant: "danger",
+        },
+      ];
+    case "in_progress":
+      return [
+        {
+          icon: <Check size={13} />,
+          tooltip: "Mark Done",
+          onClick: () => onPatch("done"),
+          variant: "success",
+        },
+        {
+          icon: <X size={13} />,
+          tooltip: "Cancel",
+          onClick: () => onPatch("dismissed"),
+          variant: "danger",
+        },
+      ];
+    case "proposed_done":
+      return [
+        {
+          icon: <Check size={13} />,
+          tooltip: "Confirm Done",
+          onClick: () => onPatch("done"),
+          variant: "success",
+        },
+        {
+          icon: <RotateCcw size={13} />,
+          tooltip: "Reopen",
+          onClick: () => onPatch("open"),
+          variant: "default",
+        },
+      ];
+    case "done":
+      return [
+        {
+          icon: <RotateCcw size={13} />,
+          tooltip: "Reopen",
+          onClick: () => onPatch("open"),
+          variant: "default",
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
+const ACTION_VARIANT_CLASSES: Record<string, string> = {
+  default:
+    "bg-ds-gray-alpha-200 text-ds-gray-1000 hover:bg-ds-gray-alpha-400 border-ds-gray-400",
+  success:
+    "bg-green-700/20 text-green-600 hover:bg-green-700/30 border-green-700/30",
+  danger:
+    "bg-ds-gray-alpha-100 text-ds-gray-900 hover:bg-ds-gray-alpha-200 border-ds-gray-400",
+};
 
 function ActionButtons({
   status,
@@ -358,78 +548,26 @@ function ActionButtons({
   onStart: () => void;
   onPatch: (status: string) => void;
 }) {
-  if (status === "open") {
-    return (
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={pending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 hover:bg-ds-gray-alpha-300 border border-ds-gray-400 transition-colors disabled:opacity-50"
-        >
-          <Play size={11} />
-          {pending ? "Starting…" : "Start"}
-        </button>
-      </div>
-    );
-  }
+  const actions = getActionsForStatus(status, pending, onStart, onPatch);
+  if (actions.length === 0) return null;
 
-  if (status === "in_progress") {
-    return (
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => onPatch("dismissed")}
-          disabled={pending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-ds-gray-alpha-100 text-ds-gray-900 hover:bg-ds-gray-alpha-200 border border-ds-gray-400 transition-colors disabled:opacity-50"
-        >
-          <XCircle size={11} />
-          {pending ? "Cancelling…" : "Cancel"}
-        </button>
-      </div>
-    );
-  }
-
-  if (status === "proposed_done") {
-    return (
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => onPatch("done")}
-          disabled={pending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-700/20 text-green-600 hover:bg-green-700/30 border border-green-700/30 transition-colors disabled:opacity-50"
-        >
-          <CheckCircle size={11} />
-          {pending ? "Confirming…" : "Confirm Done"}
-        </button>
-        <button
-          type="button"
-          onClick={() => onPatch("open")}
-          disabled={pending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-ds-gray-alpha-100 text-ds-gray-900 hover:bg-ds-gray-alpha-200 border border-ds-gray-400 transition-colors disabled:opacity-50"
-        >
-          Reopen
-        </button>
-      </div>
-    );
-  }
-
-  if (status === "done") {
-    return (
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => onPatch("open")}
-          disabled={pending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-ds-gray-alpha-100 text-ds-gray-900 hover:bg-ds-gray-alpha-200 border border-ds-gray-400 transition-colors disabled:opacity-50"
-        >
-          Reopen
-        </button>
-      </div>
-    );
-  }
-
-  return null;
+  return (
+    <div className="flex gap-1.5">
+      {actions.map((action) => (
+        <Tooltip key={action.tooltip} label={action.tooltip}>
+          <button
+            type="button"
+            onClick={action.onClick}
+            disabled={pending}
+            className={`flex items-center justify-center w-7 h-7 rounded-lg border transition-colors disabled:opacity-50 ${ACTION_VARIANT_CLASSES[action.variant]}`}
+            aria-label={action.tooltip}
+          >
+            {action.icon}
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -470,26 +608,45 @@ type TabKey = "open" | "history";
 
 export default function ObligationsPage() {
   const [obligations, setObligations] = useState<DaemonObligation[]>([]);
-  const [stats, setStats] = useState<ObligationStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("open");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [initialExpandDone, setInitialExpandDone] = useState(false);
+  const [approachingDeadlineHours, setApproachingDeadlineHours] = useState(
+    DEFAULT_APPROACHING_DEADLINE_HOURS,
+  );
   const listRef = useRef<HTMLDivElement>(null);
+
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   const fetchObligations = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [oblRes, statsRes] = await Promise.all([
+      const [oblRes, configRes] = await Promise.all([
         fetch("/api/obligations"),
-        fetch("/api/obligations/stats"),
+        fetch("/api/config"),
       ]);
       if (!oblRes.ok) throw new Error(`HTTP ${oblRes.status}`);
       const data = (await oblRes.json()) as ObligationsGetResponse;
       setObligations(data.obligations ?? []);
-      if (statsRes.ok) {
-        const statsData = (await statsRes.json()) as ObligationStats;
-        setStats(statsData);
+      if (configRes.ok) {
+        const configData = (await configRes.json()) as Record<string, unknown>;
+        const hours = configData.approaching_deadline_hours;
+        if (typeof hours === "number" && hours > 0) {
+          setApproachingDeadlineHours(hours);
+        }
       }
     } catch (err) {
       setError(
@@ -503,6 +660,14 @@ export default function ObligationsPage() {
   useEffect(() => {
     void fetchObligations();
   }, [fetchObligations]);
+
+  // Expand first item by default on initial load
+  useEffect(() => {
+    if (!initialExpandDone && obligations.length > 0) {
+      setExpandedIds(new Set([obligations[0]!.id]));
+      setInitialExpandDone(true);
+    }
+  }, [obligations, initialExpandDone]);
 
   const scrollToObligation = useCallback((id: string) => {
     const el = document.getElementById(`obligation-${id}`);
@@ -549,39 +714,10 @@ export default function ObligationsPage() {
         </button>
       </div>
 
-      {/* Stats bar */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 section-stagger-1">
-          <StatCard
-            icon={<ListTodo size={16} aria-hidden="true" />}
-            label="Open (Nova)"
-            value={stats.open_nova}
-            variant="default"
-          />
-          <StatCard
-            icon={<Hourglass size={16} aria-hidden="true" />}
-            label="In Progress"
-            value={stats.in_progress}
-            variant="warning"
-          />
-          <StatCard
-            icon={<CheckSquare size={16} aria-hidden="true" />}
-            label="Proposed Done"
-            value={stats.proposed_done}
-            variant="success"
-          />
-          <StatCard
-            icon={<CalendarCheck size={16} aria-hidden="true" />}
-            label="Done Today"
-            value={stats.done_today}
-            variant="success"
-          />
-          <StatCard
-            icon={<AlertTriangle size={16} aria-hidden="true" />}
-            label="Open (Leo)"
-            value={stats.open_leo}
-            variant="default"
-          />
+      {/* Compact summary bar — replaces the 5 stat cards */}
+      {obligations.length > 0 && (
+        <div className="section-stagger-1">
+          <ObligationSummaryBar obligations={obligations} />
         </div>
       )}
 
@@ -651,7 +787,13 @@ export default function ObligationsPage() {
                         key={o.id}
                         className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
                       >
-                        <ObligationCard obligation={o} onRefresh={fetchObligations} />
+                        <ObligationCard
+                          obligation={o}
+                          onRefresh={fetchObligations}
+                          approachingDeadlineHours={approachingDeadlineHours}
+                          isExpanded={expandedIds.has(o.id)}
+                          onToggleExpand={() => toggleExpand(o.id)}
+                        />
                       </div>
                     ))}
                   </div>
@@ -677,7 +819,13 @@ export default function ObligationsPage() {
                         key={o.id}
                         className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
                       >
-                        <ObligationCard obligation={o} onRefresh={fetchObligations} />
+                        <ObligationCard
+                          obligation={o}
+                          onRefresh={fetchObligations}
+                          approachingDeadlineHours={approachingDeadlineHours}
+                          isExpanded={expandedIds.has(o.id)}
+                          onToggleExpand={() => toggleExpand(o.id)}
+                        />
                       </div>
                     ))}
                   </div>
@@ -696,6 +844,9 @@ export default function ObligationsPage() {
                         key={o.id}
                         obligation={o}
                         onRefresh={fetchObligations}
+                        approachingDeadlineHours={approachingDeadlineHours}
+                        isExpanded={expandedIds.has(o.id)}
+                        onToggleExpand={() => toggleExpand(o.id)}
                       />
                     ))}
                   </div>
@@ -725,7 +876,13 @@ export default function ObligationsPage() {
                     key={o.id}
                     className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
                   >
-                    <ObligationCard obligation={o} onRefresh={fetchObligations} />
+                    <ObligationCard
+                      obligation={o}
+                      onRefresh={fetchObligations}
+                      approachingDeadlineHours={approachingDeadlineHours}
+                      isExpanded={expandedIds.has(o.id)}
+                      onToggleExpand={() => toggleExpand(o.id)}
+                    />
                   </div>
                 ))
               )}

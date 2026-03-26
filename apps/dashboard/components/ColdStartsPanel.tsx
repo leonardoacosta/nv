@@ -7,14 +7,13 @@ import {
   Timer,
   Zap,
 } from "lucide-react";
-import PageShell from "@/components/layout/PageShell";
 import StatCard from "@/components/layout/StatCard";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import SectionHeader from "@/components/layout/SectionHeader";
 import PipelineLatencyChart from "@/components/LatencyChart";
 
-// ── API types ─────────────────────────────────────────────────────────────────
+// -- API types ----------------------------------------------------------------
 
 interface ColdStartEvent {
   session_id: string;
@@ -40,7 +39,7 @@ interface ColdStartsResponse {
   percentiles: ColdStartPercentiles;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers ------------------------------------------------------------------
 
 function msToSeconds(ms: number): string {
   return (ms / 1000).toFixed(1) + "s";
@@ -61,7 +60,7 @@ function rollingAverage(events: ColdStartEvent[], window = 20): number[] {
   });
 }
 
-// ── Chart ─────────────────────────────────────────────────────────────────────
+// -- Chart --------------------------------------------------------------------
 
 interface LatencyChartProps {
   events: ColdStartEvent[];
@@ -241,9 +240,9 @@ function ChartLegend() {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
+// -- ColdStartsPanel ----------------------------------------------------------
 
-export default function ColdStartsPage() {
+export default function ColdStartsPanel() {
   const [data, setData] = useState<ColdStartsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -274,148 +273,143 @@ export default function ColdStartsPage() {
   const avgTokensIn = avg(visibleEvents.map((e) => e.tokens_in));
   const avgTokensOut = avg(visibleEvents.map((e) => e.tokens_out));
 
-  const headerAction = (
-    <button
-      type="button"
-      onClick={() => void fetchData()}
-      disabled={loading}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
-    >
-      <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-      Refresh
-    </button>
-  );
-
   return (
-    <PageShell
-      title="Cold Starts"
-      subtitle="Session latency, percentiles, and token usage"
-      action={headerAction}
-    >
-      <div className="space-y-8 animate-fade-in-up">
-        {error && (
-          <ErrorBanner
-            message="Failed to load cold-start data"
-            detail={error}
-            onRetry={() => void fetchData()}
-          />
-        )}
-
-        {/* Percentile StatCards */}
-        <div>
-          <div className="mb-3">
-            <SectionHeader label="Percentiles (24h)" />
-          </div>
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-32 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <StatCard
-                icon={<Timer size={20} />}
-                label="P50 Latency"
-                value={msToSeconds(data?.percentiles.p50_ms ?? 0)}
-                sublabel="median"
-                variant="success"
-              />
-              <StatCard
-                icon={<Timer size={20} />}
-                label="P95 Latency"
-                value={msToSeconds(data?.percentiles.p95_ms ?? 0)}
-                sublabel="95th percentile"
-                variant="warning"
-              />
-              <StatCard
-                icon={<Timer size={20} />}
-                label="P99 Latency"
-                value={msToSeconds(data?.percentiles.p99_ms ?? 0)}
-                sublabel="99th percentile"
-                variant="error"
-              />
-            </div>
-          )}
-          {!loading && data && (
-            <p className="mt-2 text-label-13 text-ds-gray-900">
-              {data.percentiles.sample_count} events in window
-            </p>
-          )}
-        </div>
-
-        {/* Latency chart — surface-inset */}
-        <div>
-          <div className="mb-3">
-            <SectionHeader label="Latency (last 100 events)" />
-          </div>
-          {loading ? (
-            <div className="h-52 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400" />
-          ) : !visibleEvents.length ? (
-            <EmptyState
-              title="No cold-start events"
-              description="Cold start events will appear here once sessions are recorded."
-              icon={<Activity size={24} aria-hidden="true" />}
-            />
-          ) : (
-            <div className="surface-card p-4">
-              <div className="surface-inset p-4">
-                <LatencyChart events={data?.events ?? []} />
-              </div>
-              <ChartLegend />
-            </div>
-          )}
-        </div>
-
-        {/* Averages row — StatCards */}
-        <div>
-          <div className="mb-3">
-            <SectionHeader label="Averages (visible window)" />
-          </div>
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <StatCard
-                icon={<Zap size={20} />}
-                label="Avg Tool Count"
-                value={avgToolCount.toFixed(1)}
-                sublabel="per session"
-                variant="default"
-              />
-              <StatCard
-                icon={<Timer size={20} />}
-                label="Avg Tokens In"
-                value={Math.round(avgTokensIn).toLocaleString()}
-                sublabel="input tokens"
-                variant="default"
-              />
-              <StatCard
-                icon={<Timer size={20} />}
-                label="Avg Tokens Out"
-                value={Math.round(avgTokensOut).toLocaleString()}
-                sublabel="output tokens"
-                variant="default"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Pipeline Latency Chart */}
-        <div className="mt-6">
-          <PipelineLatencyChart />
-        </div>
+    <div className="space-y-8 animate-fade-in-up">
+      {/* Refresh button */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void fetchData()}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
       </div>
-    </PageShell>
+
+      {error && (
+        <ErrorBanner
+          message="Failed to load cold-start data"
+          detail={error}
+          onRetry={() => void fetchData()}
+        />
+      )}
+
+      {/* Percentile StatCards */}
+      <div>
+        <div className="mb-3">
+          <SectionHeader label="Percentiles (24h)" />
+        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-32 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              icon={<Timer size={20} />}
+              label="P50 Latency"
+              value={msToSeconds(data?.percentiles.p50_ms ?? 0)}
+              sublabel="median"
+              variant="success"
+            />
+            <StatCard
+              icon={<Timer size={20} />}
+              label="P95 Latency"
+              value={msToSeconds(data?.percentiles.p95_ms ?? 0)}
+              sublabel="95th percentile"
+              variant="warning"
+            />
+            <StatCard
+              icon={<Timer size={20} />}
+              label="P99 Latency"
+              value={msToSeconds(data?.percentiles.p99_ms ?? 0)}
+              sublabel="99th percentile"
+              variant="error"
+            />
+          </div>
+        )}
+        {!loading && data && (
+          <p className="mt-2 text-label-13 text-ds-gray-900">
+            {data.percentiles.sample_count} events in window
+          </p>
+        )}
+      </div>
+
+      {/* Latency chart */}
+      <div>
+        <div className="mb-3">
+          <SectionHeader label="Latency (last 100 events)" />
+        </div>
+        {loading ? (
+          <div className="h-52 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400" />
+        ) : !visibleEvents.length ? (
+          <EmptyState
+            title="No cold-start events"
+            description="Cold start events will appear here once sessions are recorded."
+            icon={<Activity size={24} aria-hidden="true" />}
+          />
+        ) : (
+          <div className="surface-card p-4">
+            <div className="surface-inset p-4">
+              <LatencyChart events={data?.events ?? []} />
+            </div>
+            <ChartLegend />
+          </div>
+        )}
+      </div>
+
+      {/* Averages row */}
+      <div>
+        <div className="mb-3">
+          <SectionHeader label="Averages (visible window)" />
+        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <StatCard
+              icon={<Zap size={20} />}
+              label="Avg Tool Count"
+              value={avgToolCount.toFixed(1)}
+              sublabel="per session"
+              variant="default"
+            />
+            <StatCard
+              icon={<Timer size={20} />}
+              label="Avg Tokens In"
+              value={Math.round(avgTokensIn).toLocaleString()}
+              sublabel="input tokens"
+              variant="default"
+            />
+            <StatCard
+              icon={<Timer size={20} />}
+              label="Avg Tokens Out"
+              value={Math.round(avgTokensOut).toLocaleString()}
+              sublabel="output tokens"
+              variant="default"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Pipeline Latency Chart */}
+      <div className="mt-6">
+        <PipelineLatencyChart />
+      </div>
+    </div>
   );
 }

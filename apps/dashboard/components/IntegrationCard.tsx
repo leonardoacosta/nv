@@ -42,17 +42,31 @@ const STATUS_CONFIG: Record<
   },
 };
 
-const ICON_COLORS: Record<string, string> = {
-  Telegram: "text-[#229ED9]",
-  Discord: "text-[#5865F2]",
-  Slack: "text-[#E01E5A]",
-  GitHub: "text-ds-gray-1000",
-  Notion: "text-ds-gray-1000",
-  Linear: "text-[#5E6AD2]",
-  Stripe: "text-[#6772E5]",
-  OpenAI: "text-emerald-400",
-  Anthropic: "text-red-700",
-};
+// ---------------------------------------------------------------------------
+// Deterministic hash-to-color for avatar backgrounds
+// ---------------------------------------------------------------------------
+
+/** 8 curated dark-theme-friendly colors for avatar backgrounds. */
+const AVATAR_PALETTE = [
+  "#2563eb", // blue
+  "#7c3aed", // violet
+  "#db2777", // pink
+  "#059669", // emerald
+  "#d97706", // amber
+  "#dc2626", // red
+  "#0891b2", // cyan
+  "#4f46e5", // indigo
+];
+
+/** Simple djb2 hash producing a deterministic palette index from a service name. */
+function hashToColor(name: string): string {
+  let hash = 5381;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) + hash + name.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % AVATAR_PALETTE.length;
+  return AVATAR_PALETTE[index]!;
+}
 
 interface IntegrationCardProps {
   integration: Integration;
@@ -65,15 +79,29 @@ export default function IntegrationCard({
 }: IntegrationCardProps) {
   const status = STATUS_CONFIG[integration.status];
   const StatusIcon = status.icon;
-  const iconColor = ICON_COLORS[integration.name] ?? "text-ds-gray-1000";
+  const isConnected = integration.status === "connected";
+  const isDisconnected = integration.status === "disconnected";
+  const avatarColor = hashToColor(integration.name);
 
   return (
-    <div className="surface-card flex items-center gap-4 p-4 group">
-      {/* Icon placeholder */}
+    <div
+      className={[
+        "surface-card flex items-center gap-4 p-4 group transition-all",
+        isDisconnected && "opacity-60",
+        isConnected && "shadow-md",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {/* Avatar with hash-based background color */}
       <div
-        className={`flex items-center justify-center w-10 h-10 rounded-lg bg-ds-bg-100 shrink-0 ${iconColor}`}
+        className="flex items-center justify-center w-10 h-10 rounded-lg shrink-0"
+        style={{ backgroundColor: `${avatarColor}20` }}
       >
-        <span className="text-sm font-bold font-mono">
+        <span
+          className="text-sm font-bold font-mono"
+          style={{ color: avatarColor }}
+        >
           {integration.name.slice(0, 2).toUpperCase()}
         </span>
       </div>
@@ -90,9 +118,16 @@ export default function IntegrationCard({
         )}
       </div>
 
-      {/* Status */}
+      {/* Status badge — connected gets glow-pulse-green */}
       <div
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium ${status.bg} ${status.color} shrink-0`}
+        className={[
+          "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium shrink-0",
+          status.bg,
+          status.color,
+          isConnected && "glow-pulse-green",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         <StatusIcon size={12} />
         <span>{status.label}</span>

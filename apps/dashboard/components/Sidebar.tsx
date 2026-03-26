@@ -13,8 +13,6 @@ import {
   BarChart3,
   Brain,
   Settings,
-  Monitor,
-  Activity,
   Layers,
   MessageSquare,
   Users,
@@ -157,6 +155,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/contacts", label: "Contacts", icon: Users },
       { to: "/projects", label: "Projects", icon: FolderOpen },
+      { to: "/memory", label: "Memory", icon: Brain },
       { to: "/integrations", label: "Integrations", icon: Plug },
     ],
   },
@@ -164,9 +163,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: "System",
     items: [
       { to: "/usage", label: "Usage", icon: BarChart3 },
-      { to: "/cold-starts", label: "Cold Starts", icon: Activity },
-      { to: "/memory", label: "Memory", icon: Brain },
-      { to: "/session", label: "CC Session", icon: Monitor },
       { to: "/settings", label: "Settings", icon: Settings },
     ],
   },

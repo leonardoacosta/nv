@@ -6,7 +6,7 @@ import MemoryPreview, { type MemoryFile } from "@/components/MemoryPreview";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
-import type { MemoryListResponse } from "@/types/api";
+import type { MemoryListResponse, MemoryTopicResponse } from "@/types/api";
 
 export default function MemoryPage() {
   const [files, setFiles] = useState<MemoryFile[]>([]);
@@ -14,6 +14,17 @@ export default function MemoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  const fetchTopicContent = async (topic: string): Promise<string> => {
+    try {
+      const res = await fetch(`/api/memory?topic=${encodeURIComponent(topic)}`);
+      if (!res.ok) return "";
+      const data = (await res.json()) as MemoryTopicResponse;
+      return data.content ?? "";
+    } catch {
+      return "";
+    }
+  };
 
   const fetchMemory = async () => {
     setLoading(true);
@@ -33,13 +44,34 @@ export default function MemoryPage() {
       }
 
       setFiles(parsed);
-      if (parsed.length > 0 && !selected) {
-        setSelected(parsed[0] ?? null);
+      if (parsed.length > 0 && !selected && parsed[0]) {
+        // Auto-select first file and fetch its content
+        const first = parsed[0];
+        setSelected(first);
+        const content = await fetchTopicContent(first.path);
+        const updated = { ...first, content };
+        setSelected(updated);
+        setFiles((prev) =>
+          prev.map((f) => (f.path === first.path ? updated : f)),
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load memory");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSelect = async (file: MemoryFile) => {
+    setSelected(file);
+    // Lazy-load content if not yet fetched
+    if (!file.content) {
+      const content = await fetchTopicContent(file.path);
+      const updated = { ...file, content };
+      setSelected(updated);
+      setFiles((prev) =>
+        prev.map((f) => (f.path === file.path ? updated : f)),
+      );
     }
   };
 
@@ -142,7 +174,7 @@ export default function MemoryPage() {
                   <button
                     key={file.path}
                     type="button"
-                    onClick={() => setSelected(file)}
+                    onClick={() => void handleSelect(file)}
                     className={[
                       "w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-colors",
                       selected?.path === file.path
@@ -158,7 +190,7 @@ export default function MemoryPage() {
                           : "text-ds-gray-700 shrink-0 mt-0.5"
                       }
                     />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="text-label-13 text-ds-gray-1000 truncate font-medium">
                         {file.name}
                       </p>
@@ -167,11 +199,26 @@ export default function MemoryPage() {
                           {file.topics.join(", ")}
                         </p>
                       )}
-                      {file.size_bytes !== undefined && (
-                        <p className="text-label-13-mono text-ds-gray-900">
-                          {(file.size_bytes / 1024).toFixed(1)} KB
-                        </p>
-                      )}
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {file.content && (
+                          <span className="text-label-13-mono text-ds-gray-700">
+                            {file.content.split(/\s+/).filter(Boolean).length}w
+                          </span>
+                        )}
+                        {file.size_bytes !== undefined && (
+                          <span className="text-label-13-mono text-ds-gray-700">
+                            {(file.size_bytes / 1024).toFixed(1)} KB
+                          </span>
+                        )}
+                        {file.updated_at && (
+                          <span
+                            className="text-label-13-mono text-ds-gray-700"
+                            suppressHydrationWarning
+                          >
+                            {new Date(file.updated_at).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 ))

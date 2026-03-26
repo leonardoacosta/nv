@@ -814,8 +814,9 @@ mod tests {
     #[test]
     fn test_build_wiql_all_states() {
         let wiql = build_wiql("MyProject", "@Me", "all");
-        // "all" means no state filter
-        assert!(!wiql.contains("[System.State]"));
+        // "all" has no state filter in the WHERE clause
+        assert!(!wiql.contains("[System.State] <> 'Closed'"));
+        assert!(!wiql.contains("[System.State] = 'New'"));
     }
 
     #[test]

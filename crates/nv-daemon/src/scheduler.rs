@@ -73,18 +73,10 @@ pub fn spawn_scheduler(
             tokio::time::sleep(initial_delay).await;
         }
 
-        // Push the first tick (after initial delay)
-        if trigger_tx.send(Trigger::Cron(CronEvent::Digest)).is_err() {
-            tracing::error!("scheduler: trigger channel closed on first tick");
-            return;
-        }
-        tracing::info!("scheduler: first digest tick sent");
-
-        // Start the regular digest interval
-        let period = Duration::from_secs(interval_minutes * 60);
-        let mut digest_interval = tokio::time::interval(period);
-        // Skip the first tick since we already sent one above
-        digest_interval.tick().await;
+        // Digest is now merged into the morning briefing (fires once daily at 7am).
+        // The standalone digest timer is removed. The interval_minutes param is
+        // kept in the function signature for backward compatibility but ignored.
+        let _ = interval_minutes;
 
         // User schedule poll interval (60 seconds)
         let mut user_sched_interval =
@@ -111,13 +103,7 @@ pub fn spawn_scheduler(
 
         loop {
             tokio::select! {
-                _ = digest_interval.tick() => {
-                    tracing::debug!("scheduler: digest tick");
-                    if trigger_tx.send(Trigger::Cron(CronEvent::Digest)).is_err() {
-                        tracing::info!("scheduler: trigger channel closed, shutting down");
-                        break;
-                    }
-                }
+                // Digest removed from standalone timer — now fires with morning briefing at 7am.
                 _ = user_sched_interval.tick() => {
                     if let Some(ref store_arc) = schedule_store {
                         poll_user_schedules(store_arc, &trigger_tx);
@@ -136,7 +122,9 @@ pub fn spawn_scheduler(
                         && last_briefing_date.is_none_or(|d| d < today)
                     {
                         last_briefing_date = Some(today);
-                        tracing::info!(hour = current_hour, "scheduler: morning briefing tick");
+                        tracing::info!(hour = current_hour, "scheduler: morning briefing + digest tick");
+                        // Fire digest first (gathers data), then briefing (synthesizes it)
+                        let _ = trigger_tx.send(Trigger::Cron(CronEvent::Digest));
                         if trigger_tx.send(Trigger::Cron(CronEvent::MorningBriefing)).is_err() {
                             tracing::info!("scheduler: trigger channel closed on morning briefing tick");
                             break;

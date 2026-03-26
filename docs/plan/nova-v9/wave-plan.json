@@ -388,7 +388,7 @@
       "specs": [
         {
           "name": "add-teams-cli",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -397,12 +397,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:49:42.347133",
+          "merged_at": "2026-03-26T12:57:16.857063"
         },
         {
           "name": "add-outlook-cli",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -411,12 +411,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:49:42.347142",
+          "merged_at": "2026-03-26T12:57:16.857069"
         },
         {
           "name": "add-discord-cli",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -425,8 +425,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:49:42.347143",
+          "merged_at": "2026-03-26T12:57:16.857070"
         }
       ]
     },
@@ -586,13 +586,14 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 4,
+  "current_wave": 5,
   "started_at": "2026-03-26T12:21:27.410133",
   "completed_at": null,
   "completed_waves": [
     1,
     2,
-    3
+    3,
+    4
   ],
   "completed_specs": [
     "scaffold-ts-daemon",
@@ -600,7 +601,10 @@
     "add-telegram-adapter",
     "add-agent-sdk-integration",
     "add-http-api",
-    "add-systemd-service"
+    "add-systemd-service",
+    "add-teams-cli",
+    "add-outlook-cli",
+    "add-discord-cli"
   ],
   "failed_specs": [],
   "mode": "consolidated",

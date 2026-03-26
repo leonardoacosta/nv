@@ -15,6 +15,13 @@
       "when": 1774549418003,
       "tag": "0001_superb_madelyne_pryor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774564302767,
+      "tag": "0002_striped_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

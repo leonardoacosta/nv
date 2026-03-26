@@ -17,3 +17,12 @@ export type { Memory, NewMemory } from "./schema/memory.js";
 
 export { briefings } from "./schema/briefings.js";
 export type { Briefing, NewBriefing } from "./schema/briefings.js";
+
+export { reminders } from "./schema/reminders.js";
+export type { Reminder, NewReminder } from "./schema/reminders.js";
+
+export { schedules } from "./schema/schedules.js";
+export type { Schedule, NewSchedule } from "./schema/schedules.js";
+
+export { sessions } from "./schema/sessions.js";
+export type { Session, NewSession } from "./schema/sessions.js";

@@ -18,9 +18,27 @@ use nv_core::types::{InlineButton, InlineKeyboard, Obligation, OutboundMessage};
 
 use crate::agent::build_system_context;
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason};
+use crate::http::{DaemonEvent, ObligationActivityEvent};
 use crate::nexus;
 use crate::tools;
 use crate::worker::{SharedDeps, TOOL_TIMEOUT_READ, TOOL_TIMEOUT_WRITE, WRITE_TOOLS};
+
+// ── Activity Emit Helper ───────────────────────────────────────────────
+
+/// Emit an `ObligationActivityEvent` to both the ring buffer and the WebSocket
+/// broadcast channel. Fire-and-forget: errors are logged at debug level.
+fn emit_activity(deps: &SharedDeps, event_type: &str, obligation_id: &str, description: &str, metadata: Option<serde_json::Value>) {
+    let event = ObligationActivityEvent {
+        id: uuid::Uuid::new_v4().to_string(),
+        event_type: event_type.to_string(),
+        obligation_id: obligation_id.to_string(),
+        description: description.to_string(),
+        timestamp: Utc::now(),
+        metadata,
+    };
+    deps.activity_buffer.push(event.clone());
+    let _ = deps.obligation_event_tx.send(DaemonEvent::ObligationActivity(event));
+}
 
 // ── Result Type ───────────────────────────────────────────────────────
 
@@ -116,6 +134,15 @@ pub async fn execute_obligation(
         "autonomous executor: starting obligation"
     );
 
+    // Emit execution_started activity event.
+    emit_activity(
+        deps,
+        "obligation.execution_started",
+        &obligation.id,
+        &format!("Nova started working on: {}", obligation.detected_action),
+        None,
+    );
+
     // Load latest research notes for this obligation (if any).
     let research_summary: Option<String> = deps
         .obligation_store
@@ -149,6 +176,7 @@ pub async fn execute_obligation(
             &tool_definitions,
             &claude_client,
             deps,
+            &obligation.id,
         ),
     )
     .await;
@@ -189,6 +217,7 @@ async fn run_executor_loop(
     tool_definitions: &[crate::claude::ToolDefinition],
     client: &ClaudeClient,
     deps: &Arc<SharedDeps>,
+    obligation_id: &str,
 ) -> ObligationResult {
     let mut final_text = String::new();
 
@@ -259,6 +288,15 @@ async fn run_executor_loop(
             tracing::debug!(
                 tool = %tool_name,
                 "autonomous executor: executing tool"
+            );
+
+            // Emit obligation.tool_called activity event.
+            emit_activity(
+                deps,
+                "obligation.tool_called",
+                obligation_id,
+                &format!("Nova called tool: {tool_name}"),
+                Some(serde_json::json!({ "tool_name": tool_name })),
             );
 
             let timeout_secs = if WRITE_TOOLS.contains(&tool_name.as_str()) {
@@ -364,6 +402,20 @@ pub async fn handle_execution_result(
                 "autonomous executor: completed successfully"
             );
 
+            // Emit execution_completed activity event.
+            let short_summary = if summary.len() > 200 {
+                format!("{}…", &summary[..197])
+            } else {
+                summary.clone()
+            };
+            emit_activity(
+                deps,
+                "obligation.execution_completed",
+                &obligation.id,
+                &format!("Nova completed: {short_summary}"),
+                Some(serde_json::json!({ "result": "proposed_done" })),
+            );
+
             // Store execution note.
             if let Some(store_arc) = &deps.obligation_store {
                 if let Ok(store) = store_arc.lock() {
@@ -446,6 +498,15 @@ pub async fn handle_execution_result(
                 label,
                 error = error_text,
                 "autonomous executor: execution did not complete"
+            );
+
+            // Emit execution_completed (failed) activity event.
+            emit_activity(
+                deps,
+                "obligation.execution_completed",
+                &obligation.id,
+                &format!("Nova execution {label}: {error_text}"),
+                Some(serde_json::json!({ "result": label })),
             );
 
             // Store failure note.

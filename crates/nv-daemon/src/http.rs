@@ -8,6 +8,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
+use chrono::{DateTime, Utc};
 use nv_core::types::{CliCommand, CliRequest, CronEvent, ObligationOwner, ObligationStatus, Trigger};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -24,6 +25,71 @@ use crate::team_agent::TeamAgentDispatcher;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
 use crate::channels::teams::types::{ChangeNotificationCollection, ChatMessage};
+
+// ── Activity Feed Types ───────────────────────────────────────────
+
+/// A single obligation lifecycle event stored in the activity ring buffer.
+#[derive(Debug, Clone, Serialize)]
+pub struct ObligationActivityEvent {
+    /// Unique event ID (UUID v4).
+    pub id: String,
+    /// Event type string, e.g. "obligation.detected", "obligation.execution_started".
+    pub event_type: String,
+    /// ID of the obligation this event relates to.
+    pub obligation_id: String,
+    /// Human-readable description for the activity feed.
+    pub description: String,
+    /// When the event occurred.
+    pub timestamp: DateTime<Utc>,
+    /// Optional structured metadata (tool name, duration, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// In-memory ring buffer for the last N obligation activity events.
+///
+/// Capacity is fixed at 200 events. When full, the oldest event is evicted
+/// to make room for the newest. Thread-safe via `Arc<Mutex<_>>`.
+#[derive(Clone)]
+pub struct ActivityRingBuffer {
+    inner: Arc<std::sync::Mutex<VecDeque<ObligationActivityEvent>>>,
+    capacity: usize,
+}
+
+impl ActivityRingBuffer {
+    /// Create a new ring buffer with capacity 200.
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(200))),
+            capacity: 200,
+        }
+    }
+
+    /// Push a new event, evicting the oldest if the buffer is full.
+    pub fn push(&self, event: ObligationActivityEvent) {
+        if let Ok(mut buf) = self.inner.lock() {
+            if buf.len() >= self.capacity {
+                buf.pop_front();
+            }
+            buf.push_back(event);
+        }
+    }
+
+    /// Return the most recent `limit` events in newest-first order.
+    pub fn recent(&self, limit: usize) -> Vec<ObligationActivityEvent> {
+        if let Ok(buf) = self.inner.lock() {
+            buf.iter().rev().take(limit).cloned().collect()
+        } else {
+            vec![]
+        }
+    }
+}
+
+impl Default for ActivityRingBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Dashboard Event Types ─────────────────────────────────────────
 
@@ -63,6 +129,8 @@ pub enum DaemonEvent {
     HealthPing {
         timestamp: String,
     },
+    /// An obligation activity event for the real-time feed.
+    ObligationActivity(ObligationActivityEvent),
 }
 
 /// Shared state for the HTTP server.
@@ -107,6 +175,8 @@ pub struct HttpState {
     pub config_path: Option<PathBuf>,
     /// Base path of the memory directory (`~/.nv/memory`). Used by GET/PUT /api/memory.
     pub memory_base_path: Option<PathBuf>,
+    /// In-memory ring buffer for obligation activity events (GET /api/obligations/activity).
+    pub activity_buffer: ActivityRingBuffer,
 }
 
 /// Request body for POST /ask.
@@ -144,6 +214,8 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         // Dashboard API
         .route("/api/messages", get(get_messages_handler))
         .route("/api/obligations", get(get_obligations_handler))
+        .route("/api/obligations/activity", get(get_obligation_activity_handler))
+        .route("/api/obligations/stats", get(get_obligation_stats_handler))
         .route("/api/obligations/{id}", patch(patch_obligation_handler))
         .route("/api/projects", get(get_projects_handler))
         .route("/api/config", get(get_config_handler).put(put_config_handler))
@@ -819,11 +891,42 @@ async fn get_obligations_handler(
             };
 
             match result {
-                Ok(obligations) => (
-                    StatusCode::OK,
-                    Json(serde_json::json!({ "obligations": obligations })),
-                )
-                    .into_response(),
+                Ok(obligations) => {
+                    // Enrich each obligation with notes, attempt_count, last_attempt_at.
+                    let enriched: Vec<serde_json::Value> = obligations
+                        .into_iter()
+                        .map(|ob| {
+                            let notes = store.list_notes(&ob.id).unwrap_or_default();
+                            let attempt_count = store
+                                .count_execution_attempts(&ob.id)
+                                .unwrap_or(0) as u32;
+                            let last_attempt_at = ob.last_attempt_at.clone();
+                            let mut val = serde_json::to_value(&ob).unwrap_or_default();
+                            if let serde_json::Value::Object(ref mut map) = val {
+                                map.insert(
+                                    "notes".to_string(),
+                                    serde_json::to_value(&notes).unwrap_or_default(),
+                                );
+                                map.insert(
+                                    "attempt_count".to_string(),
+                                    serde_json::Value::Number(attempt_count.into()),
+                                );
+                                map.insert(
+                                    "last_attempt_at".to_string(),
+                                    last_attempt_at
+                                        .map(serde_json::Value::String)
+                                        .unwrap_or(serde_json::Value::Null),
+                                );
+                            }
+                            val
+                        })
+                        .collect();
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({ "obligations": enriched })),
+                    )
+                        .into_response()
+                }
                 Err(e) => {
                     tracing::error!(error = %e, "get_obligations: query failed");
                     (
@@ -840,6 +943,70 @@ async fn get_obligations_handler(
             (
                 StatusCode::OK,
                 Json(serde_json::json!({ "obligations": [] })),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── GET /api/obligations/activity ─────────────────────────────────────
+
+/// Query params for GET /api/obligations/activity.
+#[derive(Debug, Deserialize, Default)]
+pub struct ObligationActivityQuery {
+    /// Maximum number of events to return (default 50, max 200).
+    pub limit: Option<usize>,
+}
+
+/// GET /api/obligations/activity?limit=50
+///
+/// Returns the most recent obligation activity events from the in-memory
+/// ring buffer, newest first.
+async fn get_obligation_activity_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(params): Query<ObligationActivityQuery>,
+) -> impl IntoResponse {
+    let limit = params.limit.unwrap_or(50).min(200);
+    let events = state.activity_buffer.recent(limit);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "events": events })),
+    )
+}
+
+// ── GET /api/obligations/stats ─────────────────────────────────────────
+
+/// GET /api/obligations/stats — aggregate counts by status and owner.
+async fn get_obligation_stats_handler(
+    State(state): State<Arc<HttpState>>,
+) -> impl IntoResponse {
+    match ObligationStore::new(&state.stats_db_path) {
+        Ok(store) => match store.get_stats() {
+            Ok(stats) => (
+                StatusCode::OK,
+                Json(serde_json::to_value(stats).unwrap_or_default()),
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::error!(error = %e, "get_obligation_stats: query failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("Stats query failed: {e}")})),
+                )
+                    .into_response()
+            }
+        },
+        Err(e) => {
+            tracing::warn!(error = %e, "get_obligation_stats: store not available");
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "open_nova": 0,
+                    "open_leo": 0,
+                    "in_progress": 0,
+                    "proposed_done": 0,
+                    "done_today": 0,
+                })),
             )
                 .into_response()
         }
@@ -1529,6 +1696,7 @@ pub async fn run_http_server(
     project_registry: HashMap<String, PathBuf>,
     config_path: Option<PathBuf>,
     memory_base_path: Option<PathBuf>,
+    activity_buffer: ActivityRingBuffer,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -1549,6 +1717,7 @@ pub async fn run_http_server(
         project_registry,
         config_path,
         memory_base_path,
+        activity_buffer,
     });
     let app = build_router(state);
 

@@ -38,7 +38,8 @@ use crate::channels::telegram::client::TelegramClient;
 use crate::tool_cache::{cache_ttl_for_tool, invalidation_prefix_for_tool, ToolResultCache};
 use crate::tools;
 use crate::tts;
-use tokio::sync::mpsc;
+use crate::http::{ActivityRingBuffer, DaemonEvent};
+use tokio::sync::{broadcast, mpsc};
 
 // ── Worker Events ──────────────────────────────────────────────────
 
@@ -291,6 +292,15 @@ pub struct SharedDeps {
     /// Updated on every Message/CliCommand trigger dispatch by the orchestrator.
     /// Used by the idle detection loop to enforce the `idle_debounce_secs` window.
     pub last_interactive_at: Arc<std::sync::atomic::AtomicU64>,
+    /// Broadcast sender for obligation activity events to the dashboard WebSocket.
+    ///
+    /// Used by the executor, detector, and callbacks to emit `DaemonEvent::ObligationActivity`
+    /// variants. Cloned cheaply — broadcast channels are Arc-backed.
+    pub obligation_event_tx: broadcast::Sender<DaemonEvent>,
+    /// In-memory ring buffer for obligation activity events.
+    ///
+    /// Shared between the HTTP server (reader) and obligation executor/detector (writers).
+    pub activity_buffer: ActivityRingBuffer,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────

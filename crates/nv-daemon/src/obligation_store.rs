@@ -16,6 +16,33 @@ use uuid::Uuid;
 
 use crate::obligation_research::{Finding, ResearchResult};
 
+// ── Output Types ─────────────────────────────────────────────────────
+
+/// A single note attached to an obligation, returned by `list_notes`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ObligationNote {
+    pub id: i64,
+    pub obligation_id: String,
+    pub note_type: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+/// Aggregate counts for the obligations stats bar.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ObligationStats {
+    /// Open obligations owned by Nova.
+    pub open_nova: i64,
+    /// Open obligations owned by Leo.
+    pub open_leo: i64,
+    /// Obligations with status `in_progress`.
+    pub in_progress: i64,
+    /// Obligations with status `proposed_done`.
+    pub proposed_done: i64,
+    /// Obligations marked `done` today (UTC).
+    pub done_today: i64,
+}
+
 // ── Input Type ───────────────────────────────────────────────────────
 
 /// Parameters for creating a new obligation.
@@ -455,6 +482,196 @@ impl ObligationStore {
 
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| anyhow::anyhow!("list_research_by_obligation failed: {e}"))
+    }
+
+    /// Find an obligation by a UUID prefix (minimum 6 chars).
+    ///
+    /// Returns the first match ordered by created_at ASC. Returns `None` if the prefix
+    /// does not uniquely match any obligation, or is shorter than 6 characters.
+    pub fn get_by_id_prefix(&self, prefix: &str) -> Result<Option<Obligation>> {
+        if prefix.len() < 6 {
+            return Ok(None);
+        }
+        let pattern = format!("{prefix}%");
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
+             FROM obligations
+             WHERE id LIKE ?1
+             ORDER BY created_at ASC
+             LIMIT 1",
+        )?;
+
+        let mut rows = stmt.query_map(params![pattern], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::other(e.to_string())),
+                )
+            })
+        })?;
+
+        match rows.next() {
+            Some(Ok(ob)) => Ok(Some(ob)),
+            Some(Err(e)) => Err(anyhow::anyhow!("get_by_id_prefix row error: {e}")),
+            None => Ok(None),
+        }
+    }
+
+    /// Update the owner of an obligation and touch `updated_at`.
+    ///
+    /// Returns `true` if a row was updated, `false` if the id was not found.
+    pub fn update_owner(&self, id: &str, new_owner: &ObligationOwner) -> Result<bool> {
+        let rows_changed = self.conn.execute(
+            "UPDATE obligations
+             SET owner = ?1, updated_at = datetime('now')
+             WHERE id = ?2",
+            params![new_owner.as_str(), id],
+        )?;
+
+        Ok(rows_changed > 0)
+    }
+
+    /// List open obligations for a specific owner.
+    ///
+    /// Includes `open`, `in_progress`, and `proposed_done` statuses (i.e. everything
+    /// that is not yet `done` or `dismissed`). Ordered by priority ASC, created_at ASC.
+    pub fn list_open_by_owner(&self, owner: &ObligationOwner) -> Result<Vec<Obligation>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
+             FROM obligations
+             WHERE owner = ?1
+               AND status NOT IN ('done', 'dismissed')
+             ORDER BY priority ASC, created_at ASC",
+        )?;
+
+        let rows = stmt.query_map(params![owner.as_str()], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::other(e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_open_by_owner query failed: {e}"))
+    }
+
+    /// Count open obligations grouped by owner and status for the /ob status summary.
+    ///
+    /// Returns `(nova_open, nova_in_progress, nova_proposed_done, leo_open)`.
+    pub fn count_open_for_status_summary(&self) -> Result<(i64, i64, i64, i64)> {
+        let nova_open: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE owner = 'nova' AND status = 'open'",
+            [],
+            |row| row.get(0),
+        )?;
+        let nova_in_progress: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE owner = 'nova' AND status = 'in_progress'",
+            [],
+            |row| row.get(0),
+        )?;
+        let nova_proposed_done: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE owner = 'nova' AND status = 'proposed_done'",
+            [],
+            |row| row.get(0),
+        )?;
+        let leo_open: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE owner = 'leo' AND status = 'open'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        Ok((nova_open, nova_in_progress, nova_proposed_done, leo_open))
+    }
+
+    // ── Notes & Stats ─────────────────────────────────────────────────
+
+    /// List the most recent notes for a given obligation, newest-first, max 10.
+    ///
+    /// Reads from the `obligation_notes` table (plain-text execution notes, not
+    /// the research-result rows which use different columns).
+    pub fn list_notes(&self, obligation_id: &str) -> Result<Vec<ObligationNote>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, obligation_id, note_type, content, created_at
+             FROM obligation_notes
+             WHERE obligation_id = ?1
+             ORDER BY created_at DESC
+             LIMIT 10",
+        )?;
+
+        let rows = stmt.query_map(params![obligation_id], |row| {
+            Ok(ObligationNote {
+                id: row.get(0)?,
+                obligation_id: row.get(1)?,
+                note_type: row.get(2)?,
+                content: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_notes query failed: {e}"))
+    }
+
+    /// Count execution-type notes for a given obligation (proxy for attempt_count).
+    pub fn count_execution_attempts(&self, obligation_id: &str) -> Result<i64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligation_notes
+             WHERE obligation_id = ?1 AND note_type = 'execution'",
+            params![obligation_id],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    /// Return aggregate obligation counts for the stats bar.
+    pub fn get_stats(&self) -> Result<ObligationStats> {
+        let open_nova: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE status = 'open' AND owner = 'nova'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let open_leo: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE status = 'open' AND owner = 'leo'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let in_progress: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE status = 'in_progress'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let proposed_done: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations WHERE status = 'proposed_done'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let done_today: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM obligations
+             WHERE status = 'done'
+               AND updated_at >= date('now')",
+            [],
+            |row| row.get(0),
+        )?;
+
+        Ok(ObligationStats {
+            open_nova,
+            open_leo,
+            in_progress,
+            proposed_done,
+            done_today,
+        })
     }
 
     /// List open obligations last updated before `since` (stale obligations).

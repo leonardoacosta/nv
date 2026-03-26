@@ -22,12 +22,12 @@
 
 ## API Batch — Telegram Commands
 
-- [ ] [3.1] [P-1] Add `/obligations` (alias `/ob`) command to `handle_bot_commands` in orchestrator — lists open obligations grouped by owner, max 10, formatted with priority + status icon + truncated action [owner:api-engineer]
-- [ ] [3.2] [P-1] Add `/ob done <id_prefix>` command — match obligation by UUID prefix (min 6 chars), transition to `done`, reply with confirmation [owner:api-engineer]
-- [ ] [3.3] [P-1] Add `/ob assign <id_prefix> nova|leo` command — update obligation owner, reply with confirmation [owner:api-engineer]
-- [ ] [3.4] [P-1] Add `/ob create <text>` command — create new obligation with owner=nova, priority=2, source_channel=telegram, status=open; reply with confirmation [owner:api-engineer]
-- [ ] [3.5] [P-2] Add `/ob status` command — summary line: "Nova: N open, N in_progress, N proposed_done | Leo: N open" [owner:api-engineer]
-- [ ] [3.6] [P-2] Register all /ob subcommands in `classify_bot_command_triggers` for proper routing [owner:api-engineer]
+- [x] [3.1] [P-1] Add `/obligations` (alias `/ob`) command to `handle_bot_commands` in orchestrator — lists open obligations grouped by owner, max 10, formatted with priority + status icon + truncated action [owner:api-engineer]
+- [x] [3.2] [P-1] Add `/ob done <id_prefix>` command — match obligation by UUID prefix (min 6 chars), transition to `done`, reply with confirmation [owner:api-engineer]
+- [x] [3.3] [P-1] Add `/ob assign <id_prefix> nova|leo` command — update obligation owner, reply with confirmation [owner:api-engineer]
+- [x] [3.4] [P-1] Add `/ob create <text>` command — create new obligation with owner=nova, priority=2, source_channel=telegram, status=open; reply with confirmation [owner:api-engineer]
+- [x] [3.5] [P-2] Add `/ob status` command — summary line: "Nova: N open, N in_progress, N proposed_done | Leo: N open" [owner:api-engineer]
+- [x] [3.6] [P-2] Register all /ob subcommands in `classify_bot_command_triggers` for proper routing [owner:api-engineer]
 
 ## UI Batch — Dashboard Obligations Page
 
@@ -42,7 +42,7 @@
 
 ## Verify
 
-- [ ] [5.1] `cargo build -p nv-daemon` passes [owner:api-engineer]
+- [x] [5.1] `cargo build -p nv-daemon` passes [owner:api-engineer]
 - [ ] [5.2] `cargo clippy -p nv-daemon -- -D warnings` passes [owner:api-engineer]
 - [ ] [5.3] `cd apps/dashboard && npx next build` passes [owner:ui-engineer]
 - [ ] [5.4] [user] Telegram: send `/obligations` — verify list renders with priorities and owners

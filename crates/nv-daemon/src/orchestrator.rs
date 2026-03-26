@@ -22,6 +22,7 @@ use crate::digest::synthesize::{inject_budget_warning, synthesize_digest, synthe
 use crate::nexus;
 use crate::obligation_detector;
 use crate::obligation_store::NewObligation;
+use nv_core::types::{ObligationOwner, ObligationStatus};
 use crate::channels::telegram::client::TelegramClient;
 use crate::worker::{generate_slug_for_triggers, Priority, SharedDeps, WorkerEvent, WorkerPool, WorkerTask};
 
@@ -629,6 +630,28 @@ impl Orchestrator {
 
                         // Notify via Telegram for P0-P1 obligations with card + keyboard
                         if let Some(ob) = store_result {
+                            // Emit obligation.detected activity event.
+                            {
+                                use crate::http::{DaemonEvent, ObligationActivityEvent};
+                                let event = ObligationActivityEvent {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    event_type: "obligation.detected".to_string(),
+                                    obligation_id: ob.id.clone(),
+                                    description: format!(
+                                        "Obligation detected (owner: {}, priority: P{}): {}",
+                                        ob.owner,
+                                        ob.priority,
+                                        ob.detected_action,
+                                    ),
+                                    timestamp: chrono::Utc::now(),
+                                    metadata: None,
+                                };
+                                research_deps.activity_buffer.push(event.clone());
+                                let _ = research_deps.obligation_event_tx.send(
+                                    DaemonEvent::ObligationActivity(event),
+                                );
+                            }
+
                             if ob.priority <= 1 {
                                 if let (Some(tg), Some(chat_id)) =
                                     (telegram_client, telegram_chat_id)
@@ -1208,6 +1231,21 @@ impl Orchestrator {
                                         &store,
                                     ).await {
                                         tracing::warn!(error = %e, "confirm_done callback failed");
+                                    } else {
+                                        // Emit obligation.confirmed activity event.
+                                        use crate::http::{DaemonEvent, ObligationActivityEvent};
+                                        let event = ObligationActivityEvent {
+                                            id: uuid::Uuid::new_v4().to_string(),
+                                            event_type: "obligation.confirmed".to_string(),
+                                            obligation_id: ob_id.to_string(),
+                                            description: "Leo confirmed obligation done".to_string(),
+                                            timestamp: chrono::Utc::now(),
+                                            metadata: None,
+                                        };
+                                        self.deps.activity_buffer.push(event.clone());
+                                        let _ = self.deps.obligation_event_tx.send(
+                                            DaemonEvent::ObligationActivity(event),
+                                        );
                                     }
                                 }
                             }
@@ -1230,6 +1268,21 @@ impl Orchestrator {
                                         &store,
                                     ).await {
                                         tracing::warn!(error = %e, "reopen callback failed");
+                                    } else {
+                                        // Emit obligation.reopened activity event.
+                                        use crate::http::{DaemonEvent, ObligationActivityEvent};
+                                        let event = ObligationActivityEvent {
+                                            id: uuid::Uuid::new_v4().to_string(),
+                                            event_type: "obligation.reopened".to_string(),
+                                            obligation_id: ob_id.to_string(),
+                                            description: "Leo reopened obligation for retry".to_string(),
+                                            timestamp: chrono::Utc::now(),
+                                            metadata: None,
+                                        };
+                                        self.deps.activity_buffer.push(event.clone());
+                                        let _ = self.deps.obligation_event_tx.send(
+                                            DaemonEvent::ObligationActivity(event),
+                                        );
                                     }
                                 }
                             }
@@ -1409,6 +1462,8 @@ impl Orchestrator {
                     "sessions" => self.cmd_sessions().await,
                     "start" => self.cmd_start(&parsed.args, msg).await,
                     "stop" => self.cmd_stop(&parsed.args).await,
+                    "obligations" => self.cmd_obligations(),
+                    "ob" => self.cmd_ob(&parsed.args),
                     _ => self.cmd_unknown(&parsed.command),
                 };
 
@@ -1908,6 +1963,277 @@ impl Orchestrator {
         match mgr.stop(session_id).await {
             Ok(msg) => format!("\u{23F9} {msg}"),
             Err(e) => format!("\u{274C} Failed to stop session: {e}"),
+        }
+    }
+
+    // ── Obligation Commands ──────────────────────────────────────────
+
+    /// /obligations (alias /ob with no subcommand) — list open obligations grouped by owner.
+    ///
+    /// Shows up to 10 items total with priority, status icon, and truncated action text.
+    /// Format per item: `{priority} {icon} {detected_action truncated to 60 chars}`
+    /// Status icons: open=○  in_progress=→  proposed_done=✓
+    fn cmd_obligations(&self) -> String {
+        let Some(store_arc) = &self.deps.obligation_store else {
+            return "\u{274C} Obligation store not configured.".to_string();
+        };
+
+        let (nova_obs, leo_obs) = match store_arc.lock() {
+            Ok(store) => {
+                let nova = store.list_open_by_owner(&ObligationOwner::Nova).unwrap_or_default();
+                let leo = store.list_open_by_owner(&ObligationOwner::Leo).unwrap_or_default();
+                (nova, leo)
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cmd_obligations: store mutex poisoned");
+                return "\u{274C} Failed to read obligations.".to_string();
+            }
+        };
+
+        let total = nova_obs.len() + leo_obs.len();
+        if total == 0 {
+            return "\u{2705} No open obligations.".to_string();
+        }
+
+        fn status_icon(status: &ObligationStatus) -> &'static str {
+            match status {
+                ObligationStatus::Open => "\u{25CB}",        // ○
+                ObligationStatus::InProgress => "\u{2192}",  // →
+                ObligationStatus::ProposedDone => "\u{2713}", // ✓
+                _ => "\u{25CB}",
+            }
+        }
+
+        fn format_item(ob: &nv_core::types::Obligation) -> String {
+            let action: String = ob.detected_action.chars().take(60).collect();
+            let action = if ob.detected_action.len() > 60 {
+                format!("{action}...")
+            } else {
+                action
+            };
+            let short_id: String = ob.id.chars().take(6).collect();
+            format!(
+                "{} {} {} [{}]",
+                ob.priority,
+                status_icon(&ob.status),
+                action,
+                short_id
+            )
+        }
+
+        const MAX_ITEMS: usize = 10;
+        let mut lines = Vec::new();
+        let mut shown = 0;
+
+        if !nova_obs.is_empty() {
+            lines.push("Nova's obligations:".to_string());
+            for ob in &nova_obs {
+                if shown >= MAX_ITEMS {
+                    break;
+                }
+                lines.push(format_item(ob));
+                shown += 1;
+            }
+        }
+
+        if !leo_obs.is_empty() && shown < MAX_ITEMS {
+            lines.push("Leo's obligations:".to_string());
+            for ob in &leo_obs {
+                if shown >= MAX_ITEMS {
+                    break;
+                }
+                lines.push(format_item(ob));
+                shown += 1;
+            }
+        }
+
+        if shown < total {
+            lines.push(format!("...and {} more", total - shown));
+        }
+
+        lines.join("\n")
+    }
+
+    /// /ob <subcommand> [args...] — obligation management subcommands.
+    ///
+    /// Subcommands: done, assign, create, status. No subcommand → list (same as /obligations).
+    fn cmd_ob(&self, args: &[String]) -> String {
+        match args.first().map(|s| s.as_str()) {
+            None | Some("list") => self.cmd_obligations(),
+            Some("done") => {
+                let id_prefix = match args.get(1) {
+                    Some(p) => p.as_str(),
+                    None => return "\u{2139}\u{FE0F} Usage: /ob done <id_prefix>".to_string(),
+                };
+                self.cmd_ob_done(id_prefix)
+            }
+            Some("assign") => {
+                let id_prefix = match args.get(1) {
+                    Some(p) => p.as_str(),
+                    None => return "\u{2139}\u{FE0F} Usage: /ob assign <id_prefix> nova|leo".to_string(),
+                };
+                let owner_str = match args.get(2) {
+                    Some(o) => o.as_str(),
+                    None => return "\u{2139}\u{FE0F} Usage: /ob assign <id_prefix> nova|leo".to_string(),
+                };
+                self.cmd_ob_assign(id_prefix, owner_str)
+            }
+            Some("create") => {
+                if args.len() < 2 {
+                    return "\u{2139}\u{FE0F} Usage: /ob create <text>".to_string();
+                }
+                let text = args[1..].join(" ");
+                self.cmd_ob_create(&text)
+            }
+            Some("status") => self.cmd_ob_status(),
+            Some(other) => {
+                format!(
+                    "\u{2753} Unknown /ob subcommand: {other}\n\n\
+                     Available: list, done, assign, create, status"
+                )
+            }
+        }
+    }
+
+    /// /ob done <id_prefix> — mark obligation done by UUID prefix.
+    fn cmd_ob_done(&self, id_prefix: &str) -> String {
+        let Some(store_arc) = &self.deps.obligation_store else {
+            return "\u{274C} Obligation store not configured.".to_string();
+        };
+
+        match store_arc.lock() {
+            Ok(store) => {
+                match store.get_by_id_prefix(id_prefix) {
+                    Ok(Some(ob)) => {
+                        match store.update_status(&ob.id, &ObligationStatus::Done) {
+                            Ok(_) => {
+                                let action: String = ob.detected_action.chars().take(80).collect();
+                                let action = if ob.detected_action.len() > 80 {
+                                    format!("{action}...")
+                                } else {
+                                    action
+                                };
+                                format!("\u{2705} Marked done: {action}")
+                            }
+                            Err(e) => format!("\u{274C} Failed to update obligation: {e}"),
+                        }
+                    }
+                    Ok(None) => format!("\u{274C} No obligation found with prefix '{id_prefix}'"),
+                    Err(e) => format!("\u{274C} Failed to look up obligation: {e}"),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cmd_ob_done: store mutex poisoned");
+                "\u{274C} Failed to access obligation store.".to_string()
+            }
+        }
+    }
+
+    /// /ob assign <id_prefix> nova|leo — change obligation owner.
+    fn cmd_ob_assign(&self, id_prefix: &str, owner_str: &str) -> String {
+        let new_owner = match owner_str.to_lowercase().as_str() {
+            "nova" => ObligationOwner::Nova,
+            "leo" => ObligationOwner::Leo,
+            other => return format!("\u{274C} Unknown owner '{other}'. Use: nova or leo"),
+        };
+
+        let Some(store_arc) = &self.deps.obligation_store else {
+            return "\u{274C} Obligation store not configured.".to_string();
+        };
+
+        match store_arc.lock() {
+            Ok(store) => {
+                match store.get_by_id_prefix(id_prefix) {
+                    Ok(Some(ob)) => {
+                        match store.update_owner(&ob.id, &new_owner) {
+                            Ok(_) => {
+                                let action: String = ob.detected_action.chars().take(80).collect();
+                                let action = if ob.detected_action.len() > 80 {
+                                    format!("{action}...")
+                                } else {
+                                    action
+                                };
+                                format!(
+                                    "\u{2192} Assigned to {}: {action}",
+                                    new_owner.as_str()
+                                )
+                            }
+                            Err(e) => format!("\u{274C} Failed to update owner: {e}"),
+                        }
+                    }
+                    Ok(None) => format!("\u{274C} No obligation found with prefix '{id_prefix}'"),
+                    Err(e) => format!("\u{274C} Failed to look up obligation: {e}"),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cmd_ob_assign: store mutex poisoned");
+                "\u{274C} Failed to access obligation store.".to_string()
+            }
+        }
+    }
+
+    /// /ob create <text> — create a new obligation assigned to Nova.
+    fn cmd_ob_create(&self, text: &str) -> String {
+        let Some(store_arc) = &self.deps.obligation_store else {
+            return "\u{274C} Obligation store not configured.".to_string();
+        };
+
+        let new_ob = NewObligation {
+            id: Uuid::new_v4().to_string(),
+            source_channel: "telegram".to_string(),
+            source_message: None,
+            detected_action: text.to_string(),
+            project_code: None,
+            priority: 2,
+            owner: ObligationOwner::Nova,
+            owner_reason: None,
+            deadline: None,
+        };
+
+        match store_arc.lock() {
+            Ok(store) => {
+                match store.create(new_ob) {
+                    Ok(ob) => {
+                        let action: String = ob.detected_action.chars().take(80).collect();
+                        let action = if ob.detected_action.len() > 80 {
+                            format!("{action}...")
+                        } else {
+                            action
+                        };
+                        format!("\u{2705} Created obligation: {action} (assigned to Nova)")
+                    }
+                    Err(e) => format!("\u{274C} Failed to create obligation: {e}"),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cmd_ob_create: store mutex poisoned");
+                "\u{274C} Failed to access obligation store.".to_string()
+            }
+        }
+    }
+
+    /// /ob status — one-line summary of obligation counts by owner and status.
+    fn cmd_ob_status(&self) -> String {
+        let Some(store_arc) = &self.deps.obligation_store else {
+            return "\u{274C} Obligation store not configured.".to_string();
+        };
+
+        match store_arc.lock() {
+            Ok(store) => {
+                match store.count_open_for_status_summary() {
+                    Ok((nova_open, nova_in_progress, nova_proposed_done, leo_open)) => {
+                        format!(
+                            "Nova: {nova_open} open, {nova_in_progress} in progress, \
+                             {nova_proposed_done} proposed done | Leo: {leo_open} open"
+                        )
+                    }
+                    Err(e) => format!("\u{274C} Failed to read obligation counts: {e}"),
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "cmd_ob_status: store mutex poisoned");
+                "\u{274C} Failed to access obligation store.".to_string()
+            }
         }
     }
 
@@ -3390,6 +3716,13 @@ mod tests {
         assert_eq!(classify_trigger(&make_message("/apply oo fix-chat")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/projects")), TriggerClass::BotCommand);
         assert_eq!(classify_trigger(&make_message("/unknown")), TriggerClass::BotCommand);
+        // Obligation commands
+        assert_eq!(classify_trigger(&make_message("/obligations")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/ob")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/ob done abc123")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/ob assign abc123 nova")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/ob create fix the bug")), TriggerClass::BotCommand);
+        assert_eq!(classify_trigger(&make_message("/ob status")), TriggerClass::BotCommand);
     }
 
     #[test]

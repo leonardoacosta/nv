@@ -945,6 +945,13 @@ async fn main() -> anyhow::Result<()> {
     // Capacity 256: enough for burst events; lagged clients are warned but not disconnected.
     let (http_event_tx, _http_event_rx) = tokio::sync::broadcast::channel::<http::DaemonEvent>(256);
 
+    // Obligation activity ring buffer (shared between HTTP server and executor/detector).
+    let activity_buffer = http::ActivityRingBuffer::new();
+    let activity_buffer_for_workers = activity_buffer.clone();
+
+    // Obligation event broadcast sender (shared with workers for WebSocket fan-out).
+    let obligation_event_tx = http_event_tx.clone();
+
     // Clone teams client before the async move so SharedDeps can hold its own reference.
     let teams_client_for_workers = teams_client_for_http.clone();
     // Clone cold-start store for the HTTP server (shared with workers via SharedDeps).
@@ -980,6 +987,7 @@ async fn main() -> anyhow::Result<()> {
             project_registry_for_http,
             config_path_for_http,
             memory_base_path_for_http,
+            activity_buffer,
         )
         .await
         {
@@ -1251,6 +1259,8 @@ async fn main() -> anyhow::Result<()> {
         self_assessment_engine: self_assessment_engine_arc,
         autonomy_config: config.autonomy.clone(),
         last_interactive_at: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        obligation_event_tx,
+        activity_buffer: activity_buffer_for_workers,
     });
 
     // Extract Telegram client and chat_id for reactions

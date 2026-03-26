@@ -10,11 +10,11 @@
 
 ### Batch 1: Dependencies and Config
 
-- [ ] **T1** — Add `http-proxy` and `@types/http-proxy` to `apps/dashboard/package.json` devDependencies, and update the `start` script from `node .next/standalone/server.js` (or equivalent) to `node server.js`
+- [x] **T1** — Add `http-proxy` and `@types/http-proxy` to `apps/dashboard/package.json` devDependencies, and update the `start` script from `node .next/standalone/server.js` (or equivalent) to `node server.js`
 
 ### Batch 2: Custom Server
 
-- [ ] **T2** — Create `apps/dashboard/server.ts` — custom Node.js HTTP server that:
+- [x] **T2** — Create `apps/dashboard/server.ts` — custom Node.js HTTP server that:
   - Initializes the Next.js app with `next({ dev: process.env.NODE_ENV !== 'production' })`
   - Creates an HTTP server that passes all requests to the Next.js handler
   - Intercepts `upgrade` events: if `req.url === '/ws/events'`, proxies the upgrade to `${DAEMON_WS_URL}/ws/events` using `http-proxy`; otherwise destroys the socket
@@ -25,7 +25,7 @@
 
 ### Batch 3: Dockerfile
 
-- [ ] **T3** — Update `apps/dashboard/Dockerfile` CMD to run the custom server:
+- [x] **T3** — Update `apps/dashboard/Dockerfile` CMD to run the custom server:
   - Add a build step that compiles `server.ts` to `server.js` alongside the Next.js standalone build
   - Update the final `CMD` from the current default standalone invocation to `["node", "server.js"]`
   - Ensure `server.js` and `node_modules/http-proxy` are present in the final image layer

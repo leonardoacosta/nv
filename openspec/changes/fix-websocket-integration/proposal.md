@@ -1,7 +1,7 @@
 # Proposal: Fix WebSocket Integration
 
 **Spec ID:** fix-websocket-integration
-**Status:** approved
+**Status:** complete
 **Priority:** 1 (Critical)
 **Created:** 2026-03-25
 

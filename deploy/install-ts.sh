@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 INSTALL_DIR="${HOME}/.local/lib/nova-ts"
 SERVICE_DIR="${HOME}/.config/systemd/user"
-HEALTH_PORT="${API_PORT:-3443}"
+# HEALTH_PORT removed — slim daemon (v10) has no HTTP server
 
 # ── Pre-flight checks ────────────────────────────────────────────────────────
 
@@ -138,14 +138,10 @@ if [ "${ACTIVE}" != "active" ]; then
     exit 1
 fi
 
-if ! curl -sf "http://127.0.0.1:${HEALTH_PORT}/health" > /dev/null 2>&1; then
-    echo ""
-    echo "ERROR: Health endpoint did not respond at http://127.0.0.1:${HEALTH_PORT}/health"
-    echo ""
-    echo "--- Journal (last 20 lines) ---"
-    journalctl --user -u nova-ts.service -n 20 --no-pager || true
-    exit 1
-fi
+# Note: slim-daemon (v10) removed the Hono API server. The daemon no longer
+# exposes an HTTP health endpoint. systemctl is-active (above) is sufficient.
+# Tool fleet health is checked by install-tools.sh via tool-router :4000/health.
+echo "    nova-ts.service: active (systemd)"
 
 # ── Tool Fleet Deploy ────────────────────────────────────────────────────────
 
@@ -177,7 +173,7 @@ echo "nova-ts installed successfully."
 echo "  Version:  ${VERSION}"
 echo "  Install:  ${INSTALL_DIR}"
 echo "  Service:  nova-ts.service (active)"
-echo "  Health:   http://127.0.0.1:${HEALTH_PORT}/health"
+echo "  Health:   systemctl --user is-active nova-ts.service"
 echo "  Tools:    ${TOOLS_STATUS}"
 echo "  Logs:     journalctl --user -u nova-ts.service -f"
 echo ""

@@ -306,6 +306,12 @@ pub struct SharedDeps {
     ///
     /// Shared between the HTTP server (reader) and obligation executor/detector (writers).
     pub activity_buffer: ActivityRingBuffer,
+    /// Python Agent SDK sidecar manager.
+    ///
+    /// When `Some`, the worker prefers the sidecar for Claude calls instead of
+    /// `AnthropicClient` or `ClaudeClient`. `None` when the sidecar failed to
+    /// start at daemon startup (falls back to existing clients).
+    pub sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────

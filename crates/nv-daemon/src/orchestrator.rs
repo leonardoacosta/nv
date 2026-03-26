@@ -3783,6 +3783,7 @@ mod tests {
             deadline: None,
             created_at: "2026-03-24T00:00:00Z".to_string(),
             updated_at: "2026-03-24T00:00:00Z".to_string(),
+            last_attempt_at: None,
         }
     }
 

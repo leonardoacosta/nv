@@ -3,12 +3,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Query, State};
+use axum::extract::{ConnectInfo, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
+use nv_core::channel::Channel;
 use nv_core::types::{CliCommand, CliRequest, CronEvent, ObligationOwner, ObligationStatus, Trigger};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -133,6 +134,46 @@ pub enum DaemonEvent {
     ObligationActivity(ObligationActivityEvent),
 }
 
+// ── Tool Dispatch State ───────────────────────────────────────────
+
+/// Dependencies required to execute Nova tools via POST /api/tool-call.
+///
+/// Held behind `Arc` in `HttpState` because these fields are not `Clone`.
+/// `None` when the daemon does not have tool dispatch configured (e.g. in
+/// unit tests that don't need the tool-call endpoint).
+pub struct ToolDispatch {
+    pub memory: crate::memory::Memory,
+    pub jira_registry: Option<crate::tools::jira::JiraRegistry>,
+    pub channels: HashMap<String, Arc<dyn Channel>>,
+    pub project_registry: HashMap<String, PathBuf>,
+    pub calendar_credentials: Option<String>,
+    pub calendar_id: String,
+    pub stripe_registry: Option<crate::tools::ServiceRegistry<crate::tools::stripe::StripeClient>>,
+    pub vercel_registry: Option<crate::tools::ServiceRegistry<crate::tools::vercel::VercelClient>>,
+    pub sentry_registry: Option<crate::tools::ServiceRegistry<crate::tools::sentry::SentryClient>>,
+    pub resend_registry: Option<crate::tools::ServiceRegistry<crate::tools::resend::ResendClient>>,
+    pub ha_registry: Option<crate::tools::ServiceRegistry<crate::tools::ha::HAClient>>,
+    pub upstash_registry: Option<crate::tools::ServiceRegistry<crate::tools::upstash::UpstashClient>>,
+    pub ado_registry: Option<crate::tools::ServiceRegistry<crate::tools::ado::AdoClient>>,
+    pub cloudflare_registry: Option<crate::tools::ServiceRegistry<crate::tools::cloudflare::CloudflareClient>>,
+    pub doppler_registry: Option<crate::tools::ServiceRegistry<crate::tools::doppler::DopplerClient>>,
+    pub teams_client: Option<Arc<crate::channels::teams::client::TeamsClient>>,
+}
+
+/// Request body for POST /api/tool-call.
+#[derive(Debug, Deserialize)]
+pub struct ToolCallRequest {
+    pub tool_name: String,
+    pub input: serde_json::Value,
+}
+
+/// Response body for POST /api/tool-call.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolCallResponse {
+    pub result: Option<String>,
+    pub error: Option<String>,
+}
+
 /// Shared state for the HTTP server.
 #[derive(Clone)]
 pub struct HttpState {
@@ -177,6 +218,10 @@ pub struct HttpState {
     pub memory_base_path: Option<PathBuf>,
     /// In-memory ring buffer for obligation activity events (GET /api/obligations/activity).
     pub activity_buffer: ActivityRingBuffer,
+    /// Tool dispatch dependencies for POST /api/tool-call.
+    ///
+    /// `None` in unit tests and when the daemon is in a minimal config mode.
+    pub tool_dispatch: Option<Arc<ToolDispatch>>,
 }
 
 /// Request body for POST /ask.
@@ -236,7 +281,9 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         // Diary
         .route("/api/diary", get(get_diary_handler))
         // Sessions (TeamAgentDispatcher)
-        .route("/api/sessions", get(get_sessions_handler));
+        .route("/api/sessions", get(get_sessions_handler))
+        // MCP tool bridge — local-only
+        .route("/api/tool-call", post(tool_call_handler));
 
     // Add Jira webhook route if configured (uses its own sub-state)
     if let Some(jira_state) = &state.jira_webhook_state {
@@ -1697,6 +1744,7 @@ pub async fn run_http_server(
     config_path: Option<PathBuf>,
     memory_base_path: Option<PathBuf>,
     activity_buffer: ActivityRingBuffer,
+    tool_dispatch: Option<Arc<ToolDispatch>>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -1718,13 +1766,20 @@ pub async fn run_http_server(
         config_path,
         memory_base_path,
         activity_buffer,
+        tool_dispatch,
     });
     let app = build_router(state);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     tracing::info!(port, "HTTP server listening");
 
-    axum::serve(listener, app).await?;
+    // Use into_make_service_with_connect_info so handlers can extract peer
+    // addresses (needed by tool_call_handler's localhost-only guard).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 
@@ -2127,12 +2182,119 @@ async fn get_sessions_handler(State(state): State<Arc<HttpState>>) -> impl IntoR
     Json(SessionsResponse { sessions }).into_response()
 }
 
+// ── Tool Call Endpoint ────────────────────────────────────────────────
+
+/// POST /api/tool-call — execute a Nova tool and return the result.
+///
+/// This endpoint is the MCP bridge used by `nova-tools-mcp.py`.  When the
+/// Python Agent SDK calls a tool, the MCP server forwards the call here and
+/// the Rust daemon dispatches it through the existing
+/// `tools::execute_tool_send_with_backend` path.
+///
+/// Security: only requests from 127.0.0.1 / ::1 are accepted.  All other
+/// origins receive 403 Forbidden.  The peer address is injected by axum via
+/// `into_make_service_with_connect_info`; in tests use `MockConnectInfo` with
+/// `SocketAddr::from(([127, 0, 0, 1], 0))`.
+async fn tool_call_handler(
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    State(state): State<Arc<HttpState>>,
+    Json(body): Json<ToolCallRequest>,
+) -> impl IntoResponse {
+    // Localhost-only guard: reject anything not from 127.0.0.1 / ::1.
+    let peer_ip = peer.ip();
+    let is_local = peer_ip == std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+        || peer_ip == std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
+    if !is_local {
+        tracing::warn!(peer = %peer, "tool-call rejected: not from localhost");
+        return (
+            StatusCode::FORBIDDEN,
+            Json(ToolCallResponse {
+                result: None,
+                error: Some("tool-call endpoint is restricted to localhost".into()),
+            }),
+        )
+            .into_response();
+    }
+
+    let Some(ref td) = state.tool_dispatch else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ToolCallResponse {
+                result: None,
+                error: Some("tool dispatch not configured".into()),
+            }),
+        )
+            .into_response();
+    };
+
+    let svc_regs = crate::tools::ServiceRegistries {
+        stripe: td.stripe_registry.as_ref(),
+        vercel: td.vercel_registry.as_ref(),
+        sentry: td.sentry_registry.as_ref(),
+        resend: td.resend_registry.as_ref(),
+        ha: td.ha_registry.as_ref(),
+        upstash: td.upstash_registry.as_ref(),
+        ado: td.ado_registry.as_ref(),
+        cloudflare: td.cloudflare_registry.as_ref(),
+        doppler: td.doppler_registry.as_ref(),
+        teams: td.teams_client.as_deref(),
+    };
+
+    match crate::tools::execute_tool_send_with_backend(
+        &body.tool_name,
+        &body.input,
+        &td.memory,
+        td.jira_registry.as_ref(),
+        None, // nexus_backend — not available via HTTP path
+        &td.project_registry,
+        &td.channels,
+        td.calendar_credentials.as_deref(),
+        &td.calendar_id,
+        &svc_regs,
+    )
+    .await
+    {
+        Ok(crate::tools::ToolResult::Immediate(text)) => (
+            StatusCode::OK,
+            Json(ToolCallResponse {
+                result: Some(text),
+                error: None,
+            }),
+        )
+            .into_response(),
+        Ok(crate::tools::ToolResult::PendingAction { description, .. }) => {
+            // PendingAction requires Telegram confirmation — not supported via HTTP path.
+            // Return the description as the result so the agent knows what's pending.
+            (
+                StatusCode::OK,
+                Json(ToolCallResponse {
+                    result: Some(format!("[pending confirmation] {description}")),
+                    error: None,
+                }),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!(tool = %body.tool_name, error = %e, "tool-call execution failed");
+            (
+                StatusCode::OK, // Return 200 with error in body so the MCP server can surface it
+                Json(ToolCallResponse {
+                    result: None,
+                    error: Some(e.to_string()),
+                }),
+            )
+                .into_response()
+        }
+    }
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use axum::body::Body;
+    use axum::extract::connect_info::MockConnectInfo;
     use axum::http::Request;
     use tower::ServiceExt;
 
@@ -2163,6 +2325,8 @@ mod tests {
             project_registry: HashMap::new(),
             config_path: None,
             memory_base_path: None,
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: None,
         });
         (state, rx, tmp)
     }
@@ -2392,6 +2556,8 @@ mod tests {
             project_registry: HashMap::new(),
             config_path: None,
             memory_base_path: None,
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: None,
         });
         (state, rx, tmp)
     }
@@ -2449,6 +2615,8 @@ mod tests {
             project_registry: HashMap::new(),
             config_path: None,
             memory_base_path: None,
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: None,
         });
         drop(rx);
 
@@ -2508,6 +2676,8 @@ mod tests {
             project_registry: HashMap::new(),
             config_path: None,
             memory_base_path: None,
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: None,
         });
         drop(rx);
 
@@ -2579,6 +2749,8 @@ mod tests {
             project_registry: HashMap::new(),
             config_path: None,
             memory_base_path: Some(tmp.path().join("memory")),
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: None,
         });
         (state, rx, tmp)
     }
@@ -2666,5 +2838,191 @@ mod tests {
             uuid::Uuid::parse_str(session_id).is_ok(),
             "session_id should be a valid UUID, got: {session_id}"
         );
+    }
+
+    // ── Tool-call endpoint tests ──────────────────────────────────────
+
+    fn setup_with_tool_dispatch(tmp: &tempfile::TempDir) -> Arc<ToolDispatch> {
+        let mem = crate::memory::Memory::new(tmp.path());
+        mem.init().unwrap();
+        // Pre-write a memory topic for the test to read.
+        mem.write("greetings", "# Greetings\n\nHello from memory.").unwrap();
+
+        Arc::new(ToolDispatch {
+            memory: mem,
+            jira_registry: None,
+            channels: HashMap::new(),
+            project_registry: HashMap::new(),
+            calendar_credentials: None,
+            calendar_id: "primary".to_string(),
+            stripe_registry: None,
+            vercel_registry: None,
+            sentry_registry: None,
+            resend_registry: None,
+            ha_registry: None,
+            upstash_registry: None,
+            ado_registry: None,
+            cloudflare_registry: None,
+            doppler_registry: None,
+            teams_client: None,
+        })
+    }
+
+    /// Build the router with `MockConnectInfo` set to 127.0.0.1 so that
+    /// the tool-call handler passes the localhost guard in tests.
+    fn build_local_router(state: Arc<HttpState>) -> impl tower::Service<
+        axum::http::Request<axum::body::Body>,
+        Response = axum::response::Response,
+        Error = std::convert::Infallible,
+        Future: Send,
+    > {
+        build_router(state)
+            .layer(MockConnectInfo(std::net::SocketAddr::from(([127, 0, 0, 1], 0))))
+    }
+
+    // [1.2] POST /api/tool-call with read_memory returns memory content.
+    #[tokio::test]
+    async fn tool_call_read_memory_returns_content() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let health = Arc::new(HealthState::new());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("messages.db");
+        let _store = MessageStore::init(&db_path).unwrap();
+        let (event_tx, _event_rx) = broadcast::channel(64);
+        let tool_dispatch = setup_with_tool_dispatch(&tmp);
+
+        let state = Arc::new(HttpState {
+            trigger_tx: tx,
+            health,
+            stats_db_path: db_path,
+            teams_message_buffer: None,
+            teams_client: None,
+            jira_webhook_state: None,
+            weekly_budget_usd: 50.0,
+            teams_client_state: None,
+            briefing_store: None,
+            cold_start_store: None,
+            event_tx,
+            cc_session_manager: None,
+            contact_store: None,
+            diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
+            memory_base_path: None,
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: Some(tool_dispatch),
+        });
+
+        let app = build_local_router(state);
+
+        let payload = serde_json::json!({
+            "tool_name": "read_memory",
+            "input": { "topic": "greetings" }
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/tool-call")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let resp: ToolCallResponse = serde_json::from_slice(&body).unwrap();
+        assert!(resp.error.is_none(), "expected no error, got: {:?}", resp.error);
+        let result = resp.result.expect("expected a result");
+        assert!(
+            result.contains("Hello from memory"),
+            "expected memory content in result, got: {result}"
+        );
+    }
+
+    // [1.2b] POST /api/tool-call with unknown tool returns error (not 5xx).
+    #[tokio::test]
+    async fn tool_call_unknown_tool_returns_error_body() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let health = Arc::new(HealthState::new());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("messages.db");
+        let _store = MessageStore::init(&db_path).unwrap();
+        let (event_tx, _event_rx) = broadcast::channel(64);
+        let tool_dispatch = setup_with_tool_dispatch(&tmp);
+
+        let state = Arc::new(HttpState {
+            trigger_tx: tx,
+            health,
+            stats_db_path: db_path,
+            teams_message_buffer: None,
+            teams_client: None,
+            jira_webhook_state: None,
+            weekly_budget_usd: 50.0,
+            teams_client_state: None,
+            briefing_store: None,
+            cold_start_store: None,
+            event_tx,
+            cc_session_manager: None,
+            contact_store: None,
+            diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
+            memory_base_path: None,
+            activity_buffer: ActivityRingBuffer::new(),
+            tool_dispatch: Some(tool_dispatch),
+        });
+
+        let app = build_local_router(state);
+
+        let payload = serde_json::json!({
+            "tool_name": "nonexistent_tool_xyz",
+            "input": {}
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/tool-call")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        // Returns 200 with error in body (not a 5xx) so the MCP server can
+        // surface the error to Claude.
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let resp: ToolCallResponse = serde_json::from_slice(&body).unwrap();
+        assert!(resp.error.is_some(), "expected an error for unknown tool");
+        assert!(resp.result.is_none());
+    }
+
+    // [1.2c] POST /api/tool-call returns 503 when tool_dispatch is not configured.
+    #[tokio::test]
+    async fn tool_call_returns_503_when_not_configured() {
+        let (state, _rx, _tmp) = setup(); // tool_dispatch: None
+        let app = build_local_router(state);
+
+        let payload = serde_json::json!({
+            "tool_name": "read_memory",
+            "input": { "topic": "anything" }
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/tool-call")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 }

@@ -35,6 +35,7 @@ mod proactive_watcher;
 mod scheduler;
 mod speech_to_text;
 mod shutdown;
+mod sidecar;
 #[allow(dead_code)]
 mod state;
 #[allow(dead_code)]
@@ -966,6 +967,43 @@ async fn main() -> anyhow::Result<()> {
     let project_registry_for_http = config.projects.clone();
     let config_path_for_http = nv_core::config::Config::default_path().ok();
     let memory_base_path_for_http = Some(nv_base.join("memory"));
+
+    // ── ToolDispatch for POST /api/tool-call ─────────────────────────
+    // Build a second JiraRegistry (cheap constructor) and share channels via clone.
+    // Service registries are None here — tool handlers fall back to from_env() inline.
+    let teams_client_for_tool_dispatch = teams_client_for_http.clone();
+    let tool_dispatch_jira = config.jira.as_ref().and_then(|jira_config| {
+        match tools::jira::JiraRegistry::new(jira_config, &secrets) {
+            Ok(reg) => reg,
+            Err(e) => {
+                tracing::warn!(error = %e, "tool-dispatch: failed to build jira registry");
+                None
+            }
+        }
+    });
+    let tool_dispatch = Arc::new(http::ToolDispatch {
+        memory: memory::Memory::new(&nv_base),
+        jira_registry: tool_dispatch_jira,
+        channels: channels.clone(),
+        project_registry: config.projects.clone(),
+        calendar_credentials: secrets.google_calendar_credentials.clone(),
+        calendar_id: config
+            .calendar
+            .as_ref()
+            .map(|c| c.calendar_id.clone())
+            .unwrap_or_else(|| "primary".to_string()),
+        stripe_registry: None,
+        vercel_registry: None,
+        sentry_registry: None,
+        resend_registry: None,
+        ha_registry: None,
+        upstash_registry: None,
+        ado_registry: None,
+        cloudflare_registry: None,
+        doppler_registry: None,
+        teams_client: teams_client_for_tool_dispatch,
+    });
+
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -988,6 +1026,7 @@ async fn main() -> anyhow::Result<()> {
             config_path_for_http,
             memory_base_path_for_http,
             activity_buffer,
+            Some(tool_dispatch),
         )
         .await
         {
@@ -1205,6 +1244,34 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    // ── Sidecar Manager ─────────────────────────────────────────────
+    // Resolve the repo root: prefer NV_REPO_ROOT env var, then fall back to the
+    // compile-time CARGO_MANIFEST_DIR (crates/nv-daemon → ../../ = repo root).
+    let repo_root: std::path::PathBuf = std::env::var("NV_REPO_ROOT")
+        .ok()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+        });
+
+    let sidecar_manager = match sidecar::SidecarManager::spawn(&repo_root).await {
+        Ok(mgr) => {
+            tracing::info!(repo_root = %repo_root.display(), "agent sidecar started successfully");
+            Some(mgr)
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "failed to start agent sidecar — workers will fall back to AnthropicClient/ClaudeClient"
+            );
+            None
+        }
+    };
+
     // Build shared dependencies for workers
     let shared_deps = Arc::new(worker::SharedDeps {
         memory: memory::Memory::new(&nv_base),
@@ -1275,6 +1342,7 @@ async fn main() -> anyhow::Result<()> {
         last_interactive_at: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         obligation_event_tx,
         activity_buffer: activity_buffer_for_workers,
+        sidecar: sidecar_manager,
     });
 
     // Extract Telegram client and chat_id for reactions

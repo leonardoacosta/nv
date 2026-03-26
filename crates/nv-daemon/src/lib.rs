@@ -56,6 +56,7 @@ mod health_poller;
 mod server_health_store;
 mod watchers;
 mod tool_cache;
+mod sidecar;
 mod worker;
 
 /// Service tools — `Checkable` trait, `ServiceRegistry<T>`, `CheckResult`,

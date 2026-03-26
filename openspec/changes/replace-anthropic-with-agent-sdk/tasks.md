@@ -4,8 +4,8 @@
 
 ## API Batch — Daemon Tool-Call Endpoint
 
-- [ ] [1.1] [P-1] Add `POST /api/tool-call` endpoint to `http.rs` — accepts `{ "tool_name": "string", "input": {} }`, routes to `tools::execute_tool_send_with_backend`, returns `{ "result": "string", "error": null }` or error; restrict to 127.0.0.1 origin [owner:api-engineer]
-- [ ] [1.2] [P-2] Unit test: POST /api/tool-call with `read_memory` tool returns memory content [owner:api-engineer]
+- [x] [1.1] [P-1] Add `POST /api/tool-call` endpoint to `http.rs` — accepts `{ "tool_name": "string", "input": {} }`, routes to `tools::execute_tool_send_with_backend`, returns `{ "result": "string", "error": null }` or error; restrict to 127.0.0.1 origin [owner:api-engineer]
+- [x] [1.2] [P-2] Unit test: POST /api/tool-call with `read_memory` tool returns memory content [owner:api-engineer]
 
 ## API Batch — Python Sidecar Scripts
 
@@ -16,10 +16,10 @@
 
 ## API Batch — Rust Sidecar Manager
 
-- [ ] [3.1] [P-1] Create `crates/nv-daemon/src/sidecar.rs` — `SidecarManager` struct with `spawn()`, `send_request()`, `shutdown()` methods; spawns `python3 scripts/agent-sidecar.py` as child process; holds stdin BufWriter + stdout BufReader handles [owner:api-engineer]
-- [ ] [3.2] [P-1] Implement `SidecarManager::send_request(req: SidecarRequest) -> Result<SidecarResponse>` — serialize request as JSON line to stdin, read JSON line response from stdout, with configurable timeout [owner:api-engineer]
-- [ ] [3.3] [P-2] Implement crash recovery — if sidecar process exits unexpectedly, log error, wait 5s, respawn; max 3 restarts before giving up and falling back to ClaudeClient [owner:api-engineer]
-- [ ] [3.4] [P-2] Add `mod sidecar;` to lib.rs and main.rs; spawn sidecar on daemon startup; store in SharedDeps as `pub sidecar: Option<Arc<SidecarManager>>` [owner:api-engineer]
+- [x] [3.1] [P-1] Create `crates/nv-daemon/src/sidecar.rs` — `SidecarManager` struct with `spawn()`, `send_request()`, `shutdown()` methods; spawns `python3 scripts/agent-sidecar.py` as child process; holds stdin BufWriter + stdout BufReader handles [owner:api-engineer]
+- [x] [3.2] [P-1] Implement `SidecarManager::send_request(req: SidecarRequest) -> Result<SidecarResponse>` — serialize request as JSON line to stdin, read JSON line response from stdout, with configurable timeout [owner:api-engineer]
+- [x] [3.3] [P-2] Implement crash recovery — if sidecar process exits unexpectedly, log error, wait 5s, respawn; max 3 restarts before giving up and falling back to ClaudeClient [owner:api-engineer]
+- [x] [3.4] [P-2] Add `mod sidecar;` to lib.rs and main.rs; spawn sidecar on daemon startup; store in SharedDeps as `pub sidecar: Option<Arc<SidecarManager>>` [owner:api-engineer]
 
 ## API Batch — Worker + Executor Integration
 

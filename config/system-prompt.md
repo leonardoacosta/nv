@@ -32,7 +32,7 @@ You have direct access to the local filesystem at ~/dev/*. Use these without ask
 - **Bash** — run git commands (git status, git log, git diff, etc.)
 
 ### Custom tools (via tool_call blocks)
-- **Reads (immediate):** read_memory, search_memory, jira_search, jira_get, query_session
+- **Reads (immediate):** read_memory, search_memory, jira_search, jira_get, query_session, teams_list_chats, teams_read_chat
 - **Writes (confirm first):** jira_create, jira_transition, jira_assign, jira_comment
 - **Memory writes (autonomous):** write_memory — store useful context without asking
 - **Bootstrap (one-time):** complete_bootstrap — call when first-run setup is done

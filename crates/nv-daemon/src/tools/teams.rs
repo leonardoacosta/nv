@@ -1,10 +1,12 @@
 //! Microsoft Teams tools via MS Graph REST API.
 //!
-//! Provides four Claude-callable tools:
-//! - `teams_channels` — list channels in a team
-//! - `teams_messages` — read recent messages from a channel
-//! - `teams_send`     — send a message to a channel (requires PendingAction confirmation)
-//! - `teams_presence` — check a user's presence/availability status
+//! Provides six Claude-callable tools:
+//! - `teams_channels`   — list channels in a team
+//! - `teams_messages`   — read recent messages from a channel
+//! - `teams_send`       — send a message to a channel (requires PendingAction confirmation)
+//! - `teams_presence`   — check a user's presence/availability status
+//! - `teams_list_chats` — list DMs and group chats accessible to the app
+//! - `teams_read_chat`  — read recent messages from a specific chat
 //!
 //! Auth: reuses `MsGraphAuth` from `channels/teams/oauth.rs`. Tenant ID resolution
 //! order: `MS_GRAPH_TENANT_ID` env var > `[teams].tenant_id` in config > error.
@@ -170,9 +172,135 @@ pub async fn teams_presence(client: &TeamsClient, user: &str) -> Result<String> 
     ))
 }
 
+/// List DMs and group chats accessible to the Azure AD app.
+///
+/// Calls `TeamsClient::list_chats(limit)` and formats each chat as a table row
+/// showing the type badge (DM / Group / Meeting), topic/members, and last activity.
+/// For one-on-one DMs (no topic), the other person's display name is shown instead.
+pub async fn teams_list_chats(client: &TeamsClient, limit: usize) -> Result<String> {
+    let chats = client.list_chats(limit).await?;
+
+    if chats.is_empty() {
+        return Ok("No chats found. Ensure the Azure AD app has Chat.Read.All permission.".to_string());
+    }
+
+    let mut lines = vec![format!(
+        "**Teams Chats** — {} chat{}",
+        chats.len(),
+        if chats.len() == 1 { "" } else { "s" }
+    )];
+
+    for chat in &chats {
+        let type_badge = match chat.chat_type.as_str() {
+            "oneOnOne" => "DM",
+            "group" => "Group",
+            "meeting" => "Meeting",
+            other => other,
+        };
+
+        // For DMs, use the other member's name as the display topic.
+        // For group chats, use the topic or fall back to member list.
+        let display_topic = if chat.chat_type == "oneOnOne" {
+            // Show the first non-empty member name as the "other person"
+            chat.members
+                .as_ref()
+                .and_then(|members| {
+                    members
+                        .iter()
+                        .find_map(|m| m.display_name.as_deref().filter(|n| !n.is_empty()))
+                })
+                .unwrap_or("(unknown)")
+                .to_string()
+        } else {
+            chat.topic.as_deref().unwrap_or("(no topic)").to_string()
+        };
+
+        let last_activity = chat
+            .last_updated_date_time
+            .as_deref()
+            .unwrap_or("unknown");
+
+        lines.push(format!(
+            "   [{type_badge}] {display_topic}  |  last: {last_activity}  |  id: {}",
+            chat.id
+        ));
+    }
+
+    Ok(lines.join("\n"))
+}
+
+/// Read recent messages from a Teams chat (DM or group chat).
+///
+/// Calls `TeamsClient::get_chat_messages(chat_id, limit)` and formats each message
+/// with sender, timestamp, and content (HTML stripped and truncated to 500 chars).
+pub async fn teams_read_chat(
+    client: &TeamsClient,
+    chat_id: &str,
+    limit: usize,
+) -> Result<String> {
+    let messages = client.get_chat_messages(chat_id, limit).await?;
+
+    if messages.is_empty() {
+        return Ok(format!("No messages found in chat `{chat_id}`."));
+    }
+
+    let mut lines = vec![format!(
+        "**Chat {chat_id}** — {} message{}",
+        messages.len(),
+        if messages.len() == 1 { "" } else { "s" }
+    )];
+
+    for msg in &messages {
+        // Skip system/event messages — only show "message" type
+        if msg
+            .message_type
+            .as_deref()
+            .map(|t| t != "message")
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let sender = msg
+            .from
+            .as_ref()
+            .and_then(|f| {
+                f.user
+                    .as_ref()
+                    .and_then(|u| u.display_name.as_deref())
+                    .or_else(|| {
+                        f.application
+                            .as_ref()
+                            .and_then(|a| a.display_name.as_deref())
+                    })
+            })
+            .unwrap_or("unknown");
+
+        let timestamp = msg.created_date_time.as_deref().unwrap_or("unknown time");
+
+        // Strip HTML tags if content_type is html, then truncate
+        let raw_content = if msg
+            .body
+            .content_type
+            .as_deref()
+            .map(|ct| ct.eq_ignore_ascii_case("html"))
+            .unwrap_or(false)
+        {
+            strip_html(&msg.body.content)
+        } else {
+            msg.body.content.clone()
+        };
+
+        let preview = truncate_to_chars(&raw_content, 500);
+        lines.push(format!("   [{timestamp}] {sender}: {preview}"));
+    }
+
+    Ok(lines.join("\n"))
+}
+
 // ── Tool Definitions ─────────────────────────────────────────────────
 
-/// Return the 4 Teams tool definitions for the Anthropic API.
+/// Return the 6 Teams tool definitions for the Anthropic API.
 pub fn teams_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
@@ -254,6 +382,46 @@ pub fn teams_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["user"]
+            }),
+        },
+        ToolDefinition {
+            name: "teams_list_chats".into(),
+            description: "List Microsoft Teams chats (DMs and group chats) accessible to the app. \
+                Returns chat type (DM/Group/Meeting), topic or member name for DMs, and last activity time. \
+                Use the returned chat ID with teams_read_chat to read messages. \
+                Requires Chat.Read.All Azure AD application permission."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of chats to return (default 20, max 50)."
+                    }
+                },
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "teams_read_chat".into(),
+            description: "Read recent messages from a Microsoft Teams chat (DM or group chat). \
+                Returns sender, timestamp, and content (HTML stripped, truncated to 500 chars per message). \
+                Use teams_list_chats to find chat IDs. \
+                Requires Chat.Read.All Azure AD application permission."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "chat_id": {
+                        "type": "string",
+                        "description": "Teams chat ID. Use teams_list_chats to find available chat IDs."
+                    },
+                    "limit": {
+                        "type": "number",
+                        "description": "Maximum number of messages to return (default 20, max 50)."
+                    }
+                },
+                "required": ["chat_id"]
             }),
         },
     ]
@@ -419,9 +587,9 @@ mod tests {
     }
 
     #[test]
-    fn teams_tool_definitions_returns_four_tools() {
+    fn teams_tool_definitions_returns_six_tools() {
         let tools = teams_tool_definitions();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 6);
     }
 
     #[test]
@@ -432,6 +600,8 @@ mod tests {
         assert!(names.contains(&"teams_messages"));
         assert!(names.contains(&"teams_send"));
         assert!(names.contains(&"teams_presence"));
+        assert!(names.contains(&"teams_list_chats"), "missing teams_list_chats");
+        assert!(names.contains(&"teams_read_chat"), "missing teams_read_chat");
     }
 
     #[test]
@@ -513,5 +683,104 @@ mod tests {
         let activity = "InACall";
         let output = format!("{user}: {availability} — {activity}");
         assert_eq!(output, "sarah@civalent.com: Available — InACall");
+    }
+
+    // ── New tool tests ─────────────────────────────────────────────
+
+    /// Verify that a DM with no topic shows the other member's display name.
+    #[tokio::test]
+    async fn teams_list_chats_formats_dm_with_member_name() {
+        use crate::channels::teams::types::{ChatInfo, ChatMember};
+
+        // Build the formatted output the same way teams_list_chats does (without HTTP).
+        let chats = vec![ChatInfo {
+            id: "chat-dm-001".to_string(),
+            topic: None, // DMs have no topic
+            chat_type: "oneOnOne".to_string(),
+            last_updated_date_time: Some("2024-06-15T10:30:00Z".to_string()),
+            members: Some(vec![
+                ChatMember {
+                    display_name: Some("Alice Smith".to_string()),
+                    email: Some("alice@example.com".to_string()),
+                },
+            ]),
+        }];
+
+        // Re-implement the formatting logic to test it in isolation.
+        let type_badge = match chats[0].chat_type.as_str() {
+            "oneOnOne" => "DM",
+            "group" => "Group",
+            "meeting" => "Meeting",
+            other => other,
+        };
+
+        let display_topic = if chats[0].chat_type == "oneOnOne" {
+            chats[0]
+                .members
+                .as_ref()
+                .and_then(|members| {
+                    members
+                        .iter()
+                        .find_map(|m| m.display_name.as_deref().filter(|n| !n.is_empty()))
+                })
+                .unwrap_or("(unknown)")
+                .to_string()
+        } else {
+            chats[0].topic.as_deref().unwrap_or("(no topic)").to_string()
+        };
+
+        assert_eq!(type_badge, "DM", "Chat type badge should be DM");
+        assert_eq!(
+            display_topic, "Alice Smith",
+            "DM with no topic should show member name"
+        );
+    }
+
+    /// Verify that HTML content is stripped when formatting chat messages.
+    #[test]
+    fn teams_read_chat_strips_html() {
+        let html = "<p>Hello <b>world</b>! &amp; more</p>";
+        // The strip_html function used by teams_read_chat
+        let stripped = strip_html(html);
+        assert_eq!(stripped, "Hello world! &amp; more", "strip_html removes tags but leaves entities for teams_read_chat caller");
+        // Verify no angle brackets remain
+        assert!(!stripped.contains('<'), "should not contain opening bracket");
+        assert!(!stripped.contains('>'), "should not contain closing bracket");
+    }
+
+    /// Verify both new tool definitions are present in the registry.
+    #[test]
+    fn tool_definitions_include_new_tools() {
+        let tools = teams_tool_definitions();
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+
+        assert!(
+            names.contains(&"teams_list_chats"),
+            "teams_list_chats must be registered"
+        );
+        assert!(
+            names.contains(&"teams_read_chat"),
+            "teams_read_chat must be registered"
+        );
+
+        // Validate schemas for new tools
+        let list_chats = tools.iter().find(|t| t.name == "teams_list_chats").unwrap();
+        let required = list_chats.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.is_empty(),
+            "teams_list_chats has no required fields (limit is optional)"
+        );
+
+        let read_chat = tools.iter().find(|t| t.name == "teams_read_chat").unwrap();
+        let required = read_chat.input_schema["required"].as_array().unwrap();
+        assert!(
+            required.iter().any(|v| v.as_str() == Some("chat_id")),
+            "teams_read_chat must require chat_id"
+        );
+        // limit should not be required
+        assert!(
+            !required.iter().any(|v| v.as_str() == Some("limit")),
+            "teams_read_chat limit should be optional"
+        );
     }
 }

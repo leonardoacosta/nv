@@ -145,6 +145,35 @@ pub struct GraphListResponse<T> {
     pub value: Vec<T>,
 }
 
+// ── Chat Info Types ───────────────────────────────────────────────────
+
+/// A member of a Teams chat (DM or group).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatMember {
+    /// Display name of the member (may be absent for app-only tokens).
+    pub display_name: Option<String>,
+    /// Email/UPN of the member.
+    #[allow(dead_code)]
+    pub email: Option<String>,
+}
+
+/// A Teams chat (DM, group chat, or meeting chat) from `GET /chats`.
+#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInfo {
+    pub id: String,
+    /// Human-readable topic. Absent for one-on-one DMs.
+    pub topic: Option<String>,
+    /// Chat type: "oneOnOne", "group", or "meeting".
+    pub chat_type: String,
+    /// ISO-8601 timestamp of the last update.
+    pub last_updated_date_time: Option<String>,
+    /// Members of the chat (populated when `$expand=members` is used).
+    pub members: Option<Vec<ChatMember>>,
+}
+
 // ── Teams Tool Types ─────────────────────────────────────────────────
 
 /// User presence response from `/users/{user}/presence`.

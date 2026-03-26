@@ -2376,6 +2376,37 @@ pub async fn execute_tool_send_with_backend(
             let output = teams_tools::teams_presence(client, user).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "teams_list_chats" => {
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
+            let limit = input["limit"].as_u64().unwrap_or(20).min(50) as usize;
+            let output = teams_tools::teams_list_chats(client, limit).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "teams_read_chat" => {
+            let _owned_teams;
+            let client: &crate::channels::teams::client::TeamsClient =
+                if let Some(c) = service_registries.teams {
+                    c
+                } else {
+                    let secrets = nv_core::config::Secrets::from_env()?;
+                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
+                    &_owned_teams
+                };
+            let chat_id = input["chat_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'chat_id' parameter"))?;
+            let limit = input["limit"].as_u64().unwrap_or(20).min(50) as usize;
+            let output = teams_tools::teams_read_chat(client, chat_id, limit).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
         // ── Web Fetch Tools ────────────────────────────────────────────
         "fetch_url" => {
@@ -2813,14 +2844,15 @@ mod tests {
         // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status)
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
-        // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
+        // + 6 teams (teams_channels, teams_messages, teams_send, teams_presence,
+        //       teams_list_chats, teams_read_chat)
         // + 2 outlook (read_outlook_inbox, read_outlook_calendar)
         // + 1 ado work items (query_ado_work_items)
         // + 5 proactive-followups (list_obligations, dismiss_obligation, snooze_obligation,
         //       reassign_obligation, obligation_research_status) — feat(proactive-followups)
         // + 1 self-assessment (self_assessment_run) — feat(self-improvement-research)
-        // = 98 + 5 + 1 = 104
-        assert_eq!(tools.len(), 104);
+        // = 98 + 5 + 1 + 2 = 106
+        assert_eq!(tools.len(), 106);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2910,6 +2942,8 @@ mod tests {
         assert!(names.contains(&"teams_messages"));
         assert!(names.contains(&"teams_send"));
         assert!(names.contains(&"teams_presence"));
+        assert!(names.contains(&"teams_list_chats"));
+        assert!(names.contains(&"teams_read_chat"));
         // Outlook tools
         assert!(names.contains(&"read_outlook_inbox"));
         assert!(names.contains(&"read_outlook_calendar"));

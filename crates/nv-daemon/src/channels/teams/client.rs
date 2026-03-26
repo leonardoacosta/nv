@@ -6,7 +6,7 @@ use reqwest::Client;
 
 use super::oauth::MsGraphAuth;
 use super::types::{
-    ChannelMessage, ChatMessage, GraphListResponse, PresenceResponse, SubscriptionRequest,
+    ChannelMessage, ChatInfo, ChatMessage, GraphListResponse, PresenceResponse, SubscriptionRequest,
     SubscriptionResponse, TeamChannel,
 };
 
@@ -304,6 +304,91 @@ impl TeamsClient {
 
         let presence: PresenceResponse = resp.json().await?;
         Ok(presence)
+    }
+
+    // ── Chat Operations ───────────────────────────────────────────
+
+    /// List chats the authenticated identity can access.
+    ///
+    /// Uses `GET /chats?$top={limit}&$expand=members&$orderby=lastMessageReceivedDateTime desc`
+    /// which requires the `Chat.Read.All` **application** permission (not delegated).
+    ///
+    /// Returns a 403 error with a descriptive message if the Azure AD app is missing the
+    /// `Chat.Read.All` permission or if the token is delegated-only.
+    pub async fn list_chats(&self, limit: usize) -> anyhow::Result<Vec<ChatInfo>> {
+        let url = format!(
+            "{GRAPH_API_BASE}/chats?$top={limit}&$expand=members\
+             &$orderby=lastMessageReceivedDateTime desc"
+        );
+
+        let token = self.auth.get_token().await?;
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if status.as_u16() == 403 {
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Insufficient permissions to list chats (403). \
+                Ensure the Azure AD app has Chat.Read.All application permission \
+                (not delegated — this endpoint requires app-only auth). Details: {}",
+                body
+            );
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            bail!("List chats failed ({}): {}", status, body);
+        }
+
+        let list: GraphListResponse<ChatInfo> = resp.json().await?;
+        Ok(list.value)
+    }
+
+    /// Get recent messages from a Teams chat (DM or group chat).
+    ///
+    /// Calls `GET /chats/{chat_id}/messages?$top={limit}&$orderby=createdDateTime desc`.
+    /// Reuses the existing `ChatMessage` type.
+    pub async fn get_chat_messages(
+        &self,
+        chat_id: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<ChatMessage>> {
+        let url = format!(
+            "{GRAPH_API_BASE}/chats/{chat_id}/messages\
+             ?$top={limit}&$orderby=createdDateTime desc"
+        );
+
+        let token = self.auth.get_token().await?;
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(&token)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if status.as_u16() == 403 {
+            let body = resp.text().await.unwrap_or_default();
+            bail!(
+                "Insufficient permissions to read chat messages (403). \
+                Ensure the Azure AD app has Chat.Read.All application permission. Details: {}",
+                body
+            );
+        }
+        if status.as_u16() == 404 {
+            bail!("Chat '{}' not found (404). Verify the chat ID.", chat_id);
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            bail!("Get chat messages failed ({}): {}", status, body);
+        }
+
+        let list: GraphListResponse<ChatMessage> = resp.json().await?;
+        Ok(list.value)
     }
 
     // ── Internal Helpers ─────────────────────────────────────────

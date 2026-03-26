@@ -432,7 +432,7 @@
       "specs": [
         {
           "name": "add-tool-router",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -442,11 +442,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T17:57:15.376580"
         },
         {
           "name": "add-fleet-deploy",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -456,7 +456,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T17:57:15.376582"
         }
       ]
     },
@@ -822,25 +822,28 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 2,
+  "current_wave": 3,
   "started_at": "2026-03-26T17:15:08.767015",
   "completed_at": null,
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
     "scaffold-tool-service",
     "add-schedule-tables",
-    "migrate-to-shared-postgres"
+    "migrate-to-shared-postgres",
+    "add-tool-router",
+    "add-fleet-deploy"
   ],
   "failed_specs": [],
   "mode": "consolidated",
   "mega_batch_state": {
     "current_phase": null,
     "phases_completed": [
-      "DB",
       "API",
-      "E2E"
+      "E2E",
+      "Config"
     ],
     "task_results": {
       "scaffold-tool-service": {},
@@ -868,11 +871,11 @@
     },
     "phase_started_at": {
       "DB": "2026-03-26T17:30:40.804238",
-      "API": "2026-03-26T17:32:49.225485"
+      "API": "2026-03-26T17:50:12.029602"
     },
     "phase_completed_at": {
       "DB": "2026-03-26T17:32:49.225480",
-      "API": "2026-03-26T17:38:33.954481",
+      "API": "2026-03-26T17:57:15.376571",
       "E2E": "2026-03-26T17:41:11.058252"
     }
   }

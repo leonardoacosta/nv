@@ -1,6 +1,4 @@
-import { readFileSync, readdirSync, readFile as fsReadFile, writeFile as fsWriteFile, mkdirSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { Hono } from "hono";
@@ -13,6 +11,7 @@ import { Pool } from "pg";
 import { logger } from "../logger.js";
 import { loadConfig } from "../config.js";
 import { handleDiaryGet } from "../http/routes/diary.js";
+import { createMemoryService, getMemory, putMemory, type MemoryService } from "../features/memory/index.js";
 
 // ---------------------------------------------------------------------------
 // Version — read once at module load time
@@ -39,6 +38,18 @@ function getPool(): Pool {
     throw new Error("Database pool not initialised — call startApiServer first");
   }
   return pool;
+}
+
+// ---------------------------------------------------------------------------
+// Memory service — initialised in startApiServer alongside the pool
+// ---------------------------------------------------------------------------
+let _memoryService: MemoryService | null = null;
+
+function getMemoryService(): MemoryService {
+  if (!_memoryService) {
+    throw new Error("Memory service not initialised — call startApiServer first");
+  }
+  return _memoryService;
 }
 
 // ---------------------------------------------------------------------------
@@ -272,80 +283,14 @@ app.get("/api/messages", async (c) => {
 app.get("/api/diary", handleDiaryGet);
 
 // ---------------------------------------------------------------------------
-// Memory directory helper
-// ---------------------------------------------------------------------------
-function getMemoryDir(): string {
-  const dir =
-    process.env["NV_MEMORY_DIR"] ?? join(homedir(), ".nova", "memory");
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-function isValidTopic(topic: string): boolean {
-  return !topic.includes("/") && !topic.includes("..");
-}
-
-// ---------------------------------------------------------------------------
 // GET /api/memory
 // ---------------------------------------------------------------------------
-app.get("/api/memory", async (c) => {
-  const topic = c.req.query("topic");
-  const memDir = getMemoryDir();
-
-  if (!topic) {
-    // List all .md files
-    let files: string[] = [];
-    try {
-      files = readdirSync(memDir).filter((f) => f.endsWith(".md"));
-    } catch {
-      // Directory may be empty or unreadable
-    }
-    const topics = files.map((f) => f.replace(/\.md$/, ""));
-    return c.json({ topics });
-  }
-
-  if (!isValidTopic(topic)) {
-    return c.json({ error: "invalid topic name" }, 400);
-  }
-
-  const filePath = join(memDir, `${topic}.md`);
-  try {
-    const content = await readFile(filePath, "utf-8");
-    return c.json({ topic, content });
-  } catch {
-    return c.json({ error: `Topic not found: ${topic}` }, 404);
-  }
-});
+app.get("/api/memory", (c) => getMemory(c, getMemoryService));
 
 // ---------------------------------------------------------------------------
 // PUT /api/memory
 // ---------------------------------------------------------------------------
-app.put("/api/memory", async (c) => {
-  const body = await c.req.json<{ topic?: string; content?: string }>();
-  const { topic, content } = body;
-
-  if (!topic || typeof topic !== "string") {
-    return c.json({ error: "topic is required" }, 400);
-  }
-  if (!isValidTopic(topic)) {
-    return c.json({ error: "invalid topic name" }, 400);
-  }
-  if (typeof content !== "string") {
-    return c.json({ error: "content must be a string" }, 400);
-  }
-
-  const memDir = getMemoryDir();
-  const filePath = join(memDir, `${topic}.md`);
-
-  await new Promise<void>((resolve, reject) => {
-    fsWriteFile(filePath, content, "utf-8", (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-
-  return c.json({ ok: true });
-});
+app.put("/api/memory", (c) => putMemory(c, getMemoryService));
 
 // ---------------------------------------------------------------------------
 // POST /api/tool-call
@@ -385,9 +330,10 @@ app.post("/api/tool-call", async (c) => {
 // startApiServer — creates HTTP server, attaches WebSocket, starts listening
 // ---------------------------------------------------------------------------
 export async function startApiServer(port: number): Promise<void> {
-  // Initialise pool with config
+  // Initialise pool and memory service with config
   const config = await loadConfig();
   pool = new Pool({ connectionString: config.databaseUrl });
+  _memoryService = createMemoryService(pool);
 
   // Create Node.js HTTP server wrapping Hono
   const server = createServer();

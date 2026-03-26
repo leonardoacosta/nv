@@ -6,11 +6,8 @@
  * tested with mock pool injection patterns.
  */
 
-import { describe, it, mock, beforeEach, afterEach } from "node:test";
+import { describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -58,82 +55,39 @@ describe("GET /health", () => {
 });
 
 // ---------------------------------------------------------------------------
-// [9.7] PUT /api/memory and GET /api/memory?topic=...
+// [9.7] PUT /api/memory input validation
+// Note: full CRUD integration tests (with live DB) live in tests/memory.test.ts
 // ---------------------------------------------------------------------------
-describe("Memory routes", () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "nv-memory-test-"));
-    process.env["NV_MEMORY_DIR"] = tmpDir;
-  });
-
-  afterEach(() => {
-    delete process.env["NV_MEMORY_DIR"];
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it("PUT /api/memory creates a file and GET reads it back", async () => {
-    // Write
-    const putRes = await app.request("/api/memory", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: "test-topic", content: "hello world" }),
-    });
-    assert.equal(putRes.status, 200);
-    const putBody = (await jsonBody(putRes)) as { ok: boolean };
-    assert.equal(putBody.ok, true);
-
-    // Read back
-    const getRes = await app.request("/api/memory?topic=test-topic");
-    assert.equal(getRes.status, 200);
-    const getBody = (await jsonBody(getRes)) as {
-      topic: string;
-      content: string;
-    };
-    assert.equal(getBody.topic, "test-topic");
-    assert.equal(getBody.content, "hello world");
-  });
-
-  it("GET /api/memory lists topics when no query param", async () => {
-    // Pre-create a file
-    writeFileSync(join(tmpDir, "my-note.md"), "content");
-
-    const res = await app.request("/api/memory");
-    assert.equal(res.status, 200);
-    const body = (await jsonBody(res)) as { topics: string[] };
-    assert.ok(Array.isArray(body.topics));
-    assert.ok(body.topics.includes("my-note"));
-  });
-
-  // [9.8] Path traversal guard
-  it("PUT /api/memory with ../etc/passwd returns 400", async () => {
+describe("Memory routes — input validation", () => {
+  it("PUT /api/memory with missing topic returns 400", async () => {
     const res = await app.request("/api/memory", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: "../etc/passwd", content: "bad" }),
+      body: JSON.stringify({ content: "hello" }),
     });
     assert.equal(res.status, 400);
     const body = (await jsonBody(res)) as { error: string };
-    assert.equal(body.error, "invalid topic name");
+    assert.ok(body.error.includes("topic"));
   });
 
-  it("GET /api/memory?topic=../etc/passwd returns 400", async () => {
-    const res = await app.request("/api/memory?topic=../etc/passwd");
-    assert.equal(res.status, 400);
-    const body = (await jsonBody(res)) as { error: string };
-    assert.equal(body.error, "invalid topic name");
-  });
-
-  it("PUT /api/memory with /etc/passwd returns 400", async () => {
+  it("PUT /api/memory with missing content returns 400", async () => {
     const res = await app.request("/api/memory", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: "/etc/passwd", content: "bad" }),
+      body: JSON.stringify({ topic: "my-topic" }),
     });
     assert.equal(res.status, 400);
     const body = (await jsonBody(res)) as { error: string };
-    assert.equal(body.error, "invalid topic name");
+    assert.ok(body.error.includes("content"));
+  });
+
+  it("PUT /api/memory with non-JSON body returns 400", async () => {
+    const res = await app.request("/api/memory", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: "not json",
+    });
+    assert.equal(res.status, 400);
   });
 });
 

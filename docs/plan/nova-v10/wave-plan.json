@@ -656,7 +656,7 @@
       "specs": [
         {
           "name": "add-dashboard-auth",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -666,11 +666,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:46:38.143417"
         },
         {
           "name": "improve-messages-ux",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -680,11 +680,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:46:38.143418"
         },
         {
           "name": "polish-dashboard",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -694,7 +694,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:46:38.143419"
         }
       ]
     },
@@ -704,7 +704,7 @@
       "specs": [
         {
           "name": "improve-obligation-ux",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -714,11 +714,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:46:38.143420"
         },
         {
           "name": "improve-system-pages",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -728,11 +728,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:46:38.143421"
         },
         {
           "name": "restructure-navigation",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -742,7 +742,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:46:38.143421"
         }
       ]
     }
@@ -821,10 +821,10 @@
       ]
     }
   ],
-  "status": "in_progress",
-  "current_wave": 9,
+  "status": "completed",
+  "current_wave": null,
   "started_at": "2026-03-26T17:15:08.767015",
-  "completed_at": null,
+  "completed_at": "2026-03-26T18:46:38.143407",
   "completed_waves": [
     1,
     2,
@@ -833,7 +833,9 @@
     5,
     6,
     7,
-    8
+    8,
+    9,
+    10
   ],
   "completed_specs": [
     "scaffold-tool-service",
@@ -851,7 +853,13 @@
     "add-meta-svc",
     "slim-daemon",
     "register-mcp-servers",
-    "wire-conversation-history"
+    "wire-conversation-history",
+    "add-dashboard-auth",
+    "improve-messages-ux",
+    "polish-dashboard",
+    "improve-obligation-ux",
+    "improve-system-pages",
+    "restructure-navigation"
   ],
   "failed_specs": [],
   "mode": "consolidated",

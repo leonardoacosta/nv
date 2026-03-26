@@ -169,29 +169,14 @@ use nv_core::types::OutboundMessage;
 use self::ado as ado_tools;
 use self::discord as discord_tools;
 use crate::aggregation;
-use self::cloudflare as cloudflare_tools;
 use self::outlook as outlook_tools;
-use self::doppler as doppler_tools;
-use self::web as web_tools;
-use crate::bash;
 use self::calendar as calendar_tools;
 use crate::claude::ToolDefinition;
-use self::docker as docker_tools;
-use self::ha as ha_tools;
 use crate::memory::Memory;
-use self::neon as neon_tools;
 use crate::nexus;
-use self::plaid as plaid_tools;
-use self::posthog as posthog_tools;
 use crate::reminders::{self, ReminderStore};
-use self::resend as resend_tools;
 use self::schedule as schedule_tools;
-use self::sentry as sentry_tools;
-use self::stripe as stripe_tools;
-use crate::tailscale;
 use self::teams as teams_tools;
-use self::upstash as upstash_tools;
-use self::vercel as vercel_tools;
 
 // ── Dispatch timeouts ────────────────────────────────────────────────
 
@@ -254,15 +239,6 @@ pub fn register_tools() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
-            name: "complete_bootstrap".into(),
-            description: "Mark first-run bootstrap as complete. Call this after writing identity.md, user.md, and soul.md during the bootstrap conversation. Writes a state file so bootstrap is skipped on future startups.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
             name: "update_soul".into(),
             description: "Update Nova's soul/personality file (soul.md). Use sparingly — always notify the operator about what changed and why.".into(),
             input_schema: serde_json::json!({
@@ -310,50 +286,8 @@ pub fn register_tools() -> Vec<ToolDefinition> {
         },
     ];
 
-    // Add all Jira tool definitions
-    tools.extend(jira::jira_tool_definitions());
-
-    // Add scoped bash toolkit definitions
-    tools.extend(bash_tool_definitions());
-
-    // Add Docker container monitoring tools
-    tools.extend(docker_tool_definitions());
-
-    // Add Tailscale network tools
-    tools.extend(tailscale_tool_definitions());
-
-    // Add GitHub tools (gh CLI)
-    tools.extend(github::github_tool_definitions());
-
-    // Add PostHog analytics tools
-    tools.extend(posthog_tool_definitions());
-
-    // Add Vercel deployment tools
-    tools.extend(vercel_tools::vercel_tool_definitions());
-
-    // Add Sentry error tracking tools
-    tools.extend(sentry_tools::sentry_tool_definitions());
-
-    // Add Neon PostgreSQL query tools
-    tools.extend(neon_tools::neon_tool_definitions());
-
-    // Add Stripe payment data tools
-    tools.extend(stripe_tools::stripe_tool_definitions());
-
-    // Add Resend email delivery tools
-    tools.extend(resend_tools::resend_tool_definitions());
-
-    // Add Upstash Redis tools
-    tools.extend(upstash_tools::upstash_tool_definitions());
-
-    // Add Home Assistant tools
-    tools.extend(ha_tools::ha_tool_definitions());
-
     // Add Azure DevOps tools
     tools.extend(ado_tools::ado_tool_definitions());
-
-    // Add Plaid financial tools
-    tools.extend(plaid_tools::plaid_tool_definitions());
 
     // Add aggregation composite tools
     tools.extend(aggregation::aggregation_tool_definitions());
@@ -405,15 +339,6 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add reminder tools (set, list, cancel)
     tools.extend(reminder_tool_definitions());
 
-    // Add web fetch and search tools
-    tools.extend(web_tools::web_tool_definitions());
-
-    // Add Doppler secrets management tools
-    tools.extend(doppler_tools::doppler_tool_definitions());
-
-    // Add Cloudflare DNS tools
-    tools.extend(cloudflare_tools::cloudflare_tool_definitions());
-
     // Add Microsoft Teams tools (channels, messages, send, presence)
     tools.extend(teams_tools::teams_tool_definitions());
 
@@ -423,7 +348,7 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add Outlook email and calendar tools (delegated auth)
     tools.extend(outlook_tools::outlook_tool_definitions());
 
-    // Add service diagnostics tool
+    // Add service diagnostics tool (must appear before general_tool_definitions removal)
     tools.push(ToolDefinition {
         name: "check_services".into(),
         description: "Run connectivity and credential probes against all configured services. \
@@ -445,9 +370,6 @@ pub fn register_tools() -> Vec<ToolDefinition> {
             "required": []
         }),
     });
-
-    // Add general-purpose system tools (bash, file I/O, grep)
-    tools.extend(general_tool_definitions());
 
     // Add cross-channel routing tools (list_channels, send_to_channel)
     tools.extend(channels::channels_tool_definitions());
@@ -624,240 +546,6 @@ fn remove_schedule_impl(
     })
 }
 
-/// Tool definitions for the scoped bash toolkit.
-fn bash_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "git_status".into(),
-            description: "Get the short git status for a project (staged, modified, untracked files).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-        ToolDefinition {
-            name: "git_log".into(),
-            description: "Get recent git commits for a project (one line per commit).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    },
-                    "count": {
-                        "type": "integer",
-                        "description": "Number of commits to show (default: 10, max: 20)"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-        ToolDefinition {
-            name: "git_branch".into(),
-            description: "Get the current git branch name for a project.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-        ToolDefinition {
-            name: "git_diff_stat".into(),
-            description: "Get the git diff --stat summary for a project (files changed, insertions, deletions).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-        ToolDefinition {
-            name: "ls_project".into(),
-            description: "List directory contents within a project. Lists the project root if no subdir is given.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    },
-                    "subdir": {
-                        "type": "string",
-                        "description": "Optional subdirectory within the project (e.g. 'src', 'packages/db')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-        ToolDefinition {
-            name: "cat_config".into(),
-            description: "Read a config/doc file from a project. Only .json, .toml, .yaml, .yml, .md extensions allowed.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    },
-                    "file": {
-                        "type": "string",
-                        "description": "File path relative to project root (e.g. 'package.json', 'docs/README.md')"
-                    }
-                },
-                "required": ["project", "file"]
-            }),
-        },
-        ToolDefinition {
-            name: "bd_ready".into(),
-            description: "Get the beads ready queue for a project (issues ready for work).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-        ToolDefinition {
-            name: "bd_stats".into(),
-            description: "Get beads statistics for a project (issue counts, status breakdown).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-    ]
-}
-
-/// Tool definitions for Docker container monitoring.
-fn docker_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "docker_status".into(),
-            description: "List Docker containers with name, image, state, uptime, and ports. Returns running containers by default; pass all=true to include stopped containers.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "all": {
-                        "type": "boolean",
-                        "description": "Include stopped containers (default: false, only running)"
-                    }
-                },
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "docker_logs".into(),
-            description: "Get recent log lines from a Docker container. Returns the last N lines (default 50, max 200).".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "container": {
-                        "type": "string",
-                        "description": "Container name or ID"
-                    },
-                    "lines": {
-                        "type": "integer",
-                        "description": "Number of log lines to return (default: 50, max: 200)"
-                    }
-                },
-                "required": ["container"]
-            }),
-        },
-    ]
-}
-
-/// Tool definitions for Tailscale network monitoring.
-fn tailscale_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "tailscale_status".into(),
-            description: "List all Tailscale network nodes with online/offline state, IPs, OS, and last seen time. Nodes are sorted: online first, then offline.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "tailscale_node".into(),
-            description: "Get detailed info for a specific Tailscale node by hostname (case-insensitive). Returns hostname, DNSName, online, active, all IPs, OS, relay, last seen, and connection type.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "The hostname of the Tailscale node to look up (case-insensitive)"
-                    }
-                },
-                "required": ["name"]
-            }),
-        },
-    ]
-}
-
-/// Tool definitions for PostHog analytics.
-fn posthog_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "posthog_trends".into(),
-            description: "Get event trend data from PostHog for a project over the last 7 days. Returns daily counts with totals and trend direction.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    },
-                    "event": {
-                        "type": "string",
-                        "description": "PostHog event name (e.g. '$pageview', 'signup', 'purchase')"
-                    }
-                },
-                "required": ["project", "event"]
-            }),
-        },
-        ToolDefinition {
-            name: "posthog_flags".into(),
-            description: "List active feature flags from PostHog for a project. Returns flag keys, names, and rollout percentages.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "project": {
-                        "type": "string",
-                        "description": "Project code (e.g. 'oo', 'tc', 'tl')"
-                    }
-                },
-                "required": ["project"]
-            }),
-        },
-    ]
-}
 
 /// Tool definitions for schedule management (list, add, modify, remove).
 fn schedule_tool_definitions() -> Vec<ToolDefinition> {
@@ -1026,203 +714,6 @@ fn reminder_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-// ── General-purpose system tools ────────────────────────────────────
-
-/// Production environment deny patterns.
-/// Commands matching any of these are blocked before execution.
-const PRODUCTION_DENY_PATTERNS: &[&str] = &[
-    // Doppler production configs
-    "doppler.*--config prd",
-    "doppler.*--config prod",
-    "doppler.*--config production",
-    "DOPPLER_CONFIG=prd",
-    "DOPPLER_CONFIG=prod",
-    "DOPPLER_CONFIG=production",
-    "doppler secrets set.*--config prd",
-    // Vercel production deploys
-    "vercel --prod",
-    "vercel deploy --prod",
-    "vercel promote",
-    // Git push to main (triggers production deploys)
-    "git push.*origin main",
-    "git push origin main",
-    // Production database writes
-    "drizzle-kit push.*prod",
-    "drizzle-kit migrate.*prod",
-    // System-level services
-    "systemctl.*restart.*--system",
-    "systemctl.*stop.*--system",
-    // Destructive
-    "rm -rf /",
-    "rm -rf ~",
-    "git push --force",
-];
-
-/// Try to rewrite a command through RTK for token-optimized output.
-/// Falls back to the original command if RTK is unavailable or rewrite fails.
-fn try_rtk_rewrite(command: &str) -> String {
-    match std::process::Command::new("rtk")
-        .arg("rewrite")
-        .arg(command)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-    {
-        Ok(output) if output.status.success() => {
-            let rewritten = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if rewritten.is_empty() || rewritten == command {
-                command.to_string()
-            } else {
-                rewritten
-            }
-        }
-        _ => command.to_string(),
-    }
-}
-
-/// Check if a command matches any production deny pattern.
-fn is_production_denied(command: &str) -> Option<&'static str> {
-    for pattern in PRODUCTION_DENY_PATTERNS {
-        // Simple substring/glob matching — patterns use .* as wildcard
-        if pattern.contains(".*") {
-            let parts: Vec<&str> = pattern.split(".*").collect();
-            let mut pos = 0;
-            let mut matched = true;
-            for part in &parts {
-                if let Some(found) = command[pos..].find(part) {
-                    pos += found + part.len();
-                } else {
-                    matched = false;
-                    break;
-                }
-            }
-            if matched {
-                return Some(pattern);
-            }
-        } else if command.contains(pattern) {
-            return Some(pattern);
-        }
-    }
-    None
-}
-
-/// Tool definitions for general-purpose system access.
-fn general_tool_definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            name: "run_command".into(),
-            description: "Execute a shell command and return stdout/stderr. \
-                Commands targeting production environments are blocked. \
-                Use for: package management, build tools, system diagnostics, \
-                git operations (non-production), file manipulation, and any CLI tool. \
-                Timeout: 30s for reads, 60s for writes.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "The shell command to execute (e.g. 'cargo build', 'git status', 'ls -la')"
-                    },
-                    "working_dir": {
-                        "type": "string",
-                        "description": "Optional working directory (absolute path). Defaults to home directory."
-                    }
-                },
-                "required": ["command"]
-            }),
-        },
-        ToolDefinition {
-            name: "read_file".into(),
-            description: "Read the contents of a file. Returns the full file content as text. \
-                For large files, use the offset and limit parameters to read a specific range of lines.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to the file to read"
-                    },
-                    "offset": {
-                        "type": "integer",
-                        "description": "Optional: start reading from this line number (1-based)"
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Optional: maximum number of lines to return (default: 500)"
-                    }
-                },
-                "required": ["path"]
-            }),
-        },
-        ToolDefinition {
-            name: "write_file".into(),
-            description: "Write content to a file (creates or overwrites). \
-                Paths inside production environments or sensitive files (.env, .pem, credentials) are blocked.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to write to"
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "The content to write"
-                    }
-                },
-                "required": ["path", "content"]
-            }),
-        },
-        ToolDefinition {
-            name: "grep_files".into(),
-            description: "Search for a pattern in files under a directory. Returns matching lines with file paths and line numbers.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "The search pattern (basic regex)"
-                    },
-                    "directory": {
-                        "type": "string",
-                        "description": "Absolute path to the directory to search"
-                    },
-                    "file_pattern": {
-                        "type": "string",
-                        "description": "Optional: glob pattern to filter files (e.g. '*.rs', '*.ts')"
-                    }
-                },
-                "required": ["pattern", "directory"]
-            }),
-        },
-        ToolDefinition {
-            name: "list_dir".into(),
-            description: "List directory contents with file sizes and types. Works on any absolute path.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to the directory"
-                    }
-                },
-                "required": ["path"]
-            }),
-        },
-    ]
-}
-
-/// Sensitive file patterns that write_file should block.
-fn is_sensitive_path(path: &str) -> bool {
-    let lower = path.to_lowercase();
-    lower.ends_with(".env")
-        || lower.contains(".env.")
-        || lower.ends_with(".pem")
-        || lower.ends_with(".key")
-        || lower.contains("credentials")
-        || lower.contains("/secrets/")
-}
 
 /// Bootstrap-only tools — only write_memory, complete_bootstrap, and update_soul.
 /// Used during first-run to prevent Claude from searching Jira/memory
@@ -1376,19 +867,11 @@ fn is_write_tool(name: &str) -> bool {
     matches!(
         name,
         "write_memory"
-            | "jira_create"
-            | "jira_transition"
-            | "jira_assign"
-            | "jira_comment"
             | "start_session"
             | "stop_session"
-            | "ha_service_call"
             | "send_to_channel"
             | "teams_send"
-            | "complete_bootstrap"
             | "update_soul"
-            | "run_command"
-            | "write_file"
     )
 }
 
@@ -1449,62 +932,6 @@ pub async fn execute_tool_send_with_backend(
             let topic = input["topic"].as_str().ok_or_else(|| anyhow!("missing 'topic' parameter"))?;
             let content = input["content"].as_str().ok_or_else(|| anyhow!("missing 'content' parameter"))?;
             memory.write(topic, content).map(ToolResult::Immediate)
-        }
-        "jira_search" => {
-            let jql = input["jql"].as_str().ok_or_else(|| anyhow!("missing 'jql' parameter"))?;
-            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
-            // For JQL searches, use the default client (no project context in the query itself)
-            let client = registry.default_client().ok_or_else(|| anyhow!("Jira not configured"))?;
-            let issues = client.search(jql).await?;
-            Ok(ToolResult::Immediate(jira::format_issues_for_claude(&issues)))
-        }
-        "jira_get" => {
-            let key = input["issue_key"].as_str().ok_or_else(|| anyhow!("missing 'issue_key' parameter"))?;
-            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
-            let client = registry.resolve_from_issue_key(key)
-                .ok_or_else(|| anyhow!("Jira not configured"))?;
-            let issue = client.get_issue(key).await?;
-            Ok(ToolResult::Immediate(jira::format_issue_for_claude(&issue)))
-        }
-        "jira_create" => {
-            let registry = jira_registry.ok_or_else(|| anyhow!("Jira not configured"))?;
-            // Validate project KEY format before queuing the pending action
-            let mut project = input["project"].as_str().unwrap_or("").to_string();
-            if project.is_empty() {
-                if let Some(default) = registry.default_project() {
-                    tracing::info!(default_project = default, "jira_create: project not provided, falling back to default");
-                    project = default.to_string();
-                }
-            }
-            validate_jira_project_key(&project)?;
-            // Warn if project not found in registry (soft warning — don't block)
-            if registry.resolve(&project).is_none() {
-                tracing::warn!(%project, "Jira project KEY not found in registry — will attempt on approval");
-            }
-            let description = jira::describe_pending_action(name, input);
-            Ok(ToolResult::PendingAction {
-                description,
-                action_type: nv_core::types::ActionType::JiraCreate,
-                payload: input.clone(),
-            })
-        }
-        "jira_transition" | "jira_assign" | "jira_comment" => {
-            if jira_registry.is_none() { anyhow::bail!("Jira not configured"); }
-            let description = jira::describe_pending_action(name, input);
-            let action_type = match name {
-                "jira_transition" => nv_core::types::ActionType::JiraTransition,
-                "jira_assign" => nv_core::types::ActionType::JiraAssign,
-                "jira_comment" => nv_core::types::ActionType::JiraComment,
-                _ => unreachable!(),
-            };
-            Ok(ToolResult::PendingAction { description, action_type, payload: input.clone() })
-        }
-        "complete_bootstrap" => {
-            let home = std::env::var("HOME").unwrap_or_default();
-            let path = std::path::Path::new(&home).join(".nv").join("bootstrap-state.json");
-            let state = serde_json::json!({ "completed_at": chrono::Utc::now().to_rfc3339() });
-            std::fs::write(&path, serde_json::to_string_pretty(&state)?).map_err(|e| anyhow!("failed to write bootstrap state: {e}"))?;
-            Ok(ToolResult::Immediate("Bootstrap completed. Nova is ready.".into()))
         }
         "update_soul" => {
             let content = input["content"].as_str().ok_or_else(|| anyhow!("missing 'content' parameter"))?;
@@ -1580,453 +1007,6 @@ pub async fn execute_tool_send_with_backend(
             Ok(ToolResult::Immediate(output))
         }
 
-        // ── Scoped Bash Toolkit ──────────────────────────────────
-        "git_status" | "git_log" | "git_branch" | "git_diff_stat"
-        | "ls_project" | "cat_config" | "bd_ready" | "bd_stats" => {
-            execute_bash_tool(name, input, project_registry).await
-        }
-
-        // ── General-Purpose System Tools ────────────────────────────
-        "run_command" => {
-            let command = input["command"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'command' parameter"))?;
-            // Enforce production deny-list
-            if let Some(pattern) = is_production_denied(command) {
-                anyhow::bail!("BLOCKED: command matches production deny pattern: {pattern}");
-            }
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/home/nyaptor".into());
-            let working_dir = input["working_dir"]
-                .as_str()
-                .unwrap_or(&home);
-            let wd = std::path::Path::new(working_dir);
-            if !wd.is_dir() {
-                anyhow::bail!("working directory does not exist: {working_dir}");
-            }
-            // Try to rewrite through RTK for token-optimized output
-            let effective_cmd = try_rtk_rewrite(command);
-            let output = tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(&effective_cmd)
-                .current_dir(wd)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output()
-                .await
-                .map_err(|e| anyhow!("failed to execute command: {e}"))?;
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let code = output.status.code().unwrap_or(-1);
-            if output.status.success() {
-                let result = if stdout.trim().is_empty() {
-                    "(no output)".to_string()
-                } else {
-                    // Cap output at 50KB to avoid blowing context
-                    let s = stdout.to_string();
-                    if s.len() > 50_000 {
-                        format!("{}...\n[truncated at 50KB, total {} bytes]", &s[..50_000], s.len())
-                    } else {
-                        s
-                    }
-                };
-                Ok(ToolResult::Immediate(result))
-            } else {
-                let mut msg = format!("exit {code}");
-                if !stderr.trim().is_empty() {
-                    msg.push_str(&format!(": {}", stderr.trim()));
-                }
-                if !stdout.trim().is_empty() {
-                    msg.push_str(&format!("\nstdout: {}", stdout.trim()));
-                }
-                Err(anyhow!("{msg}"))
-            }
-        }
-        "read_file" => {
-            let path = input["path"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'path' parameter"))?;
-            if path.contains("..") {
-                anyhow::bail!("path traversal not allowed");
-            }
-            let content = tokio::fs::read_to_string(path)
-                .await
-                .map_err(|e| anyhow!("failed to read {path}: {e}"))?;
-            let offset = input["offset"].as_u64().unwrap_or(1).max(1) as usize;
-            let limit = input["limit"].as_u64().unwrap_or(500) as usize;
-            let lines: Vec<&str> = content.lines().collect();
-            let start = (offset - 1).min(lines.len());
-            let end = (start + limit).min(lines.len());
-            let slice: Vec<String> = lines[start..end]
-                .iter()
-                .enumerate()
-                .map(|(i, l)| format!("{:>5} {}", start + i + 1, l))
-                .collect();
-            if slice.is_empty() {
-                Ok(ToolResult::Immediate("(empty file)".into()))
-            } else {
-                Ok(ToolResult::Immediate(slice.join("\n")))
-            }
-        }
-        "write_file" => {
-            let path = input["path"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'path' parameter"))?;
-            let content = input["content"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'content' parameter"))?;
-            if path.contains("..") {
-                anyhow::bail!("path traversal not allowed");
-            }
-            if is_sensitive_path(path) {
-                anyhow::bail!("BLOCKED: cannot write to sensitive file: {path}");
-            }
-            // Ensure parent directory exists
-            if let Some(parent) = std::path::Path::new(path).parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| anyhow!("failed to create parent directory: {e}"))?;
-            }
-            tokio::fs::write(path, content)
-                .await
-                .map_err(|e| anyhow!("failed to write {path}: {e}"))?;
-            Ok(ToolResult::Immediate(format!("Written {} bytes to {path}", content.len())))
-        }
-        "grep_files" => {
-            let pattern = input["pattern"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'pattern' parameter"))?;
-            let directory = input["directory"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'directory' parameter"))?;
-            if directory.contains("..") {
-                anyhow::bail!("path traversal not allowed");
-            }
-            let mut cmd_str = format!("grep -rn --include='*' '{}' '{}'", pattern, directory);
-            if let Some(fp) = input["file_pattern"].as_str() {
-                cmd_str = format!("grep -rn --include='{}' '{}' '{}'", fp, pattern, directory);
-            }
-            // Route through RTK for token-optimized output
-            let effective_cmd = try_rtk_rewrite(&cmd_str);
-            let output = tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(&effective_cmd)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output()
-                .await
-                .map_err(|e| anyhow!("grep failed: {e}"))?;
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.trim().is_empty() {
-                Ok(ToolResult::Immediate("No matches found.".into()))
-            } else {
-                let s = stdout.to_string();
-                let result = if s.len() > 50_000 {
-                    format!("{}...\n[truncated at 50KB]", &s[..50_000])
-                } else {
-                    s
-                };
-                Ok(ToolResult::Immediate(result))
-            }
-        }
-        "list_dir" => {
-            let path = input["path"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'path' parameter"))?;
-            if path.contains("..") {
-                anyhow::bail!("path traversal not allowed");
-            }
-            // Route through RTK for token-optimized output
-            let cmd_str = format!("ls -la '{}'", path);
-            let effective_cmd = try_rtk_rewrite(&cmd_str);
-            let output = tokio::process::Command::new("sh")
-                .arg("-c")
-                .arg(&effective_cmd)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .output()
-                .await
-                .map_err(|e| anyhow!("ls failed: {e}"))?;
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.trim().is_empty() {
-                Ok(ToolResult::Immediate("(empty directory)".into()))
-            } else {
-                Ok(ToolResult::Immediate(stdout.to_string()))
-            }
-        }
-
-        // ── Docker Tools ────────────────────────────────────────────
-        "docker_status" => {
-            let all = input["all"].as_bool().unwrap_or(false);
-            let output = docker_tools::docker_status(all).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "docker_logs" => {
-            let container = input["container"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'container' parameter"))?;
-            let lines = input["lines"].as_u64();
-            let output = docker_tools::docker_logs(container, lines).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── GitHub Tools ─────────────────────────────────────────────
-        "gh_pr_list" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let output = github::gh_pr_list(repo).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "gh_run_status" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let output = github::gh_run_status(repo).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "gh_issues" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let output = github::gh_issues(repo).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "gh_pr_detail" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let pr_number = input["pr_number"].as_u64().ok_or_else(|| anyhow!("missing or invalid 'pr_number' parameter"))?;
-            let output = github::gh_pr_detail(repo, pr_number).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "gh_pr_diff" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let pr_number = input["pr_number"].as_u64().ok_or_else(|| anyhow!("missing or invalid 'pr_number' parameter"))?;
-            let file_filter = input["file_filter"].as_str();
-            let output = github::gh_pr_diff(repo, pr_number, file_filter).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "gh_releases" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let limit = input["limit"].as_u64();
-            let output = github::gh_releases(repo, limit).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "gh_compare" => {
-            let repo = input["repo"].as_str().ok_or_else(|| anyhow!("missing 'repo' parameter"))?;
-            let base = input["base"].as_str().ok_or_else(|| anyhow!("missing 'base' parameter"))?;
-            let head = input["head"].as_str().ok_or_else(|| anyhow!("missing 'head' parameter"))?;
-            let output = github::gh_compare(repo, base, head).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-
-        // ── Tailscale Tools ──────────────────────────────────────────
-        "tailscale_status" => {
-            let output = tailscale::TailscaleClient::status().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "tailscale_node" => {
-            let name_param = input["name"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'name' parameter"))?;
-            let output = tailscale::TailscaleClient::node(name_param).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── PostHog Tools ───────────────────────────────────────────
-        "posthog_trends" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let event = input["event"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'event' parameter"))?;
-            let output = posthog_tools::query_trends(project, event).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "posthog_flags" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let output = posthog_tools::list_flags(project).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Vercel Tools ─────────────────────────────────────────────
-        "vercel_deployments" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let _owned_vercel;
-            let client = if let Some(reg) = service_registries.vercel {
-                reg.resolve(project)
-                    .or_else(|| reg.default())
-                    .ok_or_else(|| anyhow!("Vercel registry empty"))?
-            } else {
-                _owned_vercel = vercel_tools::VercelClient::from_env()?;
-                &_owned_vercel
-            };
-            let output = vercel_tools::vercel_deployments(client, project).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "vercel_logs" => {
-            let deploy_id = input["deploy_id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'deploy_id' parameter"))?;
-            let _owned_vercel;
-            let client = if let Some(reg) = service_registries.vercel {
-                reg.default().ok_or_else(|| anyhow!("Vercel registry empty"))?
-            } else {
-                _owned_vercel = vercel_tools::VercelClient::from_env()?;
-                &_owned_vercel
-            };
-            let output = vercel_tools::vercel_logs(client, deploy_id).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Sentry Tools ────────────────────────────────────────────
-        "sentry_issues" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let _owned_sentry;
-            let client = if let Some(reg) = service_registries.sentry {
-                reg.resolve(project)
-                    .or_else(|| reg.default())
-                    .ok_or_else(|| anyhow!("Sentry registry empty"))?
-            } else {
-                _owned_sentry = sentry_tools::SentryClient::from_env()?;
-                &_owned_sentry
-            };
-            let output = sentry_tools::sentry_issues(client, project).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "sentry_issue" => {
-            let id = input["id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
-            let _owned_sentry;
-            let client = if let Some(reg) = service_registries.sentry {
-                reg.default().ok_or_else(|| anyhow!("Sentry registry empty"))?
-            } else {
-                _owned_sentry = sentry_tools::SentryClient::from_env()?;
-                &_owned_sentry
-            };
-            let output = sentry_tools::sentry_issue(client, id).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Neon Tools ──────────────────────────────────────────────
-        "neon_query" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let sql = input["sql"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'sql' parameter"))?;
-            let output = neon_tools::neon_query(project, sql).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "neon_projects" => {
-            let output = neon_tools::neon_projects().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "neon_branches" => {
-            let project_id = input["project_id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project_id' parameter"))?;
-            let output = neon_tools::neon_branches(project_id).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "neon_compute" => {
-            let project_id = input["project_id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project_id' parameter"))?;
-            let branch_id = input["branch_id"].as_str();
-            let output = neon_tools::neon_compute(project_id, branch_id).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Stripe Tools ────────────────────────────────────────────
-        "stripe_customers" => {
-            let query = input["query"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
-            let _owned_stripe;
-            let client = if let Some(reg) = service_registries.stripe {
-                reg.default().ok_or_else(|| anyhow!("Stripe registry empty"))?
-            } else {
-                _owned_stripe = stripe_tools::StripeClient::from_env()?;
-                &_owned_stripe
-            };
-            let output = stripe_tools::stripe_customers(client, query).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "stripe_invoices" => {
-            let status = input["status"]
-                .as_str()
-                .unwrap_or("open");
-            let _owned_stripe;
-            let client = if let Some(reg) = service_registries.stripe {
-                reg.default().ok_or_else(|| anyhow!("Stripe registry empty"))?
-            } else {
-                _owned_stripe = stripe_tools::StripeClient::from_env()?;
-                &_owned_stripe
-            };
-            let output = stripe_tools::stripe_invoices(client, status).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Resend Tools ────────────────────────────────────────────
-        "resend_emails" => {
-            let status = input["status"].as_str();
-            let output = resend_tools::resend_emails(status).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "resend_bounces" => {
-            let output = resend_tools::resend_bounces().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Upstash Tools ───────────────────────────────────────────
-        "upstash_info" => {
-            let output = upstash_tools::upstash_info().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "upstash_keys" => {
-            let pattern = input["pattern"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'pattern' parameter"))?;
-            let output = upstash_tools::upstash_keys(pattern).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Home Assistant Tools ─────────────────────────────────────
-        "ha_states" => {
-            let output = ha_tools::ha_states().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "ha_entity" => {
-            let id = input["id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'id' parameter"))?;
-            let output = ha_tools::ha_entity(id).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "ha_service_call" => {
-            let domain = input["domain"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
-            let service = input["service"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'service' parameter"))?;
-            let data = input
-                .get("data")
-                .ok_or_else(|| anyhow!("missing 'data' parameter"))?;
-            let description = ha_tools::describe_service_call(domain, service, data);
-            Ok(ToolResult::PendingAction {
-                description,
-                action_type: nv_core::types::ActionType::HaServiceCall,
-                payload: input.clone(),
-            })
-        }
-
         // ── Azure DevOps Tools ───────────────────────────────────────
         "ado_projects" => {
             let output = ado_tools::ado_projects().await?;
@@ -2070,16 +1050,6 @@ pub async fn execute_tool_send_with_backend(
             let days_ahead = input["days_ahead"].as_u64().unwrap_or(1).min(30) as u32;
             let max_events = input["max_events"].as_u64().unwrap_or(10).min(25) as u32;
             let output = outlook_tools::read_calendar(days_ahead, max_events).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Plaid Financial Tools ────────────────────────────────────
-        "plaid_balances" => {
-            let output = plaid_tools::plaid_balances().await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "plaid_bills" => {
-            let output = plaid_tools::plaid_bills().await?;
             Ok(ToolResult::Immediate(output))
         }
 
@@ -2281,130 +1251,6 @@ pub async fn execute_tool_send_with_backend(
             Ok(ToolResult::Immediate(output))
         }
 
-        // ── Web Fetch Tools ────────────────────────────────────────────
-        "fetch_url" => {
-            let url = input["url"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'url' parameter"))?;
-            let format_hint = input["format"].as_str();
-            let output = web_tools::fetch_url(url, format_hint).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "check_url" => {
-            let url = input["url"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'url' parameter"))?;
-            let output = web_tools::check_url(url).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "search_web" => {
-            let query = input["query"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'query' parameter"))?;
-            let count = input["count"].as_u64().unwrap_or(5) as usize;
-            // search_url: use NV_WEB_SEARCH_URL env var if set, otherwise None (defaults to DDG)
-            let search_url_env = std::env::var("NV_WEB_SEARCH_URL").ok();
-            let search_url = search_url_env.as_deref();
-            let output = web_tools::search_web(query, count, search_url).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Doppler Tools ──────────────────────────────────────────────
-        "doppler_secrets" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let environment = input["environment"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'environment' parameter"))?;
-            let _owned_doppler;
-            let client = if let Some(reg) = service_registries.doppler {
-                reg.default().ok_or_else(|| anyhow!("Doppler registry empty"))?
-            } else {
-                _owned_doppler = doppler_tools::DopplerClient::from_env()?;
-                &_owned_doppler
-            };
-            let output = doppler_tools::doppler_secrets(client, project, environment, None).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "doppler_compare" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let env_a = input["env_a"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'env_a' parameter"))?;
-            let env_b = input["env_b"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'env_b' parameter"))?;
-            let _owned_doppler;
-            let client = if let Some(reg) = service_registries.doppler {
-                reg.default().ok_or_else(|| anyhow!("Doppler registry empty"))?
-            } else {
-                _owned_doppler = doppler_tools::DopplerClient::from_env()?;
-                &_owned_doppler
-            };
-            let output = doppler_tools::doppler_compare(client, project, env_a, env_b, None).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "doppler_activity" => {
-            let project = input["project"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-            let count = input["count"].as_u64();
-            let _owned_doppler;
-            let client = if let Some(reg) = service_registries.doppler {
-                reg.default().ok_or_else(|| anyhow!("Doppler registry empty"))?
-            } else {
-                _owned_doppler = doppler_tools::DopplerClient::from_env()?;
-                &_owned_doppler
-            };
-            let output = doppler_tools::doppler_activity(client, project, count, None).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
-        // ── Cloudflare DNS Tools ───────────────────────────────────────
-        "cf_zones" => {
-            let _owned_cf;
-            let client = if let Some(reg) = service_registries.cloudflare {
-                reg.default().ok_or_else(|| anyhow!("Cloudflare registry empty"))?
-            } else {
-                _owned_cf = cloudflare_tools::CloudflareClient::from_env()?;
-                &_owned_cf
-            };
-            let output = cloudflare_tools::cf_zones(client).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "cf_dns_records" => {
-            let domain = input["domain"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
-            let record_type = input["record_type"].as_str();
-            let _owned_cf;
-            let client = if let Some(reg) = service_registries.cloudflare {
-                reg.default().ok_or_else(|| anyhow!("Cloudflare registry empty"))?
-            } else {
-                _owned_cf = cloudflare_tools::CloudflareClient::from_env()?;
-                &_owned_cf
-            };
-            let output = cloudflare_tools::cf_dns_records(client, domain, record_type).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-        "cf_domain_status" => {
-            let domain = input["domain"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'domain' parameter"))?;
-            let _owned_cf;
-            let client = if let Some(reg) = service_registries.cloudflare {
-                reg.default().ok_or_else(|| anyhow!("Cloudflare registry empty"))?
-            } else {
-                _owned_cf = cloudflare_tools::CloudflareClient::from_env()?;
-                &_owned_cf
-            };
-            let output = cloudflare_tools::cf_domain_status(client, domain).await?;
-            Ok(ToolResult::Immediate(output))
-        }
-
         // ── Service Diagnostics ───────────────────────────────────────
         "check_services" => {
             let read_only = input["read_only"].as_bool().unwrap_or(false);
@@ -2486,45 +1332,6 @@ pub async fn execute_tool_send_with_backend(
 
 
 
-/// Execute a scoped bash tool by parsing input and delegating to `bash::execute_command`.
-async fn execute_bash_tool(
-    name: &str,
-    input: &serde_json::Value,
-    project_registry: &HashMap<String, PathBuf>,
-) -> Result<ToolResult> {
-    let project = input["project"]
-        .as_str()
-        .ok_or_else(|| anyhow!("missing 'project' parameter"))?;
-    let project_root = bash::validate_project(project, project_registry)?;
-
-    let cmd = match name {
-        "git_status" => bash::AllowedCommand::GitStatus,
-        "git_log" => {
-            let count = input["count"].as_u64().unwrap_or(10);
-            bash::AllowedCommand::GitLog { count }
-        }
-        "git_branch" => bash::AllowedCommand::GitBranch,
-        "git_diff_stat" => bash::AllowedCommand::GitDiffStat,
-        "ls_project" => {
-            let subdir = input["subdir"].as_str().map(String::from);
-            bash::AllowedCommand::LsDir { subdir }
-        }
-        "cat_config" => {
-            let file = input["file"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'file' parameter"))?;
-            bash::AllowedCommand::CatConfig {
-                file: file.to_string(),
-            }
-        }
-        "bd_ready" => bash::AllowedCommand::BdReady,
-        "bd_stats" => bash::AllowedCommand::BdStats,
-        _ => unreachable!(),
-    };
-
-    let output = bash::execute_command(&cmd, project_root).await?;
-    Ok(ToolResult::Immediate(output))
-}
 
 /// Execute a confirmed Jira pending action via the registry.
 ///
@@ -2703,93 +1510,35 @@ mod tests {
     #[test]
     fn register_tools_returns_expected_count() {
         let tools = register_tools();
-        // 3 memory + 2 messages (get_recent + search) + 2 bootstrap/soul
-        // + 6 jira + 8 bash
-        // + 2 docker + 2 tailscale + 7 github + 2 sentry + 2 posthog + 2 vercel
-        // + 4 neon (neon_query + neon_projects + neon_branches + neon_compute) + 2 stripe + 2 resend + 2 upstash
-        // + 3 ha + 4 ado + 2 plaid + 3 aggregation
+        // 3 memory (read, write, search) + 1 update_soul + 2 messages (get_recent + search)
+        // + 4 ado + 3 aggregation
         // + 2 session lifecycle (start_session, stop_session)
-        // + 2 cross-channel (list_channels, send_to_channel)
+        // + 4 schedule (list_schedules, add_schedule, modify_schedule, remove_schedule)
         // + 3 calendar (calendar_today, calendar_upcoming, calendar_next)
         // + 3 reminders (set_reminder, list_reminders, cancel_reminder)
-        // + 4 schedule (list_schedules, add_schedule, modify_schedule, remove_schedule)
-        // + 3 web (fetch_url, check_url, search_web)
-        // + 3 doppler (doppler_secrets, doppler_compare, doppler_activity)
-        // + 3 cloudflare (cf_zones, cf_dns_records, cf_domain_status)
         // + 1 check_services
+        // + 2 cross-channel (list_channels, send_to_channel)
+        // + 1 self-assessment (self_assessment_run)
         // + 6 teams (teams_channels, teams_messages, teams_send, teams_presence,
         //       teams_list_chats, teams_read_chat)
         // + 3 discord (discord_list_guilds, discord_list_channels, discord_read_messages)
         // + 2 outlook (read_outlook_inbox, read_outlook_calendar)
-        // + 1 self-assessment (self_assessment_run)
-        // = 101 (removed 8 dead nexus tools: query_nexus, query_session, query_nexus_health,
-        //        query_nexus_projects, query_nexus_agents, nexus_project_ready,
-        //        nexus_project_proposals, send_command)
-        assert_eq!(tools.len(), 101);
+        // = 40
+        assert_eq!(tools.len(), 40);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        // Core memory tools
         assert!(names.contains(&"read_memory"));
         assert!(names.contains(&"search_memory"));
         assert!(names.contains(&"write_memory"));
+        assert!(names.contains(&"update_soul"));
         assert!(names.contains(&"get_recent_messages"));
         assert!(names.contains(&"search_messages"));
-        assert!(names.contains(&"complete_bootstrap"));
-        assert!(names.contains(&"update_soul"));
-        assert!(names.contains(&"jira_search"));
-        assert!(names.contains(&"jira_get"));
-        assert!(names.contains(&"jira_create"));
-        assert!(names.contains(&"jira_transition"));
-        assert!(names.contains(&"jira_assign"));
-        assert!(names.contains(&"jira_comment"));
-        // Bash toolkit tools
-        assert!(names.contains(&"git_status"));
-        assert!(names.contains(&"git_log"));
-        assert!(names.contains(&"git_branch"));
-        assert!(names.contains(&"git_diff_stat"));
-        assert!(names.contains(&"ls_project"));
-        assert!(names.contains(&"cat_config"));
-        assert!(names.contains(&"bd_ready"));
-        assert!(names.contains(&"bd_stats"));
-        // Docker tools
-        assert!(names.contains(&"docker_status"));
-        assert!(names.contains(&"docker_logs"));
-        // Tailscale tools
-        assert!(names.contains(&"tailscale_status"));
-        assert!(names.contains(&"tailscale_node"));
-        // GitHub tools
-        assert!(names.contains(&"gh_pr_list"));
-        assert!(names.contains(&"gh_run_status"));
-        assert!(names.contains(&"gh_issues"));
-        assert!(names.contains(&"gh_pr_detail"));
-        assert!(names.contains(&"gh_pr_diff"));
-        assert!(names.contains(&"gh_releases"));
-        assert!(names.contains(&"gh_compare"));
-        // Sentry tools
-        assert!(names.contains(&"sentry_issues"));
-        assert!(names.contains(&"sentry_issue"));
-        // PostHog tools
-        assert!(names.contains(&"posthog_trends"));
-        assert!(names.contains(&"posthog_flags"));
-        // Vercel tools
-        assert!(names.contains(&"vercel_deployments"));
-        assert!(names.contains(&"vercel_logs"));
-        // Neon tools
-        assert!(names.contains(&"neon_query"));
-        assert!(names.contains(&"neon_projects"));
-        assert!(names.contains(&"neon_branches"));
-        assert!(names.contains(&"neon_compute"));
-        // Home Assistant tools
-        assert!(names.contains(&"ha_states"));
-        assert!(names.contains(&"ha_entity"));
-        assert!(names.contains(&"ha_service_call"));
         // Azure DevOps tools
         assert!(names.contains(&"ado_projects"));
         assert!(names.contains(&"ado_pipelines"));
         assert!(names.contains(&"ado_builds"));
         assert!(names.contains(&"query_ado_work_items"));
-        // Plaid tools
-        assert!(names.contains(&"plaid_balances"));
-        assert!(names.contains(&"plaid_bills"));
         // Aggregation tools
         assert!(names.contains(&"project_health"));
         assert!(names.contains(&"homelab_status"));
@@ -2797,11 +1546,26 @@ mod tests {
         // Session lifecycle tools
         assert!(names.contains(&"start_session"));
         assert!(names.contains(&"stop_session"));
+        // Schedule tools
+        assert!(names.contains(&"list_schedules"));
+        assert!(names.contains(&"add_schedule"));
+        assert!(names.contains(&"modify_schedule"));
+        assert!(names.contains(&"remove_schedule"));
+        // Calendar tools
+        assert!(names.contains(&"calendar_today"));
+        assert!(names.contains(&"calendar_upcoming"));
+        assert!(names.contains(&"calendar_next"));
+        // Reminder tools
+        assert!(names.contains(&"set_reminder"));
+        assert!(names.contains(&"list_reminders"));
+        assert!(names.contains(&"cancel_reminder"));
+        // Service diagnostics
+        assert!(names.contains(&"check_services"));
         // Cross-channel routing tools
         assert!(names.contains(&"list_channels"));
         assert!(names.contains(&"send_to_channel"));
-        // Service diagnostics
-        assert!(names.contains(&"check_services"));
+        // Self-assessment
+        assert!(names.contains(&"self_assessment_run"));
         // Teams tools
         assert!(names.contains(&"teams_channels"));
         assert!(names.contains(&"teams_messages"));

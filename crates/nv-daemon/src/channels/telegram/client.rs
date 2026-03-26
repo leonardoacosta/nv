@@ -6,7 +6,33 @@ use anyhow::bail;
 use reqwest::multipart;
 use reqwest::Client;
 
+use serde::Serialize;
+
 use super::types::{BotUser, TelegramResponse, Update};
+
+// ── Message Effect IDs (Bot API 9.3+) ──────────────────────────────
+//
+// These numeric-string IDs are stable constants defined by Telegram.
+// Source: https://core.telegram.org/bots/api (Bot API 9.3 release notes).
+// Effects only work in private chats; group/channel sends receive a 400
+// and are gracefully degraded in `send_message_with_effect`.
+
+/// Fire effect — for urgent/P0 alerts.
+pub const EFFECT_FIRE: &str = "5104841245755180586";
+/// Heart effect.
+#[allow(dead_code)]
+pub const EFFECT_HEART: &str = "5159385139981059251";
+/// Confetti effect — for morning briefings and celebrations.
+pub const EFFECT_CONFETTI: &str = "5046509860389126442";
+/// Thumbs-up effect.
+#[allow(dead_code)]
+pub const EFFECT_THUMBSUP: &str = "5107584321108051014";
+/// Thumbs-down effect.
+#[allow(dead_code)]
+pub const EFFECT_THUMBSDOWN: &str = "5104858069142078462";
+/// Poop effect.
+#[allow(dead_code)]
+pub const EFFECT_POOP: &str = "5046589136895476101";
 
 // ── Throttle State ──────────────────────────────────────────────────
 
@@ -251,6 +277,350 @@ fn convert_inline_markdown(text: &str) -> String {
     result
 }
 
+// ── MarkdownV2 Formatting ────────────────────────────────────────────
+
+/// Escape all MarkdownV2 reserved characters in a literal text segment.
+///
+/// Must be applied to plain-text segments *before* applying any formatting
+/// substitutions to avoid double-escaping the formatting characters themselves.
+/// Reserved characters: `_ * [ ] ( ) ~ \` > # + - = | { } . !`
+#[allow(dead_code)]
+fn escape_mdv2(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    for ch in text.chars() {
+        match ch {
+            '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' | '+' | '-' | '='
+            | '|' | '{' | '}' | '.' | '!' | '\\' => {
+                out.push('\\');
+                out.push(ch);
+            }
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+/// Convert common Markdown patterns from Claude's output to Telegram MarkdownV2.
+///
+/// Escaping strategy: process the input line-by-line and segment-by-segment so
+/// that reserved characters inside formatting spans are escaped, but the
+/// formatting characters themselves (`*`, `_`, `` ` ``) are emitted unescaped.
+///
+/// Conversions:
+/// - `**bold**`  → `*bold*`
+/// - `_italic_` / `*italic*` (single star) → `_italic_`
+/// - `` `code` `` → `` `code` ``
+/// - ```` ```lang\nblock\n``` ```` → `` ``` ``\nblock\n`` ``` `` (language label stripped)
+/// - `~~strike~~` → `~strike~`
+/// - `||spoiler||` → `||spoiler||` (native MarkdownV2, pass through)
+/// - `# ## ###` headers → `*bold line*`
+/// - `---` → `—————`
+/// - Markdown tables → ` ``` `pre block` ``` `
+#[allow(dead_code)]
+pub fn markdown_to_mdv2(text: &str) -> String {
+    // If the text already contains MarkdownV2 escape sequences, return as-is.
+    // (Heuristic: presence of \* or \_ suggests pre-formatted MDv2.)
+    // We intentionally skip this for clean Claude output that has no backslashes.
+
+    let mut result = String::with_capacity(text.len());
+    let lines: Vec<&str> = text.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+
+        // ── Fenced code block ──────────────────────────────────────────
+        if trimmed.starts_with("```") {
+            // Opening fence — strip the language label and emit the fence.
+            result.push_str("```\n");
+            i += 1;
+
+            // Consume lines until closing fence or EOF.
+            while i < lines.len() {
+                let fence_line = lines[i];
+                if fence_line.trim() == "```" {
+                    result.push_str("```");
+                    result.push('\n');
+                    i += 1;
+                    break;
+                }
+                // Content inside pre blocks must not be MarkdownV2-escaped.
+                result.push_str(fence_line);
+                result.push('\n');
+                i += 1;
+            }
+            continue;
+        }
+
+        // ── Markdown table ────────────────────────────────────────────
+        if is_table_row(trimmed) && i + 1 < lines.len() && is_table_separator(lines[i + 1].trim_start()) {
+            // Collect all contiguous table rows.
+            let mut table_rows: Vec<Vec<String>> = Vec::new();
+
+            table_rows.push(parse_table_row(trimmed));
+            i += 1; // skip header
+
+            // Skip separator row.
+            if i < lines.len() && is_table_separator(lines[i].trim_start()) {
+                i += 1;
+            }
+
+            // Data rows.
+            while i < lines.len() && is_table_row(lines[i].trim_start()) {
+                let rt = lines[i].trim_start();
+                if is_table_separator(rt) {
+                    i += 1;
+                    continue;
+                }
+                table_rows.push(parse_table_row(rt));
+                i += 1;
+            }
+
+            // Calculate column widths.
+            let col_count = table_rows.iter().map(|r| r.len()).max().unwrap_or(0);
+            let mut col_widths = vec![0usize; col_count];
+            for row in &table_rows {
+                for (j, cell) in row.iter().enumerate() {
+                    if j < col_count {
+                        col_widths[j] = col_widths[j].max(cell.len());
+                    }
+                }
+            }
+
+            // Render as pre block (no escaping inside pre).
+            result.push_str("```\n");
+            for (row_idx, row) in table_rows.iter().enumerate() {
+                for (j, cell) in row.iter().enumerate() {
+                    if j > 0 {
+                        result.push_str("  ");
+                    }
+                    result.push_str(cell);
+                    if j < col_count.saturating_sub(1) {
+                        let padding = col_widths.get(j).copied().unwrap_or(cell.len()).saturating_sub(cell.len());
+                        for _ in 0..padding {
+                            result.push(' ');
+                        }
+                    }
+                }
+                if row_idx == 0 && table_rows.len() > 1 {
+                    result.push('\n');
+                    for (j, &w) in col_widths.iter().enumerate() {
+                        if j > 0 {
+                            result.push_str("  ");
+                        }
+                        for _ in 0..w {
+                            result.push('-');
+                        }
+                    }
+                }
+                if row_idx < table_rows.len() - 1 {
+                    result.push('\n');
+                }
+            }
+            result.push_str("\n```");
+            result.push('\n');
+            continue;
+        }
+
+        // ── Headers → bold ────────────────────────────────────────────
+        if let Some(h) = trimmed.strip_prefix("### ") {
+            result.push('*');
+            result.push_str(&escape_mdv2(h));
+            result.push('*');
+        } else if let Some(h) = trimmed.strip_prefix("## ") {
+            result.push('*');
+            result.push_str(&escape_mdv2(h));
+            result.push('*');
+        } else if let Some(h) = trimmed.strip_prefix("# ") {
+            result.push('*');
+            result.push_str(&escape_mdv2(h));
+            result.push('*');
+        } else if trimmed == "---" {
+            // Horizontal rule — escape the em-dashes (they're safe but be consistent).
+            result.push_str("—————");
+        } else {
+            // Inline formatting within the line.
+            result.push_str(&convert_inline_mdv2(lines[i]));
+        }
+        result.push('\n');
+        i += 1;
+    }
+
+    result.trim_end_matches('\n').to_string()
+}
+
+/// Convert inline Markdown to MarkdownV2 within a single line.
+///
+/// Order: spoiler (`||`), strikethrough (`~~`), bold (`**`), italic (`_` or `*`),
+/// inline code (`` ` ``). Each pass preserves surrounding plain text through
+/// `escape_mdv2`.
+#[allow(dead_code)]
+fn convert_inline_mdv2(line: &str) -> String {
+    // Work character-by-character to correctly handle overlapping delimiters
+    // and nested spans. We use a simple state machine approach: scan for
+    // opening delimiters, find closing ones, then recursively process the
+    // interior of non-code spans.
+
+    let chars: Vec<char> = line.chars().collect();
+    let len = chars.len();
+    let mut out = String::with_capacity(line.len() + 16);
+    let mut pos = 0;
+
+    while pos < len {
+        // ── Spoiler: ||...|| ──────────────────────────────────────────
+        if pos + 1 < len && chars[pos] == '|' && chars[pos + 1] == '|' {
+            if let Some(end) = find_closing_delim_chars(&chars, pos + 2, "||") {
+                let inner: String = chars[pos + 2..end].iter().collect();
+                out.push_str("||");
+                out.push_str(&convert_inline_mdv2(&inner));
+                out.push_str("||");
+                pos = end + 2;
+                continue;
+            }
+        }
+
+        // ── Strikethrough: ~~...~~ ────────────────────────────────────
+        if pos + 1 < len && chars[pos] == '~' && chars[pos + 1] == '~' {
+            if let Some(end) = find_closing_delim_chars(&chars, pos + 2, "~~") {
+                let inner: String = chars[pos + 2..end].iter().collect();
+                out.push('~');
+                out.push_str(&convert_inline_mdv2(&inner));
+                out.push('~');
+                pos = end + 2;
+                continue;
+            }
+        }
+
+        // ── Bold: **...** ─────────────────────────────────────────────
+        if pos + 1 < len && chars[pos] == '*' && chars[pos + 1] == '*' {
+            if let Some(end) = find_closing_delim_chars(&chars, pos + 2, "**") {
+                let inner: String = chars[pos + 2..end].iter().collect();
+                out.push('*');
+                out.push_str(&convert_inline_mdv2(&inner));
+                out.push('*');
+                pos = end + 2;
+                continue;
+            }
+        }
+
+        // ── Inline code: `...` ────────────────────────────────────────
+        if chars[pos] == '`' {
+            if let Some(end) = find_closing_delim_chars(&chars, pos + 1, "`") {
+                let inner: String = chars[pos + 1..end].iter().collect();
+                // Content inside code spans is NOT escaped — Telegram renders
+                // backtick spans verbatim.
+                out.push('`');
+                out.push_str(&inner);
+                out.push('`');
+                pos = end + 1;
+                continue;
+            }
+        }
+
+        // ── Italic: _..._ ─────────────────────────────────────────────
+        if chars[pos] == '_' {
+            if let Some(end) = find_closing_delim_chars(&chars, pos + 1, "_") {
+                let inner: String = chars[pos + 1..end].iter().collect();
+                out.push('_');
+                out.push_str(&convert_inline_mdv2(&inner));
+                out.push('_');
+                pos = end + 1;
+                continue;
+            }
+        }
+
+        // ── Single-star italic: *...* (not **) ───────────────────────
+        if chars[pos] == '*' && (pos + 1 >= len || chars[pos + 1] != '*') {
+            if let Some(end) = find_closing_single_star(&chars, pos + 1) {
+                let inner: String = chars[pos + 1..end].iter().collect();
+                out.push('_');
+                out.push_str(&convert_inline_mdv2(&inner));
+                out.push('_');
+                pos = end + 1;
+                continue;
+            }
+        }
+
+        // ── Plain character ───────────────────────────────────────────
+        // Escape MarkdownV2 reserved characters in literal text.
+        match chars[pos] {
+            '_' | '*' | '[' | ']' | '(' | ')' | '~' | '`' | '>' | '#' | '+' | '-' | '='
+            | '|' | '{' | '}' | '.' | '!' | '\\' => {
+                out.push('\\');
+                out.push(chars[pos]);
+            }
+            ch => out.push(ch),
+        }
+        pos += 1;
+    }
+
+    out
+}
+
+/// Find the position of a closing delimiter string starting from `from` in `chars`.
+/// Returns the index of the first character of the closing delimiter, or `None`.
+#[allow(dead_code)]
+fn find_closing_delim_chars(chars: &[char], from: usize, delim: &str) -> Option<usize> {
+    let d: Vec<char> = delim.chars().collect();
+    let dlen = d.len();
+    let mut i = from;
+    while i + dlen <= chars.len() {
+        if &chars[i..i + dlen] == d.as_slice() {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Find the position of a closing single `*` (not `**`) starting from `from`.
+#[allow(dead_code)]
+fn find_closing_single_star(chars: &[char], from: usize) -> Option<usize> {
+    let mut i = from;
+    while i < chars.len() {
+        if chars[i] == '*' {
+            // Ensure it's not a `**` sequence.
+            let next_is_star = i + 1 < chars.len() && chars[i + 1] == '*';
+            let prev_is_star = i > 0 && chars[i - 1] == '*';
+            if !next_is_star && !prev_is_star {
+                return Some(i);
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+// ── InlineQueryResult ─────────────────────────────────────────────────
+
+/// Result item for `answerInlineQuery`.
+///
+/// Only the `Article` variant is implemented in this spec. Additional result
+/// types (photo, video, etc.) can be added as follow-on variants.
+#[allow(dead_code)]
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum InlineQueryResult {
+    Article {
+        /// Unique identifier for this result (max 64 bytes).
+        id: String,
+        /// Title of the result shown in the inline query list.
+        title: String,
+        /// Short description shown below the title.
+        description: String,
+        /// Content of the message that will be sent when the user taps the result.
+        #[serde(rename = "input_message_content")]
+        message_content: InlineMessageContent,
+    },
+}
+
+/// Content of a message sent by selecting an inline query result.
+#[allow(dead_code)]
+#[derive(Debug, Serialize)]
+pub struct InlineMessageContent {
+    pub message_text: String,
+}
+
 /// Thin HTTP wrapper for Telegram Bot API endpoints.
 ///
 /// `Clone` is cheap — `throttle` is `Arc<Mutex<...>>` so all clones share
@@ -299,7 +669,7 @@ impl TelegramClient {
         let body = serde_json::json!({
             "offset": offset,
             "timeout": timeout,
-            "allowed_updates": ["message", "callback_query"]
+            "allowed_updates": ["message", "callback_query", "inline_query"]
         });
         let resp: TelegramResponse<Vec<Update>> = self
             .http
@@ -385,6 +755,198 @@ impl TelegramClient {
         }
 
         Ok(last_msg_id)
+    }
+
+    /// Send a message with a Bot API 9.3+ message effect.
+    ///
+    /// Identical to `send_message` but includes `message_effect_id` in the POST
+    /// body to play an animated overlay on the message bubble (private chats only).
+    ///
+    /// If the API returns a 400 with an effect-related error description
+    /// (`CHAT_SEND_PLAIN_NOT_ALLOWED`, `MEDIA_EMPTY`, or
+    /// `MESSAGE_EFFECTS_UNAVAILABLE`), the method logs a warning and retries the
+    /// send *without* the effect field so the message is still delivered.
+    pub async fn send_message_with_effect(
+        &self,
+        chat_id: i64,
+        text: &str,
+        effect_id: &str,
+        reply_to: Option<String>,
+        keyboard: Option<&nv_core::InlineKeyboard>,
+    ) -> anyhow::Result<i64> {
+        let html_text = markdown_to_html(text);
+        let chunks = chunk_message(&html_text, TELEGRAM_MAX_MESSAGE_LEN);
+        let last_idx = chunks.len().saturating_sub(1);
+        let mut last_msg_id: i64 = 0;
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let mut body = serde_json::json!({
+                "chat_id": chat_id,
+                "text": chunk,
+                "parse_mode": "HTML",
+                "message_effect_id": effect_id,
+            });
+
+            if i == 0 {
+                if let Some(ref reply_id) = reply_to {
+                    if let Ok(id) = reply_id.parse::<i64>() {
+                        body["reply_to_message_id"] = serde_json::json!(id);
+                    }
+                }
+            }
+
+            if i == last_idx {
+                if let Some(kb) = keyboard {
+                    body["reply_markup"] = serde_json::json!({
+                        "inline_keyboard": kb.rows.iter().map(|row| {
+                            row.iter().map(|btn| serde_json::json!({
+                                "text": btn.text,
+                                "callback_data": btn.callback_data,
+                            })).collect::<Vec<_>>()
+                        }).collect::<Vec<_>>()
+                    });
+                }
+            }
+
+            let url = format!("{}/sendMessage", self.base_url);
+            let resp: TelegramResponse<serde_json::Value> =
+                self.http.post(&url).json(&body).send().await?.json().await?;
+
+            if !resp.ok {
+                let desc = resp.description.as_deref().unwrap_or_default();
+                // Graceful degradation: effect not supported in this chat type.
+                if desc.contains("CHAT_SEND_PLAIN_NOT_ALLOWED")
+                    || desc.contains("MEDIA_EMPTY")
+                    || desc.contains("MESSAGE_EFFECTS_UNAVAILABLE")
+                {
+                    tracing::warn!(
+                        chat_id,
+                        effect_id,
+                        error = desc,
+                        "send_message_with_effect: effect not supported, retrying without effect"
+                    );
+                    // Retry without the effect field.
+                    let mut fallback_body = body.clone();
+                    fallback_body.as_object_mut().map(|m| m.remove("message_effect_id"));
+                    let fallback_resp: TelegramResponse<serde_json::Value> =
+                        self.http.post(&url).json(&fallback_body).send().await?.json().await?;
+                    if !fallback_resp.ok {
+                        anyhow::bail!(
+                            "Telegram sendMessage (fallback) failed: {}",
+                            fallback_resp.description.unwrap_or_default()
+                        );
+                    }
+                    if let Some(result) = &fallback_resp.result {
+                        if let Some(id) = result.get("message_id").and_then(|v| v.as_i64()) {
+                            last_msg_id = id;
+                        }
+                    }
+                    continue;
+                }
+                anyhow::bail!("Telegram sendMessage (with effect) failed: {}", desc);
+            }
+
+            if let Some(result) = &resp.result {
+                if let Some(id) = result.get("message_id").and_then(|v| v.as_i64()) {
+                    last_msg_id = id;
+                }
+            }
+        }
+
+        Ok(last_msg_id)
+    }
+
+    /// Send a message formatted with Telegram MarkdownV2 parse mode.
+    ///
+    /// Converts `text` via `markdown_to_mdv2` (which escapes all reserved
+    /// characters in plain-text segments) and posts with `"parse_mode":
+    /// "MarkdownV2"`. Chunking and keyboard placement rules are identical to
+    /// `send_message`. The existing HTML path is preserved unchanged.
+    #[allow(dead_code)]
+    pub async fn send_message_mdv2(
+        &self,
+        chat_id: i64,
+        text: &str,
+        reply_to: Option<String>,
+        keyboard: Option<&nv_core::InlineKeyboard>,
+    ) -> anyhow::Result<i64> {
+        let mdv2_text = markdown_to_mdv2(text);
+        let chunks = chunk_message(&mdv2_text, TELEGRAM_MAX_MESSAGE_LEN);
+        let last_idx = chunks.len().saturating_sub(1);
+        let mut last_msg_id: i64 = 0;
+
+        for (i, chunk) in chunks.iter().enumerate() {
+            let mut body = serde_json::json!({
+                "chat_id": chat_id,
+                "text": chunk,
+                "parse_mode": "MarkdownV2",
+            });
+
+            if i == 0 {
+                if let Some(ref reply_id) = reply_to {
+                    if let Ok(id) = reply_id.parse::<i64>() {
+                        body["reply_to_message_id"] = serde_json::json!(id);
+                    }
+                }
+            }
+
+            if i == last_idx {
+                if let Some(kb) = keyboard {
+                    body["reply_markup"] = serde_json::json!({
+                        "inline_keyboard": kb.rows.iter().map(|row| {
+                            row.iter().map(|btn| serde_json::json!({
+                                "text": btn.text,
+                                "callback_data": btn.callback_data,
+                            })).collect::<Vec<_>>()
+                        }).collect::<Vec<_>>()
+                    });
+                }
+            }
+
+            let url = format!("{}/sendMessage", self.base_url);
+            let resp: TelegramResponse<serde_json::Value> =
+                self.http.post(&url).json(&body).send().await?.json().await?;
+            if !resp.ok {
+                anyhow::bail!(
+                    "Telegram sendMessage (MarkdownV2) failed: {}",
+                    resp.description.unwrap_or_default()
+                );
+            }
+
+            if let Some(result) = &resp.result {
+                if let Some(id) = result.get("message_id").and_then(|v| v.as_i64()) {
+                    last_msg_id = id;
+                }
+            }
+        }
+
+        Ok(last_msg_id)
+    }
+
+    /// Answer an inline query with a list of result items.
+    ///
+    /// POSTs to `/answerInlineQuery`. Results must be answered within 10 seconds
+    /// of the query being received; after that the query expires.
+    #[allow(dead_code)]
+    pub async fn answer_inline_query(
+        &self,
+        query_id: &str,
+        results: &[InlineQueryResult],
+    ) -> anyhow::Result<()> {
+        let url = format!("{}/answerInlineQuery", self.base_url);
+        let body = serde_json::json!({
+            "inline_query_id": query_id,
+            "results": results,
+        });
+        let resp: TelegramResponse<bool> =
+            self.http.post(&url).json(&body).send().await?.json().await?;
+        if !resp.ok {
+            anyhow::bail!(
+                "Telegram answerInlineQuery failed: {}",
+                resp.description.unwrap_or_default()
+            );
+        }
+        Ok(())
     }
 
     /// Edit an existing message's text.
@@ -866,5 +1428,113 @@ mod tests {
         let until = state.backoff_until[&chat_id];
         let remaining = until.duration_since(Instant::now());
         assert!(remaining > Duration::from_secs(25), "default backoff should be ~30s");
+    }
+
+    // ── markdown_to_mdv2 tests ───────────────────────────────────────
+
+    #[test]
+    fn mdv2_bold() {
+        let out = markdown_to_mdv2("Hello **world**");
+        assert_eq!(out, "Hello *world*");
+    }
+
+    #[test]
+    fn mdv2_italic_underscore() {
+        let out = markdown_to_mdv2("Say _hello_ now");
+        assert_eq!(out, "Say _hello_ now");
+    }
+
+    #[test]
+    fn mdv2_italic_single_star() {
+        let out = markdown_to_mdv2("Say *hello* now");
+        assert_eq!(out, "Say _hello_ now");
+    }
+
+    #[test]
+    fn mdv2_inline_code() {
+        let out = markdown_to_mdv2("Use `foo()` here");
+        // Backtick spans are passed through verbatim — parentheses not escaped inside code.
+        assert_eq!(out, "Use `foo()` here");
+    }
+
+    #[test]
+    fn mdv2_fenced_code_block_language_stripped() {
+        let input = "```rust\nfn main() {}\n```";
+        let out = markdown_to_mdv2(input);
+        assert!(out.starts_with("```\n"), "opening fence should have no language label; got: {out:?}");
+        assert!(out.contains("fn main() {}"), "code content should be preserved");
+        assert!(out.ends_with("```"), "should end with closing fence");
+    }
+
+    #[test]
+    fn mdv2_strikethrough() {
+        let out = markdown_to_mdv2("~~deleted~~");
+        assert_eq!(out, "~deleted~");
+    }
+
+    #[test]
+    fn mdv2_spoiler_passthrough() {
+        let out = markdown_to_mdv2("||secret||");
+        assert_eq!(out, "||secret||");
+    }
+
+    #[test]
+    fn mdv2_header_to_bold() {
+        let out = markdown_to_mdv2("# Morning Briefing");
+        assert_eq!(out, "*Morning Briefing*");
+    }
+
+    #[test]
+    fn mdv2_header_level2_to_bold() {
+        let out = markdown_to_mdv2("## Section");
+        assert_eq!(out, "*Section*");
+    }
+
+    #[test]
+    fn mdv2_horizontal_rule() {
+        let out = markdown_to_mdv2("---");
+        assert_eq!(out, "—————");
+    }
+
+    #[test]
+    fn mdv2_table_renders_as_pre_block() {
+        let input = "| Name | Score |\n|------|-------|\n| Leo | 100 |";
+        let out = markdown_to_mdv2(input);
+        assert!(out.starts_with("```\n"), "table should open with pre block; got: {out:?}");
+        assert!(out.contains("Name"), "should contain header");
+        assert!(out.contains("Leo"), "should contain data");
+        assert!(out.ends_with("```"), "should end with closing fence");
+    }
+
+    #[test]
+    fn mdv2_reserved_chars_in_plain_prose_are_escaped() {
+        // Plain text containing MarkdownV2 reserved characters must be escaped.
+        let out = markdown_to_mdv2("Price: 10.00 (USD) + tax!");
+        // Dots, parentheses, and exclamation marks are reserved in MDv2.
+        assert!(out.contains("\\."), "dot should be escaped; got: {out:?}");
+        assert!(out.contains("\\("), "opening paren should be escaped");
+        assert!(out.contains("\\)"), "closing paren should be escaped");
+        assert!(out.contains("\\+"), "plus should be escaped");
+        assert!(out.contains("\\!"), "exclamation should be escaped");
+    }
+
+    #[test]
+    fn mdv2_fenced_code_block_without_language() {
+        let input = "```\nsome code\n```";
+        let out = markdown_to_mdv2(input);
+        assert!(out.starts_with("```\n"), "should start with fence");
+        assert!(out.contains("some code"), "content should be preserved");
+        assert!(out.ends_with("```"), "should end with closing fence");
+    }
+
+    #[test]
+    fn mdv2_effect_constants_have_expected_ids() {
+        // Verify the effect ID constants match the Bot API 9.3 spec values.
+        assert_eq!(EFFECT_FIRE, "5104841245755180586");
+        assert_eq!(EFFECT_HEART, "5159385139981059251");
+        assert_eq!(EFFECT_CONFETTI, "5046509860389126442");
+        assert_eq!(EFFECT_THUMBSUP, "5107584321108051014");
+        assert_eq!(EFFECT_THUMBSDOWN, "5104858069142078462");
+        assert_eq!(EFFECT_POOP, "5046589136895476101");
     }
 }

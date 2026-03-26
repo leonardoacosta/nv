@@ -301,7 +301,8 @@ async fn main() -> anyhow::Result<()> {
         let (poll_tx, mut poll_rx) = mpsc::channel::<Trigger>(256);
 
         let mut tg_channel =
-            TelegramChannel::new(bot_token, tg_config.chat_id, poll_tx);
+            TelegramChannel::new(bot_token, tg_config.chat_id, poll_tx)
+                .with_authorized_user_id(tg_config.authorized_user_id);
 
         // Validate bot token at startup
         use nv_core::channel::Channel;
@@ -312,12 +313,15 @@ async fn main() -> anyhow::Result<()> {
             .await;
 
         // Create an Arc-wrapped channel for the registry (for sending outbound messages)
-        let tg_for_registry = Arc::new(TelegramChannel::new(
-            bot_token,
-            tg_config.chat_id,
-            // Dummy sender -- not used for outbound, only the client matters
-            mpsc::channel::<Trigger>(1).0,
-        ));
+        let tg_for_registry = Arc::new(
+            TelegramChannel::new(
+                bot_token,
+                tg_config.chat_id,
+                // Dummy sender -- not used for outbound, only the client matters
+                mpsc::channel::<Trigger>(1).0,
+            )
+            .with_authorized_user_id(tg_config.authorized_user_id),
+        );
         channels.insert("telegram".into(), tg_for_registry);
 
         // Forward triggers from poll channel to the unbounded agent channel

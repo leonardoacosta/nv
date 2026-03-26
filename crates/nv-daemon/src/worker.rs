@@ -1621,6 +1621,10 @@ impl Worker {
             response_len: response_text.len(),
         });
 
+        // Determine whether this task warrants a Telegram message effect (computed
+        // before the partial-move of task.cli_response_txs below).
+        let task_effect_id: Option<&'static str> = message_effect_for_task(&task);
+
         // Send response to CLI channels (undecorated — no dashboard link)
         for tx in task.cli_response_txs {
             let _ = tx.send(response_text.clone());
@@ -1682,17 +1686,43 @@ impl Worker {
             }
         } else if !response_text.is_empty() {
             // Req-6 / Req-8: Cold-start or non-Telegram path — send_message as before.
-            if let Some(channel) = deps.channels.get(reply_channel) {
-                if let Err(e) = channel
-                    .send_message(OutboundMessage {
-                        channel: reply_channel.to_string(),
-                        content: channel_content,
-                        reply_to: reply_to_id.clone(),
-                        keyboard: None,
-                    })
-                    .await
-                {
-                    tracing::error!(error = %e, "failed to route worker response");
+            // For MorningBriefing (confetti) and P0/Priority::High (fire) triggers on
+            // Telegram, use send_message_with_effect for animated emphasis.
+            let effect_id = task_effect_id;
+            let sent_with_effect = if let (Some(tg), Some(chat_id), Some(eid)) =
+                (&tg_client, tg_chat_id, effect_id)
+            {
+                if reply_channel == "telegram" {
+                    match tg
+                        .send_message_with_effect(chat_id, &channel_content, eid, reply_to_id.clone(), None)
+                        .await
+                    {
+                        Ok(_) => true,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "send_message_with_effect failed, falling back");
+                            false
+                        }
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !sent_with_effect {
+                if let Some(channel) = deps.channels.get(reply_channel) {
+                    if let Err(e) = channel
+                        .send_message(OutboundMessage {
+                            channel: reply_channel.to_string(),
+                            content: channel_content,
+                            reply_to: reply_to_id.clone(),
+                            keyboard: None,
+                        })
+                        .await
+                    {
+                        tracing::error!(error = %e, "failed to route worker response");
+                    }
                 }
             }
         }
@@ -2611,6 +2641,32 @@ fn strip_preamble(text: &str) -> String {
     }
 
     trimmed.to_string()
+}
+
+/// Return the Telegram message effect ID to apply when delivering the response,
+/// or `None` if no effect is warranted for this task.
+///
+/// Rules:
+/// - `CronEvent::MorningBriefing` → confetti (`EFFECT_CONFETTI`)
+/// - `Priority::High` (P0 alerts) or content containing `[P0]` → fire (`EFFECT_FIRE`)
+/// - Everything else → `None`
+fn message_effect_for_task(task: &WorkerTask) -> Option<&'static str> {
+    use crate::channels::telegram::client::{EFFECT_CONFETTI, EFFECT_FIRE};
+
+    // Morning briefing → confetti.
+    let is_morning_briefing = task.triggers.iter().any(|t| {
+        matches!(t, Trigger::Cron(CronEvent::MorningBriefing))
+    });
+    if is_morning_briefing {
+        return Some(EFFECT_CONFETTI);
+    }
+
+    // P0 / Priority::High → fire.
+    if task.priority == Priority::High {
+        return Some(EFFECT_FIRE);
+    }
+
+    None
 }
 
 /// Classify a trigger batch into (trigger_type, trigger_source).

@@ -145,6 +145,9 @@ pub struct AgentConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct TelegramConfig {
     pub chat_id: i64,
+    /// Optional authorized user ID for inline query filtering.
+    /// When set, inline queries from other users are silently dropped.
+    pub authorized_user_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

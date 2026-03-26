@@ -223,6 +223,21 @@ done
 
 echo ""
 
+# ── MCP registration ────────────────────────────────────────────────────────
+
+REGISTER_SCRIPT="${PROJECT_DIR}/scripts/register-mcp-servers.sh"
+if [ -f "$REGISTER_SCRIPT" ]; then
+    echo "==> [tools] Registering MCP servers in ~/.claude/mcp.json..."
+    if REGISTER_OUTPUT=$(bash "$REGISTER_SCRIPT" 2>&1); then
+        echo "$REGISTER_OUTPUT" | sed 's/^/    /'
+    else
+        echo "    WARNING: MCP registration failed (exit $?) — non-fatal"
+        echo "$REGISTER_OUTPUT" | sed 's/^/    /'
+    fi
+else
+    echo "==> [tools] Skipping MCP registration — script not found at ${REGISTER_SCRIPT}"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 echo "==> [tools] Fleet install complete."

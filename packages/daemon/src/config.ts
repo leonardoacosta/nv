@@ -18,6 +18,12 @@ export interface AutonomyConfig {
   pollIntervalMs: number;
 }
 
+export interface McpServerEntry {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
 export interface Config {
   logLevel: string;
   daemonPort: number;
@@ -27,6 +33,7 @@ export interface Config {
   systemPromptPath: string;
   telegramChatId?: string;
   toolRouterUrl: string;
+  mcpServers: Record<string, McpServerEntry>;
   autonomy?: AutonomyConfig;
   proactiveWatcher: ProactiveWatcherConfig;
   conversationHistoryDepth: number;
@@ -39,6 +46,7 @@ const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proact
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
   toolRouterUrl: "http://localhost:4000",
+  mcpServers: {},
   conversationHistoryDepth: 20,
 };
 
@@ -69,6 +77,12 @@ interface TomlConfig {
   };
   conversation?: {
     history_depth?: number;
+  };
+  tools?: {
+    mcp_servers?: Record<
+      string,
+      { command: string; args: string[]; env?: Record<string, string> }
+    >;
   };
 }
 
@@ -164,6 +178,19 @@ export async function loadConfig(
     ? parseInt(historyDepthRaw, 10)
     : (toml.conversation?.history_depth ?? 20);
 
+  // Parse [tools.mcp_servers] section — each entry becomes an McpServerEntry
+  const mcpServers: Record<string, McpServerEntry> = {};
+  const tomlMcpServers = toml.tools?.mcp_servers;
+  if (tomlMcpServers) {
+    for (const [name, entry] of Object.entries(tomlMcpServers)) {
+      mcpServers[name] = {
+        command: entry.command,
+        args: Array.isArray(entry.args) ? entry.args : [],
+        ...(entry.env ? { env: entry.env } : {}),
+      };
+    }
+  }
+
   return {
     logLevel,
     daemonPort,
@@ -173,6 +200,7 @@ export async function loadConfig(
     telegramChatId,
     systemPromptPath,
     toolRouterUrl,
+    mcpServers,
     autonomy,
     proactiveWatcher,
     conversationHistoryDepth,

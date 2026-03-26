@@ -2,6 +2,8 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Pool } from "pg";
 import type { Logger } from "pino";
+import type { Config } from "../../config.js";
+import { buildMcpServers, buildAllowedTools } from "../../brain/mcp-config.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,6 +13,7 @@ export interface BriefingDeps {
   pool: Pool;
   gatewayKey: string;
   logger: Logger;
+  config?: Config;
 }
 
 interface ObligationRow {
@@ -253,9 +256,13 @@ export async function synthesizeBriefing(
   context: GatheredContext,
   deps: BriefingDeps,
 ): Promise<SynthesisResult> {
-  const { logger, gatewayKey } = deps;
+  const { logger, gatewayKey, config } = deps;
 
   const contextPrompt = buildBriefingPrompt(context);
+
+  // Build MCP server config if available — briefing can access fleet tools
+  const mcpServers = config ? buildMcpServers(config) : {};
+  const allowedTools = buildAllowedTools(mcpServers, []);
 
   try {
     const result = await withTimeout(
@@ -266,10 +273,11 @@ export async function synthesizeBriefing(
           prompt: contextPrompt,
           options: {
             systemPrompt: BRIEFING_SYSTEM_PROMPT,
-            allowedTools: [],
+            allowedTools,
             permissionMode: "bypassPermissions",
             allowDangerouslySkipPermissions: true,
             maxTurns: 1,
+            mcpServers,
             env: {
               ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
               ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,

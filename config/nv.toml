@@ -71,3 +71,38 @@ enabled = true
 
 [telegram]
 chat_id = 7380462766
+
+# Tool fleet MCP servers — each entry is a stdio MCP server launched by the Agent SDK.
+# Relative paths in `args` are resolved against NOVA_INSTALL_DIR (~/.local/lib/nova-ts/).
+# The `--mcp` flag activates the stdio MCP transport in each service.
+[tools.mcp_servers.nova-memory]
+command = "node"
+args = ["packages/tools/memory-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-messages]
+command = "node"
+args = ["packages/tools/messages-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-channels]
+command = "node"
+args = ["packages/tools/channels-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-discord]
+command = "node"
+args = ["packages/tools/discord-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-teams]
+command = "node"
+args = ["packages/tools/teams-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-schedule]
+command = "node"
+args = ["packages/tools/schedule-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-graph]
+command = "node"
+args = ["packages/tools/graph-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-meta]
+command = "node"
+args = ["packages/tools/meta-svc/dist/index.js", "--mcp"]

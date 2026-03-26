@@ -7,5 +7,3 @@ export { MemorySearch } from "./search.js";
 export type { SearchResult } from "./search.js";
 
 export { MemoryService, createMemoryService } from "./service.js";
-
-export { getMemory, putMemory } from "./handlers.js";

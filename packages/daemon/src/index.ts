@@ -103,6 +103,7 @@ export async function main(): Promise<void> {
       pool,
       gatewayKey: config.vercelGatewayKey,
       logger: log,
+      config,
     });
     log.info({ service: "nova-daemon" }, "Morning briefing scheduler started");
   } else {

@@ -5,8 +5,13 @@ import { ObligationStatus, type ObligationRecord } from "./types.js";
 import type { ObligationStore } from "./store.js";
 import { createLogger } from "../../logger.js";
 import { OBLIGATION_CONFIRM_PREFIX, OBLIGATION_REOPEN_PREFIX } from "./callbacks.js";
+import type { Config } from "../../config.js";
+import { buildMcpServers, buildAllowedTools, type McpStdioServerConfig } from "../../brain/mcp-config.js";
 
 const log = createLogger("obligation-executor");
+
+/** Built-in Agent SDK tools available to the executor. */
+const BUILTIN_TOOLS = ["Read", "Write", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,14 +67,17 @@ async function runAgentQuery(
   prompt: string,
   gatewayKey: string,
   timeoutMs: number,
+  mcpServers: Record<string, McpStdioServerConfig>,
+  allowedTools: string[],
 ): Promise<string> {
   const queryStream = query({
     prompt,
     options: {
-      allowedTools: ["Read", "Write", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"],
+      allowedTools,
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       maxTurns: 30,
+      mcpServers,
       env: {
         ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
         ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
@@ -101,6 +109,8 @@ export class ObligationExecutor {
   private lastActivityAt: number = Date.now();
   private isExecuting: boolean = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly mcpServers: Record<string, McpStdioServerConfig>;
+  private readonly allowedTools: string[];
 
   // Draining: resolves when isExecuting transitions to false
   private drainingResolvers: Array<() => void> = [];
@@ -111,7 +121,11 @@ export class ObligationExecutor {
     private readonly telegram: TelegramNotifier,
     private readonly telegramChatId: number | string,
     private readonly config: ExecutorConfig,
-  ) {}
+    appConfig?: Config,
+  ) {
+    this.mcpServers = appConfig ? buildMcpServers(appConfig) : {};
+    this.allowedTools = buildAllowedTools(this.mcpServers, BUILTIN_TOOLS);
+  }
 
   /**
    * Resets the idle debounce timer. Call on every inbound/outbound message.
@@ -195,6 +209,8 @@ export class ObligationExecutor {
         prompt,
         this.gatewayKey,
         this.config.timeoutMs,
+        this.mcpServers,
+        this.allowedTools,
       );
 
       if (!summary || summary.trim().length === 0) {

@@ -310,7 +310,7 @@ impl TeamsClient {
 
     /// List chats the authenticated identity can access.
     ///
-    /// Uses `GET /chats?$top={limit}&$expand=members&$orderby=lastMessageReceivedDateTime desc`
+    /// Uses `GET /chats?$top={limit}&$expand=members&$orderby=lastUpdatedDateTime desc`
     /// which requires the `Chat.Read.All` **application** permission (not delegated).
     ///
     /// Returns a 403 error with a descriptive message if the Azure AD app is missing the
@@ -318,7 +318,7 @@ impl TeamsClient {
     pub async fn list_chats(&self, limit: usize) -> anyhow::Result<Vec<ChatInfo>> {
         let url = format!(
             "{GRAPH_API_BASE}/chats?$top={limit}&$expand=members\
-             &$orderby=lastMessageReceivedDateTime desc"
+             &$orderby=lastUpdatedDateTime desc"
         );
 
         let token = self.auth.get_token().await?;

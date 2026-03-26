@@ -11,6 +11,30 @@ INSTALL_DIR="${HOME}/.local/lib/nova-ts"
 SERVICE_DIR="${HOME}/.config/systemd/user"
 HEALTH_PORT="${NV_DAEMON_PORT:-7700}"
 
+# ── Pre-flight checks ────────────────────────────────────────────────────────
+
+echo "==> Running pre-flight checks..."
+
+# The Agent SDK spawns `claude` as a subprocess — verify the binary is present.
+if ! command -v claude &> /dev/null; then
+    echo ""
+    echo "ERROR: 'claude' binary not found in PATH."
+    echo "  Expected: ${HOME}/.local/bin/claude"
+    echo "  Install Claude Code, then re-run this script."
+    exit 1
+fi
+echo "    claude $(claude --version 2>/dev/null | head -1) -- OK"
+
+# The Agent SDK reads credentials from ~/.claude/ -- verify the directory exists.
+if [ ! -d "${HOME}/.claude" ]; then
+    echo ""
+    echo "ERROR: ${HOME}/.claude/ directory not found."
+    echo "  The Agent SDK needs Claude credentials to authenticate."
+    echo "  Run 'claude' interactively at least once to complete auth, then re-run."
+    exit 1
+fi
+echo "    ${HOME}/.claude/ credentials directory -- OK"
+
 echo "==> Building packages..."
 
 # Build packages/db (shared schema / client used by daemon)

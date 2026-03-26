@@ -8,6 +8,12 @@ Type=simple
 ExecStart=doppler run --project nova --config prd -- node %h/.local/lib/nova-ts/dist/index.js
 Environment=NODE_ENV=production
 Environment=ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
+# Agent SDK spawns `claude` CLI as a subprocess — it must be on PATH and able to find credentials.
+# HOME is required for ~/.claude/ credential discovery; CLAUDE_CODE_SKIP_PERMISSIONS bypasses the
+# interactive permissions prompt that would block a non-TTY subprocess.
+Environment=PATH=%h/.local/bin:%h/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+Environment=CLAUDE_CODE_SKIP_PERMISSIONS=true
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

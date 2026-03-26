@@ -342,8 +342,12 @@ async fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, Api
         "--model".into(),
         config.model.clone(),
         "--no-session-persistence".into(),
+        // Disable CLI built-in tools — Nova provides its own via stream-json.
+        // Without this, CLI loads MCP servers + hooks + full tool suite on spawn (~20s).
+        "--tools".into(),
+        "".into(),
     ];
-    tracing::debug!("persistent: spawning subprocess (real HOME, no sandbox)");
+    tracing::debug!("persistent: spawning subprocess (real HOME, --tools empty)");
 
     let mut child = Command::new("claude")
         .args(&base_args)
@@ -1179,9 +1183,12 @@ impl ClaudeClient {
             "--model".into(),
             self.model.clone(),
             "--no-session-persistence".into(),
+            // Disable CLI built-in tools — Nova provides its own via system prompt prose.
+            // Without this, CLI loads MCP servers + hooks + full tool suite (~20s overhead).
+            "--tools".into(),
+            "".into(),
             "--system-prompt".into(),
             effective_system.to_string(),
-            // --strict-mcp-config removed — causes hangs when MCP servers fail
         ];
 
         // Pass native tool definitions via --tools-json when supported.

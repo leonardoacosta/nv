@@ -4,21 +4,21 @@
 
 ## API Batch — Activity Infrastructure
 
-- [ ] [1.1] [P-1] Add `ObligationActivityEvent` struct to `crates/nv-daemon/src/http.rs` (or new `obligation_activity.rs`) — fields: `id: String`, `event_type: String`, `obligation_id: String`, `description: String`, `timestamp: DateTime<Utc>`, `metadata: Option<serde_json::Value>` [owner:api-engineer]
-- [ ] [1.2] [P-1] Add `ActivityRingBuffer` — `Arc<Mutex<VecDeque<ObligationActivityEvent>>>` with capacity 200; `push(event)` evicts oldest when full; `recent(limit) -> Vec` returns newest N [owner:api-engineer]
-- [ ] [1.3] [P-1] Wire `ActivityRingBuffer` into `HttpState` and `SharedDeps`; pass to obligation_executor, obligation_detector, and orchestrator callback handlers [owner:api-engineer]
-- [ ] [1.4] [P-2] Add `GET /api/obligations/activity?limit=50` endpoint to `build_router()` — returns `{ events: [...] }` from the ring buffer [owner:api-engineer]
-- [ ] [1.5] [P-2] Emit `obligation.detected` event in `obligation_detector.rs` when a new obligation is stored [owner:api-engineer]
-- [ ] [1.6] [P-2] Emit `obligation.execution_started`, `obligation.tool_called`, `obligation.execution_completed` events in `obligation_executor.rs` at appropriate points [owner:api-engineer]
-- [ ] [1.7] [P-2] Emit `obligation.confirmed` and `obligation.reopened` events in `callbacks.rs` confirm_done/reopen handlers [owner:api-engineer]
-- [ ] [1.8] [P-2] Broadcast each activity event as a `DaemonEvent` variant on `event_tx` for WebSocket delivery [owner:api-engineer]
+- [x] [1.1] [P-1] Add `ObligationActivityEvent` struct to `crates/nv-daemon/src/http.rs` (or new `obligation_activity.rs`) — fields: `id: String`, `event_type: String`, `obligation_id: String`, `description: String`, `timestamp: DateTime<Utc>`, `metadata: Option<serde_json::Value>` [owner:api-engineer]
+- [x] [1.2] [P-1] Add `ActivityRingBuffer` — `Arc<Mutex<VecDeque<ObligationActivityEvent>>>` with capacity 200; `push(event)` evicts oldest when full; `recent(limit) -> Vec` returns newest N [owner:api-engineer]
+- [x] [1.3] [P-1] Wire `ActivityRingBuffer` into `HttpState` and `SharedDeps`; pass to obligation_executor, obligation_detector, and orchestrator callback handlers [owner:api-engineer]
+- [x] [1.4] [P-2] Add `GET /api/obligations/activity?limit=50` endpoint to `build_router()` — returns `{ events: [...] }` from the ring buffer [owner:api-engineer]
+- [x] [1.5] [P-2] Emit `obligation.detected` event in `obligation_detector.rs` when a new obligation is stored [owner:api-engineer]
+- [x] [1.6] [P-2] Emit `obligation.execution_started`, `obligation.tool_called`, `obligation.execution_completed` events in `obligation_executor.rs` at appropriate points [owner:api-engineer]
+- [x] [1.7] [P-2] Emit `obligation.confirmed` and `obligation.reopened` events in `callbacks.rs` confirm_done/reopen handlers [owner:api-engineer]
+- [x] [1.8] [P-2] Broadcast each activity event as a `DaemonEvent` variant on `event_tx` for WebSocket delivery [owner:api-engineer]
 
 ## API Batch — Obligation Enrichment
 
-- [ ] [2.1] [P-1] Add `ObligationStore::list_notes(obligation_id) -> Vec<ObligationNote>` method — reads from `obligation_notes` table, returns newest-first, max 10 per obligation [owner:api-engineer]
-- [ ] [2.2] [P-1] Add `ObligationStore::get_stats() -> ObligationStats` method — returns counts: open_nova, open_leo, in_progress, proposed_done, done_today [owner:api-engineer]
-- [ ] [2.3] [P-2] Extend `GET /api/obligations` response — each obligation now includes `notes: Vec<ObligationNote>`, `attempt_count: u32`, `last_attempt_at: Option<String>` [owner:api-engineer]
-- [ ] [2.4] [P-2] Add `GET /api/obligations/stats` endpoint returning `ObligationStats` [owner:api-engineer]
+- [x] [2.1] [P-1] Add `ObligationStore::list_notes(obligation_id) -> Vec<ObligationNote>` method — reads from `obligation_notes` table, returns newest-first, max 10 per obligation [owner:api-engineer]
+- [x] [2.2] [P-1] Add `ObligationStore::get_stats() -> ObligationStats` method — returns counts: open_nova, open_leo, in_progress, proposed_done, done_today [owner:api-engineer]
+- [x] [2.3] [P-2] Extend `GET /api/obligations` response — each obligation now includes `notes: Vec<ObligationNote>`, `attempt_count: u32`, `last_attempt_at: Option<String>` [owner:api-engineer]
+- [x] [2.4] [P-2] Add `GET /api/obligations/stats` endpoint returning `ObligationStats` [owner:api-engineer]
 
 ## API Batch — Telegram Commands
 

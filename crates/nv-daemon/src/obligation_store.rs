@@ -98,7 +98,8 @@ impl ObligationStore {
     pub fn get_by_id(&self, id: &str) -> Result<Option<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
              FROM obligations
              WHERE id = ?1",
         )?;
@@ -118,7 +119,8 @@ impl ObligationStore {
     pub fn list_by_status(&self, status: &ObligationStatus) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
              FROM obligations
              WHERE status = ?1
              ORDER BY priority ASC, created_at ASC",
@@ -145,7 +147,8 @@ impl ObligationStore {
     pub fn list_by_owner(&self, owner: &ObligationOwner) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
              FROM obligations
              WHERE owner = ?1
              ORDER BY priority ASC, created_at ASC",
@@ -170,7 +173,8 @@ impl ObligationStore {
     pub fn list_all(&self) -> Result<Vec<Obligation>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
              FROM obligations
              ORDER BY priority ASC, created_at ASC",
         )?;
@@ -284,7 +288,8 @@ impl ObligationStore {
         let cutoff_str = cutoff.to_rfc3339();
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
              FROM obligations
              WHERE status = 'open'
                AND deadline IS NOT NULL
@@ -304,6 +309,76 @@ impl ObligationStore {
 
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| anyhow::anyhow!("list_open_with_deadline_before query failed: {e}"))
+    }
+
+    // ── Autonomous Execution ──────────────────────────────────────────
+
+    /// Update the `last_attempt_at` timestamp for an obligation.
+    ///
+    /// Called by the obligation executor regardless of result to record
+    /// when execution last ran. Enables the 2-hour cooldown between retries.
+    ///
+    /// Returns `true` if a row was updated, `false` if the id was not found.
+    pub fn update_last_attempt_at(&self, id: &str, timestamp: &DateTime<Utc>) -> Result<bool> {
+        let ts_str = timestamp.to_rfc3339();
+        let rows_changed = self.conn.execute(
+            "UPDATE obligations SET last_attempt_at = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![ts_str, id],
+        )?;
+        Ok(rows_changed > 0)
+    }
+
+    /// List obligations ready for autonomous execution.
+    ///
+    /// Filters:
+    /// - owner = "nova"
+    /// - status IN ("open", "in_progress")
+    /// - last_attempt_at IS NULL OR last_attempt_at < now - cooldown_hours
+    ///
+    /// Ordered by priority ASC, created_at ASC (highest-priority first).
+    pub fn list_ready_for_execution(&self, cooldown_hours: u32) -> Result<Vec<Obligation>> {
+        let cooldown_cutoff = Utc::now()
+            - chrono::Duration::hours(i64::from(cooldown_hours));
+        let cutoff_str = cooldown_cutoff.to_rfc3339();
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, source_channel, source_message, detected_action, project_code,
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
+             FROM obligations
+             WHERE owner = 'nova'
+               AND status IN ('open', 'in_progress')
+               AND (last_attempt_at IS NULL OR last_attempt_at < ?1)
+             ORDER BY priority ASC, created_at ASC",
+        )?;
+
+        let rows = stmt.query_map(params![cutoff_str], |row| {
+            row_to_obligation(row).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::other(e.to_string())),
+                )
+            })
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("list_ready_for_execution query failed: {e}"))
+    }
+
+    /// Append a plain-text note to `obligation_notes` for execution results.
+    ///
+    /// Stores a timestamped entry recording what happened during an execution attempt
+    /// (success summary or failure reason).
+    pub fn append_execution_note(&self, obligation_id: &str, note: &str) -> Result<()> {
+        let note_id = Uuid::new_v4().to_string();
+        self.conn.execute(
+            "INSERT INTO obligation_notes
+                (id, obligation_id, note_type, content, created_at)
+             VALUES (?1, ?2, 'execution', ?3, datetime('now'))",
+            params![note_id, obligation_id, note],
+        )?;
+        Ok(())
     }
 
     // ── Research Notes ────────────────────────────────────────────────
@@ -389,7 +464,8 @@ impl ObligationStore {
         let since_str = since.to_rfc3339();
         let mut stmt = self.conn.prepare(
             "SELECT id, source_channel, source_message, detected_action, project_code,
-                    priority, status, owner, owner_reason, deadline, created_at, updated_at
+                    priority, status, owner, owner_reason, deadline, created_at, updated_at,
+                    last_attempt_at
              FROM obligations
              WHERE status = 'open'
                AND updated_at <= ?1
@@ -447,7 +523,8 @@ fn row_to_research_result(row: &rusqlite::Row<'_>) -> Result<ResearchResult> {
 ///
 /// Column order (0-based):
 ///   0  id, 1 source_channel, 2 source_message, 3 detected_action, 4 project_code,
-///   5  priority, 6 status, 7 owner, 8 owner_reason, 9 deadline, 10 created_at, 11 updated_at
+///   5  priority, 6 status, 7 owner, 8 owner_reason, 9 deadline, 10 created_at, 11 updated_at,
+///   12 last_attempt_at
 fn row_to_obligation(row: &rusqlite::Row<'_>) -> Result<Obligation> {
     let status_str: String = row.get(6)?;
     let owner_str: String = row.get(7)?;
@@ -467,6 +544,7 @@ fn row_to_obligation(row: &rusqlite::Row<'_>) -> Result<Obligation> {
         deadline: row.get(9)?,
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
+        last_attempt_at: row.get(12)?,
     })
 }
 
@@ -496,7 +574,8 @@ mod tests {
                 owner_reason TEXT,
                 deadline TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                last_attempt_at TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
             CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
@@ -504,10 +583,13 @@ mod tests {
             CREATE TABLE IF NOT EXISTS obligation_notes (
                 id            TEXT PRIMARY KEY,
                 obligation_id TEXT NOT NULL,
-                summary       TEXT NOT NULL,
+                note_type     TEXT NOT NULL DEFAULT 'research',
+                content       TEXT NOT NULL,
+                summary       TEXT NOT NULL DEFAULT '',
                 findings_json TEXT NOT NULL DEFAULT '[]',
                 tools_used    TEXT NOT NULL DEFAULT '[]',
                 error         TEXT,
+                created_at    TEXT NOT NULL DEFAULT (datetime('now')),
                 researched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
             );
             CREATE INDEX IF NOT EXISTS idx_obligation_notes_obligation
@@ -950,5 +1032,81 @@ mod tests {
         let fetched = store.get_latest_research("rr4").unwrap().unwrap();
         assert!(fetched.error.is_some());
         assert!(fetched.error.unwrap().contains("JSON parse error"));
+    }
+
+    // ── Autonomous Execution Tests ────────────────────────────────────
+
+    #[test]
+    fn proposed_done_status_round_trips() {
+        let (store, _f) = temp_store();
+
+        store.create(new_obligation("pd1", "telegram", "do thing", 2)).unwrap();
+        store.update_status("pd1", &ObligationStatus::ProposedDone).unwrap();
+
+        let ob = store.get_by_id("pd1").unwrap().unwrap();
+        assert_eq!(ob.status, ObligationStatus::ProposedDone);
+        assert_eq!(ob.status.as_str(), "proposed_done");
+
+        // Round-trip through from_str
+        let parsed: ObligationStatus = "proposed_done".parse().unwrap();
+        assert_eq!(parsed, ObligationStatus::ProposedDone);
+    }
+
+    #[test]
+    fn list_ready_for_execution_returns_nova_open_obligations() {
+        let (store, _f) = temp_store();
+
+        // Nova-owned open obligation — should be returned
+        store.create(new_obligation("exec1", "telegram", "nova task", 2)).unwrap();
+
+        // Leo-owned open — should NOT be returned
+        let mut leo_ob = new_obligation("exec2", "telegram", "leo task", 1);
+        leo_ob.owner = ObligationOwner::Leo;
+        store.create(leo_ob).unwrap();
+
+        // Nova-owned but done — should NOT be returned
+        store.create(new_obligation("exec3", "telegram", "done task", 2)).unwrap();
+        store.update_status("exec3", &ObligationStatus::Done).unwrap();
+
+        let ready = store.list_ready_for_execution(2).unwrap();
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].id, "exec1");
+    }
+
+    #[test]
+    fn list_ready_for_execution_respects_cooldown() {
+        let (store, _f) = temp_store();
+
+        store.create(new_obligation("cool1", "telegram", "cooldown task", 2)).unwrap();
+
+        // Set last_attempt_at to 1 hour ago (within 2-hour cooldown)
+        store.conn.execute(
+            "UPDATE obligations SET last_attempt_at = datetime('now', '-1 hour') WHERE id = 'cool1'",
+            [],
+        ).unwrap();
+
+        // With 2-hour cooldown: should NOT be returned (only 1h ago)
+        let ready = store.list_ready_for_execution(2).unwrap();
+        assert!(ready.is_empty(), "should not be ready — within cooldown window");
+
+        // With 30-minute cooldown: should be returned (1h ago > 30m cooldown)
+        // Use a very short cooldown (0 hours) to force it through
+        let ready_short = store.list_ready_for_execution(0).unwrap();
+        assert!(!ready_short.is_empty(), "should be ready with 0-hour cooldown");
+    }
+
+    #[test]
+    fn update_last_attempt_at_persists_timestamp() {
+        let (store, _f) = temp_store();
+        store.create(new_obligation("lat1", "telegram", "attempt task", 2)).unwrap();
+
+        let before = store.get_by_id("lat1").unwrap().unwrap();
+        assert!(before.last_attempt_at.is_none());
+
+        let now = Utc::now();
+        store.update_last_attempt_at("lat1", &now).unwrap();
+
+        let after = store.get_by_id("lat1").unwrap().unwrap();
+        assert!(after.last_attempt_at.is_some());
     }
 }

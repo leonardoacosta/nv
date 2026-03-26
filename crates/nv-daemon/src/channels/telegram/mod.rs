@@ -684,6 +684,10 @@ pub fn callback_label(data: Option<&str>) -> &'static str {
         "Choose snooze time..."
     } else if data.starts_with("reminder_backlog:") {
         "Moved to backlog."
+    } else if data.starts_with("confirm_done:") {
+        "Confirmed — marked done."
+    } else if data.starts_with("reopen:") {
+        "Reopened — will retry."
     } else {
         "Got it."
     }

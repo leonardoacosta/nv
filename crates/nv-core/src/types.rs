@@ -297,6 +297,8 @@ pub enum ObligationStatus {
     Done,
     /// Deliberately ignored or not applicable.
     Dismissed,
+    /// Nova completed the work and proposed it done — awaiting Leo's confirmation.
+    ProposedDone,
 }
 
 impl ObligationStatus {
@@ -307,6 +309,7 @@ impl ObligationStatus {
             ObligationStatus::InProgress => "in_progress",
             ObligationStatus::Done => "done",
             ObligationStatus::Dismissed => "dismissed",
+            ObligationStatus::ProposedDone => "proposed_done",
         }
     }
 }
@@ -326,6 +329,7 @@ impl std::str::FromStr for ObligationStatus {
             "in_progress" => Ok(ObligationStatus::InProgress),
             "done" => Ok(ObligationStatus::Done),
             "dismissed" => Ok(ObligationStatus::Dismissed),
+            "proposed_done" => Ok(ObligationStatus::ProposedDone),
             other => Err(anyhow::anyhow!("unknown ObligationStatus: {other}")),
         }
     }
@@ -400,6 +404,8 @@ pub struct Obligation {
     pub created_at: String,
     /// ISO 8601 UTC last-updated timestamp.
     pub updated_at: String,
+    /// ISO 8601 UTC timestamp of the last autonomous execution attempt. `None` if never attempted.
+    pub last_attempt_at: Option<String>,
 }
 
 // ── Query Types ─────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ mod memory;
 mod messages;
 mod nexus;
 mod obligation_detector;
+mod obligation_executor;
 mod obligation_research;
 mod persona;
 mod team_agent;
@@ -1248,6 +1249,8 @@ async fn main() -> anyhow::Result<()> {
         obligation_research_config: config.obligation_research.clone(),
         self_assessment_store: self_assessment_store_arc,
         self_assessment_engine: self_assessment_engine_arc,
+        autonomy_config: config.autonomy.clone(),
+        last_interactive_at: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     });
 
     // Extract Telegram client and chat_id for reactions

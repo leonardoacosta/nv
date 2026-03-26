@@ -274,6 +274,8 @@ fn messages_migrations() -> Migrations<'static> {
             CREATE INDEX IF NOT EXISTS idx_obligation_notes_obligation
                 ON obligation_notes(obligation_id);",
         ),
+        // v13: last_attempt_at — tracks when autonomous execution last ran for an obligation
+        M::up("ALTER TABLE obligations ADD COLUMN last_attempt_at TEXT;"),
     ])
 }
 
@@ -283,7 +285,7 @@ impl MessageStore {
     /// Uses PRAGMA user_version to track schema version. Safe for ALTER TABLE
     /// changes in future migration versions.
     pub fn init(path: &Path) -> Result<Self> {
-        let mut conn = Connection::open(path)?;
+        let conn = Connection::open(path)?;
 
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
 
@@ -364,7 +366,8 @@ impl MessageStore {
                 owner_reason TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                deadline TEXT
+                deadline TEXT,
+                last_attempt_at TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
             CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
@@ -458,6 +461,12 @@ impl MessageStore {
                 INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
             END;",
         )?;
+
+        // v13: add last_attempt_at to obligations for autonomous execution tracking.
+        // Silently ignored if the column already exists (idempotent).
+        let _ = conn.execute_batch(
+            "ALTER TABLE obligations ADD COLUMN last_attempt_at TEXT;",
+        );
 
         // One-time backfill: populate FTS index with any messages that exist
         // but are not yet indexed (idempotent — skips already-indexed rows).

@@ -64,7 +64,8 @@ The executor:
 2. Sends a single Claude turn with system prompt: "You are Nova. You have an obligation to
    complete: {detected_action}. Use your tools to fulfill this obligation. When done, summarize
    what you accomplished."
-3. Allows up to 30 tool calls in the tool loop (same pattern as `Worker::run`)
+3. Runs the tool loop with NO tool count cap (same pattern as `Worker::run`), bounded only by
+   the 5-minute timeout
 4. Captures the final response text as the execution result
 5. Updates `last_attempt_at` on the obligation
 
@@ -99,10 +100,8 @@ When an obligation is in `proposed_done`:
 
 ### Req-6: Safety Guards
 
-- **Tool budget**: Max 30 tool calls per obligation attempt. If reached, stop and report partial
-  results.
 - **Timeout**: Max 5 minutes per obligation attempt. If exceeded, kill the worker task and report
-  timeout.
+  timeout. No tool count cap — Nova uses as many tools as needed within the time budget.
 - **Cooldown**: 2 hours between attempts on the same obligation. Prevents infinite retry loops.
 - **One at a time**: Only one obligation executes at a time during idle. When it completes, check
   idle again before picking the next one.
@@ -116,7 +115,6 @@ Add to `nv.toml`:
 ```toml
 [autonomy]
 enabled = true
-max_tools_per_attempt = 30
 timeout_secs = 300
 cooldown_hours = 2
 idle_debounce_secs = 60

@@ -184,6 +184,8 @@ pub struct Config {
     /// Per-channel persona overrides. Key is channel name (case-insensitive).
     #[serde(default)]
     pub personas: HashMap<String, PersonaConfig>,
+    /// Optional autonomous obligation execution configuration.
+    pub autonomy: Option<AutonomyConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -798,6 +800,64 @@ pub struct ObligationResearchConfig {
     /// Seconds to wait before firing research (lets obligation settle). Default: 10.
     #[serde(default = "default_research_delay_secs")]
     pub research_delay_secs: u64,
+}
+
+// ── Autonomy Config ──────────────────────────────────────────────────
+
+fn default_autonomy_enabled() -> bool {
+    true
+}
+
+fn default_autonomy_timeout_secs() -> u64 {
+    300
+}
+
+fn default_autonomy_cooldown_hours() -> u32 {
+    2
+}
+
+fn default_autonomy_idle_debounce_secs() -> u64 {
+    60
+}
+
+/// Configuration for Nova's autonomous obligation execution.
+///
+/// When enabled, Nova will pick up her own obligations and work on them
+/// during idle periods (no interactive messages for `idle_debounce_secs`
+/// and no active workers).
+///
+/// ```toml
+/// [autonomy]
+/// enabled = true
+/// timeout_secs = 300
+/// cooldown_hours = 2
+/// idle_debounce_secs = 60
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct AutonomyConfig {
+    /// Whether autonomous execution is enabled. Default: true.
+    #[serde(default = "default_autonomy_enabled")]
+    pub enabled: bool,
+    /// Maximum seconds for a single obligation execution attempt (hard cap). Default: 300.
+    #[serde(default = "default_autonomy_timeout_secs")]
+    pub timeout_secs: u64,
+    /// Hours to wait before retrying the same obligation after a failed attempt. Default: 2.
+    #[serde(default = "default_autonomy_cooldown_hours")]
+    pub cooldown_hours: u32,
+    /// Seconds of no interactive activity before Nova considers herself idle. Default: 60.
+    #[serde(default = "default_autonomy_idle_debounce_secs")]
+    pub idle_debounce_secs: u64,
+}
+
+impl Default for AutonomyConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_autonomy_enabled(),
+            timeout_secs: default_autonomy_timeout_secs(),
+            cooldown_hours: default_autonomy_cooldown_hours(),
+            idle_debounce_secs: default_autonomy_idle_debounce_secs(),
+        }
+    }
 }
 
 // ── Config loading ──────────────────────────────────────────────────

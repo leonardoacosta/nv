@@ -908,7 +908,7 @@ pub async fn execute_tool_send_with_backend(
     memory: &Memory,
     jira_registry: Option<&jira::JiraRegistry>,
     nexus_backend: Option<&nexus::backend::NexusBackend>,
-    project_registry: &HashMap<String, PathBuf>,
+    _project_registry: &HashMap<String, PathBuf>,
     channels: &HashMap<String, Arc<dyn Channel>>,
     calendar_credentials: Option<&str>,
     calendar_id: &str,

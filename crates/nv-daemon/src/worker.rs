@@ -284,6 +284,13 @@ pub struct SharedDeps {
     pub self_assessment_engine: Option<Arc<crate::self_assessment::SelfAssessmentEngine>>,
     /// Weekly self-assessment JSONL store. None if initialization failed.
     pub self_assessment_store: Option<Arc<crate::self_assessment::SelfAssessmentStore>>,
+    /// Autonomy config for idle obligation execution. None = feature disabled.
+    pub autonomy_config: Option<nv_core::config::AutonomyConfig>,
+    /// UNIX timestamp (seconds) of the last interactive trigger dispatch.
+    ///
+    /// Updated on every Message/CliCommand trigger dispatch by the orchestrator.
+    /// Used by the idle detection loop to enforce the `idle_debounce_secs` window.
+    pub last_interactive_at: Arc<std::sync::atomic::AtomicU64>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────
@@ -414,6 +421,14 @@ impl Clone for WorkerPool {
 }
 
 impl WorkerPool {
+    /// Return the current count of active (in-flight) workers.
+    ///
+    /// Used by the orchestrator's idle detection loop to determine when
+    /// it is safe to start autonomous obligation execution.
+    pub fn active_count(&self) -> usize {
+        self.active.load(Ordering::Relaxed)
+    }
+
     /// Create a new worker pool.
     pub fn new(
         max_concurrent: usize,

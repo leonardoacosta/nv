@@ -533,6 +533,65 @@ fn format_snooze_time(dt: &chrono::DateTime<Utc>, _timezone: &str) -> String {
     dt.format("%a %d %b %H:%M UTC").to_string()
 }
 
+// ── Autonomous Execution Result Callbacks ───────────────────────────
+
+/// Handle a `confirm_done:{obligation_id}` callback.
+///
+/// Transitions the obligation from `proposed_done` → `done` and edits the
+/// original Telegram message to confirm the action to Leo.
+pub async fn handle_confirm_done(
+    ob_id: &str,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    original_message_id: Option<i64>,
+    ob_store: &ObligationStore,
+) -> Result<()> {
+    let updated = ob_store.update_status(ob_id, &nv_core::types::ObligationStatus::Done)?;
+    if !updated {
+        anyhow::bail!("confirm_done: obligation {ob_id} not found");
+    }
+
+    if let Some(msg_id) = original_message_id {
+        let _ = telegram
+            .edit_message(chat_id, msg_id, "Confirmed — obligation marked done.", None)
+            .await;
+    }
+
+    tracing::info!(ob_id, "confirm_done: obligation marked done");
+    Ok(())
+}
+
+/// Handle a `reopen:{obligation_id}` callback.
+///
+/// Transitions the obligation from `proposed_done` → `open` and edits the
+/// original Telegram message so Leo knows it will be retried after cooldown.
+pub async fn handle_reopen(
+    ob_id: &str,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    original_message_id: Option<i64>,
+    ob_store: &ObligationStore,
+) -> Result<()> {
+    let updated = ob_store.update_status(ob_id, &nv_core::types::ObligationStatus::Open)?;
+    if !updated {
+        anyhow::bail!("reopen: obligation {ob_id} not found");
+    }
+
+    if let Some(msg_id) = original_message_id {
+        let _ = telegram
+            .edit_message(
+                chat_id,
+                msg_id,
+                "Reopened — will retry after cooldown.",
+                None,
+            )
+            .await;
+    }
+
+    tracing::info!(ob_id, "reopen: obligation reopened");
+    Ok(())
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]

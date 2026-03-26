@@ -242,6 +242,13 @@ pub struct Orchestrator {
     /// Used to compute the `receive` latency span: time from trigger
     /// arrival to `WorkerPool::dispatch` call.
     trigger_arrival: Option<Instant>,
+    /// Obligation ID currently being autonomously executed.
+    ///
+    /// Set when autonomous execution starts, cleared when it completes.
+    /// Prevents double-dispatch: only one obligation executes at a time.
+    executing_obligation: Option<String>,
+    /// Last time the idle check ran — used to enforce the 30-second poll cycle.
+    last_idle_check: Instant,
 }
 
 impl Orchestrator {
@@ -285,6 +292,8 @@ impl Orchestrator {
             worker_stage_pending_removal: std::collections::HashSet::new(),
             worker_chat_id: std::collections::HashMap::new(),
             trigger_arrival: None,
+            executing_obligation: None,
+            last_idle_check: Instant::now(),
         }
     }
 
@@ -293,18 +302,23 @@ impl Orchestrator {
     /// Uses `tokio::select!` to multiplex:
     /// - Trigger channel (inbound user/cron/nexus triggers)
     /// - Worker event channel (progress events from workers)
-    /// - 30s inactivity timer (status update to Telegram for long-running tasks)
+    /// - 5s typing indicator refresh (status update to Telegram for long-running tasks)
+    /// - 30s idle check (autonomous obligation execution when idle)
     ///
     /// Runs until the trigger channel closes (all senders dropped).
     pub async fn run(mut self) -> Result<()> {
         tracing::info!("orchestrator started, waiting for triggers");
 
-        /// Inactivity threshold — if a worker stage has been running this long
         /// Typing indicator refresh interval. Telegram's "typing..." indicator
         /// expires after ~5s, so we refresh every 5s while workers are active.
         const TYPING_REFRESH: Duration = Duration::from_secs(5);
 
+        /// Idle check poll interval — how often to check whether Nova is idle.
+        const IDLE_POLL: Duration = Duration::from_secs(30);
+
         let mut trigger_closed = false;
+        let mut idle_check_timer = tokio::time::interval(IDLE_POLL);
+        idle_check_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             // If trigger channel is closed and no active workers are tracked, exit
@@ -367,6 +381,9 @@ impl Orchestrator {
                 () = &mut inactivity_sleep => {
                     self.check_inactivity(TYPING_REFRESH).await;
                 }
+                _ = idle_check_timer.tick() => {
+                    self.check_idle_and_execute().await;
+                }
             }
         }
 
@@ -377,6 +394,21 @@ impl Orchestrator {
     async fn process_trigger_batch(&mut self, triggers: &mut Vec<Trigger>) {
         // Extract CLI response channels before processing
         let cli_response_txs = extract_cli_response_channels(triggers);
+
+        // Update last_interactive_at for idle detection.
+        // Only count interactive triggers (Message or CliCommand), not cron/nexus.
+        let has_interactive = triggers.iter().any(|t| {
+            matches!(t, Trigger::Message(_) | Trigger::CliCommand(_))
+        });
+        if has_interactive {
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            self.deps
+                .last_interactive_at
+                .store(now_secs, std::sync::atomic::Ordering::Relaxed);
+        }
 
         // Run periodic expiry sweep for stale pending actions
         if self.last_expiry_check.elapsed() >= EXPIRY_CHECK_INTERVAL {
@@ -1153,6 +1185,53 @@ impl Orchestrator {
                         {
                             if let Some(cid) = chat_id {
                                 self.handle_followup_callback(rest, &tg_channel.client, cid).await;
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Autonomous execution result callbacks
+                    if let Some(ob_id) = data.strip_prefix("confirm_done:") {
+                        if let (Some(tg_channel), Some(cid)) = (
+                            self.channels
+                                .get("telegram")
+                                .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                            tg_chat_id.or(self.telegram_chat_id),
+                        ) {
+                            if let Some(store_arc) = &self.deps.obligation_store {
+                                if let Ok(store) = store_arc.lock() {
+                                    if let Err(e) = crate::callbacks::handle_confirm_done(
+                                        ob_id,
+                                        &tg_channel.client,
+                                        cid,
+                                        original_msg_id,
+                                        &store,
+                                    ).await {
+                                        tracing::warn!(error = %e, "confirm_done callback failed");
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    } else if let Some(ob_id) = data.strip_prefix("reopen:") {
+                        if let (Some(tg_channel), Some(cid)) = (
+                            self.channels
+                                .get("telegram")
+                                .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                            tg_chat_id.or(self.telegram_chat_id),
+                        ) {
+                            if let Some(store_arc) = &self.deps.obligation_store {
+                                if let Ok(store) = store_arc.lock() {
+                                    if let Err(e) = crate::callbacks::handle_reopen(
+                                        ob_id,
+                                        &tg_channel.client,
+                                        cid,
+                                        original_msg_id,
+                                        &store,
+                                    ).await {
+                                        tracing::warn!(error = %e, "reopen callback failed");
+                                    }
+                                }
                             }
                         }
                         continue;
@@ -2022,6 +2101,10 @@ impl Orchestrator {
                     match store.list_open_with_deadline_before(&now) {
                         Ok(overdue) => {
                             for ob in overdue {
+                                // Skip proposed_done — Leo is reviewing, no need to follow up.
+                                if ob.status == nv_core::types::ObligationStatus::ProposedDone {
+                                    continue;
+                                }
                                 candidates.push((ob, "overdue"));
                             }
                         }
@@ -2035,6 +2118,10 @@ impl Orchestrator {
                     match store.list_open_with_deadline_before(&approaching_cutoff) {
                         Ok(approaching) => {
                             for ob in approaching {
+                                // Skip proposed_done — Leo is reviewing, no need to follow up.
+                                if ob.status == nv_core::types::ObligationStatus::ProposedDone {
+                                    continue;
+                                }
                                 let is_already_overdue = ob.deadline.as_deref().map(|d| {
                                     chrono::DateTime::parse_from_rfc3339(d)
                                         .map(|dt| dt.with_timezone(&chrono::Utc) <= now)
@@ -2053,6 +2140,10 @@ impl Orchestrator {
                     match store.list_stale_open(&stale_threshold) {
                         Ok(stale) => {
                             for ob in stale {
+                                // Skip proposed_done — Leo is reviewing, no need to follow up.
+                                if ob.status == nv_core::types::ObligationStatus::ProposedDone {
+                                    continue;
+                                }
                                 if candidates.iter().all(|(c, _)| c.id != ob.id) {
                                     let hours = pw_config.stale_threshold_hours;
                                     // Use Box::leak to get a 'static str — small, bounded allocation.
@@ -2478,6 +2569,132 @@ impl Orchestrator {
             }
         }
         self.error_count = 0;
+    }
+
+    // ── Autonomous Obligation Execution ─────────────────────────────
+
+    /// Check whether Nova is idle and, if so, attempt to execute the next obligation.
+    ///
+    /// Idle conditions (all must be true):
+    /// - Autonomy is enabled in config
+    /// - No active workers (`worker_pool.active_count() == 0`)
+    /// - No ongoing autonomous execution (`executing_obligation.is_none()`)
+    /// - Time since last interactive message > `idle_debounce_secs`
+    /// - `last_interactive_at` has been set at least once (> 0)
+    async fn check_idle_and_execute(&mut self) {
+        let config = match &self.deps.autonomy_config {
+            Some(c) if c.enabled => c.clone(),
+            _ => return, // autonomy disabled or not configured
+        };
+
+        // Guard: only one autonomous execution at a time.
+        if self.executing_obligation.is_some() {
+            return;
+        }
+
+        // Guard: workers must be idle.
+        if self.worker_pool.active_count() > 0 {
+            return;
+        }
+
+        // Guard: debounce — check that enough time has passed since the last interactive message.
+        let last_interactive_secs = self
+            .deps
+            .last_interactive_at
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        if last_interactive_secs == 0 {
+            // last_interactive_at never set — daemon just started; don't execute yet.
+            return;
+        }
+
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let secs_since_interactive = now_secs.saturating_sub(last_interactive_secs);
+        if secs_since_interactive < config.idle_debounce_secs {
+            tracing::trace!(
+                secs_since_interactive,
+                idle_debounce_secs = config.idle_debounce_secs,
+                "idle check: not yet idle"
+            );
+            return;
+        }
+
+        tracing::debug!(
+            secs_since_interactive,
+            idle_debounce_secs = config.idle_debounce_secs,
+            "idle check: Nova is idle — looking for obligations to execute"
+        );
+
+        self.try_execute_next_obligation(config).await;
+    }
+
+    /// Pick the highest-priority obligation ready for execution and run it autonomously.
+    ///
+    /// Selects the first obligation returned by `list_ready_for_execution()` (ordered by
+    /// priority ASC, then created_at ASC), sets `executing_obligation`, spawns the executor,
+    /// clears `executing_obligation` on completion, and calls `handle_execution_result`.
+    async fn try_execute_next_obligation(&mut self, config: nv_core::config::AutonomyConfig) {
+        let store_arc = match &self.deps.obligation_store {
+            Some(arc) => Arc::clone(arc),
+            None => {
+                tracing::debug!("autonomous executor: obligation store not configured");
+                return;
+            }
+        };
+
+        // Fetch ready obligations — lock briefly, release before any await.
+        let obligation = {
+            match store_arc.lock() {
+                Ok(store) => match store.list_ready_for_execution(config.cooldown_hours) {
+                    Ok(mut list) => {
+                        if list.is_empty() {
+                            tracing::debug!("autonomous executor: no obligations ready");
+                            return;
+                        }
+                        list.remove(0) // highest priority (list sorted priority ASC, created_at ASC)
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "autonomous executor: failed to query obligations");
+                        return;
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!(error = %e, "autonomous executor: store mutex poisoned");
+                    return;
+                }
+            }
+        };
+
+        tracing::info!(
+            obligation_id = %obligation.id,
+            priority = obligation.priority,
+            action = %obligation.detected_action,
+            "autonomous executor: dispatching obligation"
+        );
+
+        self.executing_obligation = Some(obligation.id.clone());
+
+        let deps = Arc::clone(&self.deps);
+        let telegram_chat_id = self.telegram_chat_id;
+        let claude_client = self.deps.claude_client.clone();
+
+        let result =
+            crate::obligation_executor::execute_obligation(&obligation, &deps, &config, claude_client)
+                .await;
+
+        crate::obligation_executor::handle_execution_result(
+            &obligation,
+            result,
+            &deps,
+            telegram_chat_id,
+        )
+        .await;
+
+        self.executing_obligation = None;
     }
 }
 

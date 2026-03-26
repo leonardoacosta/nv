@@ -1,196 +1,73 @@
-# NV Configuration
+digest_interval_minutes = "30"
+model = "claude-sonnet-4-6"
+think = "ultratrue"
 
-# ── Alert Rules ──────────────────────────────────────────────────────────────
-# Proactive watchers poll external services and create obligations automatically.
-# interval_secs controls how often all watchers run (default: 300 = 5 minutes).
+[agent]
+digest_interval_minutes = 60
+model = "claude-sonnet-4-6"
+think = true
+
 [alert_rules]
 interval_secs = 300
 
 [[alert_rules.rules]]
+enabled = true
 name = "deploy_failure"
 rule_type = "deploy_failure"
-enabled = true
 
 [[alert_rules.rules]]
-name = "sentry_spike"
-rule_type = "sentry_spike"
 config = '{"threshold": 5}'
 enabled = true
+name = "sentry_spike"
+rule_type = "sentry_spike"
 
 [[alert_rules.rules]]
-name = "stale_ticket"
-rule_type = "stale_ticket"
 config = '{"stale_days": 7}'
 enabled = true
+name = "stale_ticket"
+rule_type = "stale_ticket"
 
 [[alert_rules.rules]]
+enabled = true
 name = "ha_anomaly"
 rule_type = "ha_anomaly"
-enabled = true
-# ─────────────────────────────────────────────────────────────────────────────
 
-[agent]
-model = "claude-sonnet-4-6"
-think = true
-digest_interval_minutes = 60
-# weekly_budget_usd = 50.0
-# alert_threshold_pct = 90
-
-[telegram]
-chat_id = 7380462766
+[daemon]
+health_port = 8400
+tts_url = "http://100.91.88.16:9999"
 
 [jira]
-instance = "leonardoacosta.atlassian.net"
 default_project = "OO"
-
-# ── Multi-instance example (uncomment to enable) ─────────────────────────────
-# Replace the flat [jira] section above with:
-
-[jira.instances.personal]
 instance = "leonardoacosta.atlassian.net"
-default_project = "OO"
 
 [jira.instances.llc]
-instance = "pricelessdev.atlassian.net"
 default_project = "CT"
+instance = "pricelessdev.atlassian.net"
+
+[jira.instances.personal]
+default_project = "OO"
+instance = "leonardoacosta.atlassian.net"
 
 [jira.project_map]
+CT = "llc"
 OO = "personal"
 TC = "personal"
 TL = "personal"
-CT = "llc"
 
-# Instance-qualified credentials (set in environment):
-#   JIRA_API_TOKEN_PERSONAL / JIRA_USERNAME_PERSONAL
-#   JIRA_API_TOKEN_LLC / JIRA_USERNAME_LLC
-#   Unqualified JIRA_API_TOKEN / JIRA_USERNAME serve as fallback.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── Proactive Watcher ────────────────────────────────────────────────────────
-# Scans open obligations for overdue, approaching-deadline, and stale items,
-# then sends Telegram reminders with [Mark Done | Snooze 24h | Dismiss] buttons.
-# All fields are optional; shown values are the defaults.
-#
 [proactive_watcher]
+approaching_deadline_hours = 24
 enabled = true
 interval_minutes = 30
-quiet_start = "22:00"
-quiet_end = "07:00"
-stale_threshold_hours = 48
-approaching_deadline_hours = 24
 max_reminders_per_interval = 1
-# ─────────────────────────────────────────────────────────────────────────────
+quiet_end = "07:00"
+quiet_start = "22:00"
+stale_threshold_hours = 48
 
-[daemon]
-tts_url = "http://100.91.88.16:9999"
-health_port = 8400
-# ── Dashboard forwarding ────────────────────────────────────────────
-# When both dashboard_url and dashboard_secret are set, workers forward
-# triggers to the Nova dashboard CC session instead of running a local
-# cold-start.  On 5xx/timeout the worker falls back to cold-start
-# transparently.  On 401/403 an error is surfaced to the user (no fallback).
-#
-# dashboard_url = "https://nova.example.com"
-# dashboard_secret = ""  # set NOVA_DASHBOARD_TOKEN env var or configure here
+[autonomy]
+enabled = true
+# timeout_secs = 300       # max seconds per obligation attempt (default: 300)
+# cooldown_hours = 2       # hours before retrying same obligation (default: 2)
+# idle_debounce_secs = 60  # seconds of idle before executing (default: 60)
 
-# ── Multi-instance service examples ──────────────────────────────────
-#
-# All services support both flat (single-instance) and multi-instance formats.
-# Flat format uses unqualified env vars (e.g. STRIPE_SECRET_KEY).
-# Multi-instance uses instance-qualified env vars (e.g. STRIPE_SECRET_KEY_PERSONAL).
-#
-# ── Stripe ──────────────────────────────────────────────────────────
-# Flat (default):
-#   STRIPE_SECRET_KEY — single account
-#
-# Multi-instance:
-# [stripe]
-# [stripe.instances.personal]
-# # uses STRIPE_SECRET_KEY_PERSONAL
-# [stripe.instances.llc]
-# # uses STRIPE_SECRET_KEY_LLC
-# [stripe.project_map]
-# OO = "personal"
-# CT = "llc"
-#
-# ── Sentry ──────────────────────────────────────────────────────────
-# Flat (default):
-#   SENTRY_AUTH_TOKEN + SENTRY_ORG — single org
-#
-# Multi-instance:
-# [sentry.instances.personal]
-# # uses SENTRY_AUTH_TOKEN_PERSONAL + SENTRY_ORG_PERSONAL
-# [sentry.instances.llc]
-# # uses SENTRY_AUTH_TOKEN_LLC + SENTRY_ORG_LLC
-# [sentry.project_map]
-# OO = "personal"
-# CT = "llc"
-#
-# ── PostHog ─────────────────────────────────────────────────────────
-# Per-project IDs via env vars (no multi-instance toml needed):
-#   POSTHOG_PROJECT_OO — PostHog project ID for OO
-#   POSTHOG_PROJECT_TC — PostHog project ID for TC
-#   POSTHOG_PROJECT_ID — default fallback
-#
-# ── Neon (PostgreSQL) ────────────────────────────────────────────────
-# Per-project connection strings via env vars (no multi-instance toml needed):
-#   POSTGRES_URL_OO  — Neon connection string for OO
-#   POSTGRES_URL_TC  — Neon connection string for TC
-#
-# ── Vercel ──────────────────────────────────────────────────────────
-# Flat (default):
-#   VERCEL_TOKEN — single account
-#
-# ── Home Assistant ──────────────────────────────────────────────────
-# Flat (default):
-#   HA_TOKEN + HA_URL — single instance (default http://localhost:8123)
-#
-# ── Upstash ─────────────────────────────────────────────────────────
-# Flat (default):
-#   UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
-#
-# ── Resend ──────────────────────────────────────────────────────────
-# Flat (default):
-#   RESEND_API_KEY
-#
-# ── Azure DevOps ────────────────────────────────────────────────────
-# Flat (default):
-#   ADO_ORG + ADO_PAT
-#
-# ── Cloudflare ──────────────────────────────────────────────────────
-# Flat (default):
-#   CLOUDFLARE_API_TOKEN
-#
-# ── Doppler ─────────────────────────────────────────────────────────
-# Flat (default):
-#   DOPPLER_API_TOKEN
-# ─────────────────────────────────────────────────────────────────────
-
-# ── Per-channel Persona Overrides ────────────────────────────────────
-# Define tone, verbosity, and formality per channel. Key must match the
-# channel name used in InboundMessage.channel (case-insensitive).
-# When absent, Nova uses the default persona from soul.md unchanged.
-#
-# tone       — "casual" | "professional" | "technical"
-# verbosity  — "brief" | "normal" | "verbose"
-# formality  — "casual" | "professional"
-# language_hints — free-form instruction strings appended to the block
-#
-# [personas.telegram]
-# tone = "casual"
-# verbosity = "normal"
-# formality = "casual"
-# language_hints = ["use contractions", "light emoji ok"]
-#
-# [personas.teams]
-# tone = "professional"
-# verbosity = "brief"
-# formality = "professional"
-# language_hints = ["no emoji", "use full sentences"]
-#
-# [personas.discord]
-# tone = "technical"
-# verbosity = "brief"
-# formality = "casual"
-# language_hints = ["code-first answers", "skip pleasantries"]
-# ─────────────────────────────────────────────────────────────────────
+[telegram]
+chat_id = 7380462766

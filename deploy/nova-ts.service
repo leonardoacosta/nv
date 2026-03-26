@@ -5,6 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+WorkingDirectory=%h/.local/lib/nova-ts
 ExecStart=doppler run --project nova --config prd -- node %h/.local/lib/nova-ts/packages/daemon/dist/index.js
 Environment=NODE_ENV=production
 Environment=ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh

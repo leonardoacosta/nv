@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 INSTALL_DIR="${HOME}/.local/lib/nova-ts"
 SERVICE_DIR="${HOME}/.config/systemd/user"
-HEALTH_PORT="${NV_DAEMON_PORT:-7700}"
+HEALTH_PORT="${API_PORT:-3443}"
 
 # ── Pre-flight checks ────────────────────────────────────────────────────────
 
@@ -90,6 +90,22 @@ cp "${PROJECT_DIR}/packages/daemon/package.json" "${INSTALL_DIR}/packages/daemon
 # Copy db dist + manifest
 cp -r "${PROJECT_DIR}/packages/db/dist/." "${INSTALL_DIR}/packages/db/dist/"
 cp "${PROJECT_DIR}/packages/db/package.json" "${INSTALL_DIR}/packages/db/package.json"
+
+# Copy config/ directory (system prompt, identity, soul, user context, toml)
+# The daemon resolves config/system-prompt.md relative to its working directory
+# (INSTALL_DIR).  Without this copy the daemon silently skips the system prompt.
+echo "    Copying config/..."
+mkdir -p "${INSTALL_DIR}/config"
+cp "${PROJECT_DIR}/config/system-prompt.md" "${INSTALL_DIR}/config/"
+cp "${PROJECT_DIR}/config/identity.md"      "${INSTALL_DIR}/config/"
+cp "${PROJECT_DIR}/config/soul.md"          "${INSTALL_DIR}/config/"
+cp "${PROJECT_DIR}/config/user.md"          "${INSTALL_DIR}/config/"
+cp "${PROJECT_DIR}/config/bootstrap.md"     "${INSTALL_DIR}/config/"
+cp "${PROJECT_DIR}/config/nv.toml"          "${INSTALL_DIR}/config/"
+# Copy contact/ sub-directory if present
+if [ -d "${PROJECT_DIR}/config/contact" ]; then
+    cp -r "${PROJECT_DIR}/config/contact/." "${INSTALL_DIR}/config/contact/"
+fi
 
 # Install production-only node_modules from the workspace root so pnpm can
 # resolve @nova/db@workspace:* correctly.  Must cd into the install dir —

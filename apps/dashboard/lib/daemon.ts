@@ -7,7 +7,7 @@
  */
 
 export const DAEMON_URL =
-  process.env.DAEMON_URL ?? "http://127.0.0.1:3443";
+  process.env.DAEMON_URL ?? "http://127.0.0.1:8400";
 
 /**
  * Fetch a path from the NV daemon.

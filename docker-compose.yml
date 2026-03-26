@@ -6,7 +6,7 @@ services:
     expose:
       - "3000"
     environment:
-      - DAEMON_URL=http://host.docker.internal:3443
+      - DAEMON_URL=http://host.docker.internal:8400
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

@@ -3,17 +3,16 @@
 ## Purpose
 TBD - created by archiving change setup-postgres-drizzle. Update Purpose after archive.
 ## Requirements
-### Requirement: Docker Compose Postgres Service
-`docker-compose.yml` SHALL gain a `postgres` service using image `pgvector/pgvector:pg17` bound to port 5432 on the host, with credentials `nova`/`nova-local`/`nova`, persisted via a `nova-pg-data` named volume, and attached to the `homelab` network.
+### Requirement: Shared Homelab Postgres Instance
+Nova uses the shared homelab pgvector Postgres instance at port 5436 with a dedicated `nova` database. The project-local Docker Postgres service has been removed in favor of this shared instance.
 
-#### Scenario: Local dev startup
-Given `docker compose up -d` is run from the project root,
-Then a `postgres` container starts healthy,
-And is reachable at `localhost:5432` with user `nova`, password `nova-local`, db `nova`,
-And data survives a `docker compose restart`.
+#### Scenario: Shared instance connectivity
+Given the shared Postgres instance is running on the homelab at port 5436,
+Then the `nova` database is reachable at `localhost:5436` with credentials managed via Doppler,
+And `DATABASE_URL` in Doppler (project: nova) points to the shared instance.
 
 #### Scenario: pgvector extension available
-Given the postgres container has started,
+Given the `nova` database exists on the shared instance,
 Then `SELECT * FROM pg_available_extensions WHERE name = 'vector'` returns a row,
 And `CREATE EXTENSION IF NOT EXISTS vector` succeeds without error.
 

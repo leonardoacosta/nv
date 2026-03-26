@@ -11,9 +11,9 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Remove `postgres` service, `nova-pg-data` volume, and `docker/postgres-init` volume mount from `docker-compose.yml` [owner:api-engineer] [beads:nv-i0iz]
-- [ ] [2.2] [P-2] Remove `docker/postgres-init/` directory (contains `01-enable-vector.sql`) [owner:api-engineer] [beads:nv-9i1e]
-- [ ] [2.3] [P-2] Update `openspec/specs/db-schema/spec.md` Requirement "Docker Compose Postgres Service" scenarios to reference shared instance at port 5436 [owner:api-engineer] [beads:nv-9fo7]
+- [x] [2.1] [P-1] Remove `postgres` service, `nova-pg-data` volume, and `docker/postgres-init` volume mount from `docker-compose.yml` [owner:api-engineer] [beads:nv-i0iz]
+- [x] [2.2] [P-2] Remove `docker/postgres-init/` directory (contains `01-enable-vector.sql`) [owner:api-engineer] [beads:nv-9i1e]
+- [x] [2.3] [P-2] Update `openspec/specs/db-schema/spec.md` Requirement "Docker Compose Postgres Service" scenarios to reference shared instance at port 5436 [owner:api-engineer] [beads:nv-9fo7]
 
 ## UI Batch
 

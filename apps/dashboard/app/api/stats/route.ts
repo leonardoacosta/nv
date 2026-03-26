@@ -4,7 +4,7 @@ import { daemonFetch } from "@/lib/daemon";
 
 export async function GET() {
   try {
-    const res = await daemonFetch("/health");
+    const res = await daemonFetch("/stats");
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
   } catch {

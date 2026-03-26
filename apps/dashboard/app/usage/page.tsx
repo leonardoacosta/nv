@@ -93,7 +93,7 @@ export default function UsagePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/stats");
+      const res = await fetch("/api/stats");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const stats = (await res.json()) as StatsGetResponse;
 

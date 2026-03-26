@@ -464,6 +464,7 @@ pub async fn handle_ob_expiry(
     reminder_store: Option<&Mutex<ReminderStore>>,
     timezone: &str,
 ) -> Result<()> {
+    #[allow(clippy::collapsible_match, clippy::map_identity)]
     if let Some(store_lock) = reminder_store {
         if let Ok(ob) = ob_store.get_by_id(ob_id).map(|r| r) {
             if let Some(ob) = ob {
@@ -489,6 +490,7 @@ pub async fn handle_ob_expiry(
 ///
 /// Parses `offset` via `parse_relative_time` (supports `"1h"`, `"4h"`, `"tomorrow"`),
 /// looks up the obligation, creates a reminder, and edits the original message.
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_ob_snooze(
     ob_id: &str,
     offset: &str,

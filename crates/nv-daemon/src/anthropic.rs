@@ -22,6 +22,7 @@ pub struct AnthropicClient {
     model: String,
 }
 
+#[allow(dead_code)]
 impl AnthropicClient {
     /// Create a new `AnthropicClient` with the provided credentials.
     pub fn new(api_key: &str, model: &str) -> Self {

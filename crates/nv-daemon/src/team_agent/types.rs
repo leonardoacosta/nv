@@ -13,6 +13,7 @@ pub struct SessionSummary {
     pub duration_display: String,
     #[allow(dead_code)] // reserved for Next.js dashboard API exposure
     pub branch: Option<String>,
+    #[allow(dead_code)]
     pub spec: Option<String>,
 }
 
@@ -23,14 +24,19 @@ pub struct SessionDetail {
     pub project: Option<String>,
     pub status: String,
     pub agent_name: String,
+    #[allow(dead_code)]
     pub started_at: Option<DateTime<Utc>>,
     pub duration_display: String,
+    #[allow(dead_code)]
     pub branch: Option<String>,
+    #[allow(dead_code)]
     pub spec: Option<String>,
     pub cwd: String,
     pub command: Option<String>,
     pub session_type: String,
+    #[allow(dead_code)]
     pub model: Option<String>,
+    #[allow(dead_code)]
     pub cost_usd: Option<f32>,
 }
 
@@ -38,7 +44,9 @@ pub struct SessionDetail {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionStatus {
     Connected,
+    #[allow(dead_code)]
     Disconnected,
+    #[allow(dead_code)]
     Reconnecting,
 }
 

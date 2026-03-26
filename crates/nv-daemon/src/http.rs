@@ -16,6 +16,7 @@ use tokio::sync::Mutex as TokioMutex;
 use crate::briefing_store::BriefingStore;
 use crate::cc_sessions::CcSessionManager;
 use crate::cold_start_store::ColdStartStore;
+use crate::contact_store::ContactStore;
 use crate::health::HealthState;
 use crate::obligation_store::ObligationStore;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
@@ -91,6 +92,8 @@ pub struct HttpState {
     pub event_tx: broadcast::Sender<DaemonEvent>,
     /// CC session manager for the /api/cc-sessions endpoint.
     pub cc_session_manager: Option<CcSessionManager>,
+    /// Contact store for /api/contacts CRUD.
+    pub contact_store: Option<Arc<ContactStore>>,
 }
 
 /// Request body for POST /ask.
@@ -129,6 +132,14 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/api/messages", get(get_messages_handler))
         .route("/api/approvals/{id}/approve", post(approve_obligation_handler))
         .route("/api/cc-sessions", get(get_cc_sessions_handler))
+        // Contact CRUD
+        .route("/api/contacts", get(list_contacts_handler).post(create_contact_handler))
+        .route(
+            "/api/contacts/{id}",
+            get(get_contact_handler)
+                .put(update_contact_handler)
+                .delete(delete_contact_handler),
+        )
         // WebSocket event stream
         .route("/ws/events", get(ws_events_handler));
 
@@ -948,6 +959,7 @@ pub async fn run_http_server(
     cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
     event_tx: broadcast::Sender<DaemonEvent>,
     cc_session_manager: Option<CcSessionManager>,
+    contact_store: Option<Arc<ContactStore>>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -962,6 +974,7 @@ pub async fn run_http_server(
         cold_start_store,
         event_tx,
         cc_session_manager,
+        contact_store,
     });
     let app = build_router(state);
 
@@ -991,6 +1004,144 @@ async fn get_cc_sessions_handler(State(state): State<Arc<HttpState>>) -> impl In
         StatusCode::OK,
         Json(serde_json::json!({ "sessions": sessions, "configured": true })),
     )
+}
+
+// ── Contact API ──────────────────────────────────────────────────────
+
+/// Query params for GET /api/contacts.
+#[derive(Debug, Deserialize, Default)]
+pub struct ContactsQuery {
+    /// Filter by relationship_type (e.g. `?relationship=work`).
+    pub relationship: Option<String>,
+    /// Full-text search on name and notes (e.g. `?q=leo`).
+    pub q: Option<String>,
+}
+
+/// Request body for POST /api/contacts.
+#[derive(Debug, Deserialize)]
+pub struct CreateContactRequest {
+    pub name: String,
+    #[serde(default)]
+    pub channel_ids: serde_json::Value,
+    #[serde(default = "default_relationship")]
+    pub relationship_type: String,
+    pub notes: Option<String>,
+}
+
+fn default_relationship() -> String {
+    "social".to_string()
+}
+
+/// Request body for PUT /api/contacts/{id}.
+#[derive(Debug, Deserialize)]
+pub struct UpdateContactRequest {
+    pub name: Option<String>,
+    pub channel_ids: Option<serde_json::Value>,
+    pub relationship_type: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// GET /api/contacts — list or search contacts.
+async fn list_contacts_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<ContactsQuery>,
+) -> impl IntoResponse {
+    let Some(ref store) = state.contact_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "contact store not configured" }))).into_response();
+    };
+
+    let result = if let Some(ref q) = query.q {
+        store.search(q)
+    } else {
+        store.list(query.relationship.as_deref())
+    };
+
+    match result {
+        Ok(contacts) => (StatusCode::OK, Json(serde_json::to_value(contacts).unwrap_or_default())).into_response(),
+        Err(e) => {
+            let msg = format!("{e}");
+            tracing::warn!(error = %msg, "contacts list failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// POST /api/contacts — create a new contact.
+async fn create_contact_handler(
+    State(state): State<Arc<HttpState>>,
+    Json(req): Json<CreateContactRequest>,
+) -> impl IntoResponse {
+    let Some(ref store) = state.contact_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "contact store not configured" }))).into_response();
+    };
+
+    match store.create(&req.name, req.channel_ids, &req.relationship_type, req.notes.as_deref()) {
+        Ok(contact) => (StatusCode::CREATED, Json(serde_json::to_value(contact).unwrap_or_default())).into_response(),
+        Err(e) => {
+            let msg = format!("{e}");
+            tracing::warn!(error = %msg, "contact create failed");
+            (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// GET /api/contacts/{id} — fetch a single contact.
+async fn get_contact_handler(
+    State(state): State<Arc<HttpState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let Some(ref store) = state.contact_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "contact store not configured" }))).into_response();
+    };
+
+    match store.get(&id) {
+        Ok(Some(contact)) => (StatusCode::OK, Json(serde_json::to_value(contact).unwrap_or_default())).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json(serde_json::json!({ "error": "not found" }))).into_response(),
+        Err(e) => {
+            let msg = format!("{e}");
+            tracing::warn!(error = %msg, "contact get failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// PUT /api/contacts/{id} — update an existing contact.
+async fn update_contact_handler(
+    State(state): State<Arc<HttpState>>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateContactRequest>,
+) -> impl IntoResponse {
+    let Some(ref store) = state.contact_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "contact store not configured" }))).into_response();
+    };
+
+    match store.update(&id, req.name.as_deref(), req.channel_ids, req.relationship_type.as_deref(), req.notes.as_deref()) {
+        Ok(contact) => (StatusCode::OK, Json(serde_json::to_value(contact).unwrap_or_default())).into_response(),
+        Err(e) => {
+            let msg = format!("{e}");
+            let status = if msg.contains("not found") { StatusCode::NOT_FOUND } else { StatusCode::BAD_REQUEST };
+            (status, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// DELETE /api/contacts/{id} — delete a contact.
+async fn delete_contact_handler(
+    State(state): State<Arc<HttpState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let Some(ref store) = state.contact_store else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
+
+    match store.delete(&id) {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => {
+            tracing::warn!(error = %e, "contact delete failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -1023,6 +1174,7 @@ mod tests {
             cold_start_store: None,
             event_tx,
             cc_session_manager: None,
+            contact_store: None,
         });
         (state, rx, tmp)
     }

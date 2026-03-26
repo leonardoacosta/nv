@@ -8,6 +8,7 @@ import {
   Plug,
   BarChart3,
   Brain,
+  Users,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/integrations", label: "Integrations", icon: Plug },
   { to: "/usage", label: "Usage", icon: BarChart3 },
   { to: "/memory", label: "Memory", icon: Brain },
+  { to: "/contacts", label: "Contacts", icon: Users },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 

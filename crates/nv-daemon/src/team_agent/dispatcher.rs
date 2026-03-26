@@ -205,6 +205,7 @@ impl TeamAgentDispatcher {
     /// Get connection status summary for all machines.
     ///
     /// All machines are always considered connected (no gRPC ping needed).
+    #[allow(dead_code)]
     pub async fn status_summary(&self) -> Vec<(String, ConnectionStatus)> {
         self.machines
             .iter()

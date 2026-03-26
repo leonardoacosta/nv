@@ -1,9 +1,10 @@
 //! Azure DevOps tools via REST API (dev.azure.com).
 //!
-//! Three read-only tools:
+//! Four read-only tools:
 //! * `ado_projects()` — list all projects in the configured org.
 //! * `ado_pipelines(project)` — list pipeline definitions for a project.
 //! * `ado_builds(project, pipeline_id)` — list recent builds for a pipeline.
+//! * `query_ado_work_items(project, ...)` — query work items via WIQL.
 //!
 //! Auth: Basic auth with PAT via `ADO_PAT` env var. Org via `ADO_ORG`.
 
@@ -77,6 +78,50 @@ pub struct AdoIdentity {
 #[derive(Debug, Clone, Deserialize)]
 struct BuildsResponse {
     value: Vec<AdoBuild>,
+}
+
+// ── Work Item Types ───────────────────────────────────────────────────
+
+/// Fields for an ADO work item (populated via batch fetch).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdoWorkItemFields {
+    #[serde(rename = "System.Id")]
+    pub system_id: Option<u32>,
+    #[serde(rename = "System.Title")]
+    pub system_title: Option<String>,
+    #[serde(rename = "System.State")]
+    pub system_state: Option<String>,
+    #[serde(rename = "System.WorkItemType")]
+    pub system_work_item_type: Option<String>,
+    #[serde(rename = "System.AssignedTo")]
+    pub system_assigned_to: Option<AdoIdentity>,
+    #[serde(rename = "System.ChangedDate")]
+    pub system_changed_date: Option<String>,
+}
+
+/// A single ADO work item with ID and fields.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdoWorkItem {
+    pub id: u32,
+    pub fields: AdoWorkItemFields,
+}
+
+/// WIQL query result — list of work item references.
+#[derive(Debug, Deserialize)]
+struct WiqlResult {
+    #[serde(rename = "workItems")]
+    work_items: Vec<WiqlWorkItemRef>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WiqlWorkItemRef {
+    id: u32,
+}
+
+/// Batch work item fetch response.
+#[derive(Debug, Deserialize)]
+struct WorkItemsBatchResponse {
+    value: Vec<AdoWorkItem>,
 }
 
 // ── Client ───────────────────────────────────────────────────────────
@@ -172,6 +217,92 @@ impl AdoClient {
         let data: BuildsResponse = resp.json().await?;
         Ok(data.value)
     }
+
+    /// Create a client using an AAD Bearer token instead of PAT (Req-5 optional).
+    ///
+    /// Useful for organizations that require AAD-only auth.
+    pub fn from_aad_token(org: &str, token: &str) -> Result<Self> {
+        let org_url = format!("https://dev.azure.com/{org}");
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {token}")
+                .parse()
+                .map_err(|_| anyhow!("invalid AAD token"))?,
+        );
+
+        let http = reqwest::Client::builder()
+            .default_headers(headers)
+            .timeout(REQUEST_TIMEOUT)
+            .build()?;
+
+        Ok(Self { http, org_url })
+    }
+
+    /// Query work items via WIQL and batch-fetch their details.
+    ///
+    /// Runs the WIQL query against `/{project}/_apis/wit/wiql`, extracts
+    /// work item IDs (capped at `limit`), then fetches full details in one
+    /// batch request.
+    pub async fn work_items_by_wiql(
+        &self,
+        project: &str,
+        wiql: &str,
+        limit: usize,
+    ) -> Result<Vec<AdoWorkItem>> {
+        // Step 1: WIQL query
+        let wiql_url = format!(
+            "{org_url}/{project}/_apis/wit/wiql?api-version=7.1",
+            org_url = self.org_url
+        );
+        let body = serde_json::json!({ "query": wiql });
+
+        let wiql_resp = self
+            .http
+            .post(&wiql_url)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !wiql_resp.status().is_success() {
+            let status = wiql_resp.status();
+            let text = wiql_resp.text().await.unwrap_or_default();
+            anyhow::bail!("ADO WIQL error ({status}): {text}");
+        }
+
+        let wiql_result: WiqlResult = wiql_resp.json().await?;
+
+        let ids: Vec<u32> = wiql_result
+            .work_items
+            .into_iter()
+            .take(limit)
+            .map(|r| r.id)
+            .collect();
+
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Step 2: Batch fetch work item details
+        let ids_csv: String = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+        let fields = "System.Id,System.Title,System.State,System.WorkItemType,System.AssignedTo,System.ChangedDate";
+        let batch_url = format!(
+            "{org_url}/_apis/wit/workitems?ids={ids_csv}&fields={fields}&api-version=7.1",
+            org_url = self.org_url
+        );
+
+        let batch_resp = self.http.get(&batch_url).send().await?;
+
+        if !batch_resp.status().is_success() {
+            let status = batch_resp.status();
+            let text = batch_resp.text().await.unwrap_or_default();
+            anyhow::bail!("ADO work items batch error ({status}): {text}");
+        }
+
+        let batch: WorkItemsBatchResponse = batch_resp.json().await?;
+        Ok(batch.value)
+    }
 }
 
 // ── Tool Definitions ─────────────────────────────────────────────────
@@ -225,6 +356,39 @@ pub fn ado_tool_definitions() -> Vec<ToolDefinition> {
                     }
                 },
                 "required": ["project", "pipeline_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "query_ado_work_items".into(),
+            description: "Query Azure DevOps work items assigned to a user using WIQL. \
+                Returns work item ID, type, title, state, assignee, and last changed date. \
+                Defaults to work items assigned to @Me (PAT identity) that are not Closed. \
+                Use this to check active tasks, bugs, and features in an ADO project."
+                .into(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "project": {
+                        "type": "string",
+                        "description": "Azure DevOps project name (default: ADO_PROJECT env var)."
+                    },
+                    "assigned_to": {
+                        "type": "string",
+                        "description": "Filter by assignee — use '@Me' for the authenticated PAT user, or a display name (default: '@Me')."
+                    },
+                    "state": {
+                        "type": "string",
+                        "description": "Filter by state: 'active', 'new', 'resolved', or 'all' (default: 'active' — excludes Closed).",
+                        "enum": ["active", "new", "resolved", "all"]
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum work items to return (default: 20, max: 50).",
+                        "minimum": 1,
+                        "maximum": 50
+                    }
+                },
+                "required": []
             }),
         },
     ]
@@ -321,6 +485,69 @@ pub fn format_builds(builds: &[AdoBuild]) -> String {
     lines.join("\n")
 }
 
+/// Format work items as a mobile-friendly list.
+pub fn format_work_items(project: &str, items: &[AdoWorkItem]) -> String {
+    let active_count = items.len();
+    let mut lines = vec![format!(
+        "Work Items — {project} ({active_count} active)"
+    )];
+
+    if items.is_empty() {
+        lines.push("(no work items found)".to_string());
+        return lines.join("\n");
+    }
+
+    for item in items {
+        let id = item.fields.system_id.unwrap_or(item.id);
+        let title = item.fields.system_title.as_deref().unwrap_or("(no title)");
+        let state = item.fields.system_state.as_deref().unwrap_or("Unknown");
+        let work_type = item.fields.system_work_item_type.as_deref().unwrap_or("Item");
+
+        let assignee = item
+            .fields
+            .system_assigned_to
+            .as_ref()
+            .and_then(|a| a.display_name.as_deref())
+            .unwrap_or("Unassigned");
+
+        let changed = item
+            .fields
+            .system_changed_date
+            .as_deref()
+            .and_then(|dt| dt.get(..10))
+            .unwrap_or("unknown");
+
+        lines.push(format!("[#{id}] {work_type} — {title} [{state}]"));
+        lines.push(format!("  Assigned: {assignee} | Changed: {changed}"));
+    }
+
+    lines.join("\n")
+}
+
+/// Build a WIQL query string from the given filter parameters.
+pub fn build_wiql(project: &str, assigned_to: &str, state_filter: &str) -> String {
+    let state_clause = match state_filter {
+        "all" => String::new(),
+        "new" => " AND [System.State] = 'New'".to_string(),
+        "resolved" => " AND [System.State] = 'Resolved'".to_string(),
+        // "active" and default
+        _ => " AND [System.State] <> 'Closed'".to_string(),
+    };
+
+    let assigned_clause = if assigned_to == "@Me" {
+        " AND [System.AssignedTo] = @Me".to_string()
+    } else {
+        format!(" AND [System.AssignedTo] = '{assigned_to}'")
+    };
+
+    format!(
+        "SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], \
+         [System.AssignedTo] FROM WorkItems \
+         WHERE [System.TeamProject] = '{project}'{assigned_clause}{state_clause} \
+         ORDER BY [System.ChangedDate] DESC"
+    )
+}
+
 // ── Public Entry Points ──────────────────────────────────────────────
 
 /// Execute ado_projects: list all projects in the configured org.
@@ -345,6 +572,39 @@ pub async fn ado_builds(project: &str, pipeline_id: u32) -> Result<String> {
     let builds = client.builds(project, pipeline_id).await?;
     tracing::info!(project, pipeline_id, count = builds.len(), "ado_builds completed");
     Ok(format_builds(&builds))
+}
+
+/// Execute query_ado_work_items: fetch work items via WIQL.
+///
+/// `project` defaults to `ADO_PROJECT` env var. `assigned_to` defaults to `@Me`.
+/// `state_filter`: `"active"` (default), `"new"`, `"resolved"`, or `"all"`.
+pub async fn query_ado_work_items(
+    project: Option<&str>,
+    assigned_to: &str,
+    state_filter: &str,
+    limit: usize,
+) -> Result<String> {
+    let client = AdoClient::from_env()?;
+
+    let project_name = project
+        .map(|s| s.to_string())
+        .or_else(|| std::env::var("ADO_PROJECT").ok())
+        .ok_or_else(|| {
+            anyhow!(
+                "Azure DevOps project not configured — pass 'project' parameter or set ADO_PROJECT env var"
+            )
+        })?;
+
+    let wiql = build_wiql(&project_name, assigned_to, state_filter);
+    let items = client.work_items_by_wiql(&project_name, &wiql, limit).await?;
+
+    tracing::info!(
+        project = %project_name,
+        count = items.len(),
+        "query_ado_work_items completed"
+    );
+
+    Ok(format_work_items(&project_name, &items))
 }
 
 // ── Checkable ────────────────────────────────────────────────────────
@@ -480,5 +740,99 @@ mod tests {
         let result = AdoClient::from_env();
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("ADO_ORG"));
+    }
+
+    // ── Work Item Tests ───────────────────────────────────────────────
+
+    #[test]
+    fn test_format_work_items_empty() {
+        let output = format_work_items("Wholesale Architecture", &[]);
+        assert!(output.contains("Wholesale Architecture"));
+        assert!(output.contains("0 active"));
+        assert!(output.contains("no work items found"));
+    }
+
+    #[test]
+    fn test_format_work_items_list() {
+        let items = vec![
+            AdoWorkItem {
+                id: 12345,
+                fields: AdoWorkItemFields {
+                    system_id: Some(12345),
+                    system_title: Some("Login timeout on Azure AD redirect".into()),
+                    system_state: Some("Active".into()),
+                    system_work_item_type: Some("Bug".into()),
+                    system_assigned_to: Some(AdoIdentity {
+                        display_name: Some("Leonardo Acosta".into()),
+                    }),
+                    system_changed_date: Some("2026-03-24T10:00:00Z".into()),
+                },
+            },
+            AdoWorkItem {
+                id: 12301,
+                fields: AdoWorkItemFields {
+                    system_id: Some(12301),
+                    system_title: Some("Migrate event schema to v2".into()),
+                    system_state: Some("New".into()),
+                    system_work_item_type: Some("Task".into()),
+                    system_assigned_to: Some(AdoIdentity {
+                        display_name: Some("Leonardo Acosta".into()),
+                    }),
+                    system_changed_date: Some("2026-03-23T09:00:00Z".into()),
+                },
+            },
+        ];
+
+        let output = format_work_items("Wholesale Architecture", &items);
+        assert!(output.contains("Wholesale Architecture"));
+        assert!(output.contains("2 active"));
+        assert!(output.contains("[#12345]"));
+        assert!(output.contains("Bug"));
+        assert!(output.contains("Login timeout on Azure AD redirect"));
+        assert!(output.contains("Active"));
+        assert!(output.contains("Leonardo Acosta"));
+        assert!(output.contains("[#12301]"));
+        assert!(output.contains("Task"));
+        assert!(output.contains("New"));
+    }
+
+    #[test]
+    fn test_build_wiql_default_active() {
+        let wiql = build_wiql("MyProject", "@Me", "active");
+        assert!(wiql.contains("MyProject"));
+        assert!(wiql.contains("@Me"));
+        assert!(wiql.contains("'Closed'"));
+        assert!(wiql.contains("ORDER BY"));
+    }
+
+    #[test]
+    fn test_build_wiql_new_state() {
+        let wiql = build_wiql("MyProject", "@Me", "new");
+        assert!(wiql.contains("[System.State] = 'New'"));
+    }
+
+    #[test]
+    fn test_build_wiql_all_states() {
+        let wiql = build_wiql("MyProject", "@Me", "all");
+        // "all" means no state filter
+        assert!(!wiql.contains("[System.State]"));
+    }
+
+    #[test]
+    fn test_build_wiql_custom_assignee() {
+        let wiql = build_wiql("MyProject", "John Doe", "active");
+        assert!(wiql.contains("'John Doe'"));
+        assert!(!wiql.contains("@Me"));
+    }
+
+    #[test]
+    fn test_ado_tool_definitions_count() {
+        let defs = ado_tool_definitions();
+        assert_eq!(defs.len(), 4);
+        let names: Vec<&str> = defs.iter().map(|d| d.name.as_str()).collect();
+        assert!(names.contains(&"ado_projects"));
+        assert!(names.contains(&"ado_pipelines"));
+        assert!(names.contains(&"ado_builds"));
+        assert!(names.contains(&"query_ado_work_items"));
     }
 }

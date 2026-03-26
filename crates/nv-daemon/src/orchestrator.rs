@@ -908,6 +908,7 @@ impl Orchestrator {
     // ── Inline Handlers ─────────────────────────────────────────────
 
     /// Handle callback triggers inline (approve/edit/cancel, nexus errors).
+    #[allow(clippy::await_holding_lock)]
     async fn handle_callbacks(&mut self, triggers: &[Trigger]) {
         for trigger in triggers {
             if let Trigger::Message(msg) = trigger {

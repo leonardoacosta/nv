@@ -114,6 +114,7 @@ impl PersistentConversationStore {
     }
 
     /// Delete the row for this `(channel, thread_id)`.
+    #[allow(dead_code)]
     pub fn clear(&self) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(

@@ -7,6 +7,7 @@ import NexusPage from "@/pages/NexusPage";
 import IntegrationsPage from "@/pages/IntegrationsPage";
 import UsagePage from "@/pages/UsagePage";
 import MemoryPage from "@/pages/MemoryPage";
+import ContactsPage from "@/pages/ContactsPage";
 import SettingsPage from "@/pages/SettingsPage";
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
             <Route path="/integrations" element={<IntegrationsPage />} />
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/memory" element={<MemoryPage />} />
+            <Route path="/contacts" element={<ContactsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </main>

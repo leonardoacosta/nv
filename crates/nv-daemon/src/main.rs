@@ -1,5 +1,6 @@
 mod account;
 mod anthropic;
+mod contact_store;
 mod error_recovery;
 mod agent;
 mod aggregation;
@@ -866,6 +867,24 @@ async fn main() -> anyhow::Result<()> {
     let briefing_store_for_http = Arc::clone(&briefing_store);
     tracing::info!("briefing store initialized");
 
+    // Initialize contact store (shares messages.db).
+    // Two Arc clones are created: one for the HTTP server, one for SharedDeps/workers.
+    let contact_store_arc: Option<Arc<contact_store::ContactStore>> =
+        match rusqlite::Connection::open(nv_base.join("messages.db")) {
+            Ok(conn) => {
+                conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+                let cs = contact_store::ContactStore::new(Arc::new(std::sync::Mutex::new(conn)));
+                tracing::info!("contact store initialized");
+                Some(Arc::new(cs))
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to initialize contact store — contact tools disabled");
+                None
+            }
+        };
+    let contact_store_for_http = contact_store_arc.clone();
+    let contact_store_for_workers = contact_store_arc;
+
     // Create the dashboard WebSocket event broadcast channel.
     // Capacity 256: enough for burst events; lagged clients are warned but not disconnected.
     let (http_event_tx, _http_event_rx) = tokio::sync::broadcast::channel::<http::DaemonEvent>(256);
@@ -891,6 +910,7 @@ async fn main() -> anyhow::Result<()> {
             cold_start_store_for_http,
             http_event_tx,
             cc_session_manager_for_http,
+            contact_store_for_http,
         )
         .await
         {
@@ -931,7 +951,7 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(24);
 
     let conversation_db = {
-        let conn = rusqlite::Connection::open(&nv_base.join("messages.db"))
+        let conn = rusqlite::Connection::open(nv_base.join("messages.db"))
             .expect("failed to open conversation DB");
         conn.execute_batch("PRAGMA journal_mode=WAL;")
             .expect("WAL pragma failed");
@@ -1154,6 +1174,7 @@ async fn main() -> anyhow::Result<()> {
         dashboard_client,
         briefing_store: Some(Arc::clone(&briefing_store)),
         cold_start_store,
+        contact_store: contact_store_for_workers,
     });
 
     // Extract Telegram client and chat_id for reactions

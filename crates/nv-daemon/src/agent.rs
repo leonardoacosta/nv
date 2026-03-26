@@ -3,6 +3,9 @@ use std::sync::Arc;
 
 use nv_core::channel::Channel;
 use nv_core::types::Trigger;
+use nv_core::Config;
+
+use crate::contact_store::inject_contact_profiles;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -111,6 +114,15 @@ pub fn build_system_context() -> String {
             context.push_str("Use `read_memory` or `search_memory` to access them:\n\n");
             context.push_str(&memory_listing);
         }
+
+        // Inject contact profiles from config/contact/*.md (skips example-* files).
+        // Respects the [contacts] section in nv.toml; defaults to profile_dir="config/contact"
+        // and inject_in_context=true when the section is absent.
+        let contact_injection = build_contact_context();
+        if let Some(contacts_section) = contact_injection {
+            context.push_str("\n\n");
+            context.push_str(&contacts_section);
+        }
     } else {
         // Bootstrap mode — load bootstrap instructions instead
         if let Some(bootstrap) = load_file_optional("bootstrap.md") {
@@ -158,6 +170,40 @@ fn list_memory_files() -> String {
         .map(|f| format!("- `{f}`"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Build the contact profiles section for system context injection.
+///
+/// Reads the `[contacts]` section of `nv.toml` to determine the profile
+/// directory and whether injection is enabled. Falls back to
+/// `config/contact` + `inject_in_context = true` when the section is absent.
+///
+/// The `profile_dir` is resolved relative to the current working directory
+/// (i.e. the project root from which `nv-daemon` is run).
+fn build_contact_context() -> Option<String> {
+    // Load config to check [contacts] settings (best-effort; silently skip on error).
+    let (profile_dir, inject) = match Config::load() {
+        Ok(cfg) => {
+            let inject = cfg
+                .contacts
+                .as_ref()
+                .map(|c| c.inject_in_context)
+                .unwrap_or(true);
+            let dir = cfg
+                .contacts
+                .as_ref()
+                .map(|c| c.profile_dir.clone())
+                .unwrap_or_else(|| "config/contact".to_string());
+            (dir, inject)
+        }
+        Err(_) => ("config/contact".to_string(), true),
+    };
+
+    // Resolve relative to the current working directory (project root).
+    let resolved = std::env::current_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+        .join(&profile_dir);
+    inject_contact_profiles(&resolved, inject)
 }
 
 // ── Channel Registry ────────────────────────────────────────────────

@@ -66,6 +66,14 @@ fn default_timezone() -> String {
     "America/Chicago".to_string()
 }
 
+fn default_contact_profile_dir() -> String {
+    "config/contact".to_string()
+}
+
+fn default_contact_inject() -> bool {
+    true
+}
+
 fn default_conversation_ttl_hours() -> u64 {
     24
 }
@@ -103,6 +111,24 @@ pub struct DopplerConfig {
     pub projects: HashMap<String, String>,
 }
 
+/// Configuration for the contact profiles system.
+///
+/// ```toml
+/// [contacts]
+/// profile_dir = "config/contact"   # default; resolved relative to config root
+/// inject_in_context = true          # default true
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct ContactsConfig {
+    /// Directory containing per-contact `.md` profile files.
+    /// Resolved relative to the config root (default: `"config/contact"`).
+    #[serde(default = "default_contact_profile_dir")]
+    pub profile_dir: String,
+    /// When `true`, contact profile files are injected into the system context.
+    #[serde(default = "default_contact_inject")]
+    pub inject_in_context: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     pub agent: AgentConfig,
@@ -114,6 +140,8 @@ pub struct Config {
     pub jira: Option<JiraConfig>,
     pub team_agents: Option<TeamAgentsConfig>,
     pub daemon: Option<DaemonConfig>,
+    /// Optional contact profiles system configuration.
+    pub contacts: Option<ContactsConfig>,
     /// Optional Google Calendar integration config.
     pub calendar: Option<CalendarConfig>,
     /// Optional web fetch / search configuration.

@@ -23,6 +23,7 @@ pub struct InlineQuery {
     /// Text of the query (empty string if no query provided).
     pub query: String,
     /// Offset of the results to be returned (pagination token).
+    #[allow(dead_code)]
     pub offset: String,
 }
 

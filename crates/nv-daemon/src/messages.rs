@@ -230,6 +230,34 @@ fn messages_migrations() -> Migrations<'static> {
             );
             CREATE INDEX IF NOT EXISTS idx_latency_stage ON latency_spans(stage, recorded_at);",
         ),
+        // v9: contacts table — identity consolidation across channels
+        M::up(
+            "CREATE TABLE IF NOT EXISTS contacts (
+                id               TEXT PRIMARY KEY,
+                name             TEXT NOT NULL,
+                channel_ids      TEXT NOT NULL DEFAULT '{}',
+                relationship_type TEXT NOT NULL DEFAULT 'social'
+                    CHECK(relationship_type IN ('work','personal-client','contributor','social')),
+                notes            TEXT,
+                created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
+            CREATE INDEX IF NOT EXISTS idx_contacts_relationship ON contacts(relationship_type);",
+        ),
+        // v10: add contact_id FK to messages + best-effort backfill
+        M::up(
+            "ALTER TABLE messages ADD COLUMN contact_id TEXT REFERENCES contacts(id);
+            CREATE INDEX IF NOT EXISTS idx_messages_contact_id ON messages(contact_id);
+            UPDATE messages
+               SET contact_id = (
+                   SELECT c.id
+                   FROM contacts c
+                   WHERE json_extract(c.channel_ids, '$.' || messages.channel) = messages.sender
+                   LIMIT 1
+               )
+            WHERE sender IS NOT NULL;",
+        ),
     ])
 }
 
@@ -259,17 +287,21 @@ impl MessageStore {
     }
 
     /// Log an inbound message (from a user/channel).
+    ///
+    /// `contact_id` is an optional FK into the `contacts` table. Pass `None`
+    /// when no contact match is available.
     pub fn log_inbound(
         &self,
         channel: &str,
         sender: &str,
         content: &str,
         trigger_type: &str,
+        contact_id: Option<&str>,
     ) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO messages (timestamp, direction, channel, sender, content, trigger_type)
-             VALUES (datetime('now'), 'inbound', ?1, ?2, ?3, ?4)",
-            params![channel, sender, content, trigger_type],
+            "INSERT INTO messages (timestamp, direction, channel, sender, content, trigger_type, contact_id)
+             VALUES (datetime('now'), 'inbound', ?1, ?2, ?3, ?4, ?5)",
+            params![channel, sender, content, trigger_type, contact_id],
         )?;
         Ok(())
     }
@@ -1098,7 +1130,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5, "user_version should be 5 after all migrations");
+        assert_eq!(version, 10, "user_version should be 10 after all migrations");
 
         // Verify all expected tables exist.
         for table in &["messages", "tool_usage", "api_usage", "budget_alert_sent"] {
@@ -1117,7 +1149,7 @@ mod tests {
     fn log_inbound_inserts_row() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "hello", "message")
+            .log_inbound("telegram", "leo", "hello", "message", None)
             .unwrap();
 
         let count: i64 = store
@@ -1160,10 +1192,10 @@ mod tests {
     fn recent_returns_messages_in_chronological_order() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "first", "message")
+            .log_inbound("telegram", "leo", "first", "message", None)
             .unwrap();
         store
-            .log_inbound("telegram", "leo", "second", "message")
+            .log_inbound("telegram", "leo", "second", "message", None)
             .unwrap();
         store
             .log_outbound("telegram", "response", None, None, None, None)
@@ -1181,7 +1213,7 @@ mod tests {
         let (_dir, store) = setup();
         for i in 0..10 {
             store
-                .log_inbound("telegram", "leo", &format!("msg {i}"), "message")
+                .log_inbound("telegram", "leo", &format!("msg {i}"), "message", None)
                 .unwrap();
         }
 
@@ -1204,7 +1236,7 @@ mod tests {
     fn format_recent_for_context_formats_correctly() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "hello", "message")
+            .log_inbound("telegram", "leo", "hello", "message", None)
             .unwrap();
         store
             .log_outbound("telegram", "hi there", None, None, None, None)
@@ -1226,7 +1258,7 @@ mod tests {
         let (_dir, store) = setup();
         let long_content = "x".repeat(2500);
         store
-            .log_inbound("telegram", "leo", &long_content, "message")
+            .log_inbound("telegram", "leo", &long_content, "message", None)
             .unwrap();
 
         let ctx = store.format_recent_for_context(20).unwrap();
@@ -1243,7 +1275,7 @@ mod tests {
         let (_dir, store) = setup();
         let content = "x".repeat(1999);
         store
-            .log_inbound("telegram", "leo", &content, "message")
+            .log_inbound("telegram", "leo", &content, "message", None)
             .unwrap();
 
         let ctx = store.format_recent_for_context(20).unwrap();
@@ -1255,10 +1287,10 @@ mod tests {
     fn format_recent_turn_grouping_multiple_turns() {
         let (_dir, store) = setup();
         // Turn 1
-        store.log_inbound("telegram", "leo", "question 1", "message").unwrap();
+        store.log_inbound("telegram", "leo", "question 1", "message", None).unwrap();
         store.log_outbound("telegram", "answer 1", None, None, None, None).unwrap();
         // Turn 2
-        store.log_inbound("telegram", "leo", "question 2", "message").unwrap();
+        store.log_inbound("telegram", "leo", "question 2", "message", None).unwrap();
         store.log_outbound("telegram", "answer 2", None, None, None, None).unwrap();
 
         let ctx = store.format_recent_for_context(20).unwrap();
@@ -1284,7 +1316,7 @@ mod tests {
     fn stats_with_data() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "hello", "message")
+            .log_inbound("telegram", "leo", "hello", "message", None)
             .unwrap();
         store
             .log_outbound("telegram", "response", None, Some(2000), Some(100), Some(50))
@@ -1306,10 +1338,10 @@ mod tests {
     fn stats_daily_counts() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "msg1", "message")
+            .log_inbound("telegram", "leo", "msg1", "message", None)
             .unwrap();
         store
-            .log_inbound("telegram", "leo", "msg2", "message")
+            .log_inbound("telegram", "leo", "msg2", "message", None)
             .unwrap();
 
         let report = store.stats().unwrap();
@@ -1473,10 +1505,10 @@ mod tests {
     fn search_with_matches() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "discuss Stripe fee structure", "message")
+            .log_inbound("telegram", "leo", "discuss Stripe fee structure", "message", None)
             .unwrap();
         store
-            .log_inbound("telegram", "leo", "deploy the new API endpoint", "message")
+            .log_inbound("telegram", "leo", "deploy the new API endpoint", "message", None)
             .unwrap();
         store
             .log_outbound("telegram", "Stripe fees are 2.9% + 30c per transaction", None, None, None, None)
@@ -1492,7 +1524,7 @@ mod tests {
     fn search_with_no_matches() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "hello world", "message")
+            .log_inbound("telegram", "leo", "hello world", "message", None)
             .unwrap();
 
         let results = store.search("nonexistent", 10).unwrap();
@@ -1503,7 +1535,7 @@ mod tests {
     fn search_with_invalid_query() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "hello world", "message")
+            .log_inbound("telegram", "leo", "hello world", "message", None)
             .unwrap();
 
         // Invalid FTS5 syntax should return an error
@@ -1516,7 +1548,7 @@ mod tests {
         let (_dir, store) = setup();
         for i in 0..20 {
             store
-                .log_inbound("telegram", "leo", &format!("message about topic {i}"), "message")
+                .log_inbound("telegram", "leo", &format!("message about topic {i}"), "message", None)
                 .unwrap();
         }
 
@@ -1528,7 +1560,7 @@ mod tests {
     fn search_limit_capped_at_50() {
         let (_dir, store) = setup();
         store
-            .log_inbound("telegram", "leo", "test message", "message")
+            .log_inbound("telegram", "leo", "test message", "message", None)
             .unwrap();
 
         // Requesting 100 should be capped to 50 internally
@@ -1545,7 +1577,7 @@ mod tests {
         // because init creates FTS + backfills atomically.
         let store1 = MessageStore::init(&db_path).unwrap();
         store1
-            .log_inbound("telegram", "leo", "backfill test message", "message")
+            .log_inbound("telegram", "leo", "backfill test message", "message", None)
             .unwrap();
         drop(store1);
 
@@ -1712,7 +1744,7 @@ mod tests {
 
         // Also insert an inbound message that should be excluded
         store
-            .log_inbound("telegram", "leo", "inbound msg", "message")
+            .log_inbound("telegram", "leo", "inbound msg", "message", None)
             .unwrap();
 
         // Ask for at most 5

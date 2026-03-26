@@ -271,6 +271,8 @@ pub struct SharedDeps {
     pub briefing_store: Option<Arc<BriefingStore>>,
     /// Cold-start timing event store. None if the DB failed to open.
     pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
+    /// Contact store for sender identity lookup during message ingestion.
+    pub contact_store: Option<Arc<crate::contact_store::ContactStore>>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────
@@ -972,12 +974,39 @@ impl Worker {
         // Log inbound messages to the message store
         for trigger in &task.triggers {
             if let Trigger::Message(msg) = trigger {
+                // Resolve contact_id via find_by_channel (opt-in; None on miss or unavailable).
+                let contact_id: Option<String> =
+                    deps.contact_store.as_ref().and_then(|cs: &Arc<crate::contact_store::ContactStore>| {
+                        // Extract the per-channel identifier from message metadata.
+                        // Discord and Teams embed author IDs in metadata; Telegram uses sender name.
+                        let identifier = match msg.channel.as_str() {
+                            "discord" => msg
+                                .metadata
+                                .get("author_id")
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
+                                .unwrap_or_else(|| msg.sender.clone()),
+                            "teams" => msg
+                                .metadata
+                                .get("sender_id")
+                                .and_then(|v| v.as_str())
+                                .map(String::from)
+                                .unwrap_or_else(|| msg.sender.clone()),
+                            _ => msg.sender.clone(), // telegram: use sender name/handle
+                        };
+                        cs.find_by_channel(&msg.channel, &identifier)
+                            .ok()
+                            .flatten()
+                            .map(|c| c.id)
+                    });
+
                 let store = deps.message_store.lock().unwrap();
                 if let Err(e) = store.log_inbound(
                     &msg.channel,
                     &msg.sender,
                     &msg.content,
                     "message",
+                    contact_id.as_deref(),
                 ) {
                     tracing::warn!(error = %e, "failed to log inbound message");
                 }

@@ -2,6 +2,7 @@ pub use nv_tools::tools::ado;
 pub use nv_tools::tools::calendar;
 pub mod check;
 pub mod checkable_impls;
+pub mod outlook;
 pub use nv_tools::tools::cloudflare;
 pub use nv_tools::tools::docker;
 pub use nv_tools::tools::doppler;
@@ -166,6 +167,7 @@ use nv_core::types::OutboundMessage;
 use self::ado as ado_tools;
 use crate::aggregation;
 use self::cloudflare as cloudflare_tools;
+use self::outlook as outlook_tools;
 use self::doppler as doppler_tools;
 use self::web as web_tools;
 use crate::bash;
@@ -399,6 +401,9 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Microsoft Teams tools (channels, messages, send, presence)
     tools.extend(teams_tools::teams_tool_definitions());
+
+    // Add Outlook email and calendar tools (delegated auth)
+    tools.extend(outlook_tools::outlook_tool_definitions());
 
     // Add service diagnostics tool
     tools.push(ToolDefinition {
@@ -1516,7 +1521,7 @@ fn is_write_tool(name: &str) -> bool {
 
 /// `search_messages`, schedule tools, and reminder tools must be handled by the caller
 /// before delegating here.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, dead_code)]
 pub async fn execute_tool_send(
     name: &str,
     input: &serde_json::Value,
@@ -2218,6 +2223,29 @@ pub async fn execute_tool_send_with_backend(
             let output = ado_tools::ado_builds(project, pipeline_id).await?;
             Ok(ToolResult::Immediate(output))
         }
+        "query_ado_work_items" => {
+            let project = input["project"].as_str();
+            let assigned_to = input["assigned_to"].as_str().unwrap_or("@Me");
+            let state = input["state"].as_str().unwrap_or("active");
+            let limit = input["limit"].as_u64().unwrap_or(20).min(50) as usize;
+            let output = ado_tools::query_ado_work_items(project, assigned_to, state, limit).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
+        // ── Outlook Tools ────────────────────────────────────────────
+        "read_outlook_inbox" => {
+            let folder = input["folder"].as_str();
+            let count = input["count"].as_u64().unwrap_or(10).min(25) as u32;
+            let unread_only = input["unread_only"].as_bool().unwrap_or(false);
+            let output = outlook_tools::read_inbox(folder, count, unread_only).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "read_outlook_calendar" => {
+            let days_ahead = input["days_ahead"].as_u64().unwrap_or(1).min(30) as u32;
+            let max_events = input["max_events"].as_u64().unwrap_or(10).min(25) as u32;
+            let output = outlook_tools::read_calendar(days_ahead, max_events).await?;
+            Ok(ToolResult::Immediate(output))
+        }
 
         // ── Plaid Financial Tools ────────────────────────────────────
         "plaid_balances" => {
@@ -2834,8 +2862,10 @@ mod tests {
         // + 3 schedule (list_schedules, add_schedule, remove_schedule)
         // + 1 check_services
         // + 4 teams (teams_channels, teams_messages, teams_send, teams_presence)
-        // = 98 - 3 (removed duplicate query_nexus_health/projects/agents) = 95
-        assert_eq!(tools.len(), 95);
+        // + 2 outlook (read_outlook_inbox, read_outlook_calendar)
+        // + 1 ado work items (query_ado_work_items)
+        // = 98 - 3 (removed duplicate query_nexus_health/projects/agents) = 95 + 3 = 98
+        assert_eq!(tools.len(), 98);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2901,6 +2931,7 @@ mod tests {
         assert!(names.contains(&"ado_projects"));
         assert!(names.contains(&"ado_pipelines"));
         assert!(names.contains(&"ado_builds"));
+        assert!(names.contains(&"query_ado_work_items"));
         // Plaid tools
         assert!(names.contains(&"plaid_balances"));
         assert!(names.contains(&"plaid_bills"));
@@ -2924,6 +2955,9 @@ mod tests {
         assert!(names.contains(&"teams_messages"));
         assert!(names.contains(&"teams_send"));
         assert!(names.contains(&"teams_presence"));
+        // Outlook tools
+        assert!(names.contains(&"read_outlook_inbox"));
+        assert!(names.contains(&"read_outlook_calendar"));
     }
 
     #[test]

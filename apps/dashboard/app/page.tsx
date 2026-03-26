@@ -27,6 +27,7 @@ import ActiveSession, {
 } from "@/components/ActiveSession";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import type {
+  ObligationsGetResponse,
   ProjectsGetResponse,
   SessionsGetResponse,
   ServerHealthGetResponse,
@@ -57,8 +58,9 @@ interface HealthSummary {
 
 interface ApiObligation {
   id: string;
-  title: string;
+  detected_action: string;
   owner?: string;
+  /** "open" | "in_progress" | "done" | "dismissed" */
   status?: string;
 }
 
@@ -174,9 +176,9 @@ function ObligationsSidebar({
   loading: boolean;
 }) {
   const pending = obligations.filter(
-    (o) => !o.status || o.status === "pending",
+    (o) => !o.status || o.status === "open" || o.status === "in_progress",
   );
-  const done = obligations.filter((o) => o.status === "completed");
+  const done = obligations.filter((o) => o.status === "done");
 
   return (
     <div className="surface-card p-4 space-y-4">
@@ -287,18 +289,21 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     setError(null);
     try {
+      // 8-second timeout per call so a stalled daemon never freezes the skeleton
+      const timeout = () => AbortSignal.timeout(8000);
       const [oblRes, projRes, sessRes, healthRes] = await Promise.allSettled([
-        fetch("/api/obligations"),
-        fetch("/api/projects"),
-        fetch("/api/sessions"),
-        fetch("/api/server-health"),
+        fetch("/api/obligations", { signal: timeout() }),
+        fetch("/api/projects", { signal: timeout() }),
+        fetch("/api/sessions", { signal: timeout() }),
+        fetch("/api/server-health", { signal: timeout() }),
       ]);
 
-      // Obligations
+      // Obligations — daemon returns { obligations: [...] }
       let oblList: ApiObligation[] = [];
       if (oblRes.status === "fulfilled" && oblRes.value.ok) {
         try {
-          oblList = (await oblRes.value.json()) as ApiObligation[];
+          const oblData = (await oblRes.value.json()) as ObligationsGetResponse;
+          oblList = oblData.obligations as ApiObligation[];
         } catch {
           // JSON parse failure — keep empty list
         }

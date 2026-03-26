@@ -14,7 +14,12 @@ type TabKey = "open" | "history";
 /** Map a daemon Obligation to the component's Obligation interface. */
 function mapDaemonObligation(o: DaemonObligation): Obligation {
   // Daemon status "done" maps to component "completed"
-  const status = o.status === "done" ? "completed" : (o.status as Obligation["status"]);
+  const status: Obligation["status"] =
+    o.status === "done"
+      ? "completed"
+      : o.status === "open" || o.status === "in_progress" || o.status === "dismissed"
+        ? o.status
+        : "open";
   return {
     id: o.id,
     title: o.detected_action,
@@ -24,6 +29,8 @@ function mapDaemonObligation(o: DaemonObligation): Obligation {
     status,
     due_at: o.deadline ?? undefined,
     created_at: o.created_at,
+    project_code: o.project_code ?? undefined,
+    source_channel: o.source_channel,
   };
 }
 

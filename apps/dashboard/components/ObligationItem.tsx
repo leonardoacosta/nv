@@ -1,4 +1,4 @@
-import { Clock, User, Tag } from "lucide-react";
+import { Clock, User, Tag, Radio, FolderOpen } from "lucide-react";
 
 export type Priority = 0 | 1 | 2 | 3 | 4;
 
@@ -12,6 +12,8 @@ export interface Obligation {
   due_at?: string;
   tags?: string[];
   created_at: string;
+  project_code?: string;
+  source_channel?: string;
 }
 
 const PRIORITY_CONFIG: Record<
@@ -96,18 +98,36 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
         )}
 
         <div className="flex items-center gap-4 mt-2 flex-wrap">
-          {obligation.due_at && (
-            <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
-              <Clock size={11} />
-              <span suppressHydrationWarning>
-                {new Date(obligation.due_at).toLocaleDateString()}
-              </span>
-            </div>
-          )}
           <div className="flex items-center gap-1 text-xs text-ds-gray-900">
             <User size={11} />
             <span className="capitalize">{obligation.owner}</span>
           </div>
+          {obligation.project_code && (
+            <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+              <FolderOpen size={11} />
+              <span>{obligation.project_code}</span>
+            </div>
+          )}
+          {obligation.source_channel && (
+            <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+              <Radio size={11} />
+              <span>{obligation.source_channel}</span>
+            </div>
+          )}
+          <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+            <Clock size={11} />
+            <span suppressHydrationWarning>
+              {new Date(obligation.created_at).toLocaleDateString()}
+            </span>
+          </div>
+          {obligation.due_at && (
+            <div className="flex items-center gap-1 text-xs text-amber-400 font-mono">
+              <Clock size={11} />
+              <span suppressHydrationWarning>
+                due {new Date(obligation.due_at).toLocaleDateString()}
+              </span>
+            </div>
+          )}
           {obligation.tags && obligation.tags.length > 0 && (
             <div className="flex items-center gap-1">
               <Tag size={11} className="text-ds-gray-900" />

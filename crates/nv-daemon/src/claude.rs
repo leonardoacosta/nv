@@ -972,7 +972,7 @@ impl ClaudeClient {
             max_tokens,
             session,
             spawn_config,
-            fallback_prose_tools: false,
+            fallback_prose_tools: true,
         }
     }
 

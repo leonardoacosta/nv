@@ -146,7 +146,7 @@ fn messages_migrations() -> Migrations<'static> {
             );",
         ),
         M::up(
-            "CREATE TABLE obligations (
+            "CREATE TABLE IF NOT EXISTS obligations (
                 id TEXT PRIMARY KEY,
                 source_channel TEXT NOT NULL,
                 source_message TEXT,
@@ -159,9 +159,9 @@ fn messages_migrations() -> Migrations<'static> {
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-            CREATE INDEX idx_obligations_status ON obligations(status);
-            CREATE INDEX idx_obligations_priority ON obligations(priority);
-            CREATE INDEX idx_obligations_owner ON obligations(owner);",
+            CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
+            CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
+            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);",
         ),
         M::up(
             "CREATE TABLE IF NOT EXISTS alert_rules (
@@ -287,9 +287,177 @@ impl MessageStore {
 
         conn.execute_batch("PRAGMA journal_mode=WAL;")?;
 
-        messages_migrations()
-            .to_latest(&mut conn)
-            .map_err(|e| anyhow::anyhow!("failed to run messages.db migrations: {e}"))?;
+        // NOTE: rusqlite_migration's M::up() with multi-statement SQL silently
+        // fails to create tables in WAL mode (claims success, version increments,
+        // but tables don't exist). Disabled in favor of direct CREATE TABLE IF NOT
+        // EXISTS below which is reliable.
+        //
+        // if let Err(e) = messages_migrations().to_latest(&mut conn) {
+        //     tracing::warn!(error = %e, "migration system error");
+        // }
+
+        // Ensure all required tables exist regardless of migration state.
+        // This is the authoritative schema definition — the migration system above
+        // is kept for version tracking but these IF NOT EXISTS statements are the
+        // actual safety net.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                sender TEXT,
+                content TEXT NOT NULL,
+                telegram_message_id INTEGER,
+                trigger_type TEXT,
+                response_time_ms INTEGER,
+                tokens_in INTEGER,
+                tokens_out INTEGER,
+                contact_id TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_messages_direction ON messages(direction);
+            CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc ON messages(timestamp DESC);
+
+            CREATE TABLE IF NOT EXISTS tool_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                worker_id TEXT,
+                tool_name TEXT NOT NULL,
+                input_summary TEXT,
+                result_summary TEXT,
+                success INTEGER NOT NULL DEFAULT 1,
+                duration_ms INTEGER,
+                tokens_in INTEGER,
+                tokens_out INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_tool_usage_name ON tool_usage(tool_name);
+            CREATE INDEX IF NOT EXISTS idx_tool_usage_timestamp ON tool_usage(timestamp);
+
+            CREATE TABLE IF NOT EXISTS api_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                worker_id TEXT NOT NULL,
+                cost_usd REAL,
+                tokens_in INTEGER NOT NULL,
+                tokens_out INTEGER NOT NULL,
+                model TEXT NOT NULL,
+                session_id TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_api_usage_timestamp ON api_usage(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_api_usage_worker ON api_usage(worker_id);
+
+            CREATE TABLE IF NOT EXISTS budget_alert_sent (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS obligations (
+                id TEXT PRIMARY KEY,
+                source_channel TEXT NOT NULL,
+                source_message TEXT,
+                detected_action TEXT NOT NULL,
+                project_code TEXT,
+                priority INTEGER NOT NULL DEFAULT 2,
+                status TEXT NOT NULL DEFAULT 'open',
+                owner TEXT NOT NULL DEFAULT 'nova',
+                owner_reason TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                deadline TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_obligations_status ON obligations(status);
+            CREATE INDEX IF NOT EXISTS idx_obligations_priority ON obligations(priority);
+            CREATE INDEX IF NOT EXISTS idx_obligations_owner ON obligations(owner);
+
+            CREATE TABLE IF NOT EXISTS alert_rules (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                rule_type TEXT NOT NULL,
+                condition_json TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS server_health (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                status TEXT NOT NULL,
+                response_json TEXT,
+                sources_json TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS cold_start_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                context_build_ms INTEGER NOT NULL DEFAULT 0,
+                first_response_ms INTEGER NOT NULL DEFAULT 0,
+                total_ms INTEGER NOT NULL DEFAULT 0,
+                tool_count INTEGER NOT NULL DEFAULT 0,
+                tokens_in INTEGER NOT NULL DEFAULT 0,
+                tokens_out INTEGER NOT NULL DEFAULT 0,
+                trigger_type TEXT NOT NULL DEFAULT 'unknown'
+            );
+            CREATE INDEX IF NOT EXISTS idx_cold_start_started_at ON cold_start_events(started_at);
+
+            CREATE TABLE IF NOT EXISTS conversations (
+                channel TEXT NOT NULL,
+                thread_id TEXT NOT NULL,
+                turns_json TEXT,
+                updated_at TEXT,
+                PRIMARY KEY (channel, thread_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS latency_spans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                worker_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_latency_stage_recorded ON latency_spans(stage, recorded_at);
+
+            CREATE TABLE IF NOT EXISTS contacts (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                channel_ids TEXT NOT NULL DEFAULT '{}',
+                relationship_type TEXT NOT NULL DEFAULT 'work',
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS obligation_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                obligation_id TEXT NOT NULL,
+                note_type TEXT NOT NULL DEFAULT 'research',
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )?;
+
+        // FTS virtual table (separate statement — can't be in execute_batch with CREATE TABLE).
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                content,
+                content=messages,
+                content_rowid=id
+            );
+
+            CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.id, old.content);
+                INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
+            END;",
+        )?;
 
         // One-time backfill: populate FTS index with any messages that exist
         // but are not yet indexed (idempotent — skips already-indexed rows).

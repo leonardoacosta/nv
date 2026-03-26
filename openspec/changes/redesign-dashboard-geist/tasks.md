@@ -32,13 +32,13 @@
 - [x] [4.6] [P-2] Update `apps/dashboard/app/sessions/page.tsx` — surface-card session cards; status dots ds-green/amber/red-700; filter tabs Geist interactive; EmptyState with Layers icon [owner:ui-engineer]
 - [x] [4.7] [P-2] Update `apps/dashboard/app/messages/page.tsx` — surface-base rows with hover bg-ds-gray-200; filter chips as pills; pagination with interactive states [owner:ui-engineer]
 - [x] [4.8] [P-2] Update `apps/dashboard/app/projects/page.tsx` — surface-card cards; EmptyState with FolderOpen; search input surface-inset [owner:ui-engineer]
-- [ ] [4.9] [P-2] Update `apps/dashboard/app/nexus/page.tsx` — surface-card health tiles with accent bars (green/amber/red per status) [owner:ui-engineer]
-- [ ] [4.10] [P-2] Update `apps/dashboard/app/integrations/page.tsx` — surface-card integration cards; .text-label-12 section headers [owner:ui-engineer]
-- [ ] [4.11] [P-2] Update `apps/dashboard/app/usage/page.tsx` — StatCard for cost/token values with DollarSign icon; .text-heading-32 tabular-nums [owner:ui-engineer]
-- [ ] [4.12] [P-2] Update `apps/dashboard/app/cold-starts/page.tsx` — StatCard for percentiles with Timer icon; surface-inset for chart area [owner:ui-engineer]
-- [ ] [4.13] [P-2] Update `apps/dashboard/app/memory/page.tsx` — surface-card items; EmptyState with Brain icon; search surface-inset [owner:ui-engineer]
-- [ ] [4.14] [P-2] Update `apps/dashboard/app/session/page.tsx` — surface-card status card with accent bar; surface-inset font-mono log viewer; Geist button states [owner:ui-engineer]
-- [ ] [4.15] [P-2] Update `apps/dashboard/app/settings/page.tsx` — surface-card sections with .text-label-16 titles; surface-inset inputs; masked field styling [owner:ui-engineer]
+- [x] [4.9] [P-2] Update `apps/dashboard/app/nexus/page.tsx` — surface-card health tiles with accent bars (green/amber/red per status) [owner:ui-engineer]
+- [x] [4.10] [P-2] Update `apps/dashboard/app/integrations/page.tsx` — surface-card integration cards; .text-label-12 section headers [owner:ui-engineer]
+- [x] [4.11] [P-2] Update `apps/dashboard/app/usage/page.tsx` — StatCard for cost/token values with DollarSign icon; .text-heading-32 tabular-nums [owner:ui-engineer]
+- [x] [4.12] [P-2] Update `apps/dashboard/app/cold-starts/page.tsx` — StatCard for percentiles with Timer icon; surface-inset for chart area [owner:ui-engineer]
+- [x] [4.13] [P-2] Update `apps/dashboard/app/memory/page.tsx` — surface-card items; EmptyState with Brain icon; search surface-inset [owner:ui-engineer]
+- [x] [4.14] [P-2] Update `apps/dashboard/app/session/page.tsx` — surface-card status card with accent bar; surface-inset font-mono log viewer; Geist button states [owner:ui-engineer]
+- [x] [4.15] [P-2] Update `apps/dashboard/app/settings/page.tsx` — surface-card sections with .text-label-16 titles; surface-inset inputs; masked field styling [owner:ui-engineer]
 
 ## Verify
 

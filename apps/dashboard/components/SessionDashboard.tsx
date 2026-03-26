@@ -52,23 +52,23 @@ function StateBadge({ state }: { state: SessionState }) {
   const config: Record<SessionState, { label: string; classes: string; dotClass: string }> = {
     active: {
       label: "Active",
-      classes: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-      dotClass: "bg-emerald-400",
+      classes: "bg-green-700/10 text-green-700 border-green-700/20",
+      dotClass: "bg-green-700",
     },
     idle: {
       label: "Idle",
-      classes: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-      dotClass: "bg-amber-400",
+      classes: "bg-amber-700/10 text-amber-700 border-amber-700/20",
+      dotClass: "bg-amber-700",
     },
     starting: {
       label: "Starting",
-      classes: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-      dotClass: "bg-amber-400 animate-pulse",
+      classes: "bg-amber-700/10 text-amber-700 border-amber-700/20",
+      dotClass: "bg-amber-700 animate-pulse",
     },
     stopping: {
       label: "Stopping",
-      classes: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-      dotClass: "bg-amber-400 animate-pulse",
+      classes: "bg-amber-700/10 text-amber-700 border-amber-700/20",
+      dotClass: "bg-amber-700 animate-pulse",
     },
     stopped: {
       label: "Stopped",
@@ -77,7 +77,7 @@ function StateBadge({ state }: { state: SessionState }) {
     },
     error: {
       label: "Error",
-      classes: "bg-red-700/20 text-red-700 border-red-700/30",
+      classes: "bg-red-700/10 text-red-700 border-red-700/20",
       dotClass: "bg-red-700",
     },
   };
@@ -140,7 +140,7 @@ function LogViewer() {
   return (
     <div
       ref={scrollRef}
-      className="h-64 overflow-y-auto rounded-lg bg-ds-bg-100 border border-ds-gray-400 font-mono text-xs text-ds-gray-1000 p-3 space-y-0.5"
+      className="h-64 overflow-y-auto surface-inset text-label-13-mono text-ds-gray-1000 p-3 space-y-0.5"
     >
       {lines.length === 0 ? (
         <span className="text-ds-gray-900">No log output yet…</span>
@@ -209,51 +209,66 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
   const canStop = state === "active" || state === "idle";
   const canRestart = state === "active" || state === "idle" || state === "error";
 
+  const accentBar =
+    state === "active"
+      ? "bg-green-700"
+      : state === "idle" || state === "starting" || state === "stopping"
+        ? "bg-amber-700"
+        : state === "error"
+          ? "bg-red-700"
+          : "bg-ds-gray-600";
+
   return (
     <div className="space-y-6">
-      {/* Status card */}
-      <div className="p-6 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-5">
+      {/* Status card — surface-card with accent bar */}
+      <div className="surface-card relative p-6 space-y-5 overflow-hidden">
+        {/* Left accent bar */}
+        <div
+          className={`absolute left-0 top-0 bottom-0 w-1 ${accentBar} rounded-l-xl`}
+          aria-hidden="true"
+        />
+
         {/* Header row */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pl-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-ds-gray-alpha-200 border border-ds-gray-1000/30">
               <Terminal size={18} className="text-ds-gray-1000" />
             </div>
             <div>
-              <p className="text-sm font-medium text-ds-gray-1000">CC Session</p>
-              <p className="text-xs text-ds-gray-900 font-mono">nova-cc-session</p>
+              <p className="text-label-14 text-ds-gray-1000">CC Session</p>
+              <p className="text-label-13-mono text-ds-gray-900">nova-cc-session</p>
             </div>
           </div>
           <StateBadge state={state} />
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
-            <Clock size={14} className="text-ds-gray-900 shrink-0" />
+        {/* Stats row — surface-inset tiles */}
+        <div className="grid grid-cols-3 gap-3 pl-2">
+          <div className="surface-inset flex items-center gap-2.5 p-3">
+            <Clock size={14} className="text-ds-gray-700 shrink-0" />
             <div>
-              <p className="text-xs text-ds-gray-900 uppercase tracking-wide">Uptime</p>
-              <p className="text-sm font-mono font-medium text-ds-gray-1000" suppressHydrationWarning>
+              <p className="text-label-12 text-ds-gray-900">Uptime</p>
+              <p className="text-label-13-mono text-ds-gray-1000" suppressHydrationWarning>
                 {formatUptime(status?.uptime_secs ?? null)}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
-            <MessageSquare size={14} className="text-ds-gray-900 shrink-0" />
+          <div className="surface-inset flex items-center gap-2.5 p-3">
+            <MessageSquare size={14} className="text-ds-gray-700 shrink-0" />
             <div>
-              <p className="text-xs text-ds-gray-900 uppercase tracking-wide">Messages</p>
-              <p className="text-sm font-mono font-medium text-ds-gray-1000">
+              <p className="text-label-12 text-ds-gray-900">Messages</p>
+              <p className="text-label-13-mono text-ds-gray-1000">
                 {status?.message_count ?? 0}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
-            <RefreshCw size={14} className="text-ds-gray-900 shrink-0" />
+          <div className="surface-inset flex items-center gap-2.5 p-3">
+            <RefreshCw size={14} className="text-ds-gray-700 shrink-0" />
             <div>
-              <p className="text-xs text-ds-gray-900 uppercase tracking-wide">Last Activity</p>
-              <p className="text-sm font-mono font-medium text-ds-gray-1000" suppressHydrationWarning>
+              <p className="text-label-12 text-ds-gray-900">Last Activity</p>
+              <p className="text-label-13-mono text-ds-gray-1000" suppressHydrationWarning>
                 {formatRelativeTime(status?.last_message_at ?? null)}
               </p>
             </div>
@@ -262,19 +277,19 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
         {/* Restart count info */}
         {(status?.restart_count ?? 0) > 0 && (
-          <div className="flex items-center gap-2 text-xs text-amber-400 font-mono">
+          <div className="flex items-center gap-2 text-label-13-mono text-amber-700 pl-2">
             <RotateCcw size={12} />
             Auto-restarted {status?.restart_count} time{status?.restart_count !== 1 ? "s" : ""}
           </div>
         )}
 
         {/* Controls */}
-        <div className="flex items-center gap-3 pt-1">
+        <div className="flex items-center gap-3 pt-1 pl-2">
           <button
             type="button"
             onClick={() => void sendControl("start")}
             disabled={!canStart || isTransitioning}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-button-14 font-medium bg-green-700/10 text-green-700 border border-green-700/20 hover:bg-green-700/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Play size={14} />
             Start
@@ -284,7 +299,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
             type="button"
             onClick={() => void sendControl("stop")}
             disabled={!canStop || isTransitioning}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-700/20 text-red-700 border border-red-700/30 hover:bg-red-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-button-14 font-medium bg-red-700/10 text-red-700 border border-red-700/20 hover:bg-red-700/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Square size={14} />
             Stop
@@ -294,14 +309,14 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
             type="button"
             onClick={() => void sendControl("restart")}
             disabled={!canRestart || isTransitioning}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30 hover:bg-ds-gray-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-button-14 font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30 hover:bg-ds-gray-300/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw size={14} className={actionPending === "restart" ? "animate-spin" : ""} />
             Restart
           </button>
 
           {isTransitioning && actionPending && (
-            <span className="text-xs text-ds-gray-900 font-mono animate-pulse">
+            <span className="text-label-13-mono text-ds-gray-900 animate-pulse">
               {actionPending}ing…
             </span>
           )}
@@ -318,12 +333,18 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
       {/* Session error panel */}
       {state === "error" && status?.error_message && (
-        <div className="p-4 rounded-xl bg-red-700/10 border border-red-700/30 space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-red-700">
+        <div
+          className="p-4 rounded-md space-y-2"
+          style={{
+            background: "rgba(229, 72, 77, 0.08)",
+            borderLeft: "3px solid var(--ds-red-700)",
+          }}
+        >
+          <div className="flex items-center gap-2 text-label-14 font-medium text-red-700">
             <AlertCircle size={15} />
             Session Error
           </div>
-          <p className="text-xs font-mono text-red-700/80 leading-relaxed">
+          <p className="text-label-13-mono text-red-700/80 leading-relaxed">
             {status.error_message}
           </p>
         </div>
@@ -331,10 +352,10 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
       {/* Log viewer */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide flex items-center gap-2">
-          <Terminal size={14} className="text-ds-gray-900" />
-          Container Logs
-        </h2>
+        <div className="flex items-center gap-2">
+          <Terminal size={14} className="text-ds-gray-700" />
+          <span className="text-label-12 text-ds-gray-700">Container Logs</span>
+        </div>
         <LogViewer />
       </div>
     </div>

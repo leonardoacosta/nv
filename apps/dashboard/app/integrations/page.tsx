@@ -66,13 +66,13 @@ export default function IntegrationsPage() {
   }));
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl">
+    <div className="p-8 space-y-6 max-w-4xl animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-ds-gray-1000">
+          <h1 className="text-heading-24 text-ds-gray-1000">
             Integrations
           </h1>
-          <p className="mt-1 text-sm text-ds-gray-900">
+          <p className="mt-1 text-copy-14 text-ds-gray-900">
             Connected channels, tools, and services
           </p>
         </div>
@@ -80,17 +80,23 @@ export default function IntegrationsPage() {
           type="button"
           onClick={() => void fetchIntegrations()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
+        <div
+          className="flex items-start gap-3 p-4 rounded-md"
+          style={{
+            background: "rgba(229, 72, 77, 0.08)",
+            borderLeft: "3px solid var(--ds-red-700)",
+          }}
+        >
+          <AlertCircle size={16} className="text-red-700 shrink-0 mt-0.5" />
+          <span className="text-copy-14 text-red-700">{error}</span>
         </div>
       )}
 
@@ -98,35 +104,33 @@ export default function IntegrationsPage() {
         <div className="space-y-6">
           {Array.from({ length: 3 }).map((_, g) => (
             <div key={g} className="space-y-2">
-              <div className="h-3 w-20 animate-pulse rounded bg-ds-gray-400" />
+              <div className="h-3 w-20 animate-pulse rounded bg-ds-gray-300" />
               {Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+                  className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
                 />
               ))}
             </div>
           ))}
         </div>
       ) : integrations.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
-          <Plug size={36} />
-          <p className="text-sm">No integrations configured</p>
+        <div className="surface-card flex flex-col items-center gap-3 py-16 text-ds-gray-900">
+          <Plug size={36} className="text-ds-gray-600" />
+          <p className="text-copy-14">No integrations configured</p>
         </div>
       ) : (
         <div className="space-y-8">
           {grouped.map(({ key, label, items }) => (
             <section key={key}>
               <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
-                  {label}
-                </h2>
-                <span className="text-xs font-mono text-ds-gray-900">
+                <h2 className="text-label-12 text-ds-gray-700">{label}</h2>
+                <span className="px-1.5 py-0.5 rounded-full bg-ds-gray-alpha-200 text-label-12 text-ds-gray-900 font-mono normal-case tracking-normal">
                   {items.length}
                 </span>
               </div>
               {items.length === 0 ? (
-                <p className="text-sm text-ds-gray-900 py-2 pl-1 italic">
+                <p className="text-copy-13 text-ds-gray-900 py-2 pl-1 italic">
                   No integrations configured.
                 </p>
               ) : (

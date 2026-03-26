@@ -19,8 +19,8 @@ const STATUS_CONFIG: Record<
   connected: {
     label: "Connected",
     icon: CheckCircle,
-    color: "text-emerald-400",
-    bg: "bg-emerald-500/20",
+    color: "text-green-700",
+    bg: "bg-green-700/10",
   },
   disconnected: {
     label: "Disconnected",
@@ -31,14 +31,14 @@ const STATUS_CONFIG: Record<
   error: {
     label: "Error",
     icon: AlertCircle,
-    color: "text-[#EF4444]",
-    bg: "bg-[#EF4444]/20",
+    color: "text-red-700",
+    bg: "bg-red-700/10",
   },
   pending: {
     label: "Pending",
     icon: AlertCircle,
-    color: "text-[#F97316]",
-    bg: "bg-[#F97316]/20",
+    color: "text-amber-700",
+    bg: "bg-amber-700/10",
   },
 };
 
@@ -68,7 +68,7 @@ export default function IntegrationCard({
   const iconColor = ICON_COLORS[integration.name] ?? "text-ds-gray-1000";
 
   return (
-    <div className="flex items-center gap-4 p-4 rounded-xl border border-ds-gray-400 bg-ds-gray-100 hover:border-ds-gray-1000/40 transition-colors group">
+    <div className="surface-card flex items-center gap-4 p-4 group">
       {/* Icon placeholder */}
       <div
         className={`flex items-center justify-center w-10 h-10 rounded-lg bg-ds-bg-100 shrink-0 ${iconColor}`}

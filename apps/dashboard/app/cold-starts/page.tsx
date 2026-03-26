@@ -4,13 +4,17 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Activity,
   RefreshCw,
-  AlertCircle,
+  Timer,
   Zap,
 } from "lucide-react";
-
+import PageShell from "@/components/layout/PageShell";
+import StatCard from "@/components/layout/StatCard";
+import ErrorBanner from "@/components/layout/ErrorBanner";
+import EmptyState from "@/components/layout/EmptyState";
+import SectionHeader from "@/components/layout/SectionHeader";
 import PipelineLatencyChart from "@/components/LatencyChart";
 
-// ── API types ────────────────────────────────────────────────────────────────
+// ── API types ─────────────────────────────────────────────────────────────────
 
 interface ColdStartEvent {
   session_id: string;
@@ -36,7 +40,7 @@ interface ColdStartsResponse {
   percentiles: ColdStartPercentiles;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function msToSeconds(ms: number): string {
   return (ms / 1000).toFixed(1) + "s";
@@ -47,7 +51,6 @@ function avg(values: number[]): number {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-/** Compute 20-event rolling average of total_ms (centered on each point) */
 function rollingAverage(events: ColdStartEvent[], window = 20): number[] {
   return events.map((_, idx) => {
     const half = Math.floor(window / 2);
@@ -58,14 +61,14 @@ function rollingAverage(events: ColdStartEvent[], window = 20): number[] {
   });
 }
 
-// ── Chart ────────────────────────────────────────────────────────────────────
+// ── Chart ─────────────────────────────────────────────────────────────────────
 
 interface LatencyChartProps {
   events: ColdStartEvent[];
 }
 
 function LatencyChart({ events }: LatencyChartProps) {
-  const visible = events.slice(0, 100).reverse(); // oldest first for left-to-right
+  const visible = events.slice(0, 100).reverse();
 
   if (!visible.length) return null;
 
@@ -96,17 +99,13 @@ function LatencyChart({ events }: LatencyChartProps) {
 
   const totalPoints = visible.map((e) => e.total_ms);
   const firstPoints = visible.map((e) => e.first_response_ms);
-
-  // Rolling average computed on chronological order (visible = oldest-first already)
   const rolling = rollingAverage(visible);
 
-  // Y-axis tick labels
   const TICKS = 4;
   const yTicks = Array.from({ length: TICKS + 1 }, (_, i) =>
     minVal + (range * i) / TICKS,
   );
 
-  // X-axis: show ~5 timestamp labels
   const xLabelCount = Math.min(5, n);
   const xLabelIndices =
     n <= 1
@@ -122,7 +121,6 @@ function LatencyChart({ events }: LatencyChartProps) {
       style={{ height: "200px" }}
       aria-label="Cold start latency chart"
     >
-      {/* Grid lines */}
       {yTicks.map((tick) => (
         <line
           key={tick}
@@ -135,7 +133,6 @@ function LatencyChart({ events }: LatencyChartProps) {
         />
       ))}
 
-      {/* Y-axis labels */}
       {yTicks.map((tick) => (
         <text
           key={tick}
@@ -151,9 +148,8 @@ function LatencyChart({ events }: LatencyChartProps) {
         </text>
       ))}
 
-      {/* X-axis labels */}
       {xLabelIndices.map((idx) => {
-        const label = new Date(visible[idx].started_at).toLocaleTimeString(
+        const label = new Date(visible[idx]!.started_at).toLocaleTimeString(
           [],
           { hour: "2-digit", minute: "2-digit" },
         );
@@ -171,11 +167,11 @@ function LatencyChart({ events }: LatencyChartProps) {
         );
       })}
 
-      {/* first_response_ms series — dimmer */}
+      {/* first_response_ms series */}
       <polyline
         points={toPolyline(firstPoints)}
         fill="none"
-        stroke="#8B5CF6"
+        stroke="var(--ds-gray-600)"
         strokeWidth="1.5"
         strokeOpacity="0.5"
       />
@@ -184,7 +180,7 @@ function LatencyChart({ events }: LatencyChartProps) {
       <polyline
         points={toPolyline(totalPoints)}
         fill="none"
-        stroke="#8B5CF6"
+        stroke="var(--ds-gray-800)"
         strokeWidth="2"
       />
 
@@ -192,20 +188,19 @@ function LatencyChart({ events }: LatencyChartProps) {
       <polyline
         points={toPolyline(rolling)}
         fill="none"
-        stroke="#F59E0B"
+        stroke="var(--ds-amber-700)"
         strokeWidth="1.5"
         strokeDasharray="4 3"
         strokeOpacity="0.85"
       />
 
-      {/* Data point dots for total_ms */}
       {visible.map((e, i) => (
         <circle
           key={e.session_id + i}
           cx={xOf(i)}
           cy={yOf(e.total_ms)}
           r="2.5"
-          fill="#8B5CF6"
+          fill="var(--ds-gray-700)"
           fillOpacity="0.8"
         />
       ))}
@@ -213,24 +208,20 @@ function LatencyChart({ events }: LatencyChartProps) {
   );
 }
 
-// ── Legend ────────────────────────────────────────────────────────────────────
-
 function ChartLegend() {
   return (
-    <div className="flex items-center gap-5 mt-2">
+    <div className="flex items-center gap-5 mt-3">
       <div className="flex items-center gap-1.5">
         <span
-          className="inline-block w-5 h-0.5 rounded"
-          style={{ background: "#8B5CF6" }}
+          className="inline-block w-5 h-0.5 rounded bg-ds-gray-800"
         />
-        <span className="text-xs text-ds-gray-900">total_ms</span>
+        <span className="text-label-13 text-ds-gray-900">total_ms</span>
       </div>
       <div className="flex items-center gap-1.5">
         <span
-          className="inline-block w-5 h-0.5 rounded"
-          style={{ background: "#8B5CF6", opacity: 0.5 }}
+          className="inline-block w-5 h-0.5 rounded bg-ds-gray-600 opacity-50"
         />
-        <span className="text-xs text-ds-gray-900">first_response_ms</span>
+        <span className="text-label-13 text-ds-gray-900">first_response_ms</span>
       </div>
       <div className="flex items-center gap-1.5">
         <svg width="20" height="4">
@@ -239,62 +230,18 @@ function ChartLegend() {
             y1="2"
             x2="20"
             y2="2"
-            stroke="#F59E0B"
+            stroke="var(--ds-amber-700)"
             strokeWidth="1.5"
             strokeDasharray="4 3"
           />
         </svg>
-        <span className="text-xs text-ds-gray-900">20-event avg</span>
+        <span className="text-label-13 text-ds-gray-900">20-event avg</span>
       </div>
     </div>
   );
 }
 
-// ── Percentile card ───────────────────────────────────────────────────────────
-
-function PercentileCard({
-  label,
-  ms,
-  accent,
-}: {
-  label: string;
-  ms: number;
-  accent?: boolean;
-}) {
-  return (
-    <div
-      className={`p-4 rounded-xl border ${
-        accent
-          ? "border-ds-gray-1000/40 bg-ds-gray-alpha-100"
-          : "border-ds-gray-400 bg-ds-gray-100"
-      }`}
-    >
-      <p className="text-xs text-ds-gray-900 uppercase tracking-wide">{label}</p>
-      <p
-        className={`text-2xl font-mono font-semibold mt-1 ${
-          accent ? "text-ds-gray-1000" : "text-ds-gray-1000"
-        }`}
-      >
-        {msToSeconds(ms)}
-      </p>
-    </div>
-  );
-}
-
-// ── Stat card ─────────────────────────────────────────────────────────────────
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
-      <p className="text-xs text-ds-gray-900 uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-mono font-semibold text-ds-gray-1000 mt-0.5">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ColdStartsPage() {
   const [data, setData] = useState<ColdStartsResponse | null>(null);
@@ -322,137 +269,153 @@ export default function ColdStartsPage() {
     void fetchData();
   }, [fetchData]);
 
-  // Compute client-side stats from first 100 events (chart window)
   const visibleEvents = data?.events.slice(0, 100) ?? [];
   const avgToolCount = avg(visibleEvents.map((e) => e.tool_count));
   const avgTokensIn = avg(visibleEvents.map((e) => e.tokens_in));
   const avgTokensOut = avg(visibleEvents.map((e) => e.tokens_out));
 
+  const headerAction = (
+    <button
+      type="button"
+      onClick={() => void fetchData()}
+      disabled={loading}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+    >
+      <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+      Refresh
+    </button>
+  );
+
   return (
-    <div className="p-8 space-y-8 max-w-5xl">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <PageShell
+      title="Cold Starts"
+      subtitle="Session latency, percentiles, and token usage"
+      action={headerAction}
+    >
+      <div className="space-y-8 animate-fade-in-up">
+        {error && (
+          <ErrorBanner
+            message="Failed to load cold-start data"
+            detail={error}
+            onRetry={() => void fetchData()}
+          />
+        )}
+
+        {/* Percentile StatCards */}
         <div>
-          <h1 className="text-2xl font-semibold text-ds-gray-1000">
-            Cold Starts
-          </h1>
-          <p className="mt-1 text-sm text-ds-gray-900">
-            Session latency, percentiles, and token usage
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void fetchData()}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
-          <AlertCircle size={16} />
-          <span className="text-sm">{error}</span>
-        </div>
-      )}
-
-      {/* Percentile cards */}
-      <div>
-        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
-          Percentiles (24h)
-        </h2>
-        {loading ? (
-          <div className="grid grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-20 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+          <div className="mb-3">
+            <SectionHeader label="Percentiles (24h)" />
+          </div>
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-32 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <StatCard
+                icon={<Timer size={20} />}
+                label="P50 Latency"
+                value={msToSeconds(data?.percentiles.p50_ms ?? 0)}
+                sublabel="median"
+                variant="success"
               />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <PercentileCard
-              label="P50"
-              ms={data?.percentiles.p50_ms ?? 0}
-              accent
-            />
-            <PercentileCard
-              label="P95"
-              ms={data?.percentiles.p95_ms ?? 0}
-            />
-            <PercentileCard
-              label="P99"
-              ms={data?.percentiles.p99_ms ?? 0}
-            />
-          </div>
-        )}
-        {!loading && data && (
-          <p className="mt-2 text-xs text-ds-gray-900">
-            {data.percentiles.sample_count} events in window
-          </p>
-        )}
-      </div>
-
-      {/* Latency chart */}
-      <div>
-        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
-          Latency (last 100 events)
-        </h2>
-        {loading ? (
-          <div className="h-52 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
-        ) : !visibleEvents.length ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
-            <Activity size={32} />
-            <p className="text-sm">No cold-start events recorded yet</p>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 p-4">
-            <LatencyChart events={data?.events ?? []} />
-            <ChartLegend />
-          </div>
-        )}
-      </div>
-
-      {/* Stats row */}
-      <div>
-        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
-          Averages (visible window)
-        </h2>
-        {loading ? (
-          <div className="grid grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+              <StatCard
+                icon={<Timer size={20} />}
+                label="P95 Latency"
+                value={msToSeconds(data?.percentiles.p95_ms ?? 0)}
+                sublabel="95th percentile"
+                variant="warning"
               />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <StatCard
-              label="Avg Tool Count"
-              value={avgToolCount.toFixed(1)}
-            />
-            <StatCard
-              label="Avg Tokens In"
-              value={Math.round(avgTokensIn).toLocaleString()}
-            />
-            <StatCard
-              label="Avg Tokens Out"
-              value={Math.round(avgTokensOut).toLocaleString()}
-            />
-          </div>
-        )}
-      </div>
+              <StatCard
+                icon={<Timer size={20} />}
+                label="P99 Latency"
+                value={msToSeconds(data?.percentiles.p99_ms ?? 0)}
+                sublabel="99th percentile"
+                variant="error"
+              />
+            </div>
+          )}
+          {!loading && data && (
+            <p className="mt-2 text-label-13 text-ds-gray-900">
+              {data.percentiles.sample_count} events in window
+            </p>
+          )}
+        </div>
 
-      {/* Pipeline Latency Chart */}
-      <div className="mt-6">
-        <PipelineLatencyChart />
+        {/* Latency chart — surface-inset */}
+        <div>
+          <div className="mb-3">
+            <SectionHeader label="Latency (last 100 events)" />
+          </div>
+          {loading ? (
+            <div className="h-52 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400" />
+          ) : !visibleEvents.length ? (
+            <EmptyState
+              title="No cold-start events"
+              description="Cold start events will appear here once sessions are recorded."
+              icon={<Activity size={24} aria-hidden="true" />}
+            />
+          ) : (
+            <div className="surface-card p-4">
+              <div className="surface-inset p-4">
+                <LatencyChart events={data?.events ?? []} />
+              </div>
+              <ChartLegend />
+            </div>
+          )}
+        </div>
+
+        {/* Averages row — StatCards */}
+        <div>
+          <div className="mb-3">
+            <SectionHeader label="Averages (visible window)" />
+          </div>
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <StatCard
+                icon={<Zap size={20} />}
+                label="Avg Tool Count"
+                value={avgToolCount.toFixed(1)}
+                sublabel="per session"
+                variant="default"
+              />
+              <StatCard
+                icon={<Timer size={20} />}
+                label="Avg Tokens In"
+                value={Math.round(avgTokensIn).toLocaleString()}
+                sublabel="input tokens"
+                variant="default"
+              />
+              <StatCard
+                icon={<Timer size={20} />}
+                label="Avg Tokens Out"
+                value={Math.round(avgTokensOut).toLocaleString()}
+                sublabel="output tokens"
+                variant="default"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Pipeline Latency Chart */}
+        <div className="mt-6">
+          <PipelineLatencyChart />
+        </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

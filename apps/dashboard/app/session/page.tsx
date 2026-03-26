@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import SessionDashboard from "@/components/SessionDashboard";
+import PageShell from "@/components/layout/PageShell";
 import type { SessionStatus } from "@/lib/session-manager";
 
 export default function SessionPage() {
@@ -17,7 +18,9 @@ export default function SessionPage() {
         const data = (await res.json()) as SessionStatus;
         setInitialStatus(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load session status");
+        setError(
+          err instanceof Error ? err.message : "Failed to load session status",
+        );
       } finally {
         setLoading(false);
       }
@@ -28,39 +31,43 @@ export default function SessionPage() {
 
   if (loading) {
     return (
-      <div className="p-8 max-w-4xl">
-        <div className="mb-8">
-          <div className="h-7 w-48 animate-pulse rounded-lg bg-ds-gray-100" />
-          <div className="mt-2 h-4 w-64 animate-pulse rounded bg-ds-gray-100" />
-        </div>
-        <div className="space-y-4">
+      <PageShell title="CC Session" subtitle="Manage the Claude Code container session">
+        <div className="space-y-4 animate-fade-in-up">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
+            <div
+              key={i}
+              className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
+            />
           ))}
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (error) {
     return (
-      <div className="p-8 max-w-4xl">
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700 text-sm">
-          {error}
+      <PageShell title="CC Session" subtitle="Manage the Claude Code container session">
+        <div
+          className="flex items-start gap-3 p-4 rounded-md"
+          style={{
+            background: "rgba(229, 72, 77, 0.08)",
+            borderLeft: "3px solid var(--ds-red-700)",
+          }}
+        >
+          <p className="text-copy-14 text-red-700">{error}</p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="p-8 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold text-ds-gray-1000">CC Session</h1>
-        <p className="mt-1 text-sm text-ds-gray-900">
-          Manage the Claude Code container session
-        </p>
+    <PageShell
+      title="CC Session"
+      subtitle="Manage the Claude Code container session"
+    >
+      <div className="animate-fade-in-up">
+        <SessionDashboard initialStatus={initialStatus} />
       </div>
-      <SessionDashboard initialStatus={initialStatus} />
-    </div>
+    </PageShell>
   );
 }

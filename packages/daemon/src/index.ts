@@ -187,7 +187,25 @@ export async function main(): Promise<void> {
         try {
           void telegram!.sendChatAction(msg.chatId, "typing");
           const response = await agent.processMessage(msg, []);
-          await telegram!.sendMessage(msg.chatId, response.text);
+
+          // Send as plain text — agent responses may contain raw angle-bracket
+          // tags that Telegram rejects when parse_mode is HTML.
+          try {
+            await telegram!.sendMessage(msg.chatId, response.text);
+          } catch (sendErr: unknown) {
+            // Telegram rejected the message (e.g. malformed entities). Retry
+            // by stripping the text down to a safe truncated notice so the
+            // user always gets some feedback.
+            log.warn(
+              { service: "nova-daemon", chatId: msg.chatId, err: sendErr },
+              "sendMessage failed — retrying without message body",
+            );
+            await telegram!.sendMessage(
+              msg.chatId,
+              "(Response could not be delivered — contains unsupported formatting.)",
+            );
+          }
+
           log.info(
             {
               service: "nova-daemon",

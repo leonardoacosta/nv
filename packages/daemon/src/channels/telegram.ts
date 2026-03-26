@@ -247,7 +247,7 @@ export class TelegramAdapter {
     options?: SendMessageOptions,
   ): Promise<TelegramBot.Message> {
     const sendOptions: TelegramBot.SendMessageOptions = {
-      parse_mode: options?.parseMode ?? "HTML",
+      ...(options?.parseMode !== undefined ? { parse_mode: options.parseMode } : {}),
       ...(options?.replyToMessageId !== undefined
         ? { reply_to_message_id: options.replyToMessageId }
         : {}),

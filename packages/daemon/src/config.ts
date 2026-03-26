@@ -3,6 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as TOML from "@iarna/toml";
 import "dotenv/config";
+import {
+  type ProactiveWatcherConfig,
+  defaultProactiveWatcherConfig,
+} from "./features/watcher/types.js";
+
+export type { ProactiveWatcherConfig };
 
 export interface AutonomyConfig {
   enabled: boolean;
@@ -19,12 +25,14 @@ export interface Config {
   vercelGatewayKey?: string;
   databaseUrl: string;
   systemPromptPath: string;
+  telegramChatId?: string;
   autonomy?: AutonomyConfig;
+  proactiveWatcher: ProactiveWatcherConfig;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
 
-const DEFAULTS: Omit<Config, "configPath" | "databaseUrl"> = {
+const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "vercelGatewayKey"> = {
   logLevel: "info",
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
@@ -35,12 +43,24 @@ interface TomlConfig {
     port?: number;
     log_level?: string;
   };
+  telegram?: {
+    chat_id?: number | string;
+  };
   autonomy?: {
     enabled?: boolean;
     timeout_ms?: number;
     cooldown_hours?: number;
     idle_debounce_ms?: number;
     poll_interval_ms?: number;
+  };
+  proactive_watcher?: {
+    enabled?: boolean;
+    interval_minutes?: number;
+    stale_threshold_hours?: number;
+    approaching_deadline_hours?: number;
+    max_reminders_per_interval?: number;
+    quiet_start?: string;
+    quiet_end?: string;
   };
 }
 
@@ -84,6 +104,13 @@ export async function loadConfig(
 
   const vercelGatewayKey = process.env["VERCEL_GATEWAY_KEY"];
 
+  const telegramChatIdRaw =
+    process.env["TELEGRAM_CHAT_ID"] ??
+    (toml.telegram?.chat_id !== undefined
+      ? String(toml.telegram.chat_id)
+      : undefined);
+  const telegramChatId = telegramChatIdRaw;
+
   const systemPromptPath =
     process.env["NV_SYSTEM_PROMPT_PATH"] ?? DEFAULTS.systemPromptPath;
 
@@ -95,13 +122,39 @@ export async function loadConfig(
     pollIntervalMs: toml.autonomy?.poll_interval_ms ?? 30_000,
   };
 
+  const proactiveWatcher: ProactiveWatcherConfig = {
+    enabled:
+      toml.proactive_watcher?.enabled ??
+      defaultProactiveWatcherConfig.enabled,
+    intervalMinutes:
+      toml.proactive_watcher?.interval_minutes ??
+      defaultProactiveWatcherConfig.intervalMinutes,
+    staleThresholdHours:
+      toml.proactive_watcher?.stale_threshold_hours ??
+      defaultProactiveWatcherConfig.staleThresholdHours,
+    approachingDeadlineHours:
+      toml.proactive_watcher?.approaching_deadline_hours ??
+      defaultProactiveWatcherConfig.approachingDeadlineHours,
+    maxRemindersPerInterval:
+      toml.proactive_watcher?.max_reminders_per_interval ??
+      defaultProactiveWatcherConfig.maxRemindersPerInterval,
+    quietStart:
+      toml.proactive_watcher?.quiet_start ??
+      defaultProactiveWatcherConfig.quietStart,
+    quietEnd:
+      toml.proactive_watcher?.quiet_end ??
+      defaultProactiveWatcherConfig.quietEnd,
+  };
+
   return {
     logLevel,
     daemonPort,
     configPath,
     databaseUrl,
     vercelGatewayKey,
+    telegramChatId,
     systemPromptPath,
     autonomy,
+    proactiveWatcher,
   };
 }

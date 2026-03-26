@@ -31,6 +31,33 @@ export interface PutMemoryResponse {
   written: number;
 }
 
+// ── GET /api/obligations ───────────────────────────────────────────────────
+
+/**
+ * A single obligation returned by GET /api/obligations.
+ * Field names match the Rust `Obligation` struct in nv-core/src/types.rs.
+ */
+export interface DaemonObligation {
+  id: string;
+  source_channel: string;
+  source_message: string | null;
+  detected_action: string;
+  project_code: string | null;
+  priority: number;
+  /** "open" | "in_progress" | "done" | "dismissed" */
+  status: string;
+  /** "nova" | "leo" */
+  owner: string;
+  owner_reason: string | null;
+  deadline: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ObligationsGetResponse {
+  obligations: DaemonObligation[];
+}
+
 // ── GET /api/projects ──────────────────────────────────────────────────────
 
 export interface ApiProject {

@@ -115,18 +115,21 @@ export default function IntegrationsPage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {grouped
-            .filter((g) => g.items.length > 0)
-            .map(({ key, label, items }) => (
-              <section key={key}>
-                <div className="flex items-center gap-2 mb-3">
-                  <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide">
-                    {label}
-                  </h2>
-                  <span className="text-xs font-mono text-cosmic-muted">
-                    {items.length}
-                  </span>
-                </div>
+          {grouped.map(({ key, label, items }) => (
+            <section key={key}>
+              <div className="flex items-center gap-2 mb-3">
+                <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide">
+                  {label}
+                </h2>
+                <span className="text-xs font-mono text-cosmic-muted">
+                  {items.length}
+                </span>
+              </div>
+              {items.length === 0 ? (
+                <p className="text-sm text-cosmic-muted py-2 pl-1 italic">
+                  No integrations configured.
+                </p>
+              ) : (
                 <div className="space-y-2">
                   {items.map((integration) => (
                     <IntegrationCard
@@ -136,8 +139,9 @@ export default function IntegrationsPage() {
                     />
                   ))}
                 </div>
-              </section>
-            ))}
+              )}
+            </section>
+          ))}
         </div>
       )}
 
@@ -150,45 +154,87 @@ export default function IntegrationsPage() {
   );
 }
 
-/** Fallback: build integration list from raw config object */
+// Known integration key → category mapping.
+const KNOWN_INTEGRATIONS: Record<
+  string,
+  { category: Integration["category"]; displayName: string }
+> = {
+  telegram: { category: "channels", displayName: "Telegram" },
+  discord: { category: "channels", displayName: "Discord" },
+  slack: { category: "channels", displayName: "Slack" },
+  teams: { category: "channels", displayName: "Microsoft Teams" },
+  github: { category: "tools", displayName: "GitHub" },
+  linear: { category: "tools", displayName: "Linear" },
+  notion: { category: "tools", displayName: "Notion" },
+  openai: { category: "services", displayName: "OpenAI" },
+  anthropic: { category: "services", displayName: "Anthropic" },
+  stripe: { category: "services", displayName: "Stripe" },
+  resend: { category: "services", displayName: "Resend" },
+  sentry: { category: "services", displayName: "Sentry" },
+  posthog: { category: "services", displayName: "PostHog" },
+};
+
+/** Determine integration status from a config value. */
+function inferStatus(value: unknown): Integration["status"] {
+  if (!value) return "disconnected";
+  if (typeof value === "object" && value !== null) {
+    if ("enabled" in value) {
+      return (value as { enabled: boolean }).enabled ? "connected" : "disconnected";
+    }
+    // Has nested values — check if any key looks like a credential
+    const obj = value as Record<string, unknown>;
+    const hasCredential = Object.entries(obj).some(
+      ([k, v]) =>
+        (k.includes("token") || k.includes("key") || k.includes("secret")) &&
+        Boolean(v),
+    );
+    return hasCredential ? "connected" : "disconnected";
+  }
+  return "connected";
+}
+
+/** Fallback: build integration list from raw config object. */
 function buildFromConfig(raw: Record<string, unknown>): Integration[] {
   const items: Integration[] = [];
 
-  const channelKeys = ["telegram", "discord", "slack"];
-  const toolKeys = ["github", "linear", "notion"];
-  const serviceKeys = ["openai", "anthropic", "stripe", "resend"];
-
   for (const [key, value] of Object.entries(raw)) {
     const lower = key.toLowerCase();
-    const category: Integration["category"] = channelKeys.some((c) =>
-      lower.includes(c)
-    )
-      ? "channels"
-      : toolKeys.some((t) => lower.includes(t))
-        ? "tools"
-        : serviceKeys.some((s) => lower.includes(s))
-          ? "services"
+    const known = KNOWN_INTEGRATIONS[lower];
+
+    if (known) {
+      items.push({
+        id: key,
+        name: known.displayName,
+        status: inferStatus(value),
+        category: known.category,
+        config:
+          typeof value === "object" && value !== null
+            ? (value as Record<string, string | number | boolean>)
+            : undefined,
+      });
+    } else {
+      // Unknown key — derive category heuristically
+      const channelKeys = ["channel", "chat", "message"];
+      const toolKeys = ["tool", "git", "issue", "tracker"];
+      const category: Integration["category"] = channelKeys.some((c) =>
+        lower.includes(c),
+      )
+        ? "channels"
+        : toolKeys.some((t) => lower.includes(t))
+          ? "tools"
           : "services";
 
-    const status: Integration["status"] =
-      value && typeof value === "object" && "enabled" in value
-        ? (value as { enabled: boolean }).enabled
-          ? "connected"
-          : "disconnected"
-        : value
-          ? "connected"
-          : "disconnected";
-
-    items.push({
-      id: key,
-      name: key.charAt(0).toUpperCase() + key.slice(1),
-      status,
-      category,
-      config:
-        typeof value === "object" && value !== null
-          ? (value as Record<string, string | number | boolean>)
-          : undefined,
-    });
+      items.push({
+        id: key,
+        name: key.charAt(0).toUpperCase() + key.slice(1),
+        status: inferStatus(value),
+        category,
+        config:
+          typeof value === "object" && value !== null
+            ? (value as Record<string, string | number | boolean>)
+            : undefined,
+      });
+    }
   }
 
   return items;

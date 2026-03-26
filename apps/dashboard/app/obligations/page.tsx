@@ -5,8 +5,25 @@ import { CheckSquare, AlertCircle, RefreshCw, Clock } from "lucide-react";
 import ObligationItem, {
   type Obligation,
 } from "@/components/ObligationItem";
+import type { DaemonObligation, ObligationsGetResponse } from "@/types/api";
 
 type TabKey = "open" | "history";
+
+/** Map a daemon Obligation to the component's Obligation interface. */
+function mapDaemonObligation(o: DaemonObligation): Obligation {
+  // Daemon status "done" maps to component "completed"
+  const status = o.status === "done" ? "completed" : (o.status as Obligation["status"]);
+  return {
+    id: o.id,
+    title: o.detected_action,
+    description: o.source_message ?? undefined,
+    priority: Math.min(Math.max(o.priority, 0), 4) as Obligation["priority"],
+    owner: o.owner,
+    status,
+    due_at: o.deadline ?? undefined,
+    created_at: o.created_at,
+  };
+}
 
 export default function ObligationsPage() {
   const [obligations, setObligations] = useState<Obligation[]>([]);
@@ -20,8 +37,8 @@ export default function ObligationsPage() {
     try {
       const res = await fetch("/api/obligations");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as Obligation[];
-      setObligations(data);
+      const data = (await res.json()) as ObligationsGetResponse;
+      setObligations((data.obligations ?? []).map(mapDaemonObligation));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load obligations"

@@ -6,6 +6,18 @@ import ProjectAccordion, {
   type Project,
   type ProjectError,
 } from "@/components/ProjectAccordion";
+import type { ApiProject, ProjectsGetResponse } from "@/types/api";
+
+/** Map daemon ApiProject ({ code, path }) to the component Project interface. */
+function mapApiProject(p: ApiProject): Project {
+  return {
+    id: p.code,
+    name: p.code,
+    path: p.path,
+    status: "unknown",
+    errors: [],
+  };
+}
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -20,8 +32,8 @@ export default function ProjectsPage() {
     try {
       const res = await fetch("/api/projects");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as Project[];
-      setProjects(data);
+      const data = (await res.json()) as ProjectsGetResponse;
+      setProjects((data.projects ?? []).map(mapApiProject));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load projects");
     } finally {

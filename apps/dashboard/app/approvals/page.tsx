@@ -17,6 +17,7 @@ import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
+import type { DaemonObligation, ObligationsGetResponse } from "@/types/api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,6 +76,32 @@ const URGENCY_CONFIG: Record<
   },
   low: { label: "Low", dot: "bg-cosmic-muted", text: "text-cosmic-muted" },
 };
+
+/** Map daemon priority (0-4) to Approval urgency string. */
+function priorityToUrgency(priority: number): Approval["urgency"] {
+  if (priority === 0) return "critical";
+  if (priority === 1) return "high";
+  if (priority === 2) return "medium";
+  return "low";
+}
+
+/** Map a daemon Obligation to the Approval interface used by DetailPanel and QueueItem. */
+function mapObligationToApproval(o: DaemonObligation): Approval {
+  const status: Approval["status"] =
+    o.status === "done" ? "approved" : o.status === "dismissed" ? "dismissed" : "pending";
+  return {
+    id: o.id,
+    title: o.detected_action,
+    description: o.source_message ?? undefined,
+    action_type: "other",
+    project: o.project_code ?? undefined,
+    proposed_changes: undefined,
+    context: undefined,
+    urgency: priorityToUrgency(o.priority),
+    status,
+    created_at: o.created_at,
+  };
+}
 
 function relativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -297,11 +324,12 @@ export default function ApprovalsPage() {
     try {
       const res = await fetch("/api/obligations?owner=leo&status=open");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as Approval[];
-      setApprovals(data);
+      const data = (await res.json()) as ObligationsGetResponse;
+      const mapped = (data.obligations ?? []).map(mapObligationToApproval);
+      setApprovals(mapped);
       // Auto-select first if none selected
-      if (data.length > 0 && !selectedId) {
-        setSelectedId(data[0]!.id);
+      if (mapped.length > 0 && !selectedId) {
+        setSelectedId(mapped[0]!.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load approvals");

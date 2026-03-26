@@ -313,7 +313,24 @@ function ConfigSection({ section, fields, config, onChange }: ConfigSectionProps
   const [open, setOpen] = useState(true);
   const SectionIcon = section.icon;
 
-  if (fields.length === 0) return null;
+  if (fields.length === 0) {
+    // Always render the card with an empty-state placeholder so all four
+    // sections are visible even when /api/config returns {}.
+    return (
+      <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">
+        <div className="w-full flex items-center gap-3 px-4 py-3.5 min-h-11 text-left opacity-60">
+          <SectionIcon size={15} className="text-cosmic-purple shrink-0" />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-semibold text-cosmic-text">{section.label}</h2>
+          </div>
+          <span className="text-xs font-mono text-cosmic-muted">0</span>
+        </div>
+        <div className="border-t border-cosmic-border px-4 py-3">
+          <p className="text-xs text-cosmic-muted italic">No fields configured.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">

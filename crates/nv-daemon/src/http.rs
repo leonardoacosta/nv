@@ -6,7 +6,7 @@ use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, patch, post, put};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use nv_core::types::{CliCommand, CliRequest, CronEvent, ObligationOwner, ObligationStatus, Trigger};
 use serde::{Deserialize, Serialize};

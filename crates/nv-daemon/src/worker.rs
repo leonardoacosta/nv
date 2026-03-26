@@ -1639,7 +1639,21 @@ impl Worker {
                         match r {
                             Ok(resp) => Ok(resp),
                             Err(_e) => {
-                                // Streaming failed — fall back to cold-start on this attempt.
+                                // Streaming failed — delete the orphaned "..." placeholder
+                                // so the user doesn't stare at ellipsis during cold-start.
+                                if let (Some(tg), Some(cid), Some(pid)) =
+                                    (&tg_client, tg_chat_id, placeholder_msg_id)
+                                {
+                                    let _ = tg.delete_message(cid, pid).await;
+                                    tracing::info!("streaming failed: deleted placeholder, falling back to cold-start");
+                                }
+                                placeholder_msg_id = None;
+
+                                // Re-send typing indicator for cold-start
+                                if let (Some(tg), Some(cid)) = (&tg_client, tg_chat_id) {
+                                    tg.send_chat_action(cid, "typing").await;
+                                }
+
                                 client
                                     .send_messages_with_image(
                                         &system_prompt,
@@ -1652,6 +1666,10 @@ impl Worker {
                         }
                     } else {
                         // Retry attempt or first attempt without streaming.
+                        // Refresh typing indicator on each retry.
+                        if let (Some(tg), Some(cid)) = (&tg_client, tg_chat_id) {
+                            tg.send_chat_action(cid, "typing").await;
+                        }
                         client
                             .send_messages_with_image(
                                 &system_prompt,

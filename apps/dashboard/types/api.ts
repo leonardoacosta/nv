@@ -34,6 +34,44 @@ export interface PutMemoryResponse {
 // ── GET /api/obligations ───────────────────────────────────────────────────
 
 /**
+ * A single note on an obligation (from obligation_notes table).
+ * Matches `ObligationNote` struct in nv-daemon.
+ */
+export interface ObligationNote {
+  id: string;
+  obligation_id: string;
+  /** "execution_result" | "research" | "comment" | string */
+  note_type: string;
+  content: string;
+  created_at: string;
+}
+
+/**
+ * A single activity event from the obligation activity ring buffer.
+ * Matches `ObligationActivityEvent` in nv-daemon/src/http.rs.
+ */
+export interface ObligationActivity {
+  id: string;
+  event_type: string;
+  obligation_id: string;
+  description: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Stats summary returned by GET /api/obligations/stats.
+ * Matches `ObligationStats` in nv-daemon/src/obligation_store.rs.
+ */
+export interface ObligationStats {
+  open_nova: number;
+  open_leo: number;
+  in_progress: number;
+  proposed_done: number;
+  done_today: number;
+}
+
+/**
  * A single obligation returned by GET /api/obligations.
  * Field names match the Rust `Obligation` struct in nv-core/src/types.rs.
  */
@@ -44,7 +82,7 @@ export interface DaemonObligation {
   detected_action: string;
   project_code: string | null;
   priority: number;
-  /** "open" | "in_progress" | "done" | "dismissed" */
+  /** "open" | "in_progress" | "proposed_done" | "done" | "dismissed" */
   status: string;
   /** "nova" | "leo" */
   owner: string;
@@ -52,10 +90,20 @@ export interface DaemonObligation {
   deadline: string | null;
   created_at: string;
   updated_at: string;
+  /** Execution notes (from obligation_notes table), newest first */
+  notes: ObligationNote[];
+  /** Number of execution attempts */
+  attempt_count: number;
+  /** ISO timestamp of last attempt, if any */
+  last_attempt_at: string | null;
 }
 
 export interface ObligationsGetResponse {
   obligations: DaemonObligation[];
+}
+
+export interface ObligationActivityGetResponse {
+  events: ObligationActivity[];
 }
 
 // ── GET /api/projects ──────────────────────────────────────────────────────

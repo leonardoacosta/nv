@@ -31,20 +31,20 @@
 
 ## UI Batch — Dashboard Obligations Page
 
-- [ ] [4.1] [P-1] Add `apps/dashboard/app/api/obligations/activity/route.ts` — GET proxy to daemon `/api/obligations/activity` [owner:ui-engineer]
-- [ ] [4.2] [P-1] Add `apps/dashboard/app/api/obligations/stats/route.ts` — GET proxy to daemon `/api/obligations/stats` [owner:ui-engineer]
-- [ ] [4.3] [P-1] Add obligation types to `apps/dashboard/types/api.ts` — `ObligationNote`, `ObligationActivity`, `ObligationStats`, extend `DaemonObligation` with `notes`, `attempt_count`, `last_attempt_at` [owner:ui-engineer]
-- [ ] [4.4] [P-1] Create `apps/dashboard/components/ActivityFeed.tsx` — real-time event feed component; subscribes to WebSocket obligation events via `useDaemonEvents`; falls back to polling `/api/obligations/activity` every 10s; renders last 50 events reverse-chronological with type icon, timestamp, description [owner:ui-engineer]
-- [ ] [4.5] [P-2] Add stats bar to `apps/dashboard/app/obligations/page.tsx` — 5 StatCard components across the top: Open (Nova), In Progress, Proposed Done, Done Today, Open (Leo); fetch from `/api/obligations/stats` [owner:ui-engineer]
-- [ ] [4.6] [P-2] Redesign obligation card in `apps/dashboard/app/obligations/page.tsx` — header (action + status badge + priority + owner), context section (channel + source message expandable), execution history timeline (from notes), action buttons per status [owner:ui-engineer]
-- [ ] [4.7] [P-2] Add `<ActivityFeed>` panel to obligations page — positioned as right sidebar on desktop (1/3 width), below obligations list on mobile [owner:ui-engineer]
-- [ ] [4.8] [P-3] Add [Start] button on open obligations — sends POST to `/api/obligations/{id}/execute` (new endpoint that triggers immediate execution regardless of idle state) [owner:ui-engineer]
+- [x] [4.1] [P-1] Add `apps/dashboard/app/api/obligations/activity/route.ts` — GET proxy to daemon `/api/obligations/activity` [owner:ui-engineer]
+- [x] [4.2] [P-1] Add `apps/dashboard/app/api/obligations/stats/route.ts` — GET proxy to daemon `/api/obligations/stats` [owner:ui-engineer]
+- [x] [4.3] [P-1] Add obligation types to `apps/dashboard/types/api.ts` — `ObligationNote`, `ObligationActivity`, `ObligationStats`, extend `DaemonObligation` with `notes`, `attempt_count`, `last_attempt_at` [owner:ui-engineer]
+- [x] [4.4] [P-1] Create `apps/dashboard/components/ActivityFeed.tsx` — real-time event feed component; subscribes to WebSocket obligation events via `useDaemonEvents`; falls back to polling `/api/obligations/activity` every 10s; renders last 50 events reverse-chronological with type icon, timestamp, description [owner:ui-engineer]
+- [x] [4.5] [P-2] Add stats bar to `apps/dashboard/app/obligations/page.tsx` — 5 StatCard components across the top: Open (Nova), In Progress, Proposed Done, Done Today, Open (Leo); fetch from `/api/obligations/stats` [owner:ui-engineer]
+- [x] [4.6] [P-2] Redesign obligation card in `apps/dashboard/app/obligations/page.tsx` — header (action + status badge + priority + owner), context section (channel + source message expandable), execution history timeline (from notes), action buttons per status [owner:ui-engineer]
+- [x] [4.7] [P-2] Add `<ActivityFeed>` panel to obligations page — positioned as right sidebar on desktop (1/3 width), below obligations list on mobile [owner:ui-engineer]
+- [x] [4.8] [P-3] Add [Start] button on open obligations — sends POST to `/api/obligations/{id}/execute` (new endpoint that triggers immediate execution regardless of idle state) [owner:ui-engineer]
 
 ## Verify
 
 - [x] [5.1] `cargo build -p nv-daemon` passes [owner:api-engineer]
 - [ ] [5.2] `cargo clippy -p nv-daemon -- -D warnings` passes [owner:api-engineer]
-- [ ] [5.3] `cd apps/dashboard && npx next build` passes [owner:ui-engineer]
+- [x] [5.3] `cd apps/dashboard && npx next build` passes [owner:ui-engineer]
 - [ ] [5.4] [user] Telegram: send `/obligations` — verify list renders with priorities and owners
 - [ ] [5.5] [user] Telegram: send `/ob create Test obligation for Nova` — verify obligation created
 - [ ] [5.6] [user] Telegram: send `/ob status` — verify summary counts

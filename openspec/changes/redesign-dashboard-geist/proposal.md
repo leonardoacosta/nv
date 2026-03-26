@@ -5,244 +5,224 @@
 
 ## Summary
 
-Overhaul the Nova dashboard's visual layer to align with Vercel's Geist design system while
-preserving the cosmic dark identity. Fix flat surfaces, bare empty states, weak typography
-hierarchy, missing transitions, and inconsistent component styling across all 15 pages.
+Replace the cosmic purple theme entirely with Vercel's Geist design system. Pure neutral gray
+scale, proper `--ds-*` token system, Geist materials for elevation, Geist type scale for hierarchy.
+The dashboard should look like a Vercel product — clean, high-contrast dark mode with no purple.
 
 ## Context
 - Extends: `apps/dashboard/` (all pages, components, globals.css, tailwind.config.ts)
-- Related: rebuild-dashboard-wireframes (v7), all fix-dashboard-* remediation specs (current)
-- Source: Geist design system (`--ds-*` token system, materials, type scale, status colors)
+- Replaces: All `cosmic-*` color tokens, `bg-cosmic-gradient`, `shadow-cosmic-*`, `rounded-cosmic`
+- Source: Geist design system (`--ds-*` tokens, materials, type scale, status colors)
 
 ## Motivation
 
-The dashboard was built by agents across 34 specs in a single session. Each agent produced
-functional code but made independent styling decisions. The result:
+The current cosmic purple theme was a creative choice that doesn't match the product's identity.
+Nova is a developer tool — it should look like one. Geist provides:
 
-1. **No surface elevation** -- Every card, panel, and container is the same visual depth. Geist
-   uses material layers (base/small/medium/large) with distinct border-radius, background, and
-   shadow. Currently everything is `bg-cosmic-surface border border-cosmic-border` with no
-   variation.
-
-2. **Flat stat cards** -- StatCard shows value + label but has no icon, no trend indicator, no
-   accent color, no hover state. Compare: Geist's metric tiles have colored accent bars, subtle
-   background tints, and bold value typography.
-
-3. **Bare empty states** -- Pages show "No data found" text with no illustration, no contextual
-   help, no CTA button. Geist's EmptyState pattern uses a centered icon (48px, muted), a title,
-   a description, and an optional action button.
-
-4. **Weak typography hierarchy** -- Page titles, section headers, card titles, labels, and body
-   text all use similar sizes and weights. Geist specifies: page title = heading-24 (600),
-   section label = label-14 (500 uppercase tracking-wide), body = copy-14, stat value = heading-32
-   (700 tabular-nums).
-
-5. **No transitions** -- Page loads are instant with no entrance animation. Cards pop into
-   existence. Hover states are binary (no color to color). Geist uses 150ms ease transitions on
-   interactive elements and staggered fade-in for lists.
-
-6. **Error banners lack structure** -- Red background with text. Geist errors use `ds-red-100`
-   background, `ds-red-400` border, `ds-red-900` text, with an icon prefix and optional retry
-   action.
-
-7. **Inconsistent border radius** -- Some elements use `rounded-cosmic` (12px), others use
-   `rounded-lg` (8px), `rounded-md` (6px). Geist materials specify: base/small = 6px,
-   medium/large = 12px, modal = 12px, fullscreen = 16px.
+1. **Neutral gray scale** — `--ds-gray-100` through `--ds-gray-1000`, no purple tinting
+2. **True dark mode** — `--ds-background-100: #0a0a0a`, `--ds-background-200: #111111`
+3. **Systematic elevation** — materials define hierarchy through shadow/blur, not color
+4. **High contrast** — accessible, readable, no murky purple-on-purple
+5. **Consistent radius** — 6px (small), 12px (medium), 16px (large) only
 
 ## Requirements
 
-### Req-1: Token Layer -- Cosmic x Geist Hybrid
+### Req-1: Strip Cosmic Theme Entirely
 
-Extend `tailwind.config.ts` and `globals.css` with a Geist-compatible token system mapped to
-cosmic colors. This enables using Geist patterns while keeping the cosmic identity.
+Remove ALL cosmic-* tokens and replace with Geist tokens:
 
 ```css
+/* DELETE these */
+--color-cosmic-purple, --color-cosmic-rose, --color-cosmic-dark,
+--color-cosmic-surface, --color-cosmic-border, --color-cosmic-muted,
+--color-cosmic-text, --color-cosmic-bright
+
+/* REPLACE with Geist dark mode tokens */
 :root {
-  /* Surface system (Geist materials mapped to cosmic) */
-  --ds-background-100: #0F0B1A;     /* cosmic-dark */
-  --ds-background-200: #1A1425;     /* cosmic-surface */
+  --ds-background-100: #0a0a0a;
+  --ds-background-200: #111111;
 
-  /* Gray scale (cosmic-aligned) */
-  --ds-gray-100: #1A1425;           /* component bg */
-  --ds-gray-200: #211A30;           /* hover bg */
-  --ds-gray-300: #2A2040;           /* active bg */
-  --ds-gray-400: #2D2640;           /* border */
-  --ds-gray-500: #3D3555;           /* hover border */
-  --ds-gray-600: #4D4570;           /* active border */
-  --ds-gray-700: #5D5580;           /* high contrast bg */
-  --ds-gray-900: #6B5B8A;           /* secondary text */
-  --ds-gray-1000: #E8E0F0;          /* primary text */
+  --ds-gray-100: #1a1a1a;
+  --ds-gray-200: #1f1f1f;
+  --ds-gray-300: #292929;
+  --ds-gray-400: #2e2e2e;
+  --ds-gray-500: #454545;
+  --ds-gray-600: #5e5e5e;
+  --ds-gray-700: #6e6e6e;
+  --ds-gray-800: #7c7c7c;
+  --ds-gray-900: #a0a0a0;
+  --ds-gray-1000: #ededed;
 
-  /* Alpha overlays */
-  --ds-gray-alpha-100: rgba(124, 58, 237, 0.04);
-  --ds-gray-alpha-200: rgba(124, 58, 237, 0.08);
-  --ds-gray-alpha-400: rgba(124, 58, 237, 0.15);
+  --ds-gray-alpha-100: rgba(255,255,255,0.03);
+  --ds-gray-alpha-200: rgba(255,255,255,0.06);
+  --ds-gray-alpha-400: rgba(255,255,255,0.10);
 
-  /* Accent */
-  --ds-purple-700: #7C3AED;         /* cosmic-purple */
-  --ds-purple-900: #A78BFA;         /* lighter purple for text-on-dark */
-
-  /* Status */
-  --ds-green-700: #10B981;          /* emerald success */
-  --ds-amber-700: #F59E0B;          /* amber warning */
-  --ds-red-700: #F43F5E;            /* cosmic-rose error */
-  --ds-blue-700: #3B82F6;           /* info */
+  --ds-blue-700: #0070f3;
+  --ds-blue-900: #52a8ff;
+  --ds-green-700: #0cce6b;
+  --ds-green-900: #52e78c;
+  --ds-amber-700: #f5a623;
+  --ds-amber-900: #ffcc4d;
+  --ds-red-700: #e5484d;
+  --ds-red-900: #ff6369;
 }
 ```
 
-### Req-2: Typography Hierarchy
+Remove from tailwind.config.ts:
+- `colors.cosmic` object
+- `backgroundImage['cosmic-gradient']`
+- `boxShadow['cosmic-*']`
+- `borderRadius.cosmic`
 
-Establish clear type scale classes using Geist conventions:
+Replace with Geist-mapped Tailwind tokens.
+
+### Req-2: Tailwind Config — Geist Tokens
+
+```ts
+colors: {
+  ds: {
+    bg: { 100: '#0a0a0a', 200: '#111111' },
+    gray: {
+      100: '#1a1a1a', 200: '#1f1f1f', 300: '#292929',
+      400: '#2e2e2e', 500: '#454545', 600: '#5e5e5e',
+      700: '#6e6e6e', 800: '#7c7c7c', 900: '#a0a0a0',
+      1000: '#ededed',
+    },
+  },
+  blue: { 700: '#0070f3', 900: '#52a8ff' },
+  green: { 700: '#0cce6b', 900: '#52e78c' },
+  amber: { 700: '#f5a623', 900: '#ffcc4d' },
+  red: { 700: '#e5484d', 900: '#ff6369' },
+}
+```
+
+### Req-3: Typography — Geist Type Scale
+
+Add utility classes matching Geist exactly:
 
 | Role | Class | Size | Weight | Tracking |
 |------|-------|------|--------|----------|
-| Page title | `text-heading-24` | 24px | 600 | -0.01em |
-| Page subtitle | `text-copy-14` | 14px | 400 | 0 |
-| Section header | `text-label-12` | 12px | 500 | 0.05em, uppercase |
-| Card title | `text-label-16` | 16px | 500 | 0 |
-| Stat value | `text-heading-32` | 32px | 700 | -0.02em, tabular-nums |
-| Stat label | `text-label-13` | 13px | 400 | 0 |
-| Body text | `text-copy-14` | 14px | 400 | 0 |
-| Mono/code | `text-label-13-mono` | 13px | 400 | Geist Mono |
-| Button | `text-button-14` | 14px | 500 | 0 |
+| Page title | `.text-heading-24` | 24px | 600 | -0.01em |
+| Stat value | `.text-heading-32` | 32px | 700 | -0.02em, tabular-nums |
+| Section header | `.text-label-12` | 12px | 500 | 0.05em, uppercase |
+| Card title | `.text-label-16` | 16px | 500 | 0 |
+| Body | `.text-copy-14` | 14px | 400 | 0 |
+| Small label | `.text-label-13` | 13px | 400 | 0 |
+| Mono | `.text-label-13-mono` | 13px | 400 | Geist Mono |
+| Button | `.text-button-14` | 14px | 500 | 0 |
 
-Add these as Tailwind utility classes in globals.css.
+### Req-4: Materials — Surface Elevation
 
-### Req-3: Material Surfaces
+| Material | Background | Border | Radius | Shadow |
+|----------|-----------|--------|--------|--------|
+| `surface-base` | ds-gray-100 | ds-gray-400 | 6px | none |
+| `surface-card` | ds-gray-100 | ds-gray-alpha-400 | 12px | 0 1px 2px rgba(0,0,0,0.3) |
+| `surface-raised` | ds-gray-200 | ds-gray-500 | 12px | 0 4px 12px rgba(0,0,0,0.4) |
+| `surface-inset` | ds-bg-100 | ds-gray-alpha-200 | 6px | inset 0 1px 2px rgba(0,0,0,0.4) |
 
-Replace flat `bg-cosmic-surface border-cosmic-border` with layered materials:
+Hover on cards: border → ds-gray-500, translateY(-1px), shadow upgrade. 150ms ease.
 
-| Material | Background | Border | Radius | Shadow | Usage |
-|----------|-----------|--------|--------|--------|-------|
-| `surface-base` | gray-100 | gray-400 | 6px | none | Default containers |
-| `surface-card` | gray-100 | gray-alpha-400 | 12px | cosmic-sm | Cards, stat tiles |
-| `surface-raised` | gray-200 | gray-500 | 12px | cosmic | Modals, drawers, popovers |
-| `surface-overlay` | gray-300 | gray-600 | 16px | cosmic-lg | Full-screen overlays |
-| `surface-inset` | background-100 | gray-alpha-200 | 6px | inset 0 1px 2px | Input fields, code blocks |
+### Req-5: StatCard — Geist Style
 
-Implement as Tailwind `@apply` utility classes.
+- Clean card with `surface-card` material
+- Small colored left accent bar (4px): green=success, amber=warning, red=error, default=ds-gray-600
+- Icon (20px, ds-gray-700)
+- Value in `.text-heading-32 tabular-nums text-ds-gray-1000`
+- Label in `.text-label-13 text-ds-gray-900`
+- Optional trend: arrow + percentage in green/red
+- Hover lift + border brighten
 
-### Req-4: StatCard Redesign
+### Req-6: Empty State — Geist Pattern
 
-Replace the current flat stat card with a Geist-inspired metric tile:
+- Centered in container
+- Icon: 40px, `text-ds-gray-600`
+- Title: `.text-heading-16 text-ds-gray-1000`
+- Description: `.text-copy-14 text-ds-gray-900 max-w-xs`
+- Optional action button: `.surface-base` styled
+- Fade-in entrance 200ms
 
-- Left accent bar (4px, colored by status: purple=default, green=healthy, amber=warning, red=error)
-- Icon slot (24px, muted, from lucide-react)
-- Value in `text-heading-32` with `tabular-nums` for alignment
-- Label in `text-label-13` muted
-- Optional trend indicator: up arrow green / down arrow red + percentage
-- Hover: border transitions to gray-500, subtle background shift to gray-200
-- Transition: all 150ms ease
+### Req-7: Error Banner — Geist Pattern
 
-### Req-5: Empty State Pattern
+- Background: `rgba(229, 72, 77, 0.08)` (red-700 at 8%)
+- Left border: 3px solid ds-red-700
+- Icon: AlertCircle 16px in ds-red-700
+- Text: `.text-copy-14` in ds-red-900
+- Retry button: ghost style
+- Radius: 6px
 
-Replace bare "No data" text with structured empty states:
+### Req-8: Sidebar — Geist Navigation
 
-- Centered layout within parent
-- Icon: 48px lucide icon, `text-cosmic-muted opacity-50`
-- Title: `text-heading-16` (500), e.g. "No sessions found"
-- Description: `text-copy-14` muted, max-width 320px, e.g. "Sessions will appear here when the daemon processes messages"
-- Optional CTA button: `surface-card` style, e.g. "View documentation"
-- Entrance: fade-in 300ms ease
+- Background: `ds-bg-200`
+- Logo: "Nova" in `.text-label-16 font-semibold text-ds-gray-1000`
+- Nav items: `.text-label-14 text-ds-gray-900`, icon 18px
+- Active: `bg-ds-gray-alpha-200`, `text-ds-gray-1000`, left border 2px `ds-gray-1000` (white, not purple)
+- Hover: `bg-ds-gray-alpha-100`
+- Section dividers: thin `border-ds-gray-alpha-200` + group labels `.text-label-12 uppercase text-ds-gray-700`
+- Footer: WebSocket dot (green/amber/red) + status text `.text-label-12`
 
-Per-page empty states:
-| Page | Icon | Title | Description |
-|------|------|-------|-------------|
-| /sessions | Layers | No sessions found | Sessions appear when the daemon processes messages |
-| /messages | MessageSquare | No messages yet | Messages will appear as Nova processes conversations |
-| /approvals | ShieldCheck | No pending approvals | Nova will ask for your approval when needed |
-| /briefing | Sun | No briefing yet today | Nova generates a briefing each morning at 7am |
-| /diary | BookOpen | No diary entries | Entries are logged as Nova processes each interaction |
-| /contacts | Users | No contacts yet | Contacts are created as Nova encounters new people |
-| /projects | FolderOpen | No projects found | Projects are detected from your conversations |
-| /cold-starts | Timer | No cold start data | Data appears after the first message is processed |
+### Req-9: Page Transitions & Interactive States
 
-### Req-6: Error Banner Redesign
+Transitions:
+- Page content: fade-in + translateY(8px), 200ms ease (CSS only)
+- List items: staggered 50ms delay (max 10)
+- Stat cards: staggered 75ms
 
-Replace generic red banners with structured Geist-style error display:
+Interactive states:
+| State | Change |
+|-------|--------|
+| Hover | bg → ds-gray-200, border → ds-gray-500, 150ms |
+| Active | bg → ds-gray-300, scale(0.98), 100ms |
+| Focus-visible | 2px ring ds-blue-700 with 2px offset |
+| Disabled | opacity-50, cursor-not-allowed |
 
-- Background: `var(--ds-red-700)` at 10% opacity
-- Border-left: 3px solid `var(--ds-red-700)`
-- Icon: `AlertCircle` (16px) in `var(--ds-red-700)`
-- Text: `text-copy-14` in `var(--ds-red-700)` light variant
-- Optional retry button: ghost button aligned right
-- Dismiss: X icon button, optional
-- Border-radius: 6px (material-base)
+### Req-10: Skeleton Loading
 
-### Req-7: Sidebar Polish
+- Blocks: `bg-ds-gray-alpha-200` with shimmer gradient
+- Shimmer: linear-gradient sweep, 1.5s infinite
+- Match content shape per page variant
 
-- Active item: `bg-gray-alpha-200` with `border-l-2 border-cosmic-purple` accent
-- Hover: `bg-gray-alpha-100` transition 150ms
-- Icons: 18px, `text-gray-900` default, `text-cosmic-purple` when active
-- Section dividers between nav groups (Dashboard, Data, System)
-- Footer: WebSocket status dot + "Connected"/"Reconnecting" label in `text-label-12`
-- Logo area: Nova mark with `text-heading-16` "Nova" label, subtle bottom border
+### Req-11: Global Search/Replace
 
-### Req-8: Page Load Transitions
+Every file in `apps/dashboard/` must have cosmic references replaced:
 
-- Page content: fade-in + translateY(8px) on mount, 200ms ease, via CSS `@keyframes`
-- List items: staggered entrance, 50ms delay between items (max 10 items animated)
-- Stat cards: staggered fade-in across the grid, 75ms delay
-- Cards on hover: `transform: translateY(-1px)` + shadow upgrade, 150ms
-- Buttons: scale(0.98) on active, 100ms
-
-Implement via Tailwind animation utilities in globals.css:
-```css
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in-up { animation: fade-in-up 200ms ease forwards; }
-.animate-stagger-1 { animation-delay: 50ms; }
-.animate-stagger-2 { animation-delay: 100ms; }
-/* ... up to stagger-10 */
-```
-
-### Req-9: Interactive States
-
-Every interactive element (buttons, cards, links, tabs) needs three states:
-
-| State | Visual Change |
-|-------|--------------|
-| Default | Base styling |
-| Hover | Background lightens (gray-200), border brightens (gray-500), 150ms ease |
-| Active/Pressed | Background darkens (gray-300), scale(0.98), 100ms |
-| Focus-visible | 2px ring in cosmic-purple with 2px offset, for keyboard navigation |
-| Disabled | opacity-50, cursor-not-allowed, no hover effect |
-
-### Req-10: Skeleton Loading States
-
-Replace blank loading with animated skeletons matching content shape:
-
-- Skeleton blocks: `bg-gray-alpha-200` with shimmer gradient animation
-- Match the expected content layout (stat card shape for stat cards, row shape for lists)
-- Shimmer: linear-gradient sweep from left to right, 1.5s infinite
-- At least 3-5 skeleton items per list, 3-6 skeleton stat cards per grid
+| Find | Replace |
+|------|---------|
+| `bg-cosmic-dark` | `bg-ds-bg-100` |
+| `bg-cosmic-surface` | `bg-ds-gray-100` |
+| `bg-cosmic-gradient` | `bg-ds-bg-100` (remove gradient entirely) |
+| `text-cosmic-text` | `text-ds-gray-1000` |
+| `text-cosmic-bright` | `text-ds-gray-1000` |
+| `text-cosmic-muted` | `text-ds-gray-900` |
+| `text-cosmic-purple` | `text-ds-gray-1000` (or status color where semantic) |
+| `border-cosmic-border` | `border-ds-gray-400` |
+| `border-cosmic-purple` | `border-ds-gray-1000` (or status color) |
+| `bg-cosmic-purple` | `bg-ds-gray-700` (or status color where semantic) |
+| `bg-cosmic-rose` | `bg-red-700` |
+| `shadow-cosmic-sm` | `shadow-sm` |
+| `shadow-cosmic` | `shadow-md` |
+| `shadow-cosmic-lg` | `shadow-lg` |
+| `rounded-cosmic` | `rounded-xl` (12px) |
 
 ## Scope
-- **IN**: Token system, typography utilities, material surfaces, StatCard, EmptyState, ErrorBanner,
-  Sidebar polish, page transitions, skeleton loaders, interactive states, all 15 pages updated
-- **OUT**: Page layout restructuring (handled by fix-dashboard-content-rendering), API proxy fixes,
-  new pages, feature additions. This is pure visual layer.
+- **IN**: Complete theme replacement, all token references, all 15+ pages, shared components,
+  globals.css rewrite, tailwind.config.ts rewrite, design reference HTML
+- **OUT**: Layout changes, API fixes, new features. Pure visual layer only.
 
 ## Impact
 
 | Area | Change |
 |------|--------|
-| `apps/dashboard/tailwind.config.ts` | Extended with Geist token mappings, animation utilities |
-| `apps/dashboard/app/globals.css` | Geist CSS vars, type scale classes, material classes, animations |
-| `apps/dashboard/components/layout/StatCard.tsx` | Redesigned with accent bar, icon, trend |
-| `apps/dashboard/components/layout/EmptyState.tsx` | Redesigned with icon, title, description, CTA |
-| `apps/dashboard/components/layout/ErrorBanner.tsx` | Redesigned with Geist error pattern |
-| `apps/dashboard/components/layout/PageSkeleton.tsx` | Redesigned with shimmer skeletons |
-| `apps/dashboard/components/Sidebar.tsx` | Active states, section dividers, polish |
-| `apps/dashboard/app/*/page.tsx` | All 15 pages: apply new typography, materials, transitions |
+| `apps/dashboard/tailwind.config.ts` | Complete rewrite: cosmic → Geist tokens |
+| `apps/dashboard/app/globals.css` | Complete rewrite: CSS vars, type scale, materials, animations |
+| `apps/dashboard/components/layout/*.tsx` | All 5 shared components redesigned |
+| `apps/dashboard/components/Sidebar.tsx` | Geist nav styling |
+| `apps/dashboard/app/*/page.tsx` | All pages: cosmic → Geist class replacement |
+| `apps/dashboard/components/*.tsx` | All components: cosmic → Geist class replacement |
 
 ## Risks
 
 | Risk | Mitigation |
 |------|-----------|
-| Visual regression on working pages | Apply changes page-by-page, verify each |
-| Performance impact from animations | Use CSS-only animations (no JS), will-change hints |
-| Token conflicts with existing cosmic classes | Geist tokens are additive (--ds-* namespace), cosmic classes stay |
-| Inconsistent agent implementation | Provide exact class names in tasks, not descriptions |
+| Breaking existing styling | Global search-replace is systematic — Req-11 table covers every cosmic class |
+| Missing a cosmic reference | grep -r "cosmic" after replacement to catch stragglers |
+| Performance | CSS-only animations, no runtime cost |

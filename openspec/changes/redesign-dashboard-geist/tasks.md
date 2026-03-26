@@ -2,48 +2,47 @@
 
 <!-- beads:epic:nv-n3iq -->
 
-## Foundation
+## Foundation — Strip Cosmic, Install Geist
 
-- [ ] [1.1] [P-1] Extend `apps/dashboard/app/globals.css` with Geist CSS custom properties (--ds-background-100/200, --ds-gray-100 through 1000, --ds-gray-alpha-100/200/400, --ds-purple-700/900, --ds-green-700, --ds-amber-700, --ds-red-700, --ds-blue-700) mapped to cosmic color values per Req-1 [owner:ui-engineer]
-- [ ] [1.2] [P-1] Add typography utility classes to `globals.css`: `.text-heading-32`, `.text-heading-24`, `.text-heading-20`, `.text-heading-16`, `.text-label-16`, `.text-label-14`, `.text-label-13`, `.text-label-12`, `.text-copy-16`, `.text-copy-14`, `.text-copy-13`, `.text-label-13-mono`, `.text-button-14` — each with font-size, line-height, letter-spacing, font-weight per Req-2 type scale table [owner:ui-engineer]
-- [ ] [1.3] [P-1] Add material surface utility classes to `globals.css`: `.surface-base`, `.surface-card`, `.surface-raised`, `.surface-inset` using `@apply` with background, border, radius, shadow per Req-3 table [owner:ui-engineer]
-- [ ] [1.4] [P-1] Add animation keyframes and utilities to `globals.css`: `@keyframes fade-in-up`, `@keyframes shimmer`, `.animate-fade-in-up`, `.animate-stagger-1` through `.animate-stagger-10`, `.animate-shimmer` per Req-8 [owner:ui-engineer]
-- [ ] [1.5] [P-2] Extend `tailwind.config.ts` with animation timing utilities (`animation: { 'fade-in-up': 'fade-in-up 200ms ease forwards', 'shimmer': 'shimmer 1.5s infinite' }`) and any missing color tokens [owner:ui-engineer]
+- [ ] [1.1] [P-1] Rewrite `apps/dashboard/app/globals.css` — remove ALL cosmic CSS vars and classes; add Geist `--ds-*` dark mode tokens (background-100: #0a0a0a, background-200: #111111, gray-100 through gray-1000, alpha variants, blue/green/amber/red status colors); add Geist type scale utility classes (.text-heading-32/24/20/16, .text-label-16/14/13/12, .text-copy-16/14/13, .text-label-13-mono, .text-button-14); add material surface classes (.surface-base/card/raised/inset); add animation keyframes (fade-in-up, shimmer) and stagger utilities; set body bg to ds-bg-100, text to ds-gray-1000 [owner:ui-engineer]
+- [ ] [1.2] [P-1] Rewrite `apps/dashboard/tailwind.config.ts` — remove cosmic color object, cosmic-gradient backgroundImage, cosmic shadows, cosmic borderRadius; add ds.bg, ds.gray (100-1000), blue, green, amber, red color tokens; add animation timing utilities [owner:ui-engineer]
+- [ ] [1.3] [P-2] Global search-replace across ALL files in `apps/dashboard/` — replace every cosmic class with Geist equivalent per Req-11 table: bg-cosmic-dark→bg-ds-bg-100, bg-cosmic-surface→bg-ds-gray-100, text-cosmic-text→text-ds-gray-1000, text-cosmic-bright→text-ds-gray-1000, text-cosmic-muted→text-ds-gray-900, border-cosmic-border→border-ds-gray-400, bg-cosmic-gradient→bg-ds-bg-100, shadow-cosmic-sm→shadow-sm, rounded-cosmic→rounded-xl, etc. Run `grep -r "cosmic" apps/dashboard/` after to catch any remaining [owner:ui-engineer]
 
-## Shared Components
+## Shared Components — Geist Patterns
 
-- [ ] [2.1] [P-1] Redesign `apps/dashboard/components/layout/StatCard.tsx` — add props: `icon` (LucideIcon), `accentColor` (string, default cosmic-purple), `trend` (optional { value: number, direction: 'up'|'down' }); render: 4px left accent bar, 24px icon muted, value in `.text-heading-32 tabular-nums`, label in `.text-label-13`, trend arrow + percentage; `.surface-card` material; hover: border-gray-500 + translateY(-1px); transition 150ms [owner:ui-engineer]
-- [ ] [2.2] [P-1] Redesign `apps/dashboard/components/layout/EmptyState.tsx` — add props: `icon` (LucideIcon), `title` (string), `description` (string), `action` (optional { label: string, onClick: () => void }); render: centered, icon 48px muted opacity-50, title `.text-heading-16`, description `.text-copy-14 text-cosmic-muted max-w-xs`, action button `.surface-card`; `.animate-fade-in-up` entrance [owner:ui-engineer]
-- [ ] [2.3] [P-1] Redesign `apps/dashboard/components/layout/ErrorBanner.tsx` — render: `bg-[var(--ds-red-700)]/10` background, 3px left border `var(--ds-red-700)`, AlertCircle icon 16px, text `.text-copy-14`, optional retry button ghost-styled, optional dismiss X button; `rounded-md` (6px) [owner:ui-engineer]
-- [ ] [2.4] [P-1] Redesign `apps/dashboard/components/layout/PageSkeleton.tsx` — add variant prop: `'stat-grid'|'list'|'detail'`; stat-grid: 4-6 skeleton cards matching StatCard shape; list: 5 skeleton rows; detail: header + 3 content blocks; all blocks use `.bg-[var(--ds-gray-alpha-200)] animate-shimmer rounded-md` [owner:ui-engineer]
-- [ ] [2.5] [P-1] Redesign `apps/dashboard/components/layout/SectionHeader.tsx` — title in `.text-label-12 uppercase tracking-widest text-cosmic-muted`, optional count badge (numeric in small pill), optional status dot [owner:ui-engineer]
+- [ ] [2.1] [P-1] Redesign `apps/dashboard/components/layout/StatCard.tsx` — surface-card material; 4px left accent bar (default ds-gray-600, green/amber/red for status); icon 20px text-ds-gray-700; value .text-heading-32 tabular-nums text-ds-gray-1000; label .text-label-13 text-ds-gray-900; optional trend arrow; hover: border-ds-gray-500 translateY(-1px) shadow upgrade; transition 150ms [owner:ui-engineer]
+- [ ] [2.2] [P-1] Redesign `apps/dashboard/components/layout/EmptyState.tsx` — centered; icon 40px text-ds-gray-600; title .text-heading-16 text-ds-gray-1000; description .text-copy-14 text-ds-gray-900 max-w-xs; optional action button surface-base; fade-in 200ms [owner:ui-engineer]
+- [ ] [2.3] [P-1] Redesign `apps/dashboard/components/layout/ErrorBanner.tsx` — bg red-700/8%; left border 3px ds-red-700; AlertCircle 16px ds-red-700; text .text-copy-14 ds-red-900; ghost retry button; rounded-md (6px) [owner:ui-engineer]
+- [ ] [2.4] [P-1] Redesign `apps/dashboard/components/layout/PageSkeleton.tsx` — variant prop (stat-grid|list|detail); skeleton blocks bg-ds-gray-alpha-200 with shimmer animation; shapes match target content [owner:ui-engineer]
+- [ ] [2.5] [P-1] Redesign `apps/dashboard/components/layout/SectionHeader.tsx` — .text-label-12 uppercase tracking-widest text-ds-gray-700; optional count badge (pill bg-ds-gray-alpha-200); optional status dot [owner:ui-engineer]
 
-## Sidebar
+## Sidebar — Geist Navigation
 
-- [ ] [3.1] [P-1] Update `apps/dashboard/components/Sidebar.tsx` active state — active item: `bg-[var(--ds-gray-alpha-200)]` with `border-l-2 border-cosmic-purple` left accent; hover: `bg-[var(--ds-gray-alpha-100)]` transition 150ms; icons 18px default `text-[var(--ds-gray-900)]`, active `text-cosmic-purple` [owner:ui-engineer]
-- [ ] [3.2] [P-2] Add nav section dividers to Sidebar — group items: "Overview" (Dashboard, Briefing), "Activity" (Obligations, Approvals, Diary, Sessions, Messages), "Data" (Projects, Contacts, Integrations), "System" (Usage, Cold Starts, Memory, CC Session, Settings); thin `border-b border-[var(--ds-gray-alpha-200)]` between groups with `.text-label-12 uppercase` group label [owner:ui-engineer]
-- [ ] [3.3] [P-2] Add WebSocket status label next to dot in Sidebar footer — `.text-label-12` showing "Connected" / "Reconnecting" / "Offline" next to the colored dot [owner:ui-engineer]
+- [ ] [3.1] [P-1] Rewrite `apps/dashboard/components/Sidebar.tsx` styling — bg-ds-bg-200; logo "Nova" in .text-label-16 font-semibold; nav items .text-label-14 text-ds-gray-900 with 18px icons; active state: bg-ds-gray-alpha-200 text-ds-gray-1000 border-l-2 border-ds-gray-1000 (white accent, NOT purple); hover: bg-ds-gray-alpha-100; transitions 150ms [owner:ui-engineer]
+- [ ] [3.2] [P-2] Add nav section groups — "Overview" (Dashboard, Briefing), "Activity" (Obligations, Approvals, Diary, Sessions, Messages), "Data" (Projects, Contacts, Integrations), "System" (Usage, Cold Starts, Memory, CC Session, Settings); group labels .text-label-12 uppercase text-ds-gray-700; thin border-b dividers between groups [owner:ui-engineer]
+- [ ] [3.3] [P-2] WebSocket status in sidebar footer — .text-label-12 text-ds-gray-700; dot color green-700/amber-700/red-700; label "Connected"/"Reconnecting"/"Offline" [owner:ui-engineer]
 
-## Page Updates — Apply Design System
+## Page Updates — Apply Geist Everywhere
 
-- [ ] [4.1] [P-2] Update `apps/dashboard/app/page.tsx` (Home) — page title `.text-heading-24`, section headers `.text-label-12 uppercase`, stat cards use redesigned StatCard with icons (Activity for obligations, Layers for sessions, FolderOpen for projects, Heart for health), `.animate-fade-in-up` on page content, `.animate-stagger-*` on stat grid [owner:ui-engineer]
-- [ ] [4.2] [P-2] Update `apps/dashboard/app/briefing/page.tsx` — `.surface-card` for briefing sections, empty state with Sun icon per Req-5 table, error banner uses redesigned ErrorBanner [owner:ui-engineer]
-- [ ] [4.3] [P-2] Update `apps/dashboard/app/obligations/page.tsx` — `.surface-card` for obligation items, status tabs styled with active/hover states per Req-9, list items `.animate-stagger-*` [owner:ui-engineer]
-- [ ] [4.4] [P-2] Update `apps/dashboard/app/approvals/page.tsx` — empty state with ShieldCheck icon, `.surface-card` for queue items, split panel uses `.surface-base` for list and `.surface-raised` for detail [owner:ui-engineer]
-- [ ] [4.5] [P-2] Update `apps/dashboard/app/diary/page.tsx` — diary entries in `.surface-card`, date nav buttons with hover states, summary bar stat cards with StatCard component [owner:ui-engineer]
-- [ ] [4.6] [P-2] Update `apps/dashboard/app/sessions/page.tsx` — session cards in `.surface-card`, status dots use `--ds-green/amber/red-700`, filter tabs with active state, empty state with Layers icon [owner:ui-engineer]
-- [ ] [4.7] [P-2] Update `apps/dashboard/app/messages/page.tsx` — message rows in `.surface-base` with hover `.bg-[var(--ds-gray-200)]`, channel filter chips styled as pills, pagination buttons with Req-9 states [owner:ui-engineer]
-- [ ] [4.8] [P-2] Update `apps/dashboard/app/projects/page.tsx` — project cards in `.surface-card`, empty state with FolderOpen icon, search input uses `.surface-inset` [owner:ui-engineer]
-- [ ] [4.9] [P-2] Update `apps/dashboard/app/nexus/page.tsx` — health cards in `.surface-card` with accent bars (green=healthy, amber=degraded, red=critical), session list with `.animate-stagger-*` [owner:ui-engineer]
-- [ ] [4.10] [P-2] Update `apps/dashboard/app/integrations/page.tsx` — integration cards in `.surface-card`, section headers `.text-label-12 uppercase`, empty cards with placeholder styling [owner:ui-engineer]
-- [ ] [4.11] [P-2] Update `apps/dashboard/app/usage/page.tsx` — cost summary cards as StatCard with DollarSign icon, token/tool sections with `.surface-card`, `.text-heading-32 tabular-nums` for values [owner:ui-engineer]
-- [ ] [4.12] [P-2] Update `apps/dashboard/app/cold-starts/page.tsx` — percentile cards as StatCard with Timer icon, chart area in `.surface-inset`, stats row with `.surface-card` [owner:ui-engineer]
-- [ ] [4.13] [P-2] Update `apps/dashboard/app/memory/page.tsx` — memory items in `.surface-card`, search uses `.surface-inset`, empty state with Brain icon [owner:ui-engineer]
-- [ ] [4.14] [P-2] Update `apps/dashboard/app/session/page.tsx` — status card in `.surface-card` with accent bar matching state color, log viewer in `.surface-inset font-mono`, buttons with Req-9 states [owner:ui-engineer]
-- [ ] [4.15] [P-2] Update `apps/dashboard/app/settings/page.tsx` — section cards in `.surface-card` with `.text-label-16` section titles, form inputs in `.surface-inset`, masked fields styled distinctly [owner:ui-engineer]
+- [ ] [4.1] [P-2] Update `apps/dashboard/app/page.tsx` (Home) — .text-heading-24 page title; .text-label-12 uppercase section headers; StatCard with icons; staggered fade-in on stat grid; surface-card for list sections [owner:ui-engineer]
+- [ ] [4.2] [P-2] Update `apps/dashboard/app/briefing/page.tsx` — surface-card for sections; EmptyState with Sun icon; ErrorBanner for API failures [owner:ui-engineer]
+- [ ] [4.3] [P-2] Update `apps/dashboard/app/obligations/page.tsx` — surface-card items; tab active/hover states per Geist interactive pattern; staggered list items [owner:ui-engineer]
+- [ ] [4.4] [P-2] Update `apps/dashboard/app/approvals/page.tsx` — EmptyState with ShieldCheck icon; surface-card queue items; surface-raised for detail panel [owner:ui-engineer]
+- [ ] [4.5] [P-2] Update `apps/dashboard/app/diary/page.tsx` — surface-card entries; .text-label-13-mono for timestamps; summary bar with StatCard [owner:ui-engineer]
+- [ ] [4.6] [P-2] Update `apps/dashboard/app/sessions/page.tsx` — surface-card session cards; status dots ds-green/amber/red-700; filter tabs Geist interactive; EmptyState with Layers icon [owner:ui-engineer]
+- [ ] [4.7] [P-2] Update `apps/dashboard/app/messages/page.tsx` — surface-base rows with hover bg-ds-gray-200; filter chips as pills; pagination with interactive states [owner:ui-engineer]
+- [ ] [4.8] [P-2] Update `apps/dashboard/app/projects/page.tsx` — surface-card cards; EmptyState with FolderOpen; search input surface-inset [owner:ui-engineer]
+- [ ] [4.9] [P-2] Update `apps/dashboard/app/nexus/page.tsx` — surface-card health tiles with accent bars (green/amber/red per status) [owner:ui-engineer]
+- [ ] [4.10] [P-2] Update `apps/dashboard/app/integrations/page.tsx` — surface-card integration cards; .text-label-12 section headers [owner:ui-engineer]
+- [ ] [4.11] [P-2] Update `apps/dashboard/app/usage/page.tsx` — StatCard for cost/token values with DollarSign icon; .text-heading-32 tabular-nums [owner:ui-engineer]
+- [ ] [4.12] [P-2] Update `apps/dashboard/app/cold-starts/page.tsx` — StatCard for percentiles with Timer icon; surface-inset for chart area [owner:ui-engineer]
+- [ ] [4.13] [P-2] Update `apps/dashboard/app/memory/page.tsx` — surface-card items; EmptyState with Brain icon; search surface-inset [owner:ui-engineer]
+- [ ] [4.14] [P-2] Update `apps/dashboard/app/session/page.tsx` — surface-card status card with accent bar; surface-inset font-mono log viewer; Geist button states [owner:ui-engineer]
+- [ ] [4.15] [P-2] Update `apps/dashboard/app/settings/page.tsx` — surface-card sections with .text-label-16 titles; surface-inset inputs; masked field styling [owner:ui-engineer]
 
 ## Verify
 
-- [ ] [5.1] `cd apps/dashboard && npx next build` passes with zero errors [owner:ui-engineer]
-- [ ] [5.2] [user] Visual review: navigate all 15 pages, verify consistent typography hierarchy, material surfaces, and transitions
-- [ ] [5.3] [user] Mobile check: verify sidebar collapses, stat grids reflow, touch targets >= 44px at 375px viewport
+- [ ] [5.1] `grep -r "cosmic" apps/dashboard/` returns zero matches (complete removal) [owner:ui-engineer]
+- [ ] [5.2] `cd apps/dashboard && npx next build` passes with zero errors [owner:ui-engineer]
+- [ ] [5.3] [user] Visual review: all pages use neutral gray Geist palette, no purple anywhere
+- [ ] [5.4] [user] Mobile check: sidebar collapses, grids reflow, touch targets >= 44px at 375px

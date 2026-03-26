@@ -8,26 +8,28 @@
   @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap');
 
   :root {
-    --ds-background-100: #0F0B1A;
-    --ds-background-200: #1A1425;
-    --ds-gray-100: #1A1425;
-    --ds-gray-200: #211A30;
-    --ds-gray-300: #2A2040;
-    --ds-gray-400: #2D2640;
-    --ds-gray-500: #3D3555;
-    --ds-gray-600: #4D4570;
-    --ds-gray-700: #5D5580;
-    --ds-gray-900: #6B5B8A;
-    --ds-gray-1000: #E8E0F0;
-    --ds-gray-alpha-100: rgba(124, 58, 237, 0.04);
-    --ds-gray-alpha-200: rgba(124, 58, 237, 0.08);
-    --ds-gray-alpha-400: rgba(124, 58, 237, 0.15);
-    --ds-purple-700: #7C3AED;
-    --ds-purple-900: #A78BFA;
-    --ds-green-700: #10B981;
-    --ds-amber-700: #F59E0B;
-    --ds-red-700: #F43F5E;
-    --ds-blue-700: #3B82F6;
+    --ds-background-100: #0a0a0a;
+    --ds-background-200: #111111;
+    --ds-gray-100: #1a1a1a;
+    --ds-gray-200: #1f1f1f;
+    --ds-gray-300: #292929;
+    --ds-gray-400: #2e2e2e;
+    --ds-gray-500: #454545;
+    --ds-gray-600: #5e5e5e;
+    --ds-gray-700: #6e6e6e;
+    --ds-gray-800: #7c7c7c;
+    --ds-gray-900: #a0a0a0;
+    --ds-gray-1000: #ededed;
+    --ds-gray-alpha-100: rgba(255,255,255,0.03);
+    --ds-gray-alpha-200: rgba(255,255,255,0.06);
+    --ds-gray-alpha-400: rgba(255,255,255,0.10);
+    --ds-blue-700: #0070f3;
+    --ds-blue-900: #52a8ff;
+    --ds-green-700: #0cce6b;
+    --ds-green-900: #52e78c;
+    --ds-amber-700: #f5a623;
+    --ds-red-700: #e5484d;
+    --ds-red-900: #ff6369;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,6 +38,7 @@
     background: var(--ds-background-100);
     color: var(--ds-gray-1000);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
   }
 
   .page-header {
@@ -43,270 +46,212 @@
     border-bottom: 1px solid var(--ds-gray-400);
     margin-bottom: 48px;
   }
-  .page-header h1 {
-    font-size: 32px; font-weight: 700; letter-spacing: -0.02em;
-    background: linear-gradient(135deg, var(--ds-gray-1000), var(--ds-purple-900));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  }
-  .page-header p { font-size: 14px; color: var(--ds-gray-900); margin-top: 8px; }
+  .page-header h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+  .page-header p { font-size: 14px; color: var(--ds-gray-900); margin-top: 6px; }
 
-  .section { padding: 0 48px 64px; }
+  .section { padding: 0 48px 56px; }
   .section-title {
     font-size: 12px; font-weight: 500; letter-spacing: 0.05em;
-    text-transform: uppercase; color: var(--ds-gray-900);
+    text-transform: uppercase; color: var(--ds-gray-700);
     margin-bottom: 24px; padding-bottom: 12px;
     border-bottom: 1px solid var(--ds-gray-alpha-200);
   }
-
-  /* --- Component Showcase --- */
   .showcase-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 24px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
   }
 
-  /* Surface Materials */
-  .material-demo {
-    padding: 24px; position: relative;
-  }
+  /* Surfaces */
+  .material-demo { padding: 24px; position: relative; }
   .material-demo .label {
     font-family: 'Geist Mono', monospace; font-size: 11px;
-    color: var(--ds-gray-900); margin-bottom: 12px;
+    color: var(--ds-gray-700); margin-bottom: 12px;
   }
   .surface-base {
-    background: var(--ds-gray-100);
-    border: 1px solid var(--ds-gray-400);
-    border-radius: 6px;
+    background: var(--ds-gray-100); border: 1px solid var(--ds-gray-400); border-radius: 6px;
   }
   .surface-card {
-    background: var(--ds-gray-100);
-    border: 1px solid var(--ds-gray-alpha-400);
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(124, 58, 237, 0.12);
+    background: var(--ds-gray-100); border: 1px solid var(--ds-gray-alpha-400);
+    border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
     transition: all 150ms ease;
   }
   .surface-card:hover {
-    border-color: var(--ds-gray-500);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.20);
+    border-color: var(--ds-gray-500); transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
   .surface-raised {
-    background: var(--ds-gray-200);
-    border: 1px solid var(--ds-gray-500);
-    border-radius: 12px;
-    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.20);
+    background: var(--ds-gray-200); border: 1px solid var(--ds-gray-500);
+    border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
   .surface-inset {
-    background: var(--ds-background-100);
-    border: 1px solid var(--ds-gray-alpha-200);
-    border-radius: 6px;
-    box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+    background: var(--ds-background-100); border: 1px solid var(--ds-gray-alpha-200);
+    border-radius: 6px; box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
   }
 
   /* Stat Card */
   .stat-card {
-    background: var(--ds-gray-100);
-    border: 1px solid var(--ds-gray-alpha-400);
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(124, 58, 237, 0.12);
-    padding: 20px 20px 20px 24px;
-    position: relative;
-    overflow: hidden;
-    transition: all 150ms ease;
-    cursor: default;
+    background: var(--ds-gray-100); border: 1px solid var(--ds-gray-alpha-400);
+    border-radius: 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    padding: 20px 20px 20px 24px; position: relative; overflow: hidden;
+    transition: all 150ms ease; cursor: default;
   }
   .stat-card:hover {
-    border-color: var(--ds-gray-500);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.20);
+    border-color: var(--ds-gray-500); transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   }
   .stat-card::before {
     content: ''; position: absolute; left: 0; top: 0; bottom: 0;
-    width: 4px; background: var(--ds-purple-700);
+    width: 4px; background: var(--ds-gray-600);
   }
   .stat-card.green::before { background: var(--ds-green-700); }
   .stat-card.amber::before { background: var(--ds-amber-700); }
   .stat-card.red::before { background: var(--ds-red-700); }
-  .stat-card .icon {
-    width: 24px; height: 24px; color: var(--ds-gray-900);
-    margin-bottom: 12px;
-  }
+  .stat-card.blue::before { background: var(--ds-blue-700); }
+  .stat-card .icon { width: 20px; height: 20px; color: var(--ds-gray-700); margin-bottom: 12px; }
   .stat-card .value {
     font-size: 32px; font-weight: 700; letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums; line-height: 1;
+    font-variant-numeric: tabular-nums; line-height: 1; color: var(--ds-gray-1000);
   }
-  .stat-card .label-text {
-    font-size: 13px; font-weight: 400; color: var(--ds-gray-900);
-    margin-top: 4px;
-  }
-  .stat-card .trend {
-    font-size: 12px; font-weight: 500; margin-top: 8px;
-    display: flex; align-items: center; gap: 4px;
-  }
+  .stat-card .label-text { font-size: 13px; color: var(--ds-gray-900); margin-top: 4px; }
+  .stat-card .trend { font-size: 12px; font-weight: 500; margin-top: 8px; display: flex; align-items: center; gap: 4px; }
   .stat-card .trend.up { color: var(--ds-green-700); }
   .stat-card .trend.down { color: var(--ds-red-700); }
 
   /* Empty State */
   .empty-state {
     display: flex; flex-direction: column; align-items: center;
-    justify-content: center; padding: 64px 24px; text-align: center;
-    animation: fade-in-up 300ms ease forwards;
+    justify-content: center; padding: 56px 24px; text-align: center;
+    animation: fade-in-up 200ms ease forwards;
   }
-  .empty-state .empty-icon {
-    width: 48px; height: 48px; color: var(--ds-gray-900); opacity: 0.5;
-    margin-bottom: 16px;
-  }
-  .empty-state .empty-title {
-    font-size: 16px; font-weight: 500; margin-bottom: 8px;
-  }
-  .empty-state .empty-desc {
-    font-size: 14px; color: var(--ds-gray-900); max-width: 320px;
-    line-height: 1.5;
-  }
+  .empty-state .empty-icon { width: 40px; height: 40px; color: var(--ds-gray-600); margin-bottom: 16px; }
+  .empty-state .empty-title { font-size: 16px; font-weight: 500; margin-bottom: 6px; }
+  .empty-state .empty-desc { font-size: 14px; color: var(--ds-gray-900); max-width: 300px; line-height: 1.5; }
   .empty-state .empty-cta {
     margin-top: 20px; padding: 8px 16px; font-size: 14px; font-weight: 500;
-    background: var(--ds-gray-100); border: 1px solid var(--ds-gray-alpha-400);
-    border-radius: 8px; color: var(--ds-gray-1000); cursor: pointer;
-    transition: all 150ms ease;
+    background: var(--ds-gray-100); border: 1px solid var(--ds-gray-400);
+    border-radius: 6px; color: var(--ds-gray-1000); cursor: pointer; transition: all 150ms ease;
   }
-  .empty-state .empty-cta:hover {
-    border-color: var(--ds-gray-500); background: var(--ds-gray-200);
-  }
+  .empty-state .empty-cta:hover { border-color: var(--ds-gray-500); background: var(--ds-gray-200); }
 
   /* Error Banner */
   .error-banner {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 16px; border-radius: 6px;
-    background: rgba(244, 63, 94, 0.08);
-    border-left: 3px solid var(--ds-red-700);
+    background: rgba(229, 72, 77, 0.08); border-left: 3px solid var(--ds-red-700);
   }
   .error-banner .err-icon { color: var(--ds-red-700); flex-shrink: 0; }
-  .error-banner .err-text { font-size: 14px; color: #fda4af; flex: 1; }
+  .error-banner .err-text { font-size: 14px; color: var(--ds-red-900); flex: 1; }
   .error-banner .err-retry {
     padding: 6px 12px; font-size: 13px; font-weight: 500;
-    background: transparent; border: 1px solid rgba(244,63,94,0.3);
-    border-radius: 6px; color: #fda4af; cursor: pointer;
-    transition: all 150ms ease;
+    background: transparent; border: 1px solid rgba(229,72,77,0.3);
+    border-radius: 6px; color: var(--ds-red-900); cursor: pointer; transition: all 150ms ease;
   }
-  .error-banner .err-retry:hover {
-    background: rgba(244,63,94,0.1); border-color: var(--ds-red-700);
-  }
+  .error-banner .err-retry:hover { background: rgba(229,72,77,0.1); border-color: var(--ds-red-700); }
 
   /* Sidebar */
   .sidebar-demo {
     width: 240px; background: var(--ds-background-200);
-    border-right: 1px solid var(--ds-gray-400); border-radius: 12px;
-    overflow: hidden;
+    border-right: 1px solid var(--ds-gray-400); border-radius: 12px; overflow: hidden;
   }
   .sidebar-logo {
-    padding: 16px 16px 12px; display: flex; align-items: center; gap: 10px;
+    padding: 16px; display: flex; align-items: center; gap: 10px;
     border-bottom: 1px solid var(--ds-gray-alpha-200);
   }
   .sidebar-logo .logo-mark {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: linear-gradient(135deg, var(--ds-purple-700), #9333ea);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 14px; color: white;
+    width: 28px; height: 28px; border-radius: 6px;
+    background: var(--ds-gray-1000); display: flex; align-items: center;
+    justify-content: center; font-weight: 700; font-size: 14px; color: var(--ds-background-100);
   }
   .sidebar-logo .logo-name { font-size: 16px; font-weight: 500; }
   .sidebar-group-label {
     font-size: 11px; font-weight: 500; letter-spacing: 0.06em;
-    text-transform: uppercase; color: var(--ds-gray-700);
-    padding: 16px 16px 6px;
+    text-transform: uppercase; color: var(--ds-gray-700); padding: 16px 16px 6px;
   }
   .sidebar-item {
     display: flex; align-items: center; gap: 10px;
-    padding: 8px 16px; font-size: 14px; font-weight: 400;
-    color: var(--ds-gray-900); cursor: pointer;
-    transition: all 150ms ease; border-left: 2px solid transparent;
+    padding: 8px 16px; font-size: 14px; color: var(--ds-gray-900);
+    cursor: pointer; transition: all 150ms ease; border-left: 2px solid transparent;
   }
-  .sidebar-item:hover {
-    background: var(--ds-gray-alpha-100); color: var(--ds-gray-1000);
-  }
+  .sidebar-item:hover { background: var(--ds-gray-alpha-100); color: var(--ds-gray-1000); }
   .sidebar-item.active {
-    background: var(--ds-gray-alpha-200); color: var(--ds-purple-900);
-    border-left-color: var(--ds-purple-700); font-weight: 500;
+    background: var(--ds-gray-alpha-200); color: var(--ds-gray-1000);
+    border-left-color: var(--ds-gray-1000); font-weight: 500;
   }
   .sidebar-item svg { width: 18px; height: 18px; }
+  .sidebar-item .badge {
+    margin-left: auto; font-size: 11px; font-weight: 600; padding: 1px 6px;
+    border-radius: 10px; background: var(--ds-red-700); color: white;
+    font-variant-numeric: tabular-nums;
+  }
   .sidebar-footer {
     padding: 12px 16px; border-top: 1px solid var(--ds-gray-alpha-200);
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: var(--ds-gray-700);
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ds-gray-700);
   }
   .ws-dot {
-    width: 8px; height: 8px; border-radius: 50%;
-    background: var(--ds-green-700);
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ds-green-700);
+    box-shadow: 0 0 6px rgba(12,206,107,0.4);
   }
 
   /* Skeleton */
   .skeleton {
-    background: var(--ds-gray-alpha-200);
-    border-radius: 6px;
+    background: var(--ds-gray-alpha-200); border-radius: 6px;
     position: relative; overflow: hidden;
   }
   .skeleton::after {
     content: ''; position: absolute; inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(124,58,237,0.06), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
     animation: shimmer 1.5s infinite;
   }
 
-  /* Typography Demo */
+  /* Type demo */
   .type-demo { display: flex; flex-direction: column; gap: 16px; }
   .type-row { display: flex; align-items: baseline; gap: 24px; }
   .type-label {
     font-family: 'Geist Mono', monospace; font-size: 11px;
-    color: var(--ds-gray-700); width: 140px; flex-shrink: 0;
+    color: var(--ds-gray-600); width: 140px; flex-shrink: 0;
   }
 
-  /* Dashboard Mock */
+  /* Full mock */
   .mock-dashboard {
-    background: var(--ds-background-100);
-    border: 1px solid var(--ds-gray-400);
-    border-radius: 16px; overflow: hidden;
-    display: grid; grid-template-columns: 240px 1fr;
+    background: var(--ds-background-100); border: 1px solid var(--ds-gray-400);
+    border-radius: 16px; overflow: hidden; display: grid; grid-template-columns: 240px 1fr;
   }
   .mock-content { padding: 32px; }
-  .mock-content h2 {
-    font-size: 24px; font-weight: 600; letter-spacing: -0.01em;
-    margin-bottom: 4px;
-  }
-  .mock-content .subtitle {
-    font-size: 14px; color: var(--ds-gray-900); margin-bottom: 32px;
-  }
-  .stat-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
-    margin-bottom: 32px;
-  }
+  .mock-content h2 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .mock-content .subtitle { font-size: 14px; color: var(--ds-gray-900); margin-bottom: 32px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
   .mock-section-header {
     font-size: 12px; font-weight: 500; letter-spacing: 0.05em;
-    text-transform: uppercase; color: var(--ds-gray-900);
+    text-transform: uppercase; color: var(--ds-gray-700);
     margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
   }
   .mock-section-header .count {
     font-size: 11px; background: var(--ds-gray-alpha-200);
-    padding: 2px 8px; border-radius: 10px; font-variant-numeric: tabular-nums;
+    padding: 2px 8px; border-radius: 10px; font-variant-numeric: tabular-nums; color: var(--ds-gray-900);
   }
   .mock-list-item {
     padding: 14px 16px; border-bottom: 1px solid var(--ds-gray-alpha-200);
-    display: flex; align-items: center; gap: 12px;
-    transition: background 150ms ease; cursor: pointer;
+    display: flex; align-items: center; gap: 12px; transition: background 150ms ease; cursor: pointer;
   }
   .mock-list-item:hover { background: var(--ds-gray-alpha-100); }
   .mock-list-item:last-child { border-bottom: none; }
   .mock-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .mock-dot.active { background: var(--ds-green-700); box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+  .mock-dot.active { background: var(--ds-green-700); box-shadow: 0 0 6px rgba(12,206,107,0.4); }
   .mock-dot.idle { background: var(--ds-amber-700); }
   .mock-item-title { font-size: 14px; font-weight: 500; flex: 1; }
-  .mock-item-meta {
-    font-size: 13px; color: var(--ds-gray-900);
-    font-variant-numeric: tabular-nums;
+  .mock-item-meta { font-size: 13px; color: var(--ds-gray-900); font-variant-numeric: tabular-nums; }
+  .mock-badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 500; }
+  .mock-badge.neutral { background: var(--ds-gray-alpha-200); color: var(--ds-gray-900); }
+  .mock-badge.green { background: rgba(12,206,107,0.15); color: var(--ds-green-700); }
+
+  .btn-ghost {
+    padding: 6px 12px; font-size: 13px; font-weight: 500;
+    background: transparent; border: 1px solid var(--ds-gray-400);
+    border-radius: 6px; color: var(--ds-gray-1000); cursor: pointer;
+    transition: all 150ms ease; font-family: inherit;
   }
-  .mock-badge {
-    font-size: 11px; padding: 2px 8px; border-radius: 6px;
-    font-weight: 500;
-  }
-  .mock-badge.purple { background: rgba(124,58,237,0.15); color: var(--ds-purple-900); }
-  .mock-badge.green { background: rgba(16,185,129,0.15); color: var(--ds-green-700); }
+  .btn-ghost:hover { background: var(--ds-gray-200); border-color: var(--ds-gray-500); }
+  .btn-ghost:active { background: var(--ds-gray-300); transform: scale(0.98); }
 
   @keyframes fade-in-up {
     from { opacity: 0; transform: translateY(8px); }
@@ -316,7 +261,6 @@
     from { transform: translateX(-100%); }
     to { transform: translateX(100%); }
   }
-
   .animate-1 { animation: fade-in-up 200ms ease forwards; animation-delay: 0ms; opacity: 0; }
   .animate-2 { animation: fade-in-up 200ms ease forwards; animation-delay: 75ms; opacity: 0; }
   .animate-3 { animation: fade-in-up 200ms ease forwards; animation-delay: 150ms; opacity: 0; }
@@ -327,7 +271,7 @@
 
 <div class="page-header">
   <h1>Nova Dashboard -- Geist Design Reference</h1>
-  <p>Visual specification for the Cosmic x Geist hybrid design system. All components shown here define the target implementation.</p>
+  <p>Pure Vercel Geist design system. Neutral gray scale, no custom theme colors.</p>
 </div>
 
 <!-- Typography -->
@@ -343,24 +287,20 @@
       <span style="font-size:24px;font-weight:600;letter-spacing:-0.01em">Dashboard</span>
     </div>
     <div class="type-row">
-      <span class="type-label">heading-20</span>
-      <span style="font-size:20px;font-weight:600;letter-spacing:-0.01em">Morning Briefing</span>
-    </div>
-    <div class="type-row">
       <span class="type-label">heading-16</span>
       <span style="font-size:16px;font-weight:500">No sessions found</span>
     </div>
     <div class="type-row">
       <span class="type-label">label-12 uppercase</span>
-      <span style="font-size:12px;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;color:var(--ds-gray-900)">Active Sessions</span>
+      <span style="font-size:12px;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;color:var(--ds-gray-700)">Active Sessions</span>
     </div>
     <div class="type-row">
       <span class="type-label">copy-14</span>
-      <span style="font-size:14px;font-weight:400;color:var(--ds-gray-900)">Sessions will appear here when the daemon processes messages.</span>
+      <span style="font-size:14px;color:var(--ds-gray-900)">Sessions will appear here when the daemon processes messages.</span>
     </div>
     <div class="type-row">
       <span class="type-label">label-13-mono</span>
-      <span style="font-family:'Geist Mono',monospace;font-size:13px;color:var(--ds-gray-900)">nv-daemon v0.1.0 | pid 48291</span>
+      <span style="font-family:'Geist Mono',monospace;font-size:13px;color:var(--ds-gray-700)">nv-daemon v0.1.0 | pid 48291</span>
     </div>
   </div>
 </div>
@@ -370,20 +310,20 @@
   <div class="section-title">Material Surfaces</div>
   <div class="showcase-grid">
     <div class="surface-base material-demo">
-      <div class="label">.surface-base (6px, no shadow)</div>
-      <p style="font-size:14px;color:var(--ds-gray-900)">Default containers, table rows, list items</p>
+      <div class="label">.surface-base</div>
+      <p style="font-size:14px;color:var(--ds-gray-900)">6px radius, no shadow. Rows, inputs.</p>
     </div>
     <div class="surface-card material-demo">
-      <div class="label">.surface-card (12px, cosmic-sm)</div>
-      <p style="font-size:14px;color:var(--ds-gray-900)">Cards, stat tiles, hover lifts</p>
+      <div class="label">.surface-card</div>
+      <p style="font-size:14px;color:var(--ds-gray-900)">12px radius, subtle shadow. Cards, tiles.</p>
     </div>
     <div class="surface-raised material-demo">
-      <div class="label">.surface-raised (12px, cosmic)</div>
-      <p style="font-size:14px;color:var(--ds-gray-900)">Modals, drawers, popovers</p>
+      <div class="label">.surface-raised</div>
+      <p style="font-size:14px;color:var(--ds-gray-900)">12px radius, elevated. Modals, drawers.</p>
     </div>
     <div class="surface-inset material-demo">
-      <div class="label">.surface-inset (6px, inset shadow)</div>
-      <p style="font-size:14px;color:var(--ds-gray-900)">Inputs, code blocks, log viewers</p>
+      <div class="label">.surface-inset</div>
+      <p style="font-size:14px;color:var(--ds-gray-900)">6px radius, inset. Inputs, code blocks.</p>
     </div>
   </div>
 </div>
@@ -402,52 +342,43 @@
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
       <div class="value">Healthy</div>
       <div class="label-text">System Status</div>
-      <div class="trend" style="color:var(--ds-gray-700)">Uptime: 14d 7h</div>
     </div>
-    <div class="stat-card amber animate-3">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    <div class="stat-card blue animate-3">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
       <div class="value">3</div>
       <div class="label-text">Active Sessions</div>
-      <div class="trend down">v -2 from peak</div>
     </div>
     <div class="stat-card red animate-4">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <div class="value">$0.84</div>
       <div class="label-text">Cost Today</div>
-      <div class="trend" style="color:var(--ds-gray-700)">Budget: $5.00/day</div>
     </div>
   </div>
 </div>
 
-<!-- Empty State -->
+<!-- Empty + Error -->
 <div class="section">
-  <div class="section-title">Empty States</div>
+  <div class="section-title">Empty State + Error Banner</div>
   <div class="showcase-grid">
     <div class="surface-card" style="padding:0">
       <div class="empty-state">
         <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         <div class="empty-title">No sessions found</div>
-        <div class="empty-desc">Sessions will appear here when the daemon processes messages from Telegram, Discord, or Teams.</div>
+        <div class="empty-desc">Sessions will appear here when the daemon processes messages.</div>
       </div>
     </div>
-    <div class="surface-card" style="padding:0">
-      <div class="empty-state">
-        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        <div class="empty-title">No briefing yet today</div>
-        <div class="empty-desc">Nova generates a morning briefing at 7am with your schedule, obligations, and highlights.</div>
-        <button class="empty-cta">View last briefing</button>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="error-banner">
+        <svg class="err-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span class="err-text">Failed to connect to daemon at port 3443.</span>
+        <button class="err-retry">Retry</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-ghost">Default</button>
+        <button class="btn-ghost" style="border-color:var(--ds-gray-1000)">Primary</button>
+        <button class="btn-ghost" style="opacity:0.5;cursor:not-allowed">Disabled</button>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- Error Banner -->
-<div class="section">
-  <div class="section-title">Error Banner</div>
-  <div class="error-banner" style="max-width:640px">
-    <svg class="err-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-    <span class="err-text">Failed to connect to daemon at port 3443. Check that nv-daemon is running.</span>
-    <button class="err-retry">Retry</button>
   </div>
 </div>
 
@@ -456,33 +387,32 @@
   <div class="section-title">Skeleton Loading</div>
   <div class="stat-grid">
     <div class="surface-card" style="padding:20px 20px 20px 24px">
-      <div class="skeleton" style="width:24px;height:24px;margin-bottom:12px;border-radius:4px"></div>
+      <div class="skeleton" style="width:20px;height:20px;margin-bottom:12px;border-radius:4px"></div>
       <div class="skeleton" style="width:80px;height:32px;margin-bottom:8px"></div>
       <div class="skeleton" style="width:120px;height:14px"></div>
     </div>
     <div class="surface-card" style="padding:20px 20px 20px 24px">
-      <div class="skeleton" style="width:24px;height:24px;margin-bottom:12px;border-radius:4px"></div>
+      <div class="skeleton" style="width:20px;height:20px;margin-bottom:12px;border-radius:4px"></div>
       <div class="skeleton" style="width:60px;height:32px;margin-bottom:8px"></div>
       <div class="skeleton" style="width:100px;height:14px"></div>
     </div>
     <div class="surface-card" style="padding:20px 20px 20px 24px">
-      <div class="skeleton" style="width:24px;height:24px;margin-bottom:12px;border-radius:4px"></div>
+      <div class="skeleton" style="width:20px;height:20px;margin-bottom:12px;border-radius:4px"></div>
       <div class="skeleton" style="width:90px;height:32px;margin-bottom:8px"></div>
       <div class="skeleton" style="width:110px;height:14px"></div>
     </div>
     <div class="surface-card" style="padding:20px 20px 20px 24px">
-      <div class="skeleton" style="width:24px;height:24px;margin-bottom:12px;border-radius:4px"></div>
+      <div class="skeleton" style="width:20px;height:20px;margin-bottom:12px;border-radius:4px"></div>
       <div class="skeleton" style="width:70px;height:32px;margin-bottom:8px"></div>
       <div class="skeleton" style="width:130px;height:14px"></div>
     </div>
   </div>
 </div>
 
-<!-- Full Dashboard Mock -->
+<!-- Full Mock -->
 <div class="section">
   <div class="section-title">Full Dashboard Mockup</div>
   <div class="mock-dashboard">
-    <!-- Sidebar -->
     <div class="sidebar-demo" style="border-radius:0;width:auto">
       <div class="sidebar-logo">
         <div class="logo-mark">N</div>
@@ -494,7 +424,7 @@
         Dashboard
       </div>
       <div class="sidebar-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2"/></svg>
         Briefing
       </div>
       <div class="sidebar-group-label">Activity</div>
@@ -505,6 +435,7 @@
       <div class="sidebar-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         Approvals
+        <span class="badge">2</span>
       </div>
       <div class="sidebar-item">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
@@ -514,22 +445,24 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Sessions
       </div>
+      <div class="sidebar-group-label">System</div>
+      <div class="sidebar-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        Settings
+      </div>
       <div class="sidebar-footer">
         <div class="ws-dot"></div>
         Connected
       </div>
     </div>
 
-    <!-- Main Content -->
     <div class="mock-content">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px">
         <div>
           <h2>Dashboard</h2>
           <div class="subtitle">Nova activity overview</div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button style="padding:6px 12px;font-size:13px;background:var(--ds-gray-alpha-200);border:1px solid var(--ds-gray-alpha-400);border-radius:8px;color:var(--ds-gray-1000);cursor:pointer;font-family:inherit">Auto-refresh: On</button>
-        </div>
+        <button class="btn-ghost">Auto-refresh: On</button>
       </div>
 
       <div class="stat-grid">
@@ -549,9 +482,9 @@
           <div class="label-text">Projects</div>
         </div>
         <div class="stat-card green animate-4">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
           <div class="value">Healthy</div>
-          <div class="label-text">System Status</div>
+          <div class="label-text">System</div>
         </div>
       </div>
 
@@ -562,38 +495,37 @@
             <div class="mock-list-item">
               <div class="mock-dot active"></div>
               <div class="mock-item-title">check-jira-sprint</div>
-              <span class="mock-badge purple">nv</span>
+              <span class="mock-badge neutral">nv</span>
               <div class="mock-item-meta">2m ago</div>
             </div>
             <div class="mock-list-item">
               <div class="mock-dot active"></div>
               <div class="mock-item-title">telegram-photo-analysis</div>
-              <span class="mock-badge purple">nv</span>
+              <span class="mock-badge neutral">nv</span>
               <div class="mock-item-meta">8m ago</div>
             </div>
             <div class="mock-list-item">
               <div class="mock-dot idle"></div>
-              <div class="mock-item-title">morning-briefing-digest</div>
-              <span class="mock-badge green">complete</span>
+              <div class="mock-item-title">morning-briefing</div>
+              <span class="mock-badge green">done</span>
               <div class="mock-item-meta">3h ago</div>
             </div>
           </div>
         </div>
-
         <div>
           <div class="mock-section-header">Obligations</div>
           <div class="surface-card" style="padding:16px">
             <div style="display:flex;justify-content:space-between;margin-bottom:12px">
               <span style="font-size:13px;color:var(--ds-gray-900)">Leo's open</span>
-              <span style="font-size:16px;font-weight:600">8</span>
+              <span style="font-size:16px;font-weight:600;font-variant-numeric:tabular-nums">8</span>
             </div>
             <div style="display:flex;justify-content:space-between;margin-bottom:12px">
               <span style="font-size:13px;color:var(--ds-gray-900)">Nova's open</span>
-              <span style="font-size:16px;font-weight:600">13</span>
+              <span style="font-size:16px;font-weight:600;font-variant-numeric:tabular-nums">13</span>
             </div>
             <div style="display:flex;justify-content:space-between">
               <span style="font-size:13px;color:var(--ds-gray-900)">Pending approval</span>
-              <span style="font-size:16px;font-weight:600;color:var(--ds-amber-700)">2</span>
+              <span style="font-size:16px;font-weight:600;color:var(--ds-amber-700);font-variant-numeric:tabular-nums">2</span>
             </div>
           </div>
         </div>

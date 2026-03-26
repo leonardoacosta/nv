@@ -6,8 +6,26 @@ import type { Message } from "../types.js";
 import { logger } from "../logger.js";
 import type { AgentResponse, ToolCall } from "./types.js";
 import { writeEntry } from "../features/diary/index.js";
+import { buildMcpServers, buildAllowedTools } from "./mcp-config.js";
 
-const ALLOWED_TOOLS = [
+/**
+ * Format an array of messages into a `<conversation_history>` block
+ * suitable for injection into the system prompt.
+ */
+export function formatHistoryBlock(messages: Message[]): string {
+  if (messages.length === 0) return "";
+
+  const lines = messages.map((msg) => {
+    const sender = msg.senderId === "nova" ? "nova" : "user";
+    const ts = msg.timestamp.toISOString().replace("T", " ").slice(0, 16);
+    return `[${sender}] (${ts}): ${msg.content}`;
+  });
+
+  return `\n\n<conversation_history>\n${lines.join("\n")}\n</conversation_history>`;
+}
+
+/** Built-in Agent SDK tools that are always available. */
+const BUILTIN_TOOLS = [
   "Read",
   "Write",
   "Bash",
@@ -20,9 +38,13 @@ const ALLOWED_TOOLS = [
 export class NovaAgent {
   private readonly config: Config;
   private systemPrompt: string = "";
+  private readonly mcpServers: Record<string, { command: string; args: string[]; env?: Record<string, string> }>;
+  private readonly allowedTools: string[];
 
   private constructor(config: Config) {
     this.config = config;
+    this.mcpServers = buildMcpServers(config);
+    this.allowedTools = buildAllowedTools(this.mcpServers, BUILTIN_TOOLS);
   }
 
   /**
@@ -31,6 +53,10 @@ export class NovaAgent {
   static async create(config: Config): Promise<NovaAgent> {
     const agent = new NovaAgent(config);
     await agent.loadSystemPrompt();
+    const mcpNames = Object.keys(agent.mcpServers);
+    if (mcpNames.length > 0) {
+      logger.info({ mcpServers: mcpNames }, "MCP servers configured for agent");
+    }
     return agent;
   }
 
@@ -56,7 +82,7 @@ export class NovaAgent {
 
   async processMessage(
     message: Message,
-    _history: Message[],
+    history: Message[],
   ): Promise<AgentResponse> {
     const gatewayKey =
       this.config.vercelGatewayKey ?? process.env["VERCEL_GATEWAY_KEY"];
@@ -75,14 +101,18 @@ export class NovaAgent {
     let tokensOut = 0;
     const startMs = Date.now();
 
+    const historyBlock = formatHistoryBlock(history);
+    const systemPromptWithHistory = this.systemPrompt + historyBlock;
+
     const queryStream = query({
       prompt: message.content,
       options: {
-        systemPrompt: this.systemPrompt,
-        allowedTools: ALLOWED_TOOLS,
+        systemPrompt: systemPromptWithHistory,
+        allowedTools: this.allowedTools,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         maxTurns: 30,
+        mcpServers: this.mcpServers,
         env: {
           ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
           ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,

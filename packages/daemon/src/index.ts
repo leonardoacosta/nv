@@ -4,11 +4,11 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
-import { startApiServer } from "./api/server.js";
 import { TelegramAdapter } from "./channels/telegram.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
 import { NovaAgent } from "./brain/agent.js";
+import { ConversationManager } from "./brain/conversation.js";
 import {
   ObligationStore,
   handleObligationConfirm,
@@ -116,6 +116,7 @@ export async function main(): Promise<void> {
 
   const agent = await NovaAgent.create(config);
   const obligationStore = new ObligationStore(pool);
+  const conversationManager = new ConversationManager(pool);
 
   log.info({ service: "nova-daemon" }, "NovaAgent ready");
 
@@ -186,7 +187,29 @@ export async function main(): Promise<void> {
       void (async () => {
         try {
           void telegram!.sendChatAction(msg.chatId, "typing");
-          const response = await agent.processMessage(msg, []);
+
+          // Load conversation history for this chat
+          const channelKey = `telegram:${msg.chatId}`;
+          const history = await conversationManager.loadHistory(
+            channelKey,
+            config.conversationHistoryDepth,
+          );
+
+          const response = await agent.processMessage(msg, history);
+
+          // Save exchange fire-and-forget — never block the response path
+          void conversationManager.saveExchange(channelKey, msg, {
+            ...msg,
+            senderId: "nova",
+            senderName: "nova",
+            content: response.text,
+            text: response.text,
+          }).catch((saveErr: unknown) => {
+            log.warn(
+              { service: "nova-daemon", chatId: msg.chatId, err: saveErr },
+              "Failed to save conversation exchange",
+            );
+          });
 
           // Send as plain text — agent responses may contain raw angle-bracket
           // tags that Telegram rejects when parse_mode is HTML.
@@ -250,13 +273,10 @@ export async function main(): Promise<void> {
   process.on("SIGTERM", () => { void shutdown(); });
   process.on("SIGINT", () => { void shutdown(); });
 
-  // ── API server ─────────────────────────────────────────────────────────────
-
-  const apiPort = Number(process.env["API_PORT"] ?? 3443);
-  await startApiServer(apiPort);
-  log.info({ service: "nova-daemon", port: apiPort }, `API server listening on :${apiPort}`);
-
-  log.info({ service: "nova-daemon" }, "Nova daemon ready");
+  log.info(
+    { service: "nova-daemon", toolRouterUrl: config.toolRouterUrl },
+    "Nova daemon ready",
+  );
 }
 
 main().catch((err: unknown) => {

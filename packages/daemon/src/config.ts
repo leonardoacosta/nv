@@ -26,8 +26,10 @@ export interface Config {
   databaseUrl: string;
   systemPromptPath: string;
   telegramChatId?: string;
+  toolRouterUrl: string;
   autonomy?: AutonomyConfig;
   proactiveWatcher: ProactiveWatcherConfig;
+  conversationHistoryDepth: number;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
@@ -36,12 +38,15 @@ const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proact
   logLevel: "info",
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
+  toolRouterUrl: "http://localhost:4000",
+  conversationHistoryDepth: 20,
 };
 
 interface TomlConfig {
   daemon?: {
     port?: number;
     log_level?: string;
+    tool_router_url?: string;
   };
   telegram?: {
     chat_id?: number | string;
@@ -61,6 +66,9 @@ interface TomlConfig {
     max_reminders_per_interval?: number;
     quiet_start?: string;
     quiet_end?: string;
+  };
+  conversation?: {
+    history_depth?: number;
   };
 }
 
@@ -114,6 +122,11 @@ export async function loadConfig(
   const systemPromptPath =
     process.env["NV_SYSTEM_PROMPT_PATH"] ?? DEFAULTS.systemPromptPath;
 
+  const toolRouterUrl =
+    process.env["TOOL_ROUTER_URL"] ??
+    toml.daemon?.tool_router_url ??
+    DEFAULTS.toolRouterUrl;
+
   const autonomy: AutonomyConfig = {
     enabled: toml.autonomy?.enabled ?? true,
     timeoutMs: toml.autonomy?.timeout_ms ?? 300_000,
@@ -146,6 +159,11 @@ export async function loadConfig(
       defaultProactiveWatcherConfig.quietEnd,
   };
 
+  const historyDepthRaw = process.env["NV_HISTORY_DEPTH"];
+  const conversationHistoryDepth = historyDepthRaw
+    ? parseInt(historyDepthRaw, 10)
+    : (toml.conversation?.history_depth ?? 20);
+
   return {
     logLevel,
     daemonPort,
@@ -154,7 +172,9 @@ export async function loadConfig(
     vercelGatewayKey,
     telegramChatId,
     systemPromptPath,
+    toolRouterUrl,
     autonomy,
     proactiveWatcher,
+    conversationHistoryDepth,
   };
 }

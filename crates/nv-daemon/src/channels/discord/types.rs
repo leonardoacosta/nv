@@ -137,6 +137,49 @@ pub struct Message {
     pub timestamp: String,
 }
 
+// ── REST API Types ─────────────────────────────────────────────────
+
+/// A Discord guild (server) returned by GET /users/@me/guilds.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordGuild {
+    pub id: String,
+    pub name: String,
+    #[allow(dead_code)]
+    pub icon: Option<String>,
+}
+
+/// A Discord channel returned by GET /guilds/{id}/channels.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordChannel {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub channel_type: u8,
+    pub topic: Option<String>,
+    pub position: Option<i32>,
+    pub parent_id: Option<String>,
+}
+
+/// A Discord message returned by GET /channels/{id}/messages.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordMessage {
+    #[allow(dead_code)]
+    pub id: String,
+    pub content: String,
+    pub author: DiscordAuthor,
+    pub timestamp: String,
+    pub attachments: Option<Vec<serde_json::Value>>,
+}
+
+/// Author of a Discord message.
+#[derive(Debug, Clone, Deserialize)]
+pub struct DiscordAuthor {
+    #[allow(dead_code)]
+    pub id: String,
+    pub username: String,
+    pub global_name: Option<String>,
+}
+
 // ── Intent Constants ───────────────────────────────────────────────
 
 /// GUILD_MESSAGES (1 << 9) — receive message events in guild channels.

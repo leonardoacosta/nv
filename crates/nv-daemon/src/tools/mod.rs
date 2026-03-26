@@ -3,6 +3,7 @@ pub use nv_tools::tools::calendar;
 pub mod channels;
 pub mod check;
 pub mod checkable_impls;
+pub mod discord;
 pub mod outlook;
 pub use nv_tools::tools::cloudflare;
 pub use nv_tools::tools::docker;
@@ -166,6 +167,7 @@ use nv_core::channel::Channel;
 use nv_core::types::OutboundMessage;
 
 use self::ado as ado_tools;
+use self::discord as discord_tools;
 use crate::aggregation;
 use self::cloudflare as cloudflare_tools;
 use self::outlook as outlook_tools;
@@ -402,6 +404,9 @@ pub fn register_tools() -> Vec<ToolDefinition> {
 
     // Add Microsoft Teams tools (channels, messages, send, presence)
     tools.extend(teams_tools::teams_tool_definitions());
+
+    // Add Discord read tools (list_guilds, list_channels, read_messages)
+    tools.extend(discord_tools::discord_tool_definitions());
 
     // Add Outlook email and calendar tools (delegated auth)
     tools.extend(outlook_tools::outlook_tool_definitions());
@@ -2408,6 +2413,33 @@ pub async fn execute_tool_send_with_backend(
             Ok(ToolResult::Immediate(output))
         }
 
+        // ── Discord Tools ─────────────────────────────────────────────
+        "discord_list_guilds" => {
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = discord_tools::build_discord_client(&secrets)?;
+            let output = discord_tools::discord_list_guilds(&client).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "discord_list_channels" => {
+            let guild_id = input["guild_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'guild_id' parameter"))?;
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = discord_tools::build_discord_client(&secrets)?;
+            let output = discord_tools::discord_list_channels(&client, guild_id).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+        "discord_read_messages" => {
+            let channel_id = input["channel_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
+            let limit = input["limit"].as_u64().unwrap_or(20).min(50) as usize;
+            let secrets = nv_core::config::Secrets::from_env()?;
+            let client = discord_tools::build_discord_client(&secrets)?;
+            let output = discord_tools::discord_read_messages(&client, channel_id, limit).await?;
+            Ok(ToolResult::Immediate(output))
+        }
+
         // ── Web Fetch Tools ────────────────────────────────────────────
         "fetch_url" => {
             let url = input["url"]
@@ -2846,13 +2878,14 @@ mod tests {
         // + 1 check_services
         // + 6 teams (teams_channels, teams_messages, teams_send, teams_presence,
         //       teams_list_chats, teams_read_chat)
+        // + 3 discord (discord_list_guilds, discord_list_channels, discord_read_messages)
         // + 2 outlook (read_outlook_inbox, read_outlook_calendar)
         // + 1 ado work items (query_ado_work_items)
         // + 5 proactive-followups (list_obligations, dismiss_obligation, snooze_obligation,
         //       reassign_obligation, obligation_research_status) — feat(proactive-followups)
         // + 1 self-assessment (self_assessment_run) — feat(self-improvement-research)
-        // = 98 + 5 + 1 + 2 = 106
-        assert_eq!(tools.len(), 106);
+        // = 98 + 5 + 1 + 2 + 3 = 109
+        assert_eq!(tools.len(), 109);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"read_memory"));
@@ -2944,6 +2977,10 @@ mod tests {
         assert!(names.contains(&"teams_presence"));
         assert!(names.contains(&"teams_list_chats"));
         assert!(names.contains(&"teams_read_chat"));
+        // Discord tools
+        assert!(names.contains(&"discord_list_guilds"));
+        assert!(names.contains(&"discord_list_channels"));
+        assert!(names.contains(&"discord_read_messages"));
         // Outlook tools
         assert!(names.contains(&"read_outlook_inbox"));
         assert!(names.contains(&"read_outlook_calendar"));

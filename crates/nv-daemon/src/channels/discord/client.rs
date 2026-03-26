@@ -3,6 +3,8 @@ use std::time::Duration;
 use anyhow::bail;
 use reqwest::Client;
 
+use crate::channels::discord::types::{DiscordChannel, DiscordGuild, DiscordMessage};
+
 /// Discord maximum message length.
 const DISCORD_MAX_MESSAGE_LEN: usize = 2000;
 
@@ -40,6 +42,90 @@ impl DiscordRestClient {
         }
 
         Ok(())
+    }
+
+    /// List all guilds (servers) the bot is a member of.
+    ///
+    /// Calls `GET /users/@me/guilds` and returns a vec of `DiscordGuild`.
+    pub async fn list_guilds(&self) -> anyhow::Result<Vec<DiscordGuild>> {
+        let url = format!("{DISCORD_API_BASE}/users/@me/guilds");
+        let resp = self.get_with_retry(&url).await?;
+        let guilds: Vec<DiscordGuild> = resp.json().await?;
+        Ok(guilds)
+    }
+
+    /// List text channels in a guild.
+    ///
+    /// Calls `GET /guilds/{guild_id}/channels`, filters to type 0 (text channels),
+    /// and sorts by position ascending.
+    pub async fn list_channels(&self, guild_id: &str) -> anyhow::Result<Vec<DiscordChannel>> {
+        let url = format!("{DISCORD_API_BASE}/guilds/{guild_id}/channels");
+        let resp = self.get_with_retry(&url).await?;
+        let mut channels: Vec<DiscordChannel> = resp.json().await?;
+        // Keep only text channels (type 0)
+        channels.retain(|c| c.channel_type == 0);
+        channels.sort_by_key(|c| c.position.unwrap_or(0));
+        Ok(channels)
+    }
+
+    /// Fetch recent messages from a channel.
+    ///
+    /// Calls `GET /channels/{channel_id}/messages?limit={limit}`.
+    /// Discord returns messages newest-first. Limit is clamped to 1..=50.
+    pub async fn get_messages(
+        &self,
+        channel_id: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<DiscordMessage>> {
+        let limit = limit.clamp(1, 50);
+        let url = format!("{DISCORD_API_BASE}/channels/{channel_id}/messages?limit={limit}");
+        let resp = self.get_with_retry(&url).await?;
+        let messages: Vec<DiscordMessage> = resp.json().await?;
+        Ok(messages)
+    }
+
+    /// Perform a GET request with rate-limit retry (HTTP 429 → Retry-After).
+    async fn get_with_retry(&self, url: &str) -> anyhow::Result<reqwest::Response> {
+        for attempt in 0..=MAX_RATE_LIMIT_RETRIES {
+            let resp = self
+                .http
+                .get(url)
+                .header("Authorization", format!("Bot {}", self.token))
+                .send()
+                .await?;
+
+            let status = resp.status();
+
+            if status.is_success() {
+                return Ok(resp);
+            }
+
+            if status.as_u16() == 429 {
+                let retry_after = resp
+                    .headers()
+                    .get("Retry-After")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .unwrap_or(1.0);
+
+                if attempt < MAX_RATE_LIMIT_RETRIES {
+                    tracing::warn!(
+                        retry_after_secs = retry_after,
+                        attempt = attempt + 1,
+                        "Discord rate limited on GET, retrying"
+                    );
+                    tokio::time::sleep(Duration::from_secs_f64(retry_after)).await;
+                    continue;
+                } else {
+                    bail!("Discord rate limited after {MAX_RATE_LIMIT_RETRIES} retries");
+                }
+            }
+
+            let error_text = resp.text().await.unwrap_or_default();
+            bail!("Discord API error ({}): {}", status, error_text);
+        }
+
+        bail!("Discord get_with_retry exhausted retries")
     }
 
     /// POST a single message to a channel (with rate-limit retry).

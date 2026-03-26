@@ -1,0 +1,19 @@
+{
+  "name": "@nova/teams-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "install-cli": "cp dist/teams-cli.cjs ~/.local/bin/teams-cli && chmod +x ~/.local/bin/teams-cli",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.3"
+  }
+}

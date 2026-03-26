@@ -234,6 +234,17 @@ impl ObligationStore {
             .map_err(|e| anyhow::anyhow!("count_open_by_priority failed: {e}"))
     }
 
+    /// Update the `detected_action` text of an obligation and touch `updated_at`.
+    ///
+    /// Returns `true` if a row was updated, `false` if the id was not found.
+    pub fn update_detected_action(&self, id: &str, new_text: &str) -> Result<bool> {
+        let rows_changed = self.conn.execute(
+            "UPDATE obligations SET detected_action = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![new_text, id],
+        )?;
+        Ok(rows_changed > 0)
+    }
+
     /// Count obligations that are currently open.
     #[allow(dead_code)] // reserved for future dashboard/API exposure
     pub fn count_open(&self) -> Result<i64> {
@@ -507,6 +518,29 @@ mod tests {
 
         // Expect [(0, 1), (1, 1), (2, 2)] — P2 count is 2 because cp2c is closed
         assert_eq!(counts, vec![(0, 1), (1, 1), (2, 2)]);
+    }
+
+    #[test]
+    fn update_detected_action_changes_text() {
+        let (store, _f) = temp_store();
+
+        store
+            .create(new_obligation("da1", "telegram", "original action text", 2))
+            .unwrap();
+
+        let updated = store.update_detected_action("da1", "revised action text").unwrap();
+        assert!(updated, "expected update_detected_action to return true for existing id");
+
+        let ob = store.get_by_id("da1").unwrap().unwrap();
+        assert_eq!(ob.detected_action, "revised action text");
+        assert!(ob.updated_at >= ob.created_at, "updated_at should be >= created_at");
+    }
+
+    #[test]
+    fn update_detected_action_missing_id_returns_false() {
+        let (store, _f) = temp_store();
+        let result = store.update_detected_action("nonexistent", "new text").unwrap();
+        assert!(!result);
     }
 
     #[test]

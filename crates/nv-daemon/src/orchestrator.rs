@@ -203,6 +203,8 @@ pub struct Orchestrator {
     telegram_chat_id: Option<i64>,
     /// UUID of the pending action currently being edited.
     editing_action_id: Option<Uuid>,
+    /// Obligation ID currently being edited (waiting for new detected_action text from user).
+    editing_obligation_id: Option<String>,
     /// Last time we ran the expiry sweep.
     last_expiry_check: Instant,
     /// Receiver for worker progress events.
@@ -268,6 +270,7 @@ impl Orchestrator {
             telegram_client,
             telegram_chat_id,
             editing_action_id: None,
+            editing_obligation_id: None,
             last_expiry_check: Instant::now(),
             event_rx,
             worker_stage_started: std::collections::HashMap::new(),
@@ -661,6 +664,53 @@ impl Orchestrator {
             }
         }
 
+        // Obligation edit-flow: if we are waiting for replacement text, consume the
+        // next plain-text message as the new detected_action and skip Claude dispatch.
+        if let Some(ob_id) = self.editing_obligation_id.take() {
+            if let Some(Trigger::Message(msg)) = triggers.first() {
+                if !msg.content.starts_with("[callback] ") {
+                    let new_text = msg.content.trim().to_string();
+                    let chat_id = tg_chat_id.or(self.telegram_chat_id);
+
+                    // Update detected_action in the store.
+                    let update_result = self.deps.obligation_store
+                        .as_ref()
+                        .and_then(|arc| arc.lock().ok())
+                        .map(|store| store.update_detected_action(&ob_id, &new_text));
+
+                    match update_result {
+                        Some(Ok(true)) => {
+                            // Edit original obligation message to show the update.
+                            if let (Some(tg_channel), Some(cid), Some(mid)) = (
+                                self.channels
+                                    .get("telegram")
+                                    .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                                chat_id,
+                                tg_msg_id,
+                            ) {
+                                let text = format!("Updated: {new_text}");
+                                let _ = tg_channel.client.edit_message(cid, mid, &text, None).await;
+                            }
+                            tracing::info!(ob_id = %ob_id, "obligation detected_action updated via edit flow");
+                        }
+                        Some(Ok(false)) => {
+                            tracing::warn!(ob_id = %ob_id, "obligation edit flow: obligation not found");
+                        }
+                        Some(Err(e)) => {
+                            tracing::warn!(error = %e, ob_id = %ob_id, "obligation edit flow: store update failed");
+                        }
+                        None => {
+                            tracing::warn!(ob_id = %ob_id, "obligation edit flow: no obligation store");
+                        }
+                    }
+                    // Consumed the message for editing — skip Claude dispatch.
+                    return;
+                }
+            }
+            // If no suitable message (e.g. it was a callback), restore the id.
+            // (Already taken by .take(); user will need to press Edit again.)
+        }
+
         // Phase 2: Consume editing_action_id so the next message starts an
         // edit-aware Claude session. .take() ensures only this task gets it.
         let editing_action_id = self.editing_action_id.take();
@@ -946,6 +996,105 @@ impl Orchestrator {
                             original_msg_id,
                             "Obligation dismissed.",
                         ).await;
+                        continue;
+                    } else if let Some(ob_id) = data.strip_prefix("ob_edit:") {
+                        // Set editing state and ask the user for new obligation text.
+                        self.editing_obligation_id = Some(ob_id.to_string());
+                        let chat_id = tg_chat_id.or(self.telegram_chat_id);
+                        if let (Some(tg_channel), Some(cid)) = (
+                            self.channels
+                                .get("telegram")
+                                .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                            chat_id,
+                        ) {
+                            let _ = tg_channel.client
+                                .send_message(cid, "What should the obligation text say?", None, None)
+                                .await;
+                        }
+                        continue;
+                    } else if let Some(ob_id) = data.strip_prefix("ob_cancel:") {
+                        if let (Some(tg_channel), Some(cid)) = (
+                            self.channels
+                                .get("telegram")
+                                .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                            tg_chat_id.or(self.telegram_chat_id),
+                        ) {
+                            if let Some(store_arc) = &self.deps.obligation_store {
+                                if let Ok(store) = store_arc.lock() {
+                                    if let Err(e) = crate::callbacks::handle_ob_cancel(
+                                        ob_id,
+                                        &tg_channel.client,
+                                        cid,
+                                        original_msg_id,
+                                        &store,
+                                    ).await {
+                                        tracing::warn!(error = %e, "ob_cancel callback failed");
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    } else if let Some(ob_id) = data.strip_prefix("ob_expiry:") {
+                        if let (Some(tg_channel), Some(cid)) = (
+                            self.channels
+                                .get("telegram")
+                                .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                            tg_chat_id.or(self.telegram_chat_id),
+                        ) {
+                            if let Some(store_arc) = &self.deps.obligation_store {
+                                if let Ok(ob_store) = store_arc.lock() {
+                                    if let Err(e) = crate::callbacks::handle_ob_expiry(
+                                        ob_id,
+                                        &tg_channel.client,
+                                        cid,
+                                        original_msg_id,
+                                        &ob_store,
+                                        self.deps.reminder_store.as_deref(),
+                                        &self.deps.timezone,
+                                    ).await {
+                                        tracing::warn!(error = %e, "ob_expiry callback failed");
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    } else if let Some(rest) = data.strip_prefix("ob_snooze:") {
+                        // rest = "{obligation_id}:{offset}" — split on last ':' to separate id and offset.
+                        if let Some(last_colon) = rest.rfind(':') {
+                            let ob_id = &rest[..last_colon];
+                            let offset = &rest[last_colon + 1..];
+
+                            if let (Some(tg_channel), Some(cid)) = (
+                                self.channels
+                                    .get("telegram")
+                                    .and_then(|c| c.as_any().downcast_ref::<crate::channels::telegram::TelegramChannel>()),
+                                tg_chat_id.or(self.telegram_chat_id),
+                            ) {
+                                if let (Some(ob_store_arc), Some(rem_store_arc)) = (
+                                    &self.deps.obligation_store,
+                                    &self.deps.reminder_store,
+                                ) {
+                                    if let Ok(ob_store) = ob_store_arc.lock() {
+                                        if let Err(e) = crate::callbacks::handle_ob_snooze(
+                                            ob_id,
+                                            offset,
+                                            &tg_channel.client,
+                                            cid,
+                                            original_msg_id,
+                                            &ob_store,
+                                            rem_store_arc.as_ref(),
+                                            &self.deps.timezone,
+                                        ).await {
+                                            tracing::warn!(error = %e, "ob_snooze callback failed");
+                                        }
+                                    }
+                                } else {
+                                    tracing::warn!("ob_snooze: obligation_store or reminder_store not configured");
+                                }
+                            }
+                        } else {
+                            tracing::warn!(data, "ob_snooze callback data missing offset separator");
+                        }
                         continue;
                     }
 
@@ -1969,26 +2118,55 @@ fn format_obligation_card(ob: &nv_core::types::Obligation, source_channel: &str)
 
 /// Build the obligation action inline keyboard.
 ///
-/// Three buttons in a single row:
-/// - "Handle" → `ob_handle:{id}` (sets owner=Leo, status=in_progress)
-/// - "Delegate to Nova" → `ob_delegate:{id}` (sets owner=Nova, status=in_progress)
-/// - "Dismiss" → `ob_dismiss:{id}` (sets status=dismissed)
+/// Two rows:
+///   Row 0: [Handle] [Delegate to Nova] [Dismiss]
+///   Row 1: [Edit] [Cancel] [Extend] [Snooze 1h] [Snooze 4h] [Snooze tomorrow]
 fn obligation_keyboard(obligation_id: &str) -> nv_core::types::InlineKeyboard {
     nv_core::types::InlineKeyboard {
-        rows: vec![vec![
-            nv_core::types::InlineButton {
-                text: "Handle".to_string(),
-                callback_data: format!("ob_handle:{obligation_id}"),
-            },
-            nv_core::types::InlineButton {
-                text: "Delegate to Nova".to_string(),
-                callback_data: format!("ob_delegate:{obligation_id}"),
-            },
-            nv_core::types::InlineButton {
-                text: "Dismiss".to_string(),
-                callback_data: format!("ob_dismiss:{obligation_id}"),
-            },
-        ]],
+        rows: vec![
+            // Row 0 — primary actions (existing)
+            vec![
+                nv_core::types::InlineButton {
+                    text: "Handle".to_string(),
+                    callback_data: format!("ob_handle:{obligation_id}"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Delegate to Nova".to_string(),
+                    callback_data: format!("ob_delegate:{obligation_id}"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Dismiss".to_string(),
+                    callback_data: format!("ob_dismiss:{obligation_id}"),
+                },
+            ],
+            // Row 1 — secondary actions (new)
+            vec![
+                nv_core::types::InlineButton {
+                    text: "Edit".to_string(),
+                    callback_data: format!("ob_edit:{obligation_id}"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Cancel".to_string(),
+                    callback_data: format!("ob_cancel:{obligation_id}"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Extend".to_string(),
+                    callback_data: format!("ob_expiry:{obligation_id}"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Snooze 1h".to_string(),
+                    callback_data: format!("ob_snooze:{obligation_id}:1h"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Snooze 4h".to_string(),
+                    callback_data: format!("ob_snooze:{obligation_id}:4h"),
+                },
+                nv_core::types::InlineButton {
+                    text: "Snooze tomorrow".to_string(),
+                    callback_data: format!("ob_snooze:{obligation_id}:tomorrow"),
+                },
+            ],
+        ],
     }
 }
 
@@ -2559,27 +2737,47 @@ mod tests {
     }
 
     #[test]
-    fn obligation_keyboard_has_three_buttons_with_correct_prefixes() {
+    fn obligation_keyboard_layout() {
         let kb = obligation_keyboard("ob-abc-123");
-        assert_eq!(kb.rows.len(), 1, "expected 1 row");
-        let row = &kb.rows[0];
-        assert_eq!(row.len(), 3, "expected 3 buttons");
+        assert_eq!(kb.rows.len(), 2, "expected 2 rows");
 
-        let handle = row.iter().find(|b| b.callback_data.starts_with("ob_handle:"));
-        let delegate = row.iter().find(|b| b.callback_data.starts_with("ob_delegate:"));
-        let dismiss = row.iter().find(|b| b.callback_data.starts_with("ob_dismiss:"));
+        // Row 0 — primary actions
+        let row0 = &kb.rows[0];
+        assert_eq!(row0.len(), 3, "expected 3 buttons in row 0");
 
-        assert!(handle.is_some(), "missing ob_handle button");
-        assert!(delegate.is_some(), "missing ob_delegate button");
-        assert!(dismiss.is_some(), "missing ob_dismiss button");
+        let handle = row0.iter().find(|b| b.callback_data.starts_with("ob_handle:"));
+        let delegate = row0.iter().find(|b| b.callback_data.starts_with("ob_delegate:"));
+        let dismiss = row0.iter().find(|b| b.callback_data.starts_with("ob_dismiss:"));
+        assert!(handle.is_some(), "missing ob_handle button in row 0");
+        assert!(delegate.is_some(), "missing ob_delegate button in row 0");
+        assert!(dismiss.is_some(), "missing ob_dismiss button in row 0");
 
-        // All callbacks must contain the obligation_id
-        for btn in row {
-            assert!(
-                btn.callback_data.contains("ob-abc-123"),
-                "button callback_data missing obligation_id: {}",
-                btn.callback_data
-            );
+        // Row 1 — secondary actions
+        let row1 = &kb.rows[1];
+        assert_eq!(row1.len(), 6, "expected 6 buttons in row 1");
+
+        let edit = row1.iter().find(|b| b.callback_data.starts_with("ob_edit:"));
+        let cancel = row1.iter().find(|b| b.callback_data.starts_with("ob_cancel:"));
+        let extend = row1.iter().find(|b| b.callback_data.starts_with("ob_expiry:"));
+        let snooze_1h = row1.iter().find(|b| b.callback_data.ends_with(":1h"));
+        let snooze_4h = row1.iter().find(|b| b.callback_data.ends_with(":4h"));
+        let snooze_tmr = row1.iter().find(|b| b.callback_data.ends_with(":tomorrow"));
+        assert!(edit.is_some(), "missing ob_edit button in row 1");
+        assert!(cancel.is_some(), "missing ob_cancel button in row 1");
+        assert!(extend.is_some(), "missing ob_expiry button in row 1");
+        assert!(snooze_1h.is_some(), "missing ob_snooze:1h button in row 1");
+        assert!(snooze_4h.is_some(), "missing ob_snooze:4h button in row 1");
+        assert!(snooze_tmr.is_some(), "missing ob_snooze:tomorrow button in row 1");
+
+        // All buttons must embed the obligation_id
+        for row in &kb.rows {
+            for btn in row {
+                assert!(
+                    btn.callback_data.contains("ob-abc-123"),
+                    "button callback_data missing obligation_id: {}",
+                    btn.callback_data
+                );
+            }
         }
     }
 

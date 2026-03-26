@@ -20,6 +20,10 @@ use self::client::TelegramClient;
 pub struct TelegramChannel {
     pub client: TelegramClient,
     pub chat_id: i64,
+    /// Optional authorized user ID for inline query filtering.
+    /// When `Some`, inline queries from users other than this ID are silently dropped.
+    /// When `None`, all inline queries from any user are forwarded (no user-ID filter).
+    pub authorized_user_id: Option<i64>,
     trigger_tx: mpsc::Sender<Trigger>,
     offset: Arc<AtomicI64>,
 }
@@ -34,9 +38,16 @@ impl TelegramChannel {
         Self {
             client: TelegramClient::new(bot_token),
             chat_id,
+            authorized_user_id: None,
             trigger_tx,
             offset: Arc::new(AtomicI64::new(0)),
         }
+    }
+
+    /// Set the authorized user ID for inline query filtering (builder pattern).
+    pub fn with_authorized_user_id(mut self, user_id: Option<i64>) -> Self {
+        self.authorized_user_id = user_id;
+        self
     }
 }
 
@@ -63,10 +74,11 @@ impl Channel for TelegramChannel {
             self.offset.store(max_id + 1, Ordering::Relaxed);
         }
 
-        // Log unauthorized updates (wrong chat_id) so we know messages arrive but are filtered
+        // Log unauthorized updates (wrong chat_id) so we know messages arrive but are filtered.
+        // Inline queries don't have a chat_id, so exclude them from this count.
         let unauthorized = updates
             .iter()
-            .filter(|u| u.chat_id() != Some(self.chat_id))
+            .filter(|u| u.inline_query.is_none() && u.chat_id() != Some(self.chat_id))
             .count();
         if unauthorized > 0 {
             tracing::warn!(
@@ -76,14 +88,52 @@ impl Channel for TelegramChannel {
             );
         }
 
-        // Filter by authorized chat_id and convert to InboundMessage
-        let messages: Vec<InboundMessage> = updates
+        // Filter by authorized chat_id and convert to InboundMessage (message + callback_query).
+        let mut messages: Vec<InboundMessage> = updates
             .iter()
-            .filter(|u| u.chat_id() == Some(self.chat_id))
+            .filter(|u| u.inline_query.is_none() && u.chat_id() == Some(self.chat_id))
             .filter_map(|u| u.to_inbound_message())
             .collect();
 
-        // Answer callback queries for authorized updates
+        // Handle inline queries — convert authorized ones to InboundMessage.
+        for update in &updates {
+            if let Some(iq) = &update.inline_query {
+                // User-ID allow-list: if authorized_user_id is set, drop queries from others.
+                if let Some(authorized_id) = self.authorized_user_id {
+                    if iq.from.id != authorized_id {
+                        tracing::debug!(
+                            from_user_id = iq.from.id,
+                            authorized_user_id = authorized_id,
+                            "telegram: dropping inline query from unauthorized user"
+                        );
+                        continue;
+                    }
+                }
+
+                tracing::debug!(
+                    query_id = %iq.id,
+                    from_user_id = iq.from.id,
+                    query = %iq.query,
+                    "telegram: received inline query"
+                );
+
+                let msg = InboundMessage {
+                    id: iq.id.clone(),
+                    channel: "telegram".to_string(),
+                    sender: iq.from.username.clone().unwrap_or_else(|| iq.from.first_name.clone()),
+                    content: iq.query.clone(),
+                    timestamp: chrono::Utc::now(),
+                    thread_id: None,
+                    metadata: serde_json::json!({
+                        "inline_query": true,
+                        "inline_query_id": iq.id,
+                    }),
+                };
+                messages.push(msg);
+            }
+        }
+
+        // Answer callback queries for authorized updates.
         for update in &updates {
             if update.chat_id() == Some(self.chat_id) {
                 if let Some(cb) = &update.callback_query {
@@ -528,6 +578,14 @@ pub fn callback_label(data: Option<&str>) -> &'static str {
         "Cancelled."
     } else if data.starts_with("retry:") {
         "Retrying..."
+    } else if data.starts_with("ob_edit:") {
+        "Editing..."
+    } else if data.starts_with("ob_cancel:") {
+        "Cancelled."
+    } else if data.starts_with("ob_expiry:") {
+        "Extended."
+    } else if data.starts_with("ob_snooze:") {
+        "Snoozed."
     } else {
         "Got it."
     }
@@ -629,6 +687,13 @@ mod tests {
         assert_eq!(callback_label(Some("action:abc-123")), "Got it.");
         assert_eq!(callback_label(Some("unknown:xyz")), "Got it.");
         assert_eq!(callback_label(None), "Got it.");
+        // Obligation-specific prefixes
+        assert_eq!(callback_label(Some("ob_edit:ob-abc-123")), "Editing...");
+        assert_eq!(callback_label(Some("ob_cancel:ob-abc-123")), "Cancelled.");
+        assert_eq!(callback_label(Some("ob_expiry:ob-abc-123")), "Extended.");
+        assert_eq!(callback_label(Some("ob_snooze:ob-abc-123:1h")), "Snoozed.");
+        assert_eq!(callback_label(Some("ob_snooze:ob-abc-123:4h")), "Snoozed.");
+        assert_eq!(callback_label(Some("ob_snooze:ob-abc-123:tomorrow")), "Snoozed.");
     }
 
     /// Integration test against real Telegram Bot API.

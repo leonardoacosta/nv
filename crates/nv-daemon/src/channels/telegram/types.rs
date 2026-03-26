@@ -10,12 +10,30 @@ pub struct TelegramResponse<T> {
     pub description: Option<String>,
 }
 
+/// An inline query from a user typing `@bot_username <query>` in any chat.
+///
+/// Received when `"inline_query"` is included in `allowed_updates`.
+/// Bot API 9.3+.
+#[derive(Debug, Deserialize)]
+pub struct InlineQuery {
+    /// Unique identifier for this query.
+    pub id: String,
+    /// Sender of the inline query.
+    pub from: TgUser,
+    /// Text of the query (empty string if no query provided).
+    pub query: String,
+    /// Offset of the results to be returned (pagination token).
+    pub offset: String,
+}
+
 /// A single update from the Telegram Bot API.
 #[derive(Debug, Deserialize)]
 pub struct Update {
     pub update_id: i64,
     pub message: Option<TgMessage>,
     pub callback_query: Option<CallbackQuery>,
+    /// Inline query from a user typing `@bot_username <query>`.
+    pub inline_query: Option<InlineQuery>,
 }
 
 /// A Telegram voice message.
@@ -258,6 +276,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         }
     }
 
@@ -285,6 +304,7 @@ mod tests {
                 }),
                 data: Some("approve:action-1".to_string()),
             }),
+            inline_query: None,
         }
     }
 
@@ -323,6 +343,7 @@ mod tests {
             update_id: 102,
             message: None,
             callback_query: None,
+            inline_query: None,
         };
         assert!(update.to_inbound_message().is_none());
     }
@@ -380,6 +401,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
         assert_eq!(msg.sender, "Leo");
@@ -401,6 +423,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
         assert_eq!(msg.sender, "");
@@ -432,6 +455,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
 
@@ -487,6 +511,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
 
@@ -524,6 +549,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
 
@@ -560,6 +586,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
 
@@ -599,6 +626,7 @@ mod tests {
                 date: 1700000000,
             }),
             callback_query: None,
+            inline_query: None,
         };
         let msg = update.to_inbound_message().unwrap();
 

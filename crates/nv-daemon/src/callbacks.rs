@@ -7,7 +7,7 @@ use anyhow::Result;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 use nv_core::channel::Channel;
@@ -15,6 +15,8 @@ use nv_core::channel::Channel;
 use crate::tools::jira;
 use crate::nexus::backend::NexusBackend;
 use crate::cc_sessions::CcSessionManager;
+use crate::obligation_store::ObligationStore;
+use crate::reminders::{parse_relative_time, ReminderStore};
 use crate::tools::schedule::ScheduleStore;
 use crate::state::{PendingStatus, State};
 use crate::channels::telegram::client::TelegramClient;
@@ -417,6 +419,116 @@ async fn execute_ha_service_call(payload: &serde_json::Value) -> anyhow::Result<
         .ok_or_else(|| anyhow::anyhow!("missing 'data' in payload"))?;
 
     crate::tools::ha::ha_service_call_execute(domain, service, data).await
+}
+
+// ── Obligation Handlers ──────────────────────────────────────────────
+
+/// Handle the "ob_cancel" callback — dismiss the obligation and edit the message.
+///
+/// Sets status=Dismissed on the obligation and edits the original Telegram message
+/// to show "Cancelled: {detected_action}".
+pub async fn handle_ob_cancel(
+    ob_id: &str,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    original_message_id: Option<i64>,
+    ob_store: &ObligationStore,
+) -> Result<()> {
+    // Look up detected_action before changing status so we can build the message.
+    let detected_action = ob_store
+        .get_by_id(ob_id)?
+        .map(|ob| ob.detected_action)
+        .unwrap_or_else(|| ob_id.to_string());
+
+    ob_store.update_status(ob_id, &nv_core::types::ObligationStatus::Dismissed)?;
+
+    if let Some(msg_id) = original_message_id {
+        let text = format!("Cancelled: {detected_action}");
+        let _ = telegram.edit_message(chat_id, msg_id, &text, None).await;
+    }
+
+    Ok(())
+}
+
+/// Handle the "ob_expiry" callback — acknowledge request for more time.
+///
+/// Does not mutate obligation status (no deadline column). Edits the original
+/// Telegram message to confirm the extension, and optionally creates a 24h
+/// reminder via `ReminderStore`.
+pub async fn handle_ob_expiry(
+    ob_id: &str,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    original_message_id: Option<i64>,
+    ob_store: &ObligationStore,
+    reminder_store: Option<&Mutex<ReminderStore>>,
+    timezone: &str,
+) -> Result<()> {
+    if let Some(store_lock) = reminder_store {
+        if let Ok(ob) = ob_store.get_by_id(ob_id).map(|r| r) {
+            if let Some(ob) = ob {
+                if let Ok(due_at) = parse_relative_time("24h", timezone) {
+                    if let Ok(store) = store_lock.lock() {
+                        let message = format!("Obligation still open: {}", ob.detected_action);
+                        let _ = store.create_reminder(&message, &due_at, "telegram");
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(msg_id) = original_message_id {
+        let text = "Deadline extended by 24h. Obligation remains open.".to_string();
+        let _ = telegram.edit_message(chat_id, msg_id, &text, None).await;
+    }
+
+    Ok(())
+}
+
+/// Handle the "ob_snooze" callback — create a reminder for the obligation at a future time.
+///
+/// Parses `offset` via `parse_relative_time` (supports `"1h"`, `"4h"`, `"tomorrow"`),
+/// looks up the obligation, creates a reminder, and edits the original message.
+pub async fn handle_ob_snooze(
+    ob_id: &str,
+    offset: &str,
+    telegram: &TelegramClient,
+    chat_id: i64,
+    original_message_id: Option<i64>,
+    ob_store: &ObligationStore,
+    reminder_store: &Mutex<ReminderStore>,
+    timezone: &str,
+) -> Result<()> {
+    let due_at = parse_relative_time(offset, timezone)?;
+
+    let detected_action = ob_store
+        .get_by_id(ob_id)?
+        .map(|ob| ob.detected_action)
+        .unwrap_or_else(|| ob_id.to_string());
+
+    {
+        let store = reminder_store
+            .lock()
+            .map_err(|_| anyhow::anyhow!("reminder store mutex poisoned"))?;
+        let message = format!("Obligation: {detected_action}");
+        store.create_reminder(&message, &due_at, "telegram")?;
+    }
+
+    if let Some(msg_id) = original_message_id {
+        // Format human-readable time in the target timezone.
+        let human_time = format_snooze_time(&due_at, timezone);
+        let text = format!("Snoozed until {human_time}.");
+        let _ = telegram.edit_message(chat_id, msg_id, &text, None).await;
+    }
+
+    Ok(())
+}
+
+/// Format a UTC datetime into a short human-readable string.
+///
+/// Returns an RFC 3339 short representation in UTC.
+fn format_snooze_time(dt: &chrono::DateTime<Utc>, _timezone: &str) -> String {
+    dt.format("%a %d %b %H:%M UTC").to_string()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────

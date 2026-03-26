@@ -269,6 +269,11 @@ pub struct SharedDeps {
     /// Workers each clone the `client_template` in `WorkerPool`; this field
     /// allows the orchestrator to invoke Claude outside of the worker loop.
     pub claude_client: ClaudeClient,
+    /// Direct Anthropic HTTP API client. When `Some`, workers prefer this over
+    /// `ClaudeClient` (CC CLI) because it sends tools in the HTTP request body
+    /// natively — avoiding the broken `--tools-json` CLI flag on this machine.
+    /// `None` when `ANTHROPIC_API_KEY` is not set; falls back to `ClaudeClient`.
+    pub anthropic_client: Option<crate::anthropic::AnthropicClient>,
     /// Morning briefing log store. Shared with the HTTP server.
     pub briefing_store: Option<Arc<BriefingStore>>,
     /// Cold-start timing event store. None if the DB failed to open.
@@ -1192,13 +1197,20 @@ impl Worker {
                     break 'research_loop;
                 }
 
-                let response = client
-                    .send_messages(
-                        &research_system,
-                        &loop_msgs,
-                        &tool_definitions,
-                    )
-                    .await;
+                let response = if let Some(ref anthropic) = deps.anthropic_client {
+                    anthropic
+                        .send_message(&loop_msgs, &research_system, &tool_definitions)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Anthropic API error: {e}"))
+                } else {
+                    client
+                        .send_messages(
+                            &research_system,
+                            &loop_msgs,
+                            &tool_definitions,
+                        )
+                        .await
+                };
 
                 match response {
                     Err(e) => {
@@ -1632,8 +1644,12 @@ impl Worker {
         // First attempt uses the streaming path (when eligible); subsequent retry
         // attempts always use cold-start because the `on_text_delta` closure is
         // consumed by the first `send_messages_streaming` call.
+        //
+        // When AnthropicClient is available, skip streaming entirely — the direct
+        // HTTP API doesn't have a streaming variant yet, but native tool_use blocks
+        // work correctly. Working tools > streaming edits.
         let first_streaming_result: Option<anyhow::Result<crate::claude::ApiResponse>> =
-            if placeholder_msg_id.is_some() && image_path.is_none() {
+            if placeholder_msg_id.is_some() && image_path.is_none() && deps.anthropic_client.is_none() {
                 client
                     .send_messages_streaming(
                         &system_prompt,
@@ -1679,14 +1695,38 @@ impl Worker {
                                     tg.send_chat_action(cid, "typing").await;
                                 }
 
-                                client
-                                    .send_messages_with_image(
-                                        &system_prompt,
-                                        &conversation_history,
-                                        &tool_definitions,
-                                        image_path.as_deref(),
-                                    )
-                                    .await
+                                // Use AnthropicClient when available and no image attachment.
+                                // Image calls always go through ClaudeClient (--attachment support).
+                                if image_path.is_none() {
+                                    if let Some(ref anthropic) = deps.anthropic_client {
+                                        anthropic
+                                            .send_message(
+                                                &conversation_history,
+                                                &system_prompt,
+                                                &tool_definitions,
+                                            )
+                                            .await
+                                            .map_err(|e| anyhow::anyhow!("Anthropic API error: {e}"))
+                                    } else {
+                                        client
+                                            .send_messages_with_image(
+                                                &system_prompt,
+                                                &conversation_history,
+                                                &tool_definitions,
+                                                None,
+                                            )
+                                            .await
+                                    }
+                                } else {
+                                    client
+                                        .send_messages_with_image(
+                                            &system_prompt,
+                                            &conversation_history,
+                                            &tool_definitions,
+                                            image_path.as_deref(),
+                                        )
+                                        .await
+                                }
                             }
                         }
                     } else {
@@ -1695,14 +1735,38 @@ impl Worker {
                         if let (Some(tg), Some(cid)) = (&tg_client, tg_chat_id) {
                             tg.send_chat_action(cid, "typing").await;
                         }
-                        client
-                            .send_messages_with_image(
-                                &system_prompt,
-                                &conversation_history,
-                                &tool_definitions,
-                                image_path.as_deref(),
-                            )
-                            .await
+                        // Use AnthropicClient when available and no image attachment.
+                        // Image calls always go through ClaudeClient (--attachment support).
+                        if image_path.is_none() {
+                            if let Some(ref anthropic) = deps.anthropic_client {
+                                anthropic
+                                    .send_message(
+                                        &conversation_history,
+                                        &system_prompt,
+                                        &tool_definitions,
+                                    )
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!("Anthropic API error: {e}"))
+                            } else {
+                                client
+                                    .send_messages_with_image(
+                                        &system_prompt,
+                                        &conversation_history,
+                                        &tool_definitions,
+                                        None,
+                                    )
+                                    .await
+                            }
+                        } else {
+                            client
+                                .send_messages_with_image(
+                                    &system_prompt,
+                                    &conversation_history,
+                                    &tool_definitions,
+                                    image_path.as_deref(),
+                                )
+                                .await
+                        }
                     };
 
                 match call_result {
@@ -2621,9 +2685,16 @@ impl Worker {
 
             crate::conversation::truncate_history(conversation_history);
 
-            response = client
-                .send_messages(system_prompt, conversation_history, tool_definitions)
-                .await?;
+            response = if let Some(ref anthropic) = deps.anthropic_client {
+                anthropic
+                    .send_message(conversation_history, system_prompt, tool_definitions)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Anthropic API error: {e}"))?
+            } else {
+                client
+                    .send_messages(system_prompt, conversation_history, tool_definitions)
+                    .await?
+            };
         }
 
         Ok((all_text_content, all_tool_names))

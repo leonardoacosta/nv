@@ -1006,6 +1006,19 @@ async fn main() -> anyhow::Result<()> {
         4096, // max_tokens
     );
 
+    // Create direct Anthropic HTTP API client (preferred for tool_use — no CLI dependency).
+    // Falls back to ClaudeClient when ANTHROPIC_API_KEY is absent.
+    let anthropic_client = match anthropic::AnthropicClient::from_env(&config.agent.model) {
+        Ok(ac) => {
+            tracing::info!(model = %config.agent.model, "AnthropicClient initialized — workers will use direct HTTP API for tool calls");
+            Some(ac)
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "ANTHROPIC_API_KEY not set — workers fall back to ClaudeClient (tool_use may not work)");
+            None
+        }
+    };
+
     // All components are running -- signal systemd that we're ready
     notify_ready();
     tracing::info!("sd_notify READY sent");
@@ -1247,6 +1260,7 @@ async fn main() -> anyhow::Result<()> {
         doppler_registry,
         teams_client: teams_client_for_workers,
         claude_client: client.clone(),
+        anthropic_client,
         dashboard_url: config.daemon.as_ref().and_then(|d| d.dashboard_url.clone()),
         dashboard_client,
         briefing_store: Some(Arc::clone(&briefing_store)),

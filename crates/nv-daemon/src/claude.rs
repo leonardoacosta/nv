@@ -327,12 +327,9 @@ async fn drain_init_events(
 
 /// Spawn a persistent Claude CLI subprocess with stream-json I/O.
 ///
-/// Root cause fixed in persistent-subprocess-fix spec:
-/// - `--tools-json` was triggering MCP server loading during init, causing the subprocess
-///   to stall waiting for MCP init to complete before emitting any `{"type":"system"}` events.
-/// - `--no-mcp` suppresses MCP loading entirely; the daemon provides tools via stream-json.
-/// - Tool definitions are sent inline per-turn in the stream-json message content via
-///   `build_stream_input`; `--tools-json` at spawn time is not needed.
+/// Root cause: sandbox HOME (`~/.nv/claude-sandbox`) prevented the CLI from finding
+/// credentials and config. Fixed by using the real HOME directory. The subprocess
+/// emits `{"type":"system"}` hook events during init which `drain_init_events` skips.
 async fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, ApiError> {
     let base_args: Vec<String> = vec![
         "--dangerously-skip-permissions".into(),
@@ -345,13 +342,12 @@ async fn spawn_persistent(config: &SpawnConfig) -> Result<PersistentProcess, Api
         "--model".into(),
         config.model.clone(),
         "--no-session-persistence".into(),
-        "--no-mcp".into(),
     ];
-    tracing::debug!("persistent: spawning with --no-mcp (MCP suppressed, tools sent inline per-turn)");
+    tracing::debug!("persistent: spawning subprocess (real HOME, no sandbox)");
 
     let mut child = Command::new("claude")
         .args(&base_args)
-        .env("HOME", &config.sandbox_home)
+        .env("HOME", &config.real_home)
         .env(
             "PATH",
             format!(

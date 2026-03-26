@@ -288,6 +288,28 @@ pub async fn dispatch_stateless(name: &str, args: &Value) -> Result<Value> {
             vercel::vercel_logs(&client, deploy_id).await?
         }
 
+        // ── Outlook ───────────────────────────────────────────────────────────
+        "outlook_inbox" => {
+            let mut auth = outlook::GraphUserAuth::from_env_or_cache().await?;
+            let folder = args["folder"].as_str();
+            let count = args["count"].as_u64().unwrap_or(10) as u32;
+            let unread_only = args["unread_only"].as_bool().unwrap_or(false);
+            outlook::outlook_inbox(&mut auth, folder, count, unread_only).await?
+        }
+        "outlook_calendar" => {
+            let mut auth = outlook::GraphUserAuth::from_env_or_cache().await?;
+            let days_ahead = args["days_ahead"].as_u64().unwrap_or(1) as u32;
+            let max_events = args["max_events"].as_u64().unwrap_or(10) as u32;
+            outlook::outlook_calendar(&mut auth, days_ahead, max_events).await?
+        }
+        "outlook_read_email" => {
+            let mut auth = outlook::GraphUserAuth::from_env_or_cache().await?;
+            let message_id = args["message_id"]
+                .as_str()
+                .ok_or_else(|| anyhow!("missing 'message_id' parameter"))?;
+            outlook::outlook_read_email(&mut auth, message_id).await?
+        }
+
         // ── Web ───────────────────────────────────────────────────────────────
         "fetch_url" => {
             let url = args["url"]
@@ -318,7 +340,7 @@ pub async fn dispatch_stateless(name: &str, args: &Value) -> Result<Value> {
     Ok(Value::String(output))
 }
 
-/// Collect all stateless tool definitions from the 16 tool modules.
+/// Collect all stateless tool definitions from the 17 tool modules (+ 3 outlook).
 pub fn stateless_tool_definitions() -> Vec<nv_core::ToolDefinition> {
     let mut tools = Vec::new();
     tools.extend(ado::ado_tool_definitions());
@@ -329,6 +351,7 @@ pub fn stateless_tool_definitions() -> Vec<nv_core::ToolDefinition> {
     tools.extend(github::github_tool_definitions());
     tools.extend(ha::ha_tool_definitions());
     tools.extend(neon::neon_tool_definitions());
+    tools.extend(outlook::outlook_tool_definitions());
     tools.extend(plaid::plaid_tool_definitions());
     tools.extend(posthog::posthog_tool_definitions());
     tools.extend(resend::resend_tool_definitions());

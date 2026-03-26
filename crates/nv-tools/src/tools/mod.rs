@@ -6,6 +6,7 @@ pub mod doppler;
 pub mod github;
 pub mod ha;
 pub mod neon;
+pub mod outlook;
 pub mod plaid;
 pub mod posthog;
 pub mod resend;

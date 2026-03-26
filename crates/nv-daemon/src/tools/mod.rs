@@ -1,5 +1,6 @@
 pub use nv_tools::tools::ado;
 pub use nv_tools::tools::calendar;
+pub mod channels;
 pub mod check;
 pub mod checkable_impls;
 pub mod outlook;
@@ -431,40 +432,8 @@ pub fn register_tools() -> Vec<ToolDefinition> {
     // Add general-purpose system tools (bash, file I/O, grep)
     tools.extend(general_tool_definitions());
 
-    // Add cross-channel routing tools
-    tools.extend(vec![
-        ToolDefinition {
-            name: "list_channels".into(),
-            description: "List available messaging channels and their connection status.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-        },
-        ToolDefinition {
-            name: "send_to_channel".into(),
-            description: "Send a message to a specific channel (telegram/discord/teams/email). Requires confirmation. For email, the recipient parameter is required.".into(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "channel": {
-                        "type": "string",
-                        "description": "Target channel name (must exist in registry, e.g. 'telegram', 'discord', 'email')"
-                    },
-                    "message": {
-                        "type": "string",
-                        "description": "Message content to send"
-                    },
-                    "recipient": {
-                        "type": "string",
-                        "description": "Required for email channel — the recipient address. Ignored by other channels."
-                    }
-                },
-                "required": ["channel", "message"]
-            }),
-        },
-    ]);
+    // Add cross-channel routing tools (list_channels, send_to_channel)
+    tools.extend(channels::channels_tool_definitions());
 
     tools
 }
@@ -2259,18 +2228,10 @@ pub async fn execute_tool_send_with_backend(
 
         // ── Cross-Channel Routing ─────────────────────────────────
         "list_channels" => {
-            let lines = if channels.is_empty() {
-                vec!["No channels configured.".to_string()]
-            } else {
-                let mut l = vec!["Available channels:".to_string()];
-                let mut names: Vec<&String> = channels.keys().collect();
-                names.sort();
-                for ch_name in names {
-                    l.push(format!("- {ch_name} (connected)"));
-                }
-                l
-            };
-            Ok(ToolResult::Immediate(lines.join("\n")))
+            let output = channels::list_channels(channels)?;
+            let channel_count = channels.len();
+            tracing::info!(channels = channel_count, "tool:list_channels invoked");
+            Ok(ToolResult::Immediate(output))
         }
         "send_to_channel" => {
             let channel_name = input["channel"]
@@ -2280,38 +2241,18 @@ pub async fn execute_tool_send_with_backend(
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'message' parameter"))?;
 
-            // Validate channel exists
-            if !channels.contains_key(channel_name) {
-                let available: Vec<&str> = channels.keys().map(|s| s.as_str()).collect();
-                anyhow::bail!(
-                    "Channel '{}' not found. Available channels: {}",
-                    channel_name,
-                    available.join(", ")
-                );
-            }
+            let request = channels::send_to_channel(channels, channel_name, message)?;
 
-            // Validate message non-empty
-            if message.trim().is_empty() {
-                anyhow::bail!("message must be non-empty");
-            }
-
-            // Validate recipient required for email
-            if channel_name == "email" && input["recipient"].as_str().is_none() {
-                anyhow::bail!("recipient is required for the email channel");
-            }
-
-            // Build human-readable description for confirmation keyboard
-            let preview = if message.len() > 60 {
-                format!("{}…", &message[..60])
-            } else {
-                message.to_string()
-            };
-            let description = format!("Send to {channel_name}: \"{preview}\"");
+            tracing::info!(
+                channel = channel_name,
+                msg_len = message.len(),
+                "tool:send_to_channel queued pending action"
+            );
 
             Ok(ToolResult::PendingAction {
-                description,
+                description: request.description,
                 action_type: nv_core::types::ActionType::ChannelSend,
-                payload: input.clone(),
+                payload: request.payload,
             })
         }
 

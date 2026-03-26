@@ -95,6 +95,7 @@ pub async fn transcribe_audio_elevenlabs(
 
 // ── Deepgram STT ──────────────────────────────────────────────────
 
+#[allow(dead_code)]
 /// Transcribe audio bytes using the Deepgram Speech-to-Text API.
 ///
 /// `audio_bytes` — raw bytes of the audio file (OGG Opus, etc.)

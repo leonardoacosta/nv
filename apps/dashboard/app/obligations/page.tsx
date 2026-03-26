@@ -23,6 +23,7 @@ import type {
   ObligationNote,
   ObligationsGetResponse,
 } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -217,7 +218,7 @@ function ObligationCard({
   async function patchStatus(status: string) {
     setActionPending(true);
     try {
-      const res = await fetch(`/api/obligations/${obligation.id}`, {
+      const res = await apiFetch(`/api/obligations/${obligation.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -233,7 +234,7 @@ function ObligationCard({
   async function handleStart() {
     setActionPending(true);
     try {
-      const res = await fetch(`/api/obligations/${obligation.id}/execute`, {
+      const res = await apiFetch(`/api/obligations/${obligation.id}/execute`, {
         method: "POST",
       });
       if (res.ok) onRefresh();
@@ -635,8 +636,8 @@ export default function ObligationsPage() {
     setError(null);
     try {
       const [oblRes, configRes] = await Promise.all([
-        fetch("/api/obligations"),
-        fetch("/api/config"),
+        apiFetch("/api/obligations"),
+        apiFetch("/api/config"),
       ]);
       if (!oblRes.ok) throw new Error(`HTTP ${oblRes.status}`);
       const data = (await oblRes.json()) as ObligationsGetResponse;

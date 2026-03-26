@@ -33,6 +33,7 @@ import type {
   CcSessionSummary,
   CcSessionsGetResponse,
 } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -381,7 +382,7 @@ function ProjectSessionsTable() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/cc-sessions");
+      const res = await apiFetch("/api/cc-sessions");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as CcSessionsGetResponse;
       setSessions(data.sessions ?? []);
@@ -564,7 +565,7 @@ function SessionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/sessions");
+      const res = await apiFetch("/api/sessions");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as SessionsGetResponse;
       setSessions((data.sessions ?? []).map(mapSession));

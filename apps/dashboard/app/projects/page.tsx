@@ -9,6 +9,7 @@ import ProjectAccordion, {
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import type { ApiProject, ProjectsGetResponse } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 /** Map daemon ApiProject ({ code, path }) to the component Project interface. */
 function mapApiProject(p: ApiProject): Project {
@@ -32,7 +33,7 @@ export default function ProjectsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/projects");
+      const res = await apiFetch("/api/projects");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as ProjectsGetResponse;
       setProjects((data.projects ?? []).map(mapApiProject));
@@ -54,7 +55,7 @@ export default function ProjectsPage() {
 
     setSolveStatus("Starting Nexus session...");
     try {
-      const res = await fetch("/api/solve", {
+      const res = await apiFetch("/api/solve", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

@@ -28,6 +28,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import { channelAccentColor } from "@/lib/channel-colors";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -429,7 +430,7 @@ export default function MessagesPage() {
         if (search) params.set("search", search);
         if (channel !== "all") params.set("channel", channel);
 
-        const res = await fetch(`/api/messages?${params.toString()}`);
+        const res = await apiFetch(`/api/messages?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as MessagesGetResponse;
         setMessages(data.messages ?? []);

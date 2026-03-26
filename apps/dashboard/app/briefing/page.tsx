@@ -14,6 +14,7 @@ import type {
   BriefingGetResponse,
   BriefingHistoryGetResponse,
 } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -124,7 +125,7 @@ export default function BriefingPage() {
 
   // 2. Fetch functions
   const fetchLatest = async (): Promise<BriefingEntry | null> => {
-    const res = await fetch("/api/briefing");
+    const res = await apiFetch("/api/briefing");
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`GET /api/briefing: HTTP ${res.status}`);
     const data = (await res.json()) as BriefingGetResponse;
@@ -132,7 +133,7 @@ export default function BriefingPage() {
   };
 
   const fetchHistory = async (): Promise<BriefingEntry[]> => {
-    const res = await fetch("/api/briefing/history?limit=10");
+    const res = await apiFetch("/api/briefing/history?limit=10");
     if (!res.ok) return [];
     const data = (await res.json()) as BriefingHistoryGetResponse;
     return data.entries;

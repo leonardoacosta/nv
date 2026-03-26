@@ -12,6 +12,7 @@ import {
   Terminal,
 } from "lucide-react";
 import type { SessionStatus, SessionState } from "@/lib/session-manager";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,7 +107,7 @@ function LogViewer() {
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const res = await fetch("/api/session/logs");
+        const res = await apiFetch("/api/session/logs");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { lines: string[] };
         setLines(data.lines);
@@ -168,7 +169,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch("/api/session/status");
+        const res = await apiFetch("/api/session/status");
         if (!res.ok) return;
         const data = (await res.json()) as SessionStatus;
         setStatus(data);
@@ -185,7 +186,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
     setActionPending(action);
     setActionError(null);
     try {
-      const res = await fetch("/api/session/control", {
+      const res = await apiFetch("/api/session/control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),

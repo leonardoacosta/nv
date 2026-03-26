@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api-client";
 
 interface StatsPoint {
   tokens: number;
@@ -37,7 +38,7 @@ export default function UsageSparkline() {
 
     const load = async () => {
       try {
-        const res = await fetch("/api/stats");
+        const res = await apiFetch("/api/stats");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as StatsResponse;
 

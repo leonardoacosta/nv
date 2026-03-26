@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Activity, RefreshCw, AlertCircle } from "lucide-react";
+import { apiFetch } from "@/lib/api-client";
 
 // ── API types ─────────────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ export default function LatencyChart({ window = "24h" }: LatencyChartProps) {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch("/api/latency");
+      const res = await apiFetch("/api/latency");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json: LatencyResponse = await res.json();
       setData(json);

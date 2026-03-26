@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import SessionDashboard from "@/components/SessionDashboard";
 import type { SessionStatus } from "@/lib/session-manager";
+import { apiFetch } from "@/lib/api-client";
 
 export default function CCSessionPanel() {
   const [initialStatus, setInitialStatus] = useState<SessionStatus | null>(null);
@@ -12,7 +13,7 @@ export default function CCSessionPanel() {
   useEffect(() => {
     const fetchStatus = async () => {
       try {
-        const res = await fetch("/api/session/status");
+        const res = await apiFetch("/api/session/status");
         if (!res.ok) throw new Error(`Failed to fetch status: ${res.status}`);
         const data = (await res.json()) as SessionStatus;
         setInitialStatus(data);

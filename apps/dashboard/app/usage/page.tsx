@@ -21,6 +21,7 @@ import EmptyState from "@/components/layout/EmptyState";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ColdStartsPanel from "@/components/ColdStartsPanel";
 import type { StatsGetResponse } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 type UsageTab = "cost" | "performance";
 
@@ -92,7 +93,7 @@ function UsagePage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/stats");
+      const res = await apiFetch("/api/stats");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const stats = (await res.json()) as StatsGetResponse;
 

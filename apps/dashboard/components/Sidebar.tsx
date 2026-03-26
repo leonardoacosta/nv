@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Sun,
@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   Menu,
   X,
+  LogOut,
 } from "lucide-react";
 import NovaMark from "@/components/NovaMark";
 import UsageSparkline from "@/components/UsageSparkline";
@@ -29,6 +30,7 @@ import {
   useDaemonStatus,
   type WsStatus,
 } from "@/components/providers/DaemonEventContext";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // WebSocket status footer
@@ -90,7 +92,7 @@ function useApprovalCount(): number {
 
   const fetchCount = useCallback(async () => {
     try {
-      const res = await fetch("/api/obligations?owner=leo&status=open");
+      const res = await apiFetch("/api/obligations?owner=leo&status=open");
       if (!res.ok) return;
       const data = (await res.json()) as Obligation[];
       setCount(Array.isArray(data) ? data.length : 0);
@@ -236,9 +238,10 @@ interface SidebarContentProps {
   pathname: string;
   approvalCount: number;
   onNavClick?: () => void;
+  onLogout?: () => void;
 }
 
-function SidebarContent({ collapsed, pathname, approvalCount, onNavClick }: SidebarContentProps) {
+function SidebarContent({ collapsed, pathname, approvalCount, onNavClick, onLogout }: SidebarContentProps) {
   return (
     <>
       {/* Logo */}
@@ -310,11 +313,22 @@ function SidebarContent({ collapsed, pathname, approvalCount, onNavClick }: Side
         ))}
       </nav>
 
-      {/* Footer: WebSocket status */}
+      {/* Logout + Footer */}
       <div
         className="shrink-0"
         style={{ borderTop: "1px solid var(--ds-gray-alpha-200)" }}
       >
+        {onLogout && (
+          <button
+            type="button"
+            onClick={onLogout}
+            className="flex items-center gap-3 w-full px-3 py-2.5 text-label-14 text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100 transition-colors"
+            title="Log out"
+          >
+            <LogOut size={16} className="shrink-0" />
+            {!collapsed && <span className="truncate">Log out</span>}
+          </button>
+        )}
         <WsStatusFooter collapsed={collapsed} />
       </div>
     </>
@@ -329,8 +343,19 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
   const approvalCount = useApprovalCount();
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Clear cookie manually on failure
+    }
+    document.cookie = "dashboard_token=; path=/; max-age=0; samesite=strict";
+    router.push("/login");
+  }, [router]);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -403,6 +428,7 @@ export default function Sidebar() {
               pathname={pathname}
               approvalCount={approvalCount}
               onNavClick={() => setMobileOpen(false)}
+              onLogout={handleLogout}
             />
           </div>
         </div>
@@ -419,6 +445,7 @@ export default function Sidebar() {
           collapsed={true}
           pathname={pathname}
           approvalCount={approvalCount}
+          onLogout={handleLogout}
         />
       </aside>
 
@@ -437,6 +464,7 @@ export default function Sidebar() {
           collapsed={collapsed}
           pathname={pathname}
           approvalCount={approvalCount}
+          onLogout={handleLogout}
         />
 
         {/* Collapse toggle */}

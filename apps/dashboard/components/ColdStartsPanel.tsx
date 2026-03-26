@@ -12,6 +12,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import SectionHeader from "@/components/layout/SectionHeader";
 import PipelineLatencyChart from "@/components/LatencyChart";
+import { apiFetch } from "@/lib/api-client";
 
 // -- API types ----------------------------------------------------------------
 
@@ -251,7 +252,7 @@ export default function ColdStartsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/cold-starts?limit=200");
+      const res = await apiFetch("/api/cold-starts?limit=200");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ColdStartsResponse;
       setData(json);

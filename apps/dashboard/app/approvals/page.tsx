@@ -22,6 +22,7 @@ import { useApprovalKeyboard } from "./components/useApprovalKeyboard";
 import ApprovalQueueItem from "./components/ApprovalQueueItem";
 import BatchActionBar from "./components/BatchActionBar";
 import QueueClearCelebration from "./components/QueueClearCelebration";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -265,7 +266,7 @@ export default function ApprovalsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/obligations?owner=leo&status=open");
+      const res = await apiFetch("/api/obligations?owner=leo&status=open");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as ObligationsGetResponse;
       const mapped = (data.obligations ?? []).map(mapObligationToApproval);
@@ -301,7 +302,7 @@ export default function ApprovalsPage() {
   const handleApprove = async (id: string) => {
     setApproving(true);
     try {
-      const res = await fetch(`/api/approvals/${id}/approve`, {
+      const res = await apiFetch(`/api/approvals/${id}/approve`, {
         method: "POST",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -325,7 +326,7 @@ export default function ApprovalsPage() {
   const handleDismiss = async (id: string) => {
     setDismissing(true);
     try {
-      const res = await fetch(`/api/obligations/${id}`, {
+      const res = await apiFetch(`/api/obligations/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "dismissed" }),
@@ -368,7 +369,7 @@ export default function ApprovalsPage() {
       const ids = Array.from(checkedIds);
       await Promise.all(
         ids.map(async (id) => {
-          const res = await fetch(`/api/approvals/${id}/approve`, { method: "POST" });
+          const res = await apiFetch(`/api/approvals/${id}/approve`, { method: "POST" });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
         }),
       );
@@ -395,7 +396,7 @@ export default function ApprovalsPage() {
       const ids = Array.from(checkedIds);
       await Promise.all(
         ids.map(async (id) => {
-          const res = await fetch(`/api/obligations/${id}`, {
+          const res = await apiFetch(`/api/obligations/${id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: "dismissed" }),

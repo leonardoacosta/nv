@@ -14,6 +14,7 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import type { ServerHealthGetResponse } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -176,7 +177,7 @@ export default function NexusPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/server-health");
+      const res = await apiFetch("/api/server-health");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as ServerHealthGetResponse;
       setData(json);

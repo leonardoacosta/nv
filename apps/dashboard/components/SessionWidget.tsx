@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Terminal, RotateCcw, MessageSquare, ArrowRight, AlertCircle } from "lucide-react";
 import type { SessionStatus, SessionState } from "@/lib/session-manager";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,7 +78,7 @@ export default function SessionWidget() {
 
   const fetchStatus = async () => {
     try {
-      const res = await fetch("/api/session/status");
+      const res = await apiFetch("/api/session/status");
       if (!res.ok) {
         setLoading(false);
         return;
@@ -100,7 +101,7 @@ export default function SessionWidget() {
   const handleRestart = async () => {
     setRestarting(true);
     try {
-      await fetch("/api/session/control", {
+      await apiFetch("/api/session/control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "restart" }),

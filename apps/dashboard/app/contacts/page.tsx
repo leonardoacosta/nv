@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { Contact } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -369,7 +370,7 @@ function ContactCard({ contact, onEdit, onDeleted }: ContactCardProps) {
     if (autoResetRef.current) clearTimeout(autoResetRef.current);
     setDeleting(true);
     try {
-      const res = await fetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       onDeleted();
     } catch {

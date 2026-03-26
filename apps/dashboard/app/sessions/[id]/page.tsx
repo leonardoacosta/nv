@@ -14,6 +14,7 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -169,7 +170,7 @@ export default function SessionDetailPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}`);
+      const res = await apiFetch(`/api/sessions/${sessionId}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as SessionDetail;
       setSession(data);

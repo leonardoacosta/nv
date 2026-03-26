@@ -16,6 +16,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import SettingsSection from "@/app/settings/components/SettingsSection";
 import SaveRestartBar from "@/app/settings/components/SaveRestartBar";
 import type { PutConfigRequest } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -327,7 +328,7 @@ export default function SettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/config");
+      const res = await apiFetch("/api/config");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as ConfigObject;
       setConfig(data);
@@ -364,7 +365,7 @@ export default function SettingsPage() {
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/config", {
+      const res = await apiFetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fields: config } satisfies PutConfigRequest),

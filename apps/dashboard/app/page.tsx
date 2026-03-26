@@ -37,6 +37,7 @@ import type {
   ServerHealthGetResponse,
   NexusSessionRaw,
 } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -319,10 +320,10 @@ export default function DashboardPage() {
       // 8-second timeout per call so a stalled daemon never freezes the skeleton
       const timeout = () => AbortSignal.timeout(8000);
       const [oblRes, projRes, sessRes, healthRes] = await Promise.allSettled([
-        fetch("/api/obligations", { signal: timeout() }),
-        fetch("/api/projects", { signal: timeout() }),
-        fetch("/api/sessions", { signal: timeout() }),
-        fetch("/api/server-health", { signal: timeout() }),
+        apiFetch("/api/obligations", { signal: timeout() }),
+        apiFetch("/api/projects", { signal: timeout() }),
+        apiFetch("/api/sessions", { signal: timeout() }),
+        apiFetch("/api/server-health", { signal: timeout() }),
       ]);
 
       // Obligations — daemon returns { obligations: [...] }
@@ -435,7 +436,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3000);
-    fetch("/api/briefing", { signal: controller.signal })
+    apiFetch("/api/briefing", { signal: controller.signal })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { summary?: string } | null) => {
         if (data?.summary) setBriefingSummary(data.summary);

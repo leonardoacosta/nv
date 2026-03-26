@@ -1,5 +1,6 @@
 import { createServer } from "http";
 import { parse } from "url";
+import { timingSafeEqual } from "crypto";
 import next from "next";
 import httpProxy from "http-proxy";
 
@@ -24,6 +25,18 @@ proxy.on("error", (err, _req, res) => {
   }
 });
 
+function verifyWsToken(candidate: string): boolean {
+  const token = process.env.DASHBOARD_TOKEN;
+  if (!token) return false;
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(token);
+  if (a.length !== b.length) {
+    timingSafeEqual(b, b);
+    return false;
+  }
+  return timingSafeEqual(a, b);
+}
+
 app.prepare().then(() => {
   const server = createServer((req, res) => {
     const parsedUrl = parse(req.url!, true);
@@ -31,13 +44,31 @@ app.prepare().then(() => {
   });
 
   server.on("upgrade", (req, socket, head) => {
-    if (req.url === "/ws/events") {
-      proxy.ws(req, socket, head, {
-        target: DAEMON_WS_URL,
-      });
-    } else {
+    const parsed = parse(req.url ?? "", true);
+    const isWsEvents =
+      parsed.pathname === "/ws/events" ||
+      (req.url ?? "").startsWith("/ws/events");
+
+    if (!isWsEvents) {
       socket.destroy();
+      return;
     }
+
+    // Validate token if DASHBOARD_TOKEN is set (skip in dev mode)
+    const dashboardToken = process.env.DASHBOARD_TOKEN;
+    if (dashboardToken && dashboardToken.length > 0) {
+      const token = parsed.query?.token;
+      const candidate = Array.isArray(token) ? token[0] : token;
+      if (!candidate || !verifyWsToken(candidate)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+    }
+
+    proxy.ws(req, socket, head, {
+      target: DAEMON_WS_URL,
+    });
   });
 
   server.listen(port, () => {

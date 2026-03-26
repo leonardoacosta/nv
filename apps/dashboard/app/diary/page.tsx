@@ -15,6 +15,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import StatCard from "@/components/layout/StatCard";
 import type { DiaryGetResponse, DiaryEntryItem } from "@/types/api";
+import { apiFetch } from "@/lib/api-client";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +77,7 @@ export default function DiaryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/diary?date=${date}&limit=100`);
+      const res = await apiFetch(`/api/diary?date=${date}&limit=100`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = (await res.json()) as DiaryGetResponse;
       setData(json);

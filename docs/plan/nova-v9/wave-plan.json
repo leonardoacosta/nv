@@ -320,7 +320,7 @@
       "specs": [
         {
           "name": "add-telegram-adapter",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -329,12 +329,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:31:39.069257",
+          "merged_at": "2026-03-26T12:41:31.858285"
         },
         {
           "name": "add-agent-sdk-integration",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -343,8 +343,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:36:44.951139",
+          "merged_at": "2026-03-26T12:41:31.858294"
         }
       ]
     },
@@ -586,15 +586,18 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 2,
+  "current_wave": 3,
   "started_at": "2026-03-26T12:21:27.410133",
   "completed_at": null,
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
     "scaffold-ts-daemon",
-    "setup-postgres-drizzle"
+    "setup-postgres-drizzle",
+    "add-telegram-adapter",
+    "add-agent-sdk-integration"
   ],
   "failed_specs": [],
   "mode": "consolidated",

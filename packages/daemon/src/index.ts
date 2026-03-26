@@ -8,6 +8,14 @@ import { startApiServer } from "./api/server.js";
 import { TelegramAdapter } from "./channels/telegram.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
+import { NovaAgent } from "./brain/agent.js";
+import {
+  ObligationStore,
+  handleObligationConfirm,
+  handleObligationReopen,
+  OBLIGATION_CONFIRM_PREFIX,
+  OBLIGATION_REOPEN_PREFIX,
+} from "./features/obligations/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -104,6 +112,13 @@ export async function main(): Promise<void> {
     );
   }
 
+  // ── NovaAgent ──────────────────────────────────────────────────────────────
+
+  const agent = await NovaAgent.create(config);
+  const obligationStore = new ObligationStore(pool);
+
+  log.info({ service: "nova-daemon" }, "NovaAgent ready");
+
   // ── Message routing ────────────────────────────────────────────────────────
 
   if (telegram !== null) {
@@ -132,7 +147,64 @@ export async function main(): Promise<void> {
         return;
       }
 
-      // TODO(channels): Route other messages to agent loop
+      // Route obligation inline keyboard callbacks
+      if (data.startsWith(OBLIGATION_CONFIRM_PREFIX)) {
+        const id = data.slice(OBLIGATION_CONFIRM_PREFIX.length);
+        const messageId = Number(
+          (msg.metadata as { originalMessageId?: number } | undefined)
+            ?.originalMessageId ?? 0,
+        );
+
+        void handleObligationConfirm(
+          id,
+          obligationStore,
+          telegram!,
+          msg.chatId,
+          messageId,
+        );
+        return;
+      }
+
+      if (data.startsWith(OBLIGATION_REOPEN_PREFIX)) {
+        const id = data.slice(OBLIGATION_REOPEN_PREFIX.length);
+        const messageId = Number(
+          (msg.metadata as { originalMessageId?: number } | undefined)
+            ?.originalMessageId ?? 0,
+        );
+
+        void handleObligationReopen(
+          id,
+          obligationStore,
+          telegram!,
+          msg.chatId,
+          messageId,
+        );
+        return;
+      }
+
+      // Route regular messages to the agent loop
+      void (async () => {
+        try {
+          void telegram!.sendChatAction(msg.chatId, "typing");
+          const response = await agent.processMessage(msg, []);
+          await telegram!.sendMessage(msg.chatId, response.text);
+          log.info(
+            {
+              service: "nova-daemon",
+              chatId: msg.chatId,
+              stopReason: response.stopReason,
+              toolCalls: response.toolCalls.length,
+            },
+            "Agent response sent",
+          );
+        } catch (err: unknown) {
+          log.error(
+            { service: "nova-daemon", chatId: msg.chatId, err },
+            "Agent processing failed",
+          );
+          void telegram!.sendMessage(msg.chatId, "Sorry, something went wrong.");
+        }
+      })();
     });
   }
 

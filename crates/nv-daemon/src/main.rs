@@ -24,6 +24,7 @@ mod messages;
 mod nexus;
 mod obligation_detector;
 mod obligation_research;
+mod persona;
 mod team_agent;
 mod obligation_store;
 mod orchestrator;

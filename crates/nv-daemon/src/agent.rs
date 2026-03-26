@@ -110,7 +110,7 @@ pub fn build_system_context(channel: Option<&str>) -> String {
         if let Some(ch) = channel {
             match nv_core::Config::load() {
                 Ok(config) => {
-                    if let Some(block) = crate::persona::render_persona_block(&config.personas, ch) {
+                    if let Some(ref block) = crate::persona::render_persona_block(&config.personas, ch) {
                         context.push_str("\n\n");
                         context.push_str(&block);
                     }

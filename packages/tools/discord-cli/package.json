@@ -1,0 +1,20 @@
+{
+  "name": "@nova/discord-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs",
+    "install-cli": "cp dist/discord-cli.js ~/.local/bin/discord-cli && chmod +x ~/.local/bin/discord-cli",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/tests/*.test.ts --experimental-strip-types"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.3"
+  }
+}

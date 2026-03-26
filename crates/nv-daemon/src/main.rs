@@ -1258,19 +1258,66 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
         });
 
-    let sidecar_manager = match sidecar::SidecarManager::spawn(&repo_root).await {
-        Ok(mgr) => {
-            tracing::info!(repo_root = %repo_root.display(), "agent sidecar started successfully");
-            Some(mgr)
-        }
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                "failed to start agent sidecar — workers will fall back to AnthropicClient/ClaudeClient"
-            );
-            None
-        }
-    };
+    let sidecar_manager: Option<std::sync::Arc<sidecar::SidecarManager>> =
+        match sidecar::SidecarManager::spawn(&repo_root).await {
+            Ok(mgr) => {
+                tracing::info!(repo_root = %repo_root.display(), "agent sidecar started successfully");
+
+                // ── Sidecar health check (task 5.2) ──────────────────────────
+                // Send a minimal test request to confirm the sidecar is responsive
+                // before registering it with SharedDeps.
+                let health_req = sidecar::SidecarRequest {
+                    id: "healthcheck".to_string(),
+                    system: "test".to_string(),
+                    prompt: "Say OK".to_string(),
+                    tools: vec![],
+                    max_turns: 1,
+                    timeout_secs: 10,
+                };
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    mgr.send_request(health_req),
+                )
+                .await
+                {
+                    Ok(Ok(_)) => {
+                        tracing::info!("sidecar healthy — health check passed");
+                        Some(mgr)
+                    }
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            error = %e,
+                            "sidecar health check failed — falling back to AnthropicClient/ClaudeClient"
+                        );
+                        None
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            "sidecar health check timed out (>10s) — falling back to AnthropicClient/ClaudeClient"
+                        );
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "failed to start agent sidecar — workers will fall back to AnthropicClient/ClaudeClient"
+                );
+                None
+            }
+        };
+
+    // ── Fallback chain log (task 4.3) ────────────────────────────────
+    // Log which Claude API path will be used at startup so the operator knows
+    // which authentication method is active.
+    if sidecar_manager.is_some() {
+        tracing::info!("Claude API: Agent SDK sidecar (OAuth)");
+    } else if anthropic_client.is_some() {
+        tracing::info!("Claude API: AnthropicClient (direct HTTP)");
+    } else {
+        tracing::info!("Claude API: ClaudeClient (CC CLI fallback)");
+    }
 
     // Build shared dependencies for workers
     let shared_deps = Arc::new(worker::SharedDeps {

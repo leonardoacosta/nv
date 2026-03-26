@@ -1642,6 +1642,248 @@ impl Worker {
         // Unknown) surface immediately without retry.
         let call_start = Instant::now();
 
+        // ── Sidecar path (highest priority, handles full tool loop internally) ──
+        //
+        // When the Agent SDK sidecar is available and there is no image attachment,
+        // delegate the entire Claude call + tool loop to the sidecar. It returns
+        // the final text response after all tool calls are resolved internally.
+        //
+        // We wrap the result in a synthetic ApiResponse with EndTurn and no
+        // ToolUse blocks so the downstream run_tool_loop call exits immediately,
+        // and all normal post-processing (diary, delivery, conv store) runs as usual.
+        //
+        // Fallback chain: sidecar → AnthropicClient → ClaudeClient
+        if image_path.is_none() {
+            if let Some(ref sidecar) = deps.sidecar {
+                let sidecar_prompt = conversation_history
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == "user")
+                    .map(|m| match &m.content {
+                        crate::claude::MessageContent::Text(t) => t.clone(),
+                        crate::claude::MessageContent::Blocks(blocks) => blocks
+                            .iter()
+                            .filter_map(|b| {
+                                if let ContentBlock::Text { text } = b {
+                                    Some(text.as_str())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    })
+                    .unwrap_or_default();
+
+                let sidecar_tools: Vec<crate::sidecar::ToolDefinition> = tool_definitions
+                    .iter()
+                    .map(|t| crate::sidecar::ToolDefinition {
+                        name: t.name.clone(),
+                        description: t.description.clone(),
+                        input_schema: t.input_schema.clone(),
+                    })
+                    .collect();
+
+                let req = crate::sidecar::SidecarRequest {
+                    id: task_id.to_string(),
+                    system: system_prompt.to_string(),
+                    prompt: sidecar_prompt,
+                    tools: sidecar_tools,
+                    max_turns: 30,
+                    timeout_secs: deps.worker_timeout_secs.max(60),
+                };
+
+                match sidecar.send_request(req).await {
+                    Ok(sidecar_resp) if sidecar_resp.error.is_none() => {
+                        tracing::debug!(
+                            worker_id = %task_id,
+                            stop_reason = %sidecar_resp.stop_reason,
+                            content_blocks = sidecar_resp.content.len(),
+                            "sidecar response received — will skip tool loop (EndTurn)"
+                        );
+                        // Convert sidecar ContentBlock → claude ContentBlock (text only).
+                        let content: Vec<ContentBlock> = sidecar_resp
+                            .content
+                            .iter()
+                            .filter(|b| b.block_type == "text")
+                            .map(|b| ContentBlock::Text { text: b.text.clone() })
+                            .collect();
+                        // Inject this synthetic response into the normal `response`
+                        // variable so all downstream code (tool loop, diary, delivery)
+                        // runs as usual. EndTurn + no ToolUse → loop exits immediately.
+                        let synthetic = crate::claude::ApiResponse {
+                            id: sidecar_resp.id,
+                            content,
+                            stop_reason: crate::claude::StopReason::EndTurn,
+                            usage: crate::claude::Usage {
+                                input_tokens: 0,
+                                output_tokens: 0,
+                                total_cost_usd: None,
+                            },
+                        };
+                        // Jump to response delivery by assigning `response` directly
+                        // and skipping the streaming/retry block entirely via a label.
+                        // We achieve this by setting a flag and using a named block.
+                        #[allow(clippy::redundant_clone)]
+                        let response = synthetic;
+                        // Clean up any temporary image file (none in this branch, but
+                        // match the surrounding code's expectations).
+                        // Fall through to the post-response section via an early
+                        // assignment. We wrap the rest of `run` in a named block
+                        // so the sidecar result can bypass the streaming/retry loop.
+                        // The cleanest Rust idiom here: continue with `response` set.
+                        //
+                        // Actually: skip the streaming block and the retry loop by
+                        // jumping directly to the post-call section.
+                        //
+                        // The existing code after `let response = { ... }` uses
+                        // `response` for usage logging, tool loop, diary, delivery.
+                        // We duplicate only the minimal path here using the local
+                        // `response` binding — all later code is unreachable in this
+                        // branch because we return Ok(()) at the end.
+                        //
+                        // Post-call code (abbreviated — sidecar skips usage logging
+                        // and runs a no-op tool loop):
+                        let _ = event_tx.send(WorkerEvent::StageComplete {
+                            worker_id: task_id,
+                            stage: "api_call".into(),
+                            duration_ms: call_start.elapsed().as_millis() as u64,
+                        });
+
+                        let tool_loop_start = Instant::now();
+                        let _ = event_tx.send(WorkerEvent::StageStarted {
+                            worker_id: task_id,
+                            stage: "tool_loop".into(),
+                            telegram_chat_id: tg_chat_id,
+                        });
+                        let (final_content, _tool_names) = Self::run_tool_loop(
+                            response,
+                            &mut conversation_history,
+                            &system_prompt,
+                            &tool_definitions,
+                            &client,
+                            &deps,
+                            task_id,
+                            &trigger_channel,
+                        )
+                        .await?;
+                        let _ = event_tx.send(WorkerEvent::StageComplete {
+                            worker_id: task_id,
+                            stage: "tool_loop".into(),
+                            duration_ms: tool_loop_start.elapsed().as_millis() as u64,
+                        });
+
+                        let raw_response_text = extract_text(&final_content);
+                        let (_result_summary, response_text) = extract_summary(&raw_response_text);
+
+                        {
+                            let user_msg_for_store = Message::user(&user_message);
+                            let assistant_msg_for_store =
+                                Message::assistant_blocks(final_content.clone());
+                            if let Err(e) =
+                                conv_store.push(user_msg_for_store, assistant_msg_for_store)
+                            {
+                                tracing::warn!(
+                                    error = %e,
+                                    "sidecar: failed to persist conversation turn"
+                                );
+                            }
+                        }
+
+                        let _ = event_tx.send(WorkerEvent::Complete {
+                            worker_id: task_id,
+                            response_len: response_text.len(),
+                        });
+
+                        for tx in task.cli_response_txs {
+                            let _ = tx.send(response_text.clone());
+                        }
+
+                        if !response_text.is_empty() {
+                            let channel_content = if let Some(ref base_url) = deps.dashboard_url {
+                                format!(
+                                    "{response_text}\n\n<a href=\"{base_url}/sessions/{task_id}\">{}</a>",
+                                    task.slug
+                                )
+                            } else {
+                                response_text.clone()
+                            };
+                            if let Some(tg) = &tg_client {
+                                if let Some(chat_id) = tg_chat_id {
+                                    if let Some(placeholder_id) = placeholder_msg_id {
+                                        let _ = tg
+                                            .edit_message(
+                                                chat_id,
+                                                placeholder_id,
+                                                &channel_content,
+                                                None,
+                                            )
+                                            .await;
+                                    } else {
+                                        let _ = tg
+                                            .send_message(
+                                                chat_id,
+                                                &channel_content,
+                                                reply_to_id.clone(),
+                                                None,
+                                            )
+                                            .await;
+                                    }
+                                }
+                            } else {
+                                let reply_channel = task
+                                    .triggers
+                                    .first()
+                                    .and_then(|t| match t {
+                                        Trigger::Message(msg) => Some(msg.channel.as_str()),
+                                        _ => None,
+                                    })
+                                    .unwrap_or("telegram");
+                                if let Some(channel) = deps.channels.get(reply_channel) {
+                                    let msg = OutboundMessage {
+                                        channel: reply_channel.to_string(),
+                                        content: channel_content,
+                                        reply_to: reply_to_id.clone(),
+                                        keyboard: None,
+                                    };
+                                    let _ = channel.send_message(msg).await;
+                                }
+                            }
+                        } else if let Some(tg) = &tg_client {
+                            if let Some(chat_id) = tg_chat_id {
+                                if let Some(placeholder_id) = placeholder_msg_id {
+                                    let _ = tg.delete_message(chat_id, placeholder_id).await;
+                                }
+                            }
+                        }
+
+                        if let (Some(tg), Some(chat_id), Some(msg_id)) =
+                            (&tg_client, tg_chat_id, tg_msg_id)
+                        {
+                            let _ = tg.set_message_reaction(chat_id, msg_id, "\u{2705}").await;
+                        }
+
+                        return Ok(());
+                    }
+                    Ok(sidecar_resp) => {
+                        // sidecar_resp.error is Some — log and fall through.
+                        tracing::warn!(
+                            worker_id = %task_id,
+                            error = sidecar_resp.error.as_deref().unwrap_or("unknown"),
+                            "sidecar returned error — falling back to AnthropicClient/ClaudeClient"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            worker_id = %task_id,
+                            error = %e,
+                            "sidecar send_request failed — falling back to AnthropicClient/ClaudeClient"
+                        );
+                    }
+                }
+            }
+        }
+
         /// Maximum number of *retries* (not total attempts).  Total attempts = MAX + 1.
         const MAX_WORKER_RETRIES: u32 = 2;
         const MAX_ATTEMPTS: u32 = MAX_WORKER_RETRIES + 1;
@@ -1654,6 +1896,8 @@ impl Worker {
         // When AnthropicClient is available, skip streaming entirely — the direct
         // HTTP API doesn't have a streaming variant yet, but native tool_use blocks
         // work correctly. Working tools > streaming edits.
+        // (If we reach this point the sidecar was unavailable or errored; continue
+        // with the normal AnthropicClient / ClaudeClient fallback paths.)
         let first_streaming_result: Option<anyhow::Result<crate::claude::ApiResponse>> =
             if placeholder_msg_id.is_some() && image_path.is_none() && deps.anthropic_client.is_none() {
                 client

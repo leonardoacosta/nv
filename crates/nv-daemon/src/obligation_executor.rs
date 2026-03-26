@@ -167,6 +167,141 @@ pub async fn execute_obligation(
         build_obligation_context(obligation, research_summary.as_deref());
     let tool_definitions = tools::register_tools();
 
+    let prompt = format!("Work on this obligation now: {}", obligation.detected_action);
+    let timeout_dur = Duration::from_secs(config.timeout_secs);
+
+    // ── Sidecar path (highest priority) ──────────────────────────────
+    // If the Agent SDK sidecar is available, send a single request and get
+    // the final result back. The sidecar handles the entire tool loop via MCP
+    // so no manual tool dispatch is needed here.
+    if let Some(ref sidecar) = deps.sidecar {
+        let sidecar_tools: Vec<crate::sidecar::ToolDefinition> = tool_definitions
+            .iter()
+            .map(|t| crate::sidecar::ToolDefinition {
+                name: t.name.clone(),
+                description: t.description.clone(),
+                input_schema: t.input_schema.clone(),
+            })
+            .collect();
+
+        let req = crate::sidecar::SidecarRequest {
+            id: obligation.id.clone(),
+            system: system_prompt.clone(),
+            prompt: prompt.clone(),
+            tools: sidecar_tools,
+            max_turns: 30,
+            timeout_secs: config.timeout_secs,
+        };
+
+        let sidecar_result = tokio::time::timeout(
+            timeout_dur,
+            sidecar.send_request(req),
+        )
+        .await;
+
+        // Update last_attempt_at regardless of sidecar result.
+        if let Some(store_arc) = &deps.obligation_store {
+            if let Ok(store) = store_arc.lock() {
+                let now = chrono::Utc::now();
+                if let Err(e) = store.update_last_attempt_at(&obligation.id, &now) {
+                    tracing::warn!(
+                        obligation_id = %obligation.id,
+                        error = %e,
+                        "failed to update last_attempt_at"
+                    );
+                }
+            }
+        }
+
+        return match sidecar_result {
+            Err(_elapsed) => {
+                tracing::warn!(
+                    obligation_id = %obligation.id,
+                    timeout_secs = config.timeout_secs,
+                    "autonomous executor: sidecar timed out"
+                );
+                ObligationResult::Timeout
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    obligation_id = %obligation.id,
+                    error = %e,
+                    "autonomous executor: sidecar request failed — falling back to AnthropicClient"
+                );
+                // Fall back: run the standard executor loop below.
+                // We return early here; the code below handles the fallback.
+                // To avoid code duplication, drop into the fallback path by
+                // continuing execution after this block.
+                //
+                // Since we already updated last_attempt_at above, we need to
+                // run the fallback and return its result directly.
+                let anthropic_fallback = AnthropicClient::from_env("claude-sonnet-4-6");
+                match anthropic_fallback {
+                    Ok(ac) => {
+                        let user_msg = Message::user(&prompt);
+                        let mut conversation = vec![user_msg];
+                        let fallback_result = tokio::time::timeout(
+                            timeout_dur,
+                            run_executor_loop(
+                                &system_prompt,
+                                &mut conversation,
+                                &tool_definitions,
+                                &ac,
+                                deps,
+                                &obligation.id,
+                            ),
+                        )
+                        .await;
+                        match fallback_result {
+                            Err(_elapsed) => ObligationResult::Timeout,
+                            Ok(inner) => inner,
+                        }
+                    }
+                    Err(api_err) => ObligationResult::Failed {
+                        error: format!("Sidecar failed and AnthropicClient unavailable: sidecar={e}, api={api_err}"),
+                    },
+                }
+            }
+            Ok(Ok(sidecar_resp)) => {
+                if let Some(ref err) = sidecar_resp.error {
+                    tracing::warn!(
+                        obligation_id = %obligation.id,
+                        error = %err,
+                        "autonomous executor: sidecar returned error"
+                    );
+                    ObligationResult::Failed {
+                        error: format!("Sidecar error: {err}"),
+                    }
+                } else {
+                    let summary = sidecar_resp
+                        .content
+                        .iter()
+                        .filter(|b| b.block_type == "text")
+                        .map(|b| b.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    emit_activity(
+                        deps,
+                        "obligation.tool_loop_completed",
+                        &obligation.id,
+                        "Nova completed tool loop via Agent SDK sidecar",
+                        None,
+                    );
+
+                    if summary.is_empty() {
+                        ObligationResult::Failed {
+                            error: "Sidecar returned empty response".to_string(),
+                        }
+                    } else {
+                        ObligationResult::Completed { summary }
+                    }
+                }
+            }
+        };
+    }
+
+    // ── AnthropicClient fallback (no sidecar) ─────────────────────────
     // Use AnthropicClient (direct HTTP API) instead of ClaudeClient (CC CLI wrapper).
     // The CC CLI subprocess had --tools-json removed, so it can't dispatch tools.
     // AnthropicClient sends tool definitions in the request body directly.
@@ -180,13 +315,8 @@ pub async fn execute_obligation(
         }
     };
 
-    let user_message = Message::user(format!(
-        "Work on this obligation now: {}",
-        obligation.detected_action,
-    ));
+    let user_message = Message::user(&prompt);
     let mut conversation = vec![user_message];
-
-    let timeout_dur = Duration::from_secs(config.timeout_secs);
 
     let result = tokio::time::timeout(
         timeout_dur,

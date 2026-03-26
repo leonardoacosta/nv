@@ -23,15 +23,15 @@
 
 ## API Batch — Worker + Executor Integration
 
-- [ ] [4.1] [P-1] In `Worker::run`: if `deps.sidecar` is Some, send the Claude request through the sidecar instead of AnthropicClient/ClaudeClient; construct `SidecarRequest` from system_prompt + conversation + tool_definitions; parse `SidecarResponse` into the existing `ApiResponse` format for downstream processing [owner:api-engineer]
-- [ ] [4.2] [P-1] In `obligation_executor.rs`: if `deps.sidecar` is Some, use it instead of AnthropicClient; the sidecar handles the entire tool loop internally, so the executor receives the final result without needing its own tool loop [owner:api-engineer]
-- [ ] [4.3] [P-2] Fallback chain: sidecar (preferred) → AnthropicClient (if sidecar unavailable) → ClaudeClient (last resort); log which path is used at startup [owner:api-engineer]
-- [ ] [4.4] [P-2] Remove the manual tool loop from obligation_executor — the Agent SDK handles tool execution via MCP; executor just sends the obligation context and receives the final summary [owner:api-engineer]
+- [x] [4.1] [P-1] In `Worker::run`: if `deps.sidecar` is Some, send the Claude request through the sidecar instead of AnthropicClient/ClaudeClient; construct `SidecarRequest` from system_prompt + conversation + tool_definitions; parse `SidecarResponse` into the existing `ApiResponse` format for downstream processing [owner:api-engineer]
+- [x] [4.2] [P-1] In `obligation_executor.rs`: if `deps.sidecar` is Some, use it instead of AnthropicClient; the sidecar handles the entire tool loop internally, so the executor receives the final result without needing its own tool loop [owner:api-engineer]
+- [x] [4.3] [P-2] Fallback chain: sidecar (preferred) → AnthropicClient (if sidecar unavailable) → ClaudeClient (last resort); log which path is used at startup [owner:api-engineer]
+- [x] [4.4] [P-2] Remove the manual tool loop from obligation_executor — the Agent SDK handles tool execution via MCP; executor just sends the obligation context and receives the final summary [owner:api-engineer]
 
 ## Deploy
 
 - [x] [5.1] [P-1] Add `pip3 install claude-agent-sdk` to `deploy/install.sh` [owner:api-engineer]
-- [ ] [5.2] [P-2] Add sidecar health check — on daemon startup, send a no-op test request to verify sidecar is responsive; log result [owner:api-engineer]
+- [x] [5.2] [P-2] Add sidecar health check — on daemon startup, send a no-op test request to verify sidecar is responsive; log result [owner:api-engineer]
 
 ## Verify
 

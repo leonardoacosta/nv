@@ -49,8 +49,8 @@ const SERVICE_COLORS: Record<string, string> = {
   Telegram: "bg-[#229ED9]/20 text-[#229ED9]",
   Discord: "bg-[#5865F2]/20 text-[#5865F2]",
   Slack: "bg-[#4A154B]/20 text-[#E01E5A]",
-  CLI: "bg-cosmic-purple/20 text-cosmic-purple",
-  API: "bg-cosmic-rose/20 text-cosmic-rose",
+  CLI: "bg-ds-gray-alpha-200 text-ds-gray-1000",
+  API: "bg-red-700/20 text-red-700",
   Web: "bg-emerald-500/20 text-emerald-400",
 };
 
@@ -60,7 +60,7 @@ const STATUS_CONFIG: Record<
 > = {
   active: { label: "Active", dot: "bg-emerald-400 animate-pulse", text: "text-emerald-400" },
   idle: { label: "Idle", dot: "bg-amber-400", text: "text-amber-400" },
-  completed: { label: "Completed", dot: "bg-cosmic-muted", text: "text-cosmic-muted" },
+  completed: { label: "Completed", dot: "bg-ds-gray-600", text: "text-ds-gray-900" },
 };
 
 function elapsed(startIso: string, endIso?: string): string {
@@ -89,20 +89,20 @@ function StatTile({
   accent?: string;
 }) {
   return (
-    <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-border">
+    <div className="flex items-center gap-3 p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400">
       <div
-        className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${accent ?? "bg-cosmic-purple/20"}`}
+        className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${accent ?? "bg-ds-gray-alpha-200"}`}
       >
         <Icon
           size={18}
-          className={accent ? "text-cosmic-rose" : "text-cosmic-purple"}
+          className={accent ? "text-red-700" : "text-ds-gray-1000"}
         />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-cosmic-muted uppercase tracking-wide truncate">
+        <p className="text-xs text-ds-gray-900 uppercase tracking-wide truncate">
           {label}
         </p>
-        <p className="text-lg font-semibold font-mono text-cosmic-bright">
+        <p className="text-lg font-semibold font-mono text-ds-gray-1000">
           {value}
         </p>
       </div>
@@ -123,24 +123,24 @@ function MessageRow({
   return (
     <div
       className={`flex gap-3 py-3 px-4 ${
-        isUser ? "bg-cosmic-surface/50" : ""
+        isUser ? "bg-ds-gray-100/50" : ""
       }`}
     >
       <div
         className={`flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-xs font-bold font-mono mt-0.5 ${
           isUser
-            ? "bg-cosmic-rose/20 text-cosmic-rose"
-            : "bg-cosmic-purple/20 text-cosmic-purple"
+            ? "bg-red-700/20 text-red-700"
+            : "bg-ds-gray-alpha-200 text-ds-gray-1000"
         }`}
       >
         {isUser ? "U" : "N"}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-cosmic-text leading-relaxed whitespace-pre-wrap break-words">
+        <p className="text-sm text-ds-gray-1000 leading-relaxed whitespace-pre-wrap break-words">
           {msg.content}
         </p>
         <p
-          className="text-xs text-cosmic-muted mt-1 font-mono"
+          className="text-xs text-ds-gray-900 mt-1 font-mono"
           suppressHydrationWarning
         >
           {new Date(msg.ts).toLocaleTimeString()}
@@ -205,7 +205,7 @@ export default function SessionDetailPage() {
       <button
         type="button"
         onClick={() => router.back()}
-        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
       >
         <ArrowLeft size={14} />
         <span className="hidden sm:inline">Back</span>
@@ -214,7 +214,7 @@ export default function SessionDetailPage() {
         type="button"
         onClick={() => void fetchSession()}
         disabled={loading}
-        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
       </button>
@@ -230,11 +230,11 @@ export default function SessionDetailPage() {
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="h-20 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                className="h-20 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
               />
             ))}
           </div>
-          <div className="h-64 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border" />
+          <div className="h-64 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
         </div>
       </PageShell>
     );
@@ -251,7 +251,7 @@ export default function SessionDetailPage() {
   if (!session) {
     return (
       <PageShell title="Session" action={action}>
-        <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
+        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
           <Layers size={32} />
           <p className="text-sm">Session not found</p>
         </div>
@@ -261,7 +261,7 @@ export default function SessionDetailPage() {
 
   const statusCfg = STATUS_CONFIG[session.status];
   const serviceColor =
-    SERVICE_COLORS[session.service] ?? "bg-cosmic-muted/20 text-cosmic-muted";
+    SERVICE_COLORS[session.service] ?? "bg-ds-gray-alpha-200 text-ds-gray-900";
 
   return (
     <PageShell
@@ -285,10 +285,10 @@ export default function SessionDetailPage() {
           </span>
         </span>
         {session.user && (
-          <span className="text-sm text-cosmic-muted">@{session.user}</span>
+          <span className="text-sm text-ds-gray-900">@{session.user}</span>
         )}
         {session.project && (
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-cosmic-surface border border-cosmic-border text-cosmic-muted">
+          <span className="text-xs font-mono px-2 py-0.5 rounded bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900">
             {session.project}
           </span>
         )}
@@ -310,13 +310,13 @@ export default function SessionDetailPage() {
           icon={Clock}
           label="Duration"
           value={elapsed(session.started_at, session.ended_at)}
-          accent="bg-cosmic-rose/20"
+          accent="bg-red-700/20"
         />
         <StatTile
           icon={Activity}
           label="Model"
           value={session.model ?? "—"}
-          accent="bg-cosmic-rose/20"
+          accent="bg-red-700/20"
         />
       </div>
 
@@ -342,7 +342,7 @@ export default function SessionDetailPage() {
               icon={Activity}
               label="Cost"
               value={`$${session.cost_usd.toFixed(4)}`}
-              accent="bg-cosmic-rose/20"
+              accent="bg-red-700/20"
             />
           )}
         </div>
@@ -350,17 +350,17 @@ export default function SessionDetailPage() {
 
       {/* Recent messages */}
       {session.recent_messages && session.recent_messages.length > 0 && (
-        <div className="rounded-cosmic border border-cosmic-border overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-cosmic-border bg-cosmic-surface shrink-0">
-            <MessageSquare size={14} className="text-cosmic-muted" />
-            <span className="text-xs font-semibold text-cosmic-muted uppercase tracking-widest">
+        <div className="rounded-xl border border-ds-gray-400 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-ds-gray-400 bg-ds-gray-100 shrink-0">
+            <MessageSquare size={14} className="text-ds-gray-900" />
+            <span className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest">
               Recent Messages
             </span>
-            <span className="ml-auto text-xs font-mono text-cosmic-muted">
+            <span className="ml-auto text-xs font-mono text-ds-gray-900">
               {session.recent_messages.length}
             </span>
           </div>
-          <div className="divide-y divide-cosmic-border/50">
+          <div className="divide-y divide-ds-gray-400">
             {session.recent_messages.map((msg) => (
               <MessageRow key={msg.id} msg={msg} />
             ))}

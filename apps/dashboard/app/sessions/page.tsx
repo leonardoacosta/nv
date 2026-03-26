@@ -90,7 +90,7 @@ function elapsed(startedAt: string): string {
 const STATUS_DOT: Record<SessionItem["status"], string> = {
   active: "bg-emerald-400 animate-pulse",
   idle: "bg-amber-400",
-  completed: "bg-cosmic-muted",
+  completed: "bg-ds-gray-600",
 };
 
 const STATUS_LABEL: Record<SessionItem["status"], string> = {
@@ -102,7 +102,7 @@ const STATUS_LABEL: Record<SessionItem["status"], string> = {
 const STATUS_TEXT: Record<SessionItem["status"], string> = {
   active: "text-emerald-400",
   idle: "text-amber-400",
-  completed: "text-cosmic-muted",
+  completed: "text-ds-gray-900",
 };
 
 // ---------------------------------------------------------------------------
@@ -130,30 +130,30 @@ function EnhancedSessionCard({
       type="button"
       onClick={() => onSelect(session)}
       className={[
-        "w-full text-left p-4 rounded-cosmic border transition-colors space-y-3",
+        "w-full text-left p-4 rounded-xl border transition-colors space-y-3",
         selected
-          ? "border-cosmic-purple/60 bg-cosmic-purple/10"
-          : "border-cosmic-border bg-cosmic-surface hover:border-cosmic-purple/40",
+          ? "border-ds-gray-1000/60 bg-ds-gray-alpha-100"
+          : "border-ds-gray-400 bg-ds-gray-100 hover:border-ds-gray-1000/40",
       ].join(" ")}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-          <span className="text-sm font-medium text-cosmic-bright truncate">
+          <span className="text-sm font-medium text-ds-gray-1000 truncate">
             {session.project}
           </span>
           <span className={`text-xs font-medium ${statusText}`}>{label}</span>
         </div>
-        <div className="flex items-center gap-1 shrink-0 text-xs text-cosmic-muted font-mono">
+        <div className="flex items-center gap-1 shrink-0 text-xs text-ds-gray-900 font-mono">
           <Clock size={11} />
           <span suppressHydrationWarning>{elapsed(session.started_at)}</span>
         </div>
       </div>
 
       {/* Slug + branch */}
-      <div className="flex items-center gap-3 text-xs text-cosmic-muted font-mono">
-        <span className="text-cosmic-purple/80">{session.slug}…</span>
+      <div className="flex items-center gap-3 text-xs text-ds-gray-900 font-mono">
+        <span className="text-ds-gray-1000/80">{session.slug}…</span>
         {session.branch && (
           <span className="flex items-center gap-1">
             <GitBranch size={11} />
@@ -161,7 +161,7 @@ function EnhancedSessionCard({
           </span>
         )}
         {session.spec && (
-          <span className="px-1.5 py-0.5 rounded bg-cosmic-purple/20 text-cosmic-purple text-[10px] truncate max-w-[120px]">
+          <span className="px-1.5 py-0.5 rounded bg-ds-gray-alpha-200 text-ds-gray-1000 text-[10px] truncate max-w-[120px]">
             {session.spec}
           </span>
         )}
@@ -169,7 +169,7 @@ function EnhancedSessionCard({
 
       {/* Phase label */}
       {session.phase_label && (
-        <p className="text-xs text-cosmic-muted truncate pl-4">
+        <p className="text-xs text-ds-gray-900 truncate pl-4">
           {session.phase_label}
         </p>
       )}
@@ -177,22 +177,22 @@ function EnhancedSessionCard({
       {/* Progress bar — active sessions only */}
       {session.status === "active" && (
         <div className="space-y-1">
-          <div className="h-1 rounded-full bg-cosmic-dark overflow-hidden">
+          <div className="h-1 rounded-full bg-ds-bg-100 overflow-hidden">
             <div
-              className="h-full rounded-full bg-cosmic-purple transition-all duration-500"
+              className="h-full rounded-full bg-ds-gray-700 transition-all duration-500"
               style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
             />
           </div>
-          <p className="text-[10px] text-cosmic-muted font-mono text-right">
+          <p className="text-[10px] text-ds-gray-900 font-mono text-right">
             {progress}%
           </p>
         </div>
       )}
 
       {/* Footer */}
-      <div className="flex items-center justify-between pt-1 border-t border-cosmic-border">
-        <span className="text-xs text-cosmic-muted font-mono">{session.agent_name}</span>
-        <ChevronRight size={14} className="text-cosmic-muted" />
+      <div className="flex items-center justify-between pt-1 border-t border-ds-gray-400">
+        <span className="text-xs text-ds-gray-900 font-mono">{session.agent_name}</span>
+        <ChevronRight size={14} className="text-ds-gray-900" />
       </div>
     </button>
   );
@@ -225,19 +225,19 @@ function SessionDetailDrawer({
       />
 
       {/* Panel */}
-      <aside className="relative ml-auto w-80 md:w-96 bg-cosmic-dark border-l border-cosmic-border flex flex-col shadow-2xl">
+      <aside className="relative ml-auto w-80 md:w-96 bg-ds-bg-100 border-l border-ds-gray-400 flex flex-col shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-cosmic-border">
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-ds-gray-400">
           <div className="flex items-center gap-2 min-w-0">
             <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-            <span className="text-sm font-semibold text-cosmic-bright truncate">
+            <span className="text-sm font-semibold text-ds-gray-1000 truncate">
               {session.project}
             </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-surface transition-colors"
+            className="p-1.5 rounded-lg text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-100 transition-colors"
             aria-label="Close"
           >
             <X size={16} />
@@ -248,7 +248,7 @@ function SessionDetailDrawer({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Status */}
           <section className="space-y-2">
-            <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+            <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
               Status
             </p>
             <span className={`text-sm font-medium ${statusText}`}>
@@ -258,26 +258,26 @@ function SessionDetailDrawer({
 
           {/* Identifiers */}
           <section className="space-y-3">
-            <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+            <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
               Identifiers
             </p>
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-cosmic-muted">Session ID</span>
-                <span className="text-xs font-mono text-cosmic-text break-all text-right max-w-[200px]">
+                <span className="text-xs text-ds-gray-900">Session ID</span>
+                <span className="text-xs font-mono text-ds-gray-1000 break-all text-right max-w-[200px]">
                   {session.id}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-cosmic-muted">Agent</span>
-                <span className="text-xs font-mono text-cosmic-text">
+                <span className="text-xs text-ds-gray-900">Agent</span>
+                <span className="text-xs font-mono text-ds-gray-1000">
                   {session.agent_name}
                 </span>
               </div>
               {session.branch && (
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs text-cosmic-muted">Branch</span>
-                  <span className="flex items-center gap-1 text-xs font-mono text-cosmic-text">
+                  <span className="text-xs text-ds-gray-900">Branch</span>
+                  <span className="flex items-center gap-1 text-xs font-mono text-ds-gray-1000">
                     <GitBranch size={10} />
                     {session.branch}
                   </span>
@@ -285,8 +285,8 @@ function SessionDetailDrawer({
               )}
               {session.spec && (
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs text-cosmic-muted">Spec</span>
-                  <span className="text-xs font-mono text-cosmic-purple">
+                  <span className="text-xs text-ds-gray-900">Spec</span>
+                  <span className="text-xs font-mono text-ds-gray-1000">
                     {session.spec}
                   </span>
                 </div>
@@ -296,29 +296,29 @@ function SessionDetailDrawer({
 
           {/* Timing */}
           <section className="space-y-3">
-            <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+            <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
               Timing
             </p>
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-cosmic-muted">Started</span>
+                <span className="text-xs text-ds-gray-900">Started</span>
                 <span
-                  className="text-xs font-mono text-cosmic-text"
+                  className="text-xs font-mono text-ds-gray-1000"
                   suppressHydrationWarning
                 >
                   {new Date(session.started_at).toLocaleString()}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-cosmic-muted">Duration</span>
-                <span className="text-xs font-mono text-cosmic-text">
+                <span className="text-xs text-ds-gray-900">Duration</span>
+                <span className="text-xs font-mono text-ds-gray-1000">
                   {session.duration_display}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-cosmic-muted">Elapsed</span>
+                <span className="text-xs text-ds-gray-900">Elapsed</span>
                 <span
-                  className="text-xs font-mono text-cosmic-text"
+                  className="text-xs font-mono text-ds-gray-1000"
                   suppressHydrationWarning
                 >
                   {elapsed(session.started_at)}
@@ -330,22 +330,22 @@ function SessionDetailDrawer({
           {/* Progress */}
           {session.status === "active" && (
             <section className="space-y-3">
-              <p className="text-xs text-cosmic-muted uppercase tracking-widest font-semibold">
+              <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
                 Progress
               </p>
               {session.phase_label && (
-                <p className="text-xs text-cosmic-text">{session.phase_label}</p>
+                <p className="text-xs text-ds-gray-1000">{session.phase_label}</p>
               )}
               <div className="space-y-1">
-                <div className="h-2 rounded-full bg-cosmic-dark overflow-hidden">
+                <div className="h-2 rounded-full bg-ds-bg-100 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-cosmic-purple transition-all duration-500"
+                    className="h-full rounded-full bg-ds-gray-700 transition-all duration-500"
                     style={{
                       width: `${Math.min(100, Math.max(0, session.progress ?? 0))}%`,
                     }}
                   />
                 </div>
-                <p className="text-xs font-mono text-cosmic-muted text-right">
+                <p className="text-xs font-mono text-ds-gray-900 text-right">
                   {session.progress ?? 0}%
                 </p>
               </div>
@@ -363,7 +363,7 @@ function SessionDetailDrawer({
 
 const CC_STATE_DOT: Record<string, string> = {
   running: "bg-emerald-400 animate-pulse",
-  completed: "bg-cosmic-muted",
+  completed: "bg-ds-gray-600",
   stopped: "bg-amber-400",
 };
 
@@ -400,15 +400,15 @@ function ProjectSessionsTable() {
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-cosmic-text flex items-center gap-2">
-          <Terminal size={14} className="text-cosmic-purple" />
+        <h3 className="text-sm font-semibold text-ds-gray-1000 flex items-center gap-2">
+          <Terminal size={14} className="text-ds-gray-1000" />
           CC Sessions
         </h3>
         <button
           type="button"
           onClick={() => void fetchCcSessions()}
           disabled={loading}
-          className="text-xs text-cosmic-muted hover:text-cosmic-text transition-colors disabled:opacity-50"
+          className="text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors disabled:opacity-50"
           aria-label="Refresh CC sessions"
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -426,60 +426,60 @@ function ProjectSessionsTable() {
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="h-10 animate-pulse rounded-md bg-cosmic-surface border border-cosmic-border"
+              className="h-10 animate-pulse rounded-md bg-ds-gray-100 border border-ds-gray-400"
             />
           ))}
         </div>
       ) : sessions.length === 0 ? (
-        <p className="text-xs text-cosmic-muted py-2">No CC sessions.</p>
+        <p className="text-xs text-ds-gray-900 py-2">No CC sessions.</p>
       ) : (
-        <div className="rounded-cosmic border border-cosmic-border overflow-hidden">
+        <div className="rounded-xl border border-ds-gray-400 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-cosmic-border bg-cosmic-surface/60">
-                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+              <tr className="border-b border-ds-gray-400 bg-ds-gray-100/60">
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
                   ID
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
                   Project
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
                   State
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
                   Duration
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-cosmic-muted">
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
                   Restarts
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-cosmic-border">
+            <tbody className="divide-y divide-ds-gray-400">
               {sessions.map((s) => (
                 <tr
                   key={s.id}
-                  className="hover:bg-cosmic-surface/40 transition-colors"
+                  className="hover:bg-ds-gray-100/40 transition-colors"
                 >
-                  <td className="px-3 py-2 font-mono text-cosmic-purple">
+                  <td className="px-3 py-2 font-mono text-ds-gray-1000">
                     {s.id.slice(0, 10)}
                   </td>
-                  <td className="px-3 py-2 text-cosmic-text font-medium">
+                  <td className="px-3 py-2 text-ds-gray-1000 font-medium">
                     {s.project}
                   </td>
                   <td className="px-3 py-2">
                     <span className="flex items-center gap-1.5">
                       <span
-                        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${CC_STATE_DOT[s.state] ?? "bg-cosmic-muted"}`}
+                        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${CC_STATE_DOT[s.state] ?? "bg-ds-gray-600"}`}
                       />
-                      <span className="text-cosmic-muted capitalize">
+                      <span className="text-ds-gray-900 capitalize">
                         {s.state}
                       </span>
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-cosmic-muted font-mono">
+                  <td className="px-3 py-2 text-ds-gray-900 font-mono">
                     {s.duration_display}
                   </td>
-                  <td className="px-3 py-2 text-cosmic-muted font-mono">
+                  <td className="px-3 py-2 text-ds-gray-900 font-mono">
                     {s.restart_attempts}
                   </td>
                 </tr>
@@ -605,7 +605,7 @@ export default function SessionsPage() {
       type="button"
       onClick={() => void fetchSessions()}
       disabled={loading}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-cosmic-muted border border-cosmic-border hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
     >
       <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
       Refresh
@@ -634,20 +634,20 @@ export default function SessionsPage() {
             <div className="relative flex-1 max-w-sm">
               <Search
                 size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-cosmic-muted pointer-events-none"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
               />
               <input
                 type="search"
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search by ID, project, agent…"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
               />
               {searchInput && (
                 <button
                   type="button"
                   onClick={() => setSearchInput("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cosmic-muted hover:text-cosmic-text transition-colors"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
                   aria-label="Clear search"
                 >
                   <X size={13} />
@@ -659,7 +659,7 @@ export default function SessionsPage() {
             <select
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
             >
               <option value="all">All projects</option>
               {projects.map((p) => (
@@ -670,7 +670,7 @@ export default function SessionsPage() {
             </select>
 
             {/* Status tabs */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-cosmic-surface border border-cosmic-border">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400">
               {(["all", "active", "idle", "completed"] as StatusFilter[]).map(
                 (s) => (
                   <button
@@ -680,8 +680,8 @@ export default function SessionsPage() {
                     className={[
                       "px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize",
                       statusFilter === s
-                        ? "bg-cosmic-purple/20 text-cosmic-purple"
-                        : "text-cosmic-muted hover:text-cosmic-text",
+                        ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                        : "text-ds-gray-900 hover:text-ds-gray-1000",
                     ].join(" ")}
                   >
                     {s}
@@ -693,7 +693,7 @@ export default function SessionsPage() {
 
           {/* Results count */}
           {!loading && (
-            <p className="text-xs text-cosmic-muted">
+            <p className="text-xs text-ds-gray-900">
               {filtered.length} session{filtered.length !== 1 ? "s" : ""}
               {deferredSearch ? ` matching "${deferredSearch}"` : ""}
             </p>
@@ -705,7 +705,7 @@ export default function SessionsPage() {
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-28 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                  className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
                 />
               ))}
             </div>

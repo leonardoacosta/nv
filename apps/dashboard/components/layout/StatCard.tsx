@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 export type TrendDirection = "up" | "down" | "flat";
+export type StatCardVariant = "default" | "success" | "warning" | "error";
 
 export interface StatCardProps {
   icon: ReactNode;
@@ -9,10 +10,8 @@ export interface StatCardProps {
   value: string | number;
   /** Optional sub-label shown below the value */
   sublabel?: string;
-  /** Accent color class applied to the icon container background — e.g. "bg-cosmic-purple/20" */
-  accentBg?: string;
-  /** Accent color class for the icon — e.g. "text-cosmic-purple" */
-  accentText?: string;
+  /** Semantic variant — controls the left accent bar color */
+  variant?: StatCardVariant;
   /** Optional trend to display below the value */
   trend?: {
     direction: TrendDirection;
@@ -20,67 +19,80 @@ export interface StatCardProps {
   };
 }
 
+const ACCENT_BAR: Record<StatCardVariant, string> = {
+  default: "bg-ds-gray-600",
+  success: "bg-green-700",
+  warning: "bg-amber-700",
+  error: "bg-red-700",
+};
+
 const TREND_CONFIG: Record<
   TrendDirection,
   { icon: ReactNode; color: string }
 > = {
   up: {
     icon: <TrendingUp size={12} aria-hidden="true" />,
-    color: "text-emerald-400",
+    color: "text-green-700",
   },
   down: {
     icon: <TrendingDown size={12} aria-hidden="true" />,
-    color: "text-cosmic-rose",
+    color: "text-red-700",
   },
   flat: {
     icon: <Minus size={12} aria-hidden="true" />,
-    color: "text-cosmic-muted",
+    color: "text-ds-gray-700",
   },
 };
 
 /**
- * StatCard — metric tile: icon, label, value, optional accent and trend.
- * Used in dashboard overview grids.
+ * StatCard — metric tile with Geist surface-card material.
+ * Left accent bar indicates semantic status. Icon, value, label, optional trend.
  */
 export default function StatCard({
   icon,
   label,
   value,
   sublabel,
-  accentBg = "bg-cosmic-purple/20",
-  accentText = "text-cosmic-purple",
+  variant = "default",
   trend,
 }: StatCardProps) {
   const trendCfg = trend ? TREND_CONFIG[trend.direction] : null;
+  const accentBar = ACCENT_BAR[variant];
 
   return (
-    <div className="flex flex-col gap-3 p-4 rounded-cosmic border border-cosmic-border bg-cosmic-surface">
+    <div className="surface-card relative flex flex-col gap-3 p-4 overflow-hidden">
+      {/* Left accent bar */}
+      <div
+        className={`absolute left-0 top-0 bottom-0 w-1 ${accentBar} rounded-l-xl`}
+        aria-hidden="true"
+      />
+
       {/* Icon + label row */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-2.5 pl-2">
         <div
-          className={`flex items-center justify-center w-8 h-8 rounded-lg shrink-0 ${accentBg} ${accentText}`}
+          className="flex items-center justify-center w-5 h-5 shrink-0 text-ds-gray-700"
           aria-hidden="true"
         >
           {icon}
         </div>
-        <span className="text-xs font-medium text-cosmic-muted uppercase tracking-wide truncate">
+        <span className="text-label-12 text-ds-gray-900 truncate">
           {label}
         </span>
       </div>
 
       {/* Value */}
-      <div>
-        <div className="text-2xl font-semibold text-cosmic-bright font-mono leading-none">
+      <div className="pl-2">
+        <div className="text-heading-32 text-ds-gray-1000 leading-none">
           {value}
         </div>
         {sublabel && (
-          <div className="mt-0.5 text-xs text-cosmic-muted">{sublabel}</div>
+          <div className="mt-1 text-label-13 text-ds-gray-900">{sublabel}</div>
         )}
       </div>
 
       {/* Trend */}
       {trendCfg && trend && (
-        <div className={`flex items-center gap-1 text-xs ${trendCfg.color}`}>
+        <div className={`flex items-center gap-1 text-label-13 pl-2 ${trendCfg.color}`}>
           {trendCfg.icon}
           <span>{trend.label}</span>
         </div>

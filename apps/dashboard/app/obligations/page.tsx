@@ -70,10 +70,10 @@ export default function ObligationsPage() {
     <div className="p-8 space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">
+          <h1 className="text-2xl font-semibold text-ds-gray-1000">
             Obligations
           </h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
+          <p className="mt-1 text-sm text-ds-gray-900">
             Active tasks and commitments
           </p>
         </div>
@@ -81,7 +81,7 @@ export default function ObligationsPage() {
           type="button"
           onClick={() => void fetchObligations()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -89,7 +89,7 @@ export default function ObligationsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg bg-cosmic-surface border border-cosmic-border w-fit">
+      <div className="flex gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit">
         {(["open", "history"] as TabKey[]).map((t) => (
           <button
             key={t}
@@ -97,8 +97,8 @@ export default function ObligationsPage() {
             onClick={() => setTab(t)}
             className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-colors ${
               tab === t
-                ? "bg-cosmic-purple/20 text-cosmic-bright"
-                : "text-cosmic-muted hover:text-cosmic-text"
+                ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                : "text-ds-gray-900 hover:text-ds-gray-1000"
             }`}
           >
             {t === "open" ? <CheckSquare size={14} /> : <Clock size={14} />}
@@ -113,7 +113,7 @@ export default function ObligationsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} />
           <span className="text-sm">{error}</span>
         </div>
@@ -124,7 +124,7 @@ export default function ObligationsPage() {
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="h-20 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+              className="h-20 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
             />
           ))}
         </div>
@@ -133,20 +133,20 @@ export default function ObligationsPage() {
           {/* Nova section */}
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-6 h-6 rounded bg-cosmic-purple/30 flex items-center justify-center">
-                <span className="text-xs font-bold font-mono text-cosmic-purple">
+              <div className="w-6 h-6 rounded bg-ds-gray-700/30 flex items-center justify-center">
+                <span className="text-xs font-bold font-mono text-ds-gray-1000">
                   N
                 </span>
               </div>
-              <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide">
+              <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
                 Nova
               </h2>
-              <span className="text-xs font-mono text-cosmic-muted">
+              <span className="text-xs font-mono text-ds-gray-900">
                 {nova.length}
               </span>
             </div>
             {nova.length === 0 ? (
-              <p className="text-sm text-cosmic-muted py-4 pl-2">
+              <p className="text-sm text-ds-gray-900 py-4 pl-2">
                 No obligations assigned to Nova
               </p>
             ) : (
@@ -161,20 +161,20 @@ export default function ObligationsPage() {
           {/* Leo section */}
           <section>
             <div className="flex items-center gap-2 mb-3">
-              <div className="w-6 h-6 rounded bg-cosmic-rose/30 flex items-center justify-center">
-                <span className="text-xs font-bold font-mono text-cosmic-rose">
+              <div className="w-6 h-6 rounded bg-red-700/30 flex items-center justify-center">
+                <span className="text-xs font-bold font-mono text-red-700">
                   L
                 </span>
               </div>
-              <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide">
+              <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
                 Leo
               </h2>
-              <span className="text-xs font-mono text-cosmic-muted">
+              <span className="text-xs font-mono text-ds-gray-900">
                 {leo.length}
               </span>
             </div>
             {leo.length === 0 ? (
-              <p className="text-sm text-cosmic-muted py-4 pl-2">
+              <p className="text-sm text-ds-gray-900 py-4 pl-2">
                 No obligations assigned to Leo
               </p>
             ) : (
@@ -189,7 +189,7 @@ export default function ObligationsPage() {
           {/* Other */}
           {other.length > 0 && (
             <section>
-              <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide mb-3">
+              <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
                 Other
               </h2>
               <div className="space-y-2">
@@ -201,7 +201,7 @@ export default function ObligationsPage() {
           )}
 
           {open.length === 0 && (
-            <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
+            <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
               <CheckSquare size={36} />
               <p className="text-sm">No active obligations found</p>
             </div>
@@ -211,7 +211,7 @@ export default function ObligationsPage() {
         /* History tab */
         <div className="space-y-2">
           {history.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
+            <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
               <Clock size={36} />
               <p className="text-sm">No completed or dismissed obligations</p>
             </div>

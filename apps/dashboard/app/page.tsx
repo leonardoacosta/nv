@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
-import StatCard from "@/components/layout/StatCard";
+import StatCard, { type StatCardVariant } from "@/components/layout/StatCard";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
@@ -101,24 +101,24 @@ function formatUptime(seconds: number): string {
   return `${Math.floor(hrs / 24)}d ${hrs % 24}h`;
 }
 
-function healthColor(status: HealthSummary["status"] | undefined) {
-  if (!status || status === "ok") return { bg: "bg-emerald-500/20", text: "text-emerald-400" };
-  if (status === "degraded") return { bg: "bg-amber-500/20", text: "text-amber-400" };
-  return { bg: "bg-red-500/20", text: "text-red-400" };
+function healthVariant(status: HealthSummary["status"] | undefined): StatCardVariant {
+  if (!status || status === "ok") return "success";
+  if (status === "degraded") return "warning";
+  return "error";
 }
 
-function cpuColor(pct: number) {
-  if (pct >= 90) return { bg: "bg-red-500/20", text: "text-red-400" };
-  if (pct >= 70) return { bg: "bg-amber-500/20", text: "text-amber-400" };
-  return { bg: "bg-emerald-500/20", text: "text-emerald-400" };
+function cpuVariant(pct: number): StatCardVariant {
+  if (pct >= 90) return "error";
+  if (pct >= 70) return "warning";
+  return "success";
 }
 
-function memColor(used: number, total: number) {
-  if (total === 0) return { bg: "bg-cosmic-purple/20", text: "text-cosmic-purple" };
+function memVariant(used: number, total: number): StatCardVariant {
+  if (total === 0) return "default";
   const pct = used / total;
-  if (pct >= 0.9) return { bg: "bg-red-500/20", text: "text-red-400" };
-  if (pct >= 0.8) return { bg: "bg-amber-500/20", text: "text-amber-400" };
-  return { bg: "bg-emerald-500/20", text: "text-emerald-400" };
+  if (pct >= 0.9) return "error";
+  if (pct >= 0.8) return "warning";
+  return "success";
 }
 
 // ---------------------------------------------------------------------------
@@ -141,14 +141,14 @@ function ActivityFeed({ events }: { events: ActivityEvent[] }) {
       {events.map((ev) => (
         <li
           key={ev.id}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-cosmic-surface/50 transition-colors"
+          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-ds-gray-100/50 transition-colors"
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cosmic-purple/60 shrink-0" />
-          <span className="flex-1 min-w-0 text-sm text-cosmic-text truncate">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-ds-gray-700/60 shrink-0" />
+          <span className="flex-1 min-w-0 text-sm text-ds-gray-1000 truncate">
             {ev.label}
           </span>
           <span
-            className="shrink-0 text-xs text-cosmic-muted font-mono"
+            className="shrink-0 text-xs text-ds-gray-900 font-mono"
             suppressHydrationWarning
           >
             {new Date(ev.ts).toLocaleTimeString([], {
@@ -179,12 +179,12 @@ function ObligationsSidebar({
   const done = obligations.filter((o) => o.status === "completed");
 
   return (
-    <div className="p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-border space-y-4">
+    <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-4">
       <div className="flex items-center justify-between">
         <SectionHeader label="Obligations" count={obligations.length} />
         <Link
           href="/obligations"
-          className="flex items-center gap-1 text-xs text-cosmic-muted hover:text-cosmic-purple transition-colors"
+          className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
         >
           View all
           <ArrowRight size={12} />
@@ -196,21 +196,21 @@ function ObligationsSidebar({
           {Array.from({ length: 3 }).map((_, i) => (
             <div
               key={i}
-              className="h-8 animate-pulse rounded-lg bg-cosmic-border"
+              className="h-8 animate-pulse rounded-lg bg-ds-gray-400"
             />
           ))}
         </div>
       ) : obligations.length === 0 ? (
-        <p className="text-xs text-cosmic-muted py-3 text-center">
+        <p className="text-xs text-ds-gray-900 py-3 text-center">
           No obligations
         </p>
       ) : (
         <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-cosmic-muted">
+          <div className="flex items-center justify-between text-xs text-ds-gray-900">
             <span>Pending</span>
             <span className="font-mono text-amber-400">{pending.length}</span>
           </div>
-          <div className="flex items-center justify-between text-xs text-cosmic-muted">
+          <div className="flex items-center justify-between text-xs text-ds-gray-900">
             <span>Completed</span>
             <span className="font-mono text-emerald-400">{done.length}</span>
           </div>
@@ -229,10 +229,10 @@ function ObligationsSidebar({
                   key={owner}
                   className="flex items-center justify-between text-xs"
                 >
-                  <span className="text-cosmic-muted truncate max-w-[120px]">
+                  <span className="text-ds-gray-900 truncate max-w-[120px]">
                     @{owner}
                   </span>
-                  <span className="font-mono text-cosmic-text">{count}</span>
+                  <span className="font-mono text-ds-gray-1000">{count}</span>
                 </div>
               ));
           })()}
@@ -382,9 +382,9 @@ export default function DashboardPage() {
 
   // 5. Derived
   const topSessions = sessions.slice(0, 5);
-  const hColor = healthColor(health?.status);
-  const cColor = cpuColor(health?.cpu_percent ?? 0);
-  const mColor = memColor(
+  const hVariant = healthVariant(health?.status);
+  const cVariant = cpuVariant(health?.cpu_percent ?? 0);
+  const mVariant = memVariant(
     health?.memory_used_mb ?? 0,
     health?.memory_total_mb ?? 0,
   );
@@ -400,8 +400,8 @@ export default function DashboardPage() {
         className={[
           "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
           autoRefresh
-            ? "bg-cosmic-purple/20 text-cosmic-purple border-cosmic-purple/40 hover:bg-cosmic-purple/30"
-            : "text-cosmic-muted border-cosmic-border hover:border-cosmic-purple/50 hover:text-cosmic-text",
+            ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/40 hover:bg-ds-gray-700/30"
+            : "text-ds-gray-900 border-ds-gray-400 hover:border-ds-gray-500 hover:text-ds-gray-1000",
         ].join(" ")}
         aria-label={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}
       >
@@ -412,7 +412,7 @@ export default function DashboardPage() {
         type="button"
         onClick={() => void fetchData()}
         disabled={isRefreshing}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-cosmic-muted border border-cosmic-border hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
         Refresh
@@ -441,7 +441,7 @@ export default function DashboardPage() {
             Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="h-24 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
               />
             ))
           ) : (
@@ -450,29 +450,23 @@ export default function DashboardPage() {
                 icon={<CheckSquare size={16} />}
                 label="Obligations"
                 value={summary?.obligations_count ?? 0}
-                accentBg="bg-cosmic-purple/20"
-                accentText="text-cosmic-purple"
               />
               <StatCard
                 icon={<Layers size={16} />}
                 label="Active"
                 value={summary?.active_sessions ?? 0}
-                accentBg="bg-emerald-500/20"
-                accentText="text-emerald-400"
+                variant="success"
               />
               <StatCard
                 icon={<TrendingUp size={16} />}
                 label="Projects"
                 value={summary?.projects_count ?? 0}
-                accentBg="bg-cosmic-purple/20"
-                accentText="text-cosmic-purple"
               />
               <StatCard
                 icon={<Heart size={16} />}
                 label="Health"
                 value={health?.status ?? "—"}
-                accentBg={hColor.bg}
-                accentText={hColor.text}
+                variant={hVariant}
               />
               <StatCard
                 icon={<Cpu size={16} />}
@@ -480,8 +474,7 @@ export default function DashboardPage() {
                 value={
                   health ? `${health.cpu_percent.toFixed(1)}%` : "—"
                 }
-                accentBg={cColor.bg}
-                accentText={cColor.text}
+                variant={cVariant}
               />
               <StatCard
                 icon={<MemoryStick size={16} />}
@@ -491,8 +484,7 @@ export default function DashboardPage() {
                     ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
                     : "—"
                 }
-                accentBg={mColor.bg}
-                accentText={mColor.text}
+                variant={mVariant}
                 sublabel={
                   health?.uptime_seconds
                     ? `up ${formatUptime(health.uptime_seconds)}`
@@ -509,7 +501,7 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 space-y-6">
             {/* CC Session widget */}
             <div className="space-y-2">
-              <SectionHeader label="CC Session" statusDot="purple" />
+              <SectionHeader label="CC Session" statusDot="muted" />
               <SessionWidget />
             </div>
 
@@ -523,7 +515,7 @@ export default function DashboardPage() {
                 />
                 <Link
                   href="/sessions"
-                  className="flex items-center gap-1 text-xs text-cosmic-muted hover:text-cosmic-purple transition-colors"
+                  className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
                 >
                   All sessions
                   <ArrowRight size={12} />
@@ -535,7 +527,7 @@ export default function DashboardPage() {
                   {Array.from({ length: 3 }).map((_, i) => (
                     <div
                       key={i}
-                      className="h-24 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                      className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
                     />
                   ))}
                 </div>
@@ -560,7 +552,7 @@ export default function DashboardPage() {
                 label="Recent Activity"
                 count={activityFeed.length}
               />
-              <div className="rounded-cosmic bg-cosmic-surface border border-cosmic-border p-2">
+              <div className="rounded-xl bg-ds-gray-100 border border-ds-gray-400 p-2">
                 <ActivityFeed events={activityFeed} />
               </div>
             </div>
@@ -574,7 +566,7 @@ export default function DashboardPage() {
             />
 
             {/* Quick session stats */}
-            <div className="p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-border space-y-3">
+            <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-3">
               <SectionHeader label="Session Breakdown" />
               {[
                 {
@@ -590,28 +582,28 @@ export default function DashboardPage() {
                 {
                   label: "Completed",
                   value: sessions.filter((s) => s.status === "completed").length,
-                  color: "text-cosmic-muted",
+                  color: "text-ds-gray-900",
                 },
                 {
                   label: "Total",
                   value: sessions.length,
-                  color: "text-cosmic-text",
+                  color: "text-ds-gray-1000",
                 },
               ].map(({ label, value, color }) => (
                 <div
                   key={label}
                   className="flex items-center justify-between text-sm"
                 >
-                  <span className="text-cosmic-muted">{label}</span>
+                  <span className="text-ds-gray-900">{label}</span>
                   <span className={`font-mono font-semibold ${color}`}>
                     {value}
                   </span>
                 </div>
               ))}
-              <div className="pt-2 border-t border-cosmic-border">
+              <div className="pt-2 border-t border-ds-gray-400">
                 <Link
                   href="/sessions"
-                  className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs text-cosmic-muted border border-cosmic-border hover:text-cosmic-purple hover:border-cosmic-purple/50 transition-colors"
+                  className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
                 >
                   <MessageSquare size={12} />
                   View Sessions
@@ -620,14 +612,14 @@ export default function DashboardPage() {
             </div>
 
             {/* Messages link */}
-            <div className="p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-border space-y-3">
+            <div className="p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-3">
               <SectionHeader label="Messages" />
-              <p className="text-xs text-cosmic-muted">
+              <p className="text-xs text-ds-gray-900">
                 View channel messages, search history, and filter by date.
               </p>
               <Link
                 href="/messages"
-                className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs text-cosmic-muted border border-cosmic-border hover:text-cosmic-purple hover:border-cosmic-purple/50 transition-colors"
+                className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
               >
                 <Terminal size={12} />
                 Browse Messages

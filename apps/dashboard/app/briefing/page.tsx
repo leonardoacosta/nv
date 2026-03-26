@@ -62,7 +62,7 @@ function formatHistoryDate(iso: string): string {
 function sourceStatusColor(status: string): string {
   if (status === "ok") return "bg-emerald-400";
   if (status === "unavailable") return "bg-red-400";
-  return "bg-cosmic-muted/50";
+  return "bg-ds-gray-500";
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -75,11 +75,11 @@ function BriefingSectionCard({
   body: string;
 }) {
   return (
-    <div className="rounded-cosmic bg-cosmic-surface border border-cosmic-border p-5 space-y-2">
-      <h3 className="text-sm font-semibold text-cosmic-bright uppercase tracking-wide">
+    <div className="rounded-xl bg-ds-gray-100 border border-ds-gray-400 p-5 space-y-2">
+      <h3 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
         {title}
       </h3>
-      <p className="text-sm text-cosmic-text leading-relaxed whitespace-pre-wrap">
+      <p className="text-sm text-ds-gray-1000 leading-relaxed whitespace-pre-wrap">
         {body}
       </p>
     </div>
@@ -92,7 +92,7 @@ function LoadingSkeleton() {
       {Array.from({ length: 4 }).map((_, i) => (
         <div
           key={i}
-          className="h-28 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+          className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
         />
       ))}
     </div>
@@ -217,10 +217,10 @@ export default function BriefingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">
+          <h1 className="text-2xl font-semibold text-ds-gray-1000">
             Morning Briefing
           </h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
+          <p className="mt-1 text-sm text-ds-gray-900">
             {displayEntry
               ? formatGeneratedAt(displayEntry.generated_at)
               : "Nova generates a briefing each morning at 7am"}
@@ -230,7 +230,7 @@ export default function BriefingPage() {
           type="button"
           onClick={handleRefresh}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -239,15 +239,15 @@ export default function BriefingPage() {
 
       {/* Update banner */}
       {updateBanner && (
-        <div className="flex items-center gap-3 p-3 rounded-cosmic bg-cosmic-purple/10 border border-cosmic-purple/30 text-cosmic-bright text-sm">
-          <Sun size={14} className="text-cosmic-purple shrink-0" />
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000 text-sm">
+          <Sun size={14} className="text-ds-gray-1000 shrink-0" />
           Briefing updated
         </div>
       )}
 
       {/* Error banner */}
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} />
           <span className="text-sm">{error}</span>
         </div>
@@ -261,7 +261,7 @@ export default function BriefingPage() {
               ([source, status]) => (
                 <span
                   key={source}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cosmic-surface border border-cosmic-border text-xs text-cosmic-muted"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-900"
                 >
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 ${sourceStatusColor(status)}`}
@@ -281,15 +281,15 @@ export default function BriefingPage() {
             <LoadingSkeleton />
           ) : !displayEntry ? (
             /* Empty state */
-            <div className="flex flex-col items-center gap-4 py-20 text-cosmic-muted">
-              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-cosmic-surface border border-cosmic-border">
-                <Sun size={28} className="text-cosmic-purple/60" />
+            <div className="flex flex-col items-center gap-4 py-20 text-ds-gray-900">
+              <div className="flex items-center justify-center w-14 h-14 rounded-full bg-ds-gray-100 border border-ds-gray-400">
+                <Sun size={28} className="text-ds-gray-1000/60" />
               </div>
               <div className="text-center space-y-1">
-                <p className="text-base font-medium text-cosmic-text">
+                <p className="text-base font-medium text-ds-gray-1000">
                   No briefing yet today
                 </p>
-                <p className="text-sm text-cosmic-muted">
+                <p className="text-sm text-ds-gray-900">
                   Nova generates a briefing each morning at 7am
                 </p>
               </div>
@@ -312,7 +312,7 @@ export default function BriefingPage() {
               {/* Suggested actions chips */}
               {displayEntry.suggested_actions.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs text-cosmic-muted uppercase tracking-wide font-medium">
+                  <p className="text-xs text-ds-gray-900 uppercase tracking-wide font-medium">
                     Suggested Actions
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -321,8 +321,8 @@ export default function BriefingPage() {
                         action.status === "completed"
                           ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
                           : action.status === "dismissed"
-                            ? "bg-cosmic-surface border-cosmic-border text-cosmic-muted line-through"
-                            : "bg-cosmic-purple/10 border-cosmic-purple/30 text-cosmic-bright";
+                            ? "bg-ds-gray-100 border-ds-gray-400 text-ds-gray-900 line-through"
+                            : "bg-ds-gray-alpha-100 border-ds-gray-1000/30 text-ds-gray-1000";
                       return (
                         <span
                           key={action.id}
@@ -342,7 +342,7 @@ export default function BriefingPage() {
         {/* History rail */}
         {history.length > 0 && (
           <div className="w-52 shrink-0 space-y-1">
-            <p className="text-xs text-cosmic-muted uppercase tracking-wide font-medium mb-2 px-1">
+            <p className="text-xs text-ds-gray-900 uppercase tracking-wide font-medium mb-2 px-1">
               History
             </p>
             {history.map((h) => {
@@ -357,8 +357,8 @@ export default function BriefingPage() {
                   className={[
                     "w-full text-left px-3 py-2 rounded-lg text-xs transition-colors",
                     isSelected
-                      ? "bg-cosmic-purple/20 text-cosmic-bright border border-cosmic-purple/30"
-                      : "text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-surface border border-transparent",
+                      ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30"
+                      : "text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-100 border border-transparent",
                   ].join(" ")}
                 >
                   {formatHistoryDate(h.generated_at)}

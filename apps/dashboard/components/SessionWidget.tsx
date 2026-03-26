@@ -44,13 +44,13 @@ function StateBadge({ state }: { state: SessionState }) {
     },
     stopped: {
       label: "Stopped",
-      classes: "bg-cosmic-muted/20 text-cosmic-muted",
-      dotClass: "bg-cosmic-muted",
+      classes: "bg-ds-gray-alpha-200 text-ds-gray-900",
+      dotClass: "bg-ds-gray-600",
     },
     error: {
       label: "Error",
-      classes: "bg-cosmic-rose/20 text-cosmic-rose",
-      dotClass: "bg-cosmic-rose",
+      classes: "bg-red-700/20 text-red-700",
+      dotClass: "bg-red-700",
     },
   };
 
@@ -113,9 +113,9 @@ export default function SessionWidget() {
 
   if (loading) {
     return (
-      <div className="p-5 rounded-cosmic bg-cosmic-surface border border-cosmic-border animate-pulse">
-        <div className="h-4 w-32 rounded bg-cosmic-border mb-3" />
-        <div className="h-4 w-48 rounded bg-cosmic-border" />
+      <div className="p-5 rounded-xl bg-ds-gray-100 border border-ds-gray-400 animate-pulse">
+        <div className="h-4 w-32 rounded bg-ds-gray-400 mb-3" />
+        <div className="h-4 w-48 rounded bg-ds-gray-400" />
       </div>
     );
   }
@@ -124,16 +124,16 @@ export default function SessionWidget() {
   const canRestart = state === "active" || state === "idle" || state === "error";
 
   return (
-    <div className="p-5 rounded-cosmic bg-cosmic-surface border border-cosmic-border hover:border-cosmic-purple/50 transition-colors">
+    <div className="p-5 rounded-xl bg-ds-gray-100 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cosmic-purple/20 border border-cosmic-purple/30">
-            <Terminal size={16} className="text-cosmic-purple" />
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ds-gray-alpha-200 border border-ds-gray-1000/30">
+            <Terminal size={16} className="text-ds-gray-1000" />
           </div>
           <div>
-            <p className="text-sm font-medium text-cosmic-bright">CC Session</p>
-            <p className="text-xs text-cosmic-muted font-mono">nova-cc-session</p>
+            <p className="text-sm font-medium text-ds-gray-1000">CC Session</p>
+            <p className="text-xs text-ds-gray-900 font-mono">nova-cc-session</p>
           </div>
         </div>
         <StateBadge state={state} />
@@ -141,19 +141,19 @@ export default function SessionWidget() {
 
       {/* Error message */}
       {state === "error" && status?.error_message && (
-        <div className="flex items-start gap-2 mb-4 p-2.5 rounded-lg bg-cosmic-rose/10 border border-cosmic-rose/20 text-xs text-cosmic-rose font-mono">
+        <div className="flex items-start gap-2 mb-4 p-2.5 rounded-lg bg-red-700/10 border border-red-700/20 text-xs text-red-700 font-mono">
           <AlertCircle size={11} className="mt-0.5 shrink-0" />
           <span className="break-all">{status.error_message}</span>
         </div>
       )}
 
       {/* Stats */}
-      <div className="flex items-center gap-4 text-xs text-cosmic-muted font-mono mb-4">
+      <div className="flex items-center gap-4 text-xs text-ds-gray-900 font-mono mb-4">
         <div className="flex items-center gap-1.5">
           <MessageSquare size={11} />
           <span>{status?.message_count ?? 0} msgs</span>
         </div>
-        <div className="text-cosmic-border">·</div>
+        <div className="text-ds-gray-400">·</div>
         <div suppressHydrationWarning>
           {formatRelativeTime(status?.last_message_at ?? null)}
         </div>
@@ -165,7 +165,7 @@ export default function SessionWidget() {
           type="button"
           onClick={() => void handleRestart()}
           disabled={!canRestart || restarting}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-cosmic-purple/20 text-cosmic-purple border border-cosmic-purple/30 hover:bg-cosmic-purple/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30 hover:bg-ds-gray-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <RotateCcw size={11} className={restarting ? "animate-spin" : ""} />
           Restart
@@ -173,7 +173,7 @@ export default function SessionWidget() {
 
         <Link
           href="/session"
-          className="flex items-center gap-1 text-xs text-cosmic-muted hover:text-cosmic-text transition-colors"
+          className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
         >
           Manage
           <ArrowRight size={12} />

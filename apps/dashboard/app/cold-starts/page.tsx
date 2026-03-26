@@ -223,14 +223,14 @@ function ChartLegend() {
           className="inline-block w-5 h-0.5 rounded"
           style={{ background: "#8B5CF6" }}
         />
-        <span className="text-xs text-cosmic-muted">total_ms</span>
+        <span className="text-xs text-ds-gray-900">total_ms</span>
       </div>
       <div className="flex items-center gap-1.5">
         <span
           className="inline-block w-5 h-0.5 rounded"
           style={{ background: "#8B5CF6", opacity: 0.5 }}
         />
-        <span className="text-xs text-cosmic-muted">first_response_ms</span>
+        <span className="text-xs text-ds-gray-900">first_response_ms</span>
       </div>
       <div className="flex items-center gap-1.5">
         <svg width="20" height="4">
@@ -244,7 +244,7 @@ function ChartLegend() {
             strokeDasharray="4 3"
           />
         </svg>
-        <span className="text-xs text-cosmic-muted">20-event avg</span>
+        <span className="text-xs text-ds-gray-900">20-event avg</span>
       </div>
     </div>
   );
@@ -263,16 +263,16 @@ function PercentileCard({
 }) {
   return (
     <div
-      className={`p-4 rounded-cosmic border ${
+      className={`p-4 rounded-xl border ${
         accent
-          ? "border-cosmic-purple/40 bg-cosmic-purple/10"
-          : "border-cosmic-border bg-cosmic-surface"
+          ? "border-ds-gray-1000/40 bg-ds-gray-alpha-100"
+          : "border-ds-gray-400 bg-ds-gray-100"
       }`}
     >
-      <p className="text-xs text-cosmic-muted uppercase tracking-wide">{label}</p>
+      <p className="text-xs text-ds-gray-900 uppercase tracking-wide">{label}</p>
       <p
         className={`text-2xl font-mono font-semibold mt-1 ${
-          accent ? "text-cosmic-bright" : "text-cosmic-text"
+          accent ? "text-ds-gray-1000" : "text-ds-gray-1000"
         }`}
       >
         {msToSeconds(ms)}
@@ -285,9 +285,9 @@ function PercentileCard({
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="p-3 rounded-cosmic border border-cosmic-border bg-cosmic-surface">
-      <p className="text-xs text-cosmic-muted uppercase tracking-wide">{label}</p>
-      <p className="text-lg font-mono font-semibold text-cosmic-bright mt-0.5">
+    <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
+      <p className="text-xs text-ds-gray-900 uppercase tracking-wide">{label}</p>
+      <p className="text-lg font-mono font-semibold text-ds-gray-1000 mt-0.5">
         {value}
       </p>
     </div>
@@ -333,10 +333,10 @@ export default function ColdStartsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">
+          <h1 className="text-2xl font-semibold text-ds-gray-1000">
             Cold Starts
           </h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
+          <p className="mt-1 text-sm text-ds-gray-900">
             Session latency, percentiles, and token usage
           </p>
         </div>
@@ -344,7 +344,7 @@ export default function ColdStartsPage() {
           type="button"
           onClick={() => void fetchData()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -353,7 +353,7 @@ export default function ColdStartsPage() {
 
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} />
           <span className="text-sm">{error}</span>
         </div>
@@ -361,7 +361,7 @@ export default function ColdStartsPage() {
 
       {/* Percentile cards */}
       <div>
-        <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide mb-3">
+        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
           Percentiles (24h)
         </h2>
         {loading ? (
@@ -369,7 +369,7 @@ export default function ColdStartsPage() {
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="h-20 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                className="h-20 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
               />
             ))}
           </div>
@@ -391,7 +391,7 @@ export default function ColdStartsPage() {
           </div>
         )}
         {!loading && data && (
-          <p className="mt-2 text-xs text-cosmic-muted">
+          <p className="mt-2 text-xs text-ds-gray-900">
             {data.percentiles.sample_count} events in window
           </p>
         )}
@@ -399,18 +399,18 @@ export default function ColdStartsPage() {
 
       {/* Latency chart */}
       <div>
-        <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide mb-3">
+        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
           Latency (last 100 events)
         </h2>
         {loading ? (
-          <div className="h-52 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border" />
+          <div className="h-52 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
         ) : !visibleEvents.length ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted rounded-cosmic border border-cosmic-border bg-cosmic-surface">
+          <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
             <Activity size={32} />
             <p className="text-sm">No cold-start events recorded yet</p>
           </div>
         ) : (
-          <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface p-4">
+          <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 p-4">
             <LatencyChart events={data?.events ?? []} />
             <ChartLegend />
           </div>
@@ -419,7 +419,7 @@ export default function ColdStartsPage() {
 
       {/* Stats row */}
       <div>
-        <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide mb-3">
+        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
           Averages (visible window)
         </h2>
         {loading ? (
@@ -427,7 +427,7 @@ export default function ColdStartsPage() {
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="h-16 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
               />
             ))}
           </div>

@@ -20,24 +20,46 @@
 
 @layer base {
   :root {
-    --color-cosmic-purple: #7c3aed;
-    --color-cosmic-rose: #f43f5e;
-    --color-cosmic-dark: #0f0b1a;
-    --color-cosmic-surface: #1a1425;
-    --color-cosmic-border: #2d2640;
-    --color-cosmic-muted: #6b5b8a;
-    --color-cosmic-text: #e8e0f0;
-    --color-cosmic-bright: #f5f0ff;
+    /* Geist dark mode background tokens */
+    --ds-background-100: #0a0a0a;
+    --ds-background-200: #111111;
+
+    /* Geist gray scale */
+    --ds-gray-100: #1a1a1a;
+    --ds-gray-200: #1f1f1f;
+    --ds-gray-300: #292929;
+    --ds-gray-400: #2e2e2e;
+    --ds-gray-500: #454545;
+    --ds-gray-600: #5e5e5e;
+    --ds-gray-700: #6e6e6e;
+    --ds-gray-800: #7c7c7c;
+    --ds-gray-900: #a0a0a0;
+    --ds-gray-1000: #ededed;
+
+    /* Geist alpha variants */
+    --ds-gray-alpha-100: rgba(255, 255, 255, 0.03);
+    --ds-gray-alpha-200: rgba(255, 255, 255, 0.06);
+    --ds-gray-alpha-400: rgba(255, 255, 255, 0.10);
+
+    /* Geist status colors */
+    --ds-blue-700: #0070f3;
+    --ds-blue-900: #52a8ff;
+    --ds-green-700: #0cce6b;
+    --ds-green-900: #52e78c;
+    --ds-amber-700: #f5a623;
+    --ds-amber-900: #ffcc4d;
+    --ds-red-700: #e5484d;
+    --ds-red-900: #ff6369;
   }
 
   html,
   body {
-    @apply bg-cosmic-dark text-cosmic-text font-sans;
+    @apply bg-ds-bg-100 text-ds-gray-1000 font-sans;
     min-height: 100dvh;
   }
 
   * {
-    @apply border-cosmic-border;
+    @apply border-ds-gray-400;
   }
 
   ::-webkit-scrollbar {
@@ -50,10 +72,201 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-cosmic-border rounded-full;
+    @apply bg-ds-gray-400 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-cosmic-muted;
+    @apply bg-ds-gray-500;
   }
+}
+
+@layer components {
+  /* -------------------------------------------------------------------------
+   * Geist Type Scale
+   * ---------------------------------------------------------------------- */
+
+  .text-heading-32 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+
+  .text-heading-24 {
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+  }
+
+  .text-heading-20 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
+
+  .text-heading-16 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.375;
+  }
+
+  .text-label-16 {
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.5;
+  }
+
+  .text-label-14 {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.5;
+  }
+
+  .text-label-13 {
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.5;
+  }
+
+  .text-label-12 {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    line-height: 1.5;
+  }
+
+  .text-label-13-mono {
+    font-family: "Geist Mono Variable", ui-monospace, monospace;
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.5;
+  }
+
+  .text-copy-16 {
+    font-size: 16px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.625;
+  }
+
+  .text-copy-14 {
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.571;
+  }
+
+  .text-copy-13 {
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1.538;
+  }
+
+  .text-button-14 {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1;
+  }
+
+  /* -------------------------------------------------------------------------
+   * Geist Materials — Surface Elevation
+   * ---------------------------------------------------------------------- */
+
+  .surface-base {
+    background-color: var(--ds-gray-100);
+    border: 1px solid var(--ds-gray-400);
+    border-radius: 6px;
+  }
+
+  .surface-card {
+    background-color: var(--ds-gray-100);
+    border: 1px solid var(--ds-gray-alpha-400);
+    border-radius: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+  }
+
+  .surface-card:hover {
+    border-color: var(--ds-gray-500);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    transform: translateY(-1px);
+  }
+
+  .surface-raised {
+    background-color: var(--ds-gray-200);
+    border: 1px solid var(--ds-gray-500);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  .surface-inset {
+    background-color: var(--ds-background-100);
+    border: 1px solid var(--ds-gray-alpha-200);
+    border-radius: 6px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+@layer utilities {
+  /* -------------------------------------------------------------------------
+   * Animations
+   * ---------------------------------------------------------------------- */
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 200ms ease forwards;
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--ds-gray-alpha-200) 25%,
+      var(--ds-gray-alpha-400) 50%,
+      var(--ds-gray-alpha-200) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Stagger delay utilities */
+  .stagger-1 { animation-delay: 50ms; }
+  .stagger-2 { animation-delay: 100ms; }
+  .stagger-3 { animation-delay: 150ms; }
+  .stagger-4 { animation-delay: 200ms; }
+  .stagger-5 { animation-delay: 250ms; }
+  .stagger-6 { animation-delay: 300ms; }
+  .stagger-7 { animation-delay: 350ms; }
+  .stagger-8 { animation-delay: 400ms; }
+  .stagger-9 { animation-delay: 450ms; }
+  .stagger-10 { animation-delay: 500ms; }
 }

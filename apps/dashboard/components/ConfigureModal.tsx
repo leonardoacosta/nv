@@ -63,24 +63,24 @@ export default function ConfigureModal({
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-md bg-cosmic-surface border border-cosmic-border rounded-cosmic shadow-cosmic-lg">
+      <div className="relative w-full max-w-md bg-ds-gray-100 border border-ds-gray-400 rounded-xl shadow-lg">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-cosmic-border">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ds-gray-400">
           <div>
             <h2
               id="modal-title"
-              className="text-sm font-semibold text-cosmic-bright"
+              className="text-sm font-semibold text-ds-gray-1000"
             >
               Configure {integration.name}
             </h2>
-            <p className="text-xs text-cosmic-muted mt-0.5">
+            <p className="text-xs text-ds-gray-900 mt-0.5">
               {integration.description}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center justify-center w-7 h-7 rounded-lg text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-border transition-colors"
+            className="flex items-center justify-center w-7 h-7 rounded-lg text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-200 transition-colors"
           >
             <X size={14} />
           </button>
@@ -89,20 +89,20 @@ export default function ConfigureModal({
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
           {error && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose text-xs">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-700/10 border border-red-700/30 text-red-700 text-xs">
               <AlertCircle size={14} />
               {error}
             </div>
           )}
 
           {configKeys.length === 0 ? (
-            <p className="text-sm text-cosmic-muted text-center py-4">
+            <p className="text-sm text-ds-gray-900 text-center py-4">
               No configurable settings for {integration.name}
             </p>
           ) : (
             configKeys.map((key) => (
               <div key={key}>
-                <label className="block text-xs font-medium text-cosmic-muted uppercase tracking-wide mb-1.5">
+                <label className="block text-xs font-medium text-ds-gray-900 uppercase tracking-wide mb-1.5">
                   {key.replace(/_/g, " ")}
                 </label>
                 <input
@@ -111,7 +111,7 @@ export default function ConfigureModal({
                   onChange={(e) =>
                     setFields((prev) => ({ ...prev, [key]: e.target.value }))
                   }
-                  className="w-full px-3 py-2 rounded-lg bg-cosmic-dark border border-cosmic-border text-sm text-cosmic-text font-mono placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+                  className="w-full px-3 py-2 rounded-lg bg-ds-bg-100 border border-ds-gray-400 text-sm text-ds-gray-1000 font-mono placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
                   placeholder={`Enter ${key.replace(/_/g, " ").toLowerCase()}`}
                 />
               </div>
@@ -120,11 +120,11 @@ export default function ConfigureModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-cosmic-border">
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-ds-gray-400">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors"
+            className="px-4 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
           >
             Cancel
           </button>
@@ -133,7 +133,7 @@ export default function ConfigureModal({
               type="button"
               onClick={() => void handleSave()}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-cosmic-purple text-white hover:bg-cosmic-purple/80 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium bg-ds-gray-700 text-white hover:bg-ds-gray-700/80 transition-colors disabled:opacity-50"
             >
               <Save size={13} />
               {saving ? "Saving..." : "Save"}

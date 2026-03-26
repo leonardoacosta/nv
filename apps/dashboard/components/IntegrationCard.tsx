@@ -25,8 +25,8 @@ const STATUS_CONFIG: Record<
   disconnected: {
     label: "Disconnected",
     icon: XCircle,
-    color: "text-cosmic-muted",
-    bg: "bg-cosmic-muted/20",
+    color: "text-ds-gray-900",
+    bg: "bg-ds-gray-alpha-200",
   },
   error: {
     label: "Error",
@@ -46,12 +46,12 @@ const ICON_COLORS: Record<string, string> = {
   Telegram: "text-[#229ED9]",
   Discord: "text-[#5865F2]",
   Slack: "text-[#E01E5A]",
-  GitHub: "text-cosmic-text",
-  Notion: "text-cosmic-text",
+  GitHub: "text-ds-gray-1000",
+  Notion: "text-ds-gray-1000",
   Linear: "text-[#5E6AD2]",
   Stripe: "text-[#6772E5]",
   OpenAI: "text-emerald-400",
-  Anthropic: "text-cosmic-rose",
+  Anthropic: "text-red-700",
 };
 
 interface IntegrationCardProps {
@@ -65,13 +65,13 @@ export default function IntegrationCard({
 }: IntegrationCardProps) {
   const status = STATUS_CONFIG[integration.status];
   const StatusIcon = status.icon;
-  const iconColor = ICON_COLORS[integration.name] ?? "text-cosmic-purple";
+  const iconColor = ICON_COLORS[integration.name] ?? "text-ds-gray-1000";
 
   return (
-    <div className="flex items-center gap-4 p-4 rounded-cosmic border border-cosmic-border bg-cosmic-surface hover:border-cosmic-purple/40 transition-colors group">
+    <div className="flex items-center gap-4 p-4 rounded-xl border border-ds-gray-400 bg-ds-gray-100 hover:border-ds-gray-1000/40 transition-colors group">
       {/* Icon placeholder */}
       <div
-        className={`flex items-center justify-center w-10 h-10 rounded-lg bg-cosmic-dark shrink-0 ${iconColor}`}
+        className={`flex items-center justify-center w-10 h-10 rounded-lg bg-ds-bg-100 shrink-0 ${iconColor}`}
       >
         <span className="text-sm font-bold font-mono">
           {integration.name.slice(0, 2).toUpperCase()}
@@ -80,11 +80,11 @@ export default function IntegrationCard({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-cosmic-bright">
+        <p className="text-sm font-medium text-ds-gray-1000">
           {integration.name}
         </p>
         {integration.description && (
-          <p className="text-xs text-cosmic-muted truncate mt-0.5">
+          <p className="text-xs text-ds-gray-900 truncate mt-0.5">
             {integration.description}
           </p>
         )}
@@ -103,7 +103,7 @@ export default function IntegrationCard({
         <button
           type="button"
           onClick={() => onConfigure(integration)}
-          className="flex items-center justify-center w-8 h-8 rounded-lg text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-border transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+          className="flex items-center justify-center w-8 h-8 rounded-lg text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-200 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
           aria-label={`Configure ${integration.name}`}
         >
           <Settings size={14} />

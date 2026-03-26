@@ -91,10 +91,10 @@ export default function ProjectsPage() {
     <div className="p-8 space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">
+          <h1 className="text-2xl font-semibold text-ds-gray-1000">
             Projects
           </h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
+          <p className="mt-1 text-sm text-ds-gray-900">
             {loading
               ? "Loading..."
               : `${projects.length} projects · ${errorCount} issues`}
@@ -104,7 +104,7 @@ export default function ProjectsPage() {
           type="button"
           onClick={() => void fetchProjects()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -115,25 +115,25 @@ export default function ProjectsPage() {
       <div className="relative">
         <Search
           size={14}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-cosmic-muted"
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900"
         />
         <input
           type="text"
           placeholder="Search projects..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+          className="w-full pl-9 pr-4 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
         />
       </div>
 
       {solveStatus && (
-        <div className="flex items-center gap-3 p-3 rounded-cosmic bg-cosmic-purple/10 border border-cosmic-purple/30 text-cosmic-purple">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000">
           <span className="text-sm">{solveStatus}</span>
         </div>
       )}
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} />
           <span className="text-sm">{error}</span>
         </div>
@@ -144,12 +144,12 @@ export default function ProjectsPage() {
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="h-14 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+              className="h-14 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
             />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
+        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
           <FolderOpen size={36} />
           <p className="text-sm">
             {search ? "No projects match your search" : "No projects found"}

@@ -228,7 +228,7 @@ function FieldRow({ field, config, onChange }: FieldRowProps) {
     return (
       <div className="flex items-center gap-4 px-4 py-3.5 min-h-11">
         <div className="flex-1 min-w-0">
-          <span className="text-xs font-medium text-cosmic-text">{field.label}</span>
+          <span className="text-xs font-medium text-ds-gray-1000">{field.label}</span>
           {field.requires_restart && (
             <span className="ml-2 text-xs font-mono text-amber-400 opacity-70">
               restart required
@@ -241,7 +241,7 @@ function FieldRow({ field, config, onChange }: FieldRowProps) {
           aria-checked={Boolean(value)}
           onClick={() => onChange(field.key, !value)}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 ${
-            value ? "bg-cosmic-purple" : "bg-cosmic-border"
+            value ? "bg-ds-gray-700" : "bg-ds-gray-400"
           }`}
         >
           <span
@@ -258,11 +258,11 @@ function FieldRow({ field, config, onChange }: FieldRowProps) {
     return (
       <div className="flex items-center gap-4 px-4 py-3.5 min-h-11">
         <div className="flex-1 min-w-0">
-          <span className="text-xs font-medium text-cosmic-text">{field.label}</span>
+          <span className="text-xs font-medium text-ds-gray-1000">{field.label}</span>
         </div>
         <div className="shrink-0 w-64">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cosmic-dark border border-cosmic-border">
-            <span className="text-sm font-mono text-cosmic-muted tracking-widest select-none">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
+            <span className="text-sm font-mono text-ds-gray-900 tracking-widest select-none">
               {value ? "••••••••••••" : "(not set)"}
             </span>
           </div>
@@ -274,7 +274,7 @@ function FieldRow({ field, config, onChange }: FieldRowProps) {
   return (
     <div className="flex items-center gap-4 px-4 py-3.5 min-h-11">
       <div className="flex-1 min-w-0">
-        <span className="text-xs font-medium text-cosmic-text">{field.label}</span>
+        <span className="text-xs font-medium text-ds-gray-1000">{field.label}</span>
         {field.requires_restart && (
           <span className="ml-2 text-xs font-mono text-amber-400 opacity-70">
             restart required
@@ -291,7 +291,7 @@ function FieldRow({ field, config, onChange }: FieldRowProps) {
               field.type === "number" ? Number(e.target.value) : e.target.value,
             )
           }
-          className="w-full px-3 py-1.5 rounded-lg bg-cosmic-dark border border-cosmic-border text-sm text-cosmic-text font-mono placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+          className="w-full px-3 py-1.5 rounded-lg bg-ds-bg-100 border border-ds-gray-400 text-sm text-ds-gray-1000 font-mono placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
         />
       </div>
     </div>
@@ -317,40 +317,40 @@ function ConfigSection({ section, fields, config, onChange }: ConfigSectionProps
     // Always render the card with an empty-state placeholder so all four
     // sections are visible even when /api/config returns {}.
     return (
-      <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">
+      <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 overflow-hidden">
         <div className="w-full flex items-center gap-3 px-4 py-3.5 min-h-11 text-left opacity-60">
-          <SectionIcon size={15} className="text-cosmic-purple shrink-0" />
+          <SectionIcon size={15} className="text-ds-gray-1000 shrink-0" />
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-cosmic-text">{section.label}</h2>
+            <h2 className="text-sm font-semibold text-ds-gray-1000">{section.label}</h2>
           </div>
-          <span className="text-xs font-mono text-cosmic-muted">0</span>
+          <span className="text-xs font-mono text-ds-gray-900">0</span>
         </div>
-        <div className="border-t border-cosmic-border px-4 py-3">
-          <p className="text-xs text-cosmic-muted italic">No fields configured.</p>
+        <div className="border-t border-ds-gray-400 px-4 py-3">
+          <p className="text-xs text-ds-gray-900 italic">No fields configured.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">
+    <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 min-h-11 hover:bg-cosmic-border/20 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3.5 min-h-11 hover:bg-ds-gray-alpha-200 transition-colors text-left"
       >
-        <SectionIcon size={15} className="text-cosmic-purple shrink-0" />
+        <SectionIcon size={15} className="text-ds-gray-1000 shrink-0" />
         <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-semibold text-cosmic-text">{section.label}</h2>
+          <h2 className="text-sm font-semibold text-ds-gray-1000">{section.label}</h2>
         </div>
-        <span className="text-xs font-mono text-cosmic-muted">{fields.length}</span>
-        <div className="text-cosmic-muted shrink-0">
+        <span className="text-xs font-mono text-ds-gray-900">{fields.length}</span>
+        <div className="text-ds-gray-900 shrink-0">
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
       </button>
 
       {open && (
-        <div className="border-t border-cosmic-border divide-y divide-cosmic-border/50">
+        <div className="border-t border-ds-gray-400 divide-y divide-ds-gray-400">
           {fields.map((field) => (
             <FieldRow
               key={field.key}
@@ -456,7 +456,7 @@ export default function SettingsPage() {
         type="button"
         onClick={() => void fetchConfig()}
         disabled={loading}
-        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
         <span className="hidden sm:inline">Reload</span>
@@ -484,7 +484,7 @@ export default function SettingsPage() {
 
       {/* Restart notice banner */}
       {restartFields.length > 0 && (
-        <div className="mb-4 flex items-start gap-3 p-4 rounded-cosmic bg-amber-500/10 border border-amber-500/30">
+        <div className="mb-4 flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
           <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-amber-400">
@@ -502,7 +502,7 @@ export default function SettingsPage() {
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="h-40 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+              className="h-40 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
             />
           ))}
         </div>
@@ -522,14 +522,14 @@ export default function SettingsPage() {
 
       {/* Unsaved-changes sticky footer */}
       {hasChanges && (
-        <div className="sticky bottom-4 mt-6 flex items-center justify-between gap-4 p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-purple/40 shadow-cosmic">
-          <p className="text-sm text-cosmic-muted">You have unsaved changes</p>
+        <div className="sticky bottom-4 mt-6 flex items-center justify-between gap-4 p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-1000/40 shadow-md">
+          <p className="text-sm text-ds-gray-900">You have unsaved changes</p>
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={handleReset}
               disabled={saving}
-              className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
             >
               Reset
             </button>
@@ -537,7 +537,7 @@ export default function SettingsPage() {
               type="button"
               onClick={() => void handleSave()}
               disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-lg text-sm font-medium bg-cosmic-purple text-white hover:bg-cosmic-purple/80 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-lg text-sm font-medium bg-ds-gray-700 text-white hover:bg-ds-gray-700/80 transition-colors disabled:opacity-50"
             >
               <Save size={14} />
               {saving ? "Saving…" : "Save Changes"}

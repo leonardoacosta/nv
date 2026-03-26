@@ -36,16 +36,16 @@ const CHANNEL_ICONS: Record<string, React.ReactNode> = {
   telegram: <MessageSquare size={13} className="text-[#229ED9]" />,
   discord: <MessageSquare size={13} className="text-[#5865F2]" />,
   slack: <MessageSquare size={13} className="text-[#E01E5A]" />,
-  cli: <Terminal size={13} className="text-cosmic-purple" />,
-  api: <Zap size={13} className="text-cosmic-rose" />,
+  cli: <Terminal size={13} className="text-ds-gray-1000" />,
+  api: <Zap size={13} className="text-red-700" />,
 };
 
 const CHANNEL_COLOR: Record<string, string> = {
   telegram: "text-[#229ED9]",
   discord: "text-[#5865F2]",
   slack: "text-[#E01E5A]",
-  cli: "text-cosmic-purple",
-  api: "text-cosmic-rose",
+  cli: "text-ds-gray-1000",
+  api: "text-red-700",
 };
 
 type DateRange = "today" | "7d" | "all";
@@ -56,11 +56,11 @@ type DateRange = "today" | "7d" | "all";
 
 function channelIcon(channel: string): React.ReactNode {
   const key = channel.toLowerCase();
-  return CHANNEL_ICONS[key] ?? <MessageSquare size={13} className="text-cosmic-muted" />;
+  return CHANNEL_ICONS[key] ?? <MessageSquare size={13} className="text-ds-gray-900" />;
 }
 
 function channelColor(channel: string): string {
-  return CHANNEL_COLOR[channel.toLowerCase()] ?? "text-cosmic-muted";
+  return CHANNEL_COLOR[channel.toLowerCase()] ?? "text-ds-gray-900";
 }
 
 function formatTs(iso: string): string {
@@ -107,15 +107,15 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
   const cIcon = channelIcon(channelKey);
 
   return (
-    <li className="border-b border-cosmic-border last:border-0">
+    <li className="border-b border-ds-gray-400 last:border-0">
       {/* Collapsed row */}
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-cosmic-surface/50 transition-colors group"
+        className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-ds-gray-100/50 transition-colors group"
       >
         {/* Direction icon */}
-        <div className="shrink-0 text-cosmic-muted">
+        <div className="shrink-0 text-ds-gray-900">
           {isInbound ? (
             <ArrowDownLeft size={13} className="text-emerald-400" />
           ) : (
@@ -134,18 +134,18 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
         </span>
 
         {/* Sender */}
-        <span className="shrink-0 text-xs text-cosmic-text font-medium min-w-[80px] truncate hidden md:inline">
+        <span className="shrink-0 text-xs text-ds-gray-1000 font-medium min-w-[80px] truncate hidden md:inline">
           {msg.sender || "—"}
         </span>
 
         {/* Preview */}
-        <span className="flex-1 min-w-0 text-sm text-cosmic-muted truncate">
+        <span className="flex-1 min-w-0 text-sm text-ds-gray-900 truncate">
           {truncate(msg.content)}
         </span>
 
         {/* Latency badge */}
         {msg.response_time_ms !== null && msg.response_time_ms !== undefined && (
-          <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-cosmic-surface border border-cosmic-border text-cosmic-muted hidden lg:flex">
+          <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900 hidden lg:flex">
             <Gauge size={9} />
             {msg.response_time_ms}ms
           </span>
@@ -153,7 +153,7 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
 
         {/* Timestamp */}
         <span
-          className="shrink-0 text-xs text-cosmic-muted font-mono hidden sm:inline"
+          className="shrink-0 text-xs text-ds-gray-900 font-mono hidden sm:inline"
           suppressHydrationWarning
         >
           {formatTs(msg.timestamp)}
@@ -162,13 +162,13 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
 
       {/* Expanded inline content */}
       {expanded && (
-        <div className="px-4 pb-4 pt-1 space-y-4 bg-cosmic-surface/30">
+        <div className="px-4 pb-4 pt-1 space-y-4 bg-ds-gray-100/30">
           {/* Full content */}
           <section className="space-y-1.5">
-            <p className="text-[10px] text-cosmic-muted uppercase tracking-widest font-semibold">
+            <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest font-semibold">
               Message content
             </p>
-            <pre className="text-xs text-cosmic-text whitespace-pre-wrap break-words font-mono bg-cosmic-dark rounded-lg p-3 border border-cosmic-border max-h-64 overflow-y-auto">
+            <pre className="text-xs text-ds-gray-1000 whitespace-pre-wrap break-words font-mono bg-ds-bg-100 rounded-lg p-3 border border-ds-gray-400 max-h-64 overflow-y-auto">
               {msg.content}
             </pre>
           </section>
@@ -176,15 +176,15 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
           {/* Metadata grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-0.5">
-              <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                 Direction
               </p>
-              <p className="text-xs font-medium text-cosmic-text capitalize">
+              <p className="text-xs font-medium text-ds-gray-1000 capitalize">
                 {msg.direction}
               </p>
             </div>
             <div className="space-y-0.5">
-              <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                 Channel
               </p>
               <p className={`text-xs font-medium ${channelColor(msg.channel.toLowerCase())}`}>
@@ -192,47 +192,47 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
               </p>
             </div>
             <div className="space-y-0.5">
-              <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                 Sender
               </p>
-              <p className="text-xs font-medium text-cosmic-text">
+              <p className="text-xs font-medium text-ds-gray-1000">
                 {msg.sender || "—"}
               </p>
             </div>
             <div className="space-y-0.5">
-              <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                 Timestamp
               </p>
-              <p className="text-xs font-mono text-cosmic-text" suppressHydrationWarning>
+              <p className="text-xs font-mono text-ds-gray-1000" suppressHydrationWarning>
                 {formatTs(msg.timestamp)}
               </p>
             </div>
             {msg.response_time_ms !== null && msg.response_time_ms !== undefined && (
               <div className="space-y-0.5">
-                <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                   Latency
                 </p>
-                <p className="text-xs font-mono text-cosmic-text">
+                <p className="text-xs font-mono text-ds-gray-1000">
                   {msg.response_time_ms}ms
                 </p>
               </div>
             )}
             {msg.tokens_in !== null && msg.tokens_in !== undefined && (
               <div className="space-y-0.5">
-                <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                   Tokens in
                 </p>
-                <p className="text-xs font-mono text-cosmic-text">
+                <p className="text-xs font-mono text-ds-gray-1000">
                   {msg.tokens_in.toLocaleString()}
                 </p>
               </div>
             )}
             {msg.tokens_out !== null && msg.tokens_out !== undefined && (
               <div className="space-y-0.5">
-                <p className="text-[10px] text-cosmic-muted uppercase tracking-widest">
+                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
                   Tokens out
                 </p>
-                <p className="text-xs font-mono text-cosmic-text">
+                <p className="text-xs font-mono text-ds-gray-1000">
                   {msg.tokens_out.toLocaleString()}
                 </p>
               </div>
@@ -264,18 +264,18 @@ function PaginationControls({
   disabled,
 }: PaginationProps) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-cosmic-border">
+    <div className="flex items-center justify-between px-4 py-3 border-t border-ds-gray-400">
       <button
         type="button"
         onClick={onPrev}
         disabled={page <= 0 || disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-cosmic-muted border border-cosmic-border hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <ChevronLeft size={13} />
         Prev
       </button>
 
-      <span className="text-xs font-mono text-cosmic-muted">
+      <span className="text-xs font-mono text-ds-gray-900">
         Page {page + 1}
         {pageCount > 0 ? ` / ${pageCount}` : ""}
       </span>
@@ -284,7 +284,7 @@ function PaginationControls({
         type="button"
         onClick={onNext}
         disabled={pageCount > 0 && page >= pageCount - 1 || disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-cosmic-muted border border-cosmic-border hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         Next
         <ChevronRight size={13} />
@@ -394,20 +394,20 @@ export default function MessagesPage() {
           <div className="relative flex-1 min-w-0 max-w-sm">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-cosmic-muted pointer-events-none"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
             />
             <input
               type="search"
               value={searchInput}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Full-text search…"
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+              className="w-full pl-9 pr-8 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
             />
             {searchInput && (
               <button
                 type="button"
                 onClick={() => setSearchInput("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cosmic-muted hover:text-cosmic-text transition-colors"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
                 aria-label="Clear search"
               >
                 <X size={13} />
@@ -418,15 +418,15 @@ export default function MessagesPage() {
           {/* Filter chips row */}
           <div className="flex items-center gap-2 flex-wrap">
             {/* Channel filter */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-cosmic-surface border border-cosmic-border">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400">
               <button
                 type="button"
                 onClick={() => setChannelFilter("all")}
                 className={[
                   "px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
                   channelFilter === "all"
-                    ? "bg-cosmic-purple/20 text-cosmic-purple"
-                    : "text-cosmic-muted hover:text-cosmic-text",
+                    ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                    : "text-ds-gray-900 hover:text-ds-gray-1000",
                 ].join(" ")}
               >
                 All channels
@@ -439,8 +439,8 @@ export default function MessagesPage() {
                   className={[
                     "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors capitalize",
                     channelFilter === ch
-                      ? "bg-cosmic-purple/20 text-cosmic-purple"
-                      : "text-cosmic-muted hover:text-cosmic-text",
+                      ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                      : "text-ds-gray-900 hover:text-ds-gray-1000",
                   ].join(" ")}
                 >
                   {channelIcon(ch)}
@@ -450,7 +450,7 @@ export default function MessagesPage() {
             </div>
 
             {/* Date range chips */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-cosmic-surface border border-cosmic-border">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400">
               {(["today", "7d", "all"] as DateRange[]).map((r) => (
                 <button
                   key={r}
@@ -459,8 +459,8 @@ export default function MessagesPage() {
                   className={[
                     "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
                     dateRange === r
-                      ? "bg-cosmic-purple/20 text-cosmic-purple"
-                      : "text-cosmic-muted hover:text-cosmic-text",
+                      ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                      : "text-ds-gray-900 hover:text-ds-gray-1000",
                   ].join(" ")}
                 >
                   <Clock size={10} />
@@ -479,7 +479,7 @@ export default function MessagesPage() {
               count={filtered.length}
             />
             {deferredSearch && (
-              <span className="text-xs text-cosmic-muted">
+              <span className="text-xs text-ds-gray-900">
                 Searching: &ldquo;{deferredSearch}&rdquo;
               </span>
             )}
@@ -487,18 +487,18 @@ export default function MessagesPage() {
         )}
 
         {/* Messages list */}
-        <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">
+        <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 overflow-hidden">
           {loading ? (
-            <ul className="divide-y divide-cosmic-border">
+            <ul className="divide-y divide-ds-gray-400">
               {Array.from({ length: 8 }).map((_, i) => (
                 <li
                   key={i}
                   className="flex items-center gap-3 px-4 py-3"
                 >
-                  <div className="w-3 h-3 rounded-full animate-pulse bg-cosmic-border" />
-                  <div className="w-10 h-3 animate-pulse rounded bg-cosmic-border" />
-                  <div className="flex-1 h-3 animate-pulse rounded bg-cosmic-border" style={{ opacity: 1 - i * 0.08 }} />
-                  <div className="w-16 h-3 animate-pulse rounded bg-cosmic-border" />
+                  <div className="w-3 h-3 rounded-full animate-pulse bg-ds-gray-400" />
+                  <div className="w-10 h-3 animate-pulse rounded bg-ds-gray-400" />
+                  <div className="flex-1 h-3 animate-pulse rounded bg-ds-gray-400" style={{ opacity: 1 - i * 0.08 }} />
+                  <div className="w-16 h-3 animate-pulse rounded bg-ds-gray-400" />
                 </li>
               ))}
             </ul>
@@ -516,7 +516,7 @@ export default function MessagesPage() {
             </div>
           ) : (
             <>
-              <ul className="divide-y divide-cosmic-border">
+              <ul className="divide-y divide-ds-gray-400">
                 {filtered.map((msg) => (
                   <MessageRow
                     key={msg.id}

@@ -69,10 +69,10 @@ export default function IntegrationsPage() {
     <div className="p-8 space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">
+          <h1 className="text-2xl font-semibold text-ds-gray-1000">
             Integrations
           </h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
+          <p className="mt-1 text-sm text-ds-gray-900">
             Connected channels, tools, and services
           </p>
         </div>
@@ -80,7 +80,7 @@ export default function IntegrationsPage() {
           type="button"
           onClick={() => void fetchIntegrations()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -88,7 +88,7 @@ export default function IntegrationsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} />
           <span className="text-sm">{error}</span>
         </div>
@@ -98,18 +98,18 @@ export default function IntegrationsPage() {
         <div className="space-y-6">
           {Array.from({ length: 3 }).map((_, g) => (
             <div key={g} className="space-y-2">
-              <div className="h-3 w-20 animate-pulse rounded bg-cosmic-border" />
+              <div className="h-3 w-20 animate-pulse rounded bg-ds-gray-400" />
               {Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-16 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                  className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
                 />
               ))}
             </div>
           ))}
         </div>
       ) : integrations.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
+        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
           <Plug size={36} />
           <p className="text-sm">No integrations configured</p>
         </div>
@@ -118,15 +118,15 @@ export default function IntegrationsPage() {
           {grouped.map(({ key, label, items }) => (
             <section key={key}>
               <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide">
+                <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
                   {label}
                 </h2>
-                <span className="text-xs font-mono text-cosmic-muted">
+                <span className="text-xs font-mono text-ds-gray-900">
                   {items.length}
                 </span>
               </div>
               {items.length === 0 ? (
-                <p className="text-sm text-cosmic-muted py-2 pl-1 italic">
+                <p className="text-sm text-ds-gray-900 py-2 pl-1 italic">
                   No integrations configured.
                 </p>
               ) : (

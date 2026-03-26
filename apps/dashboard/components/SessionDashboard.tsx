@@ -72,13 +72,13 @@ function StateBadge({ state }: { state: SessionState }) {
     },
     stopped: {
       label: "Stopped",
-      classes: "bg-cosmic-muted/20 text-cosmic-muted border-cosmic-muted/30",
-      dotClass: "bg-cosmic-muted",
+      classes: "bg-ds-gray-alpha-200 text-ds-gray-900 border-ds-gray-400",
+      dotClass: "bg-ds-gray-600",
     },
     error: {
       label: "Error",
-      classes: "bg-cosmic-rose/20 text-cosmic-rose border-cosmic-rose/30",
-      dotClass: "bg-cosmic-rose",
+      classes: "bg-red-700/20 text-red-700 border-red-700/30",
+      dotClass: "bg-red-700",
     },
   };
 
@@ -130,7 +130,7 @@ function LogViewer() {
 
   if (logsError) {
     return (
-      <div className="flex items-center gap-2 p-3 text-xs text-cosmic-rose font-mono bg-cosmic-rose/10 rounded-lg border border-cosmic-rose/30">
+      <div className="flex items-center gap-2 p-3 text-xs text-red-700 font-mono bg-red-700/10 rounded-lg border border-red-700/30">
         <AlertCircle size={12} />
         {logsError}
       </div>
@@ -140,10 +140,10 @@ function LogViewer() {
   return (
     <div
       ref={scrollRef}
-      className="h-64 overflow-y-auto rounded-lg bg-cosmic-dark border border-cosmic-border font-mono text-xs text-cosmic-text p-3 space-y-0.5"
+      className="h-64 overflow-y-auto rounded-lg bg-ds-bg-100 border border-ds-gray-400 font-mono text-xs text-ds-gray-1000 p-3 space-y-0.5"
     >
       {lines.length === 0 ? (
-        <span className="text-cosmic-muted">No log output yet…</span>
+        <span className="text-ds-gray-900">No log output yet…</span>
       ) : (
         lines.map((line, i) => (
           <div key={i} className="leading-5 whitespace-pre-wrap break-all">
@@ -212,16 +212,16 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
   return (
     <div className="space-y-6">
       {/* Status card */}
-      <div className="p-6 rounded-cosmic bg-cosmic-surface border border-cosmic-border space-y-5">
+      <div className="p-6 rounded-xl bg-ds-gray-100 border border-ds-gray-400 space-y-5">
         {/* Header row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-cosmic-purple/20 border border-cosmic-purple/30">
-              <Terminal size={18} className="text-cosmic-purple" />
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-ds-gray-alpha-200 border border-ds-gray-1000/30">
+              <Terminal size={18} className="text-ds-gray-1000" />
             </div>
             <div>
-              <p className="text-sm font-medium text-cosmic-bright">CC Session</p>
-              <p className="text-xs text-cosmic-muted font-mono">nova-cc-session</p>
+              <p className="text-sm font-medium text-ds-gray-1000">CC Session</p>
+              <p className="text-xs text-ds-gray-900 font-mono">nova-cc-session</p>
             </div>
           </div>
           <StateBadge state={state} />
@@ -229,31 +229,31 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-4">
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-cosmic-dark border border-cosmic-border">
-            <Clock size={14} className="text-cosmic-muted shrink-0" />
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
+            <Clock size={14} className="text-ds-gray-900 shrink-0" />
             <div>
-              <p className="text-xs text-cosmic-muted uppercase tracking-wide">Uptime</p>
-              <p className="text-sm font-mono font-medium text-cosmic-bright" suppressHydrationWarning>
+              <p className="text-xs text-ds-gray-900 uppercase tracking-wide">Uptime</p>
+              <p className="text-sm font-mono font-medium text-ds-gray-1000" suppressHydrationWarning>
                 {formatUptime(status?.uptime_secs ?? null)}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-cosmic-dark border border-cosmic-border">
-            <MessageSquare size={14} className="text-cosmic-muted shrink-0" />
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
+            <MessageSquare size={14} className="text-ds-gray-900 shrink-0" />
             <div>
-              <p className="text-xs text-cosmic-muted uppercase tracking-wide">Messages</p>
-              <p className="text-sm font-mono font-medium text-cosmic-bright">
+              <p className="text-xs text-ds-gray-900 uppercase tracking-wide">Messages</p>
+              <p className="text-sm font-mono font-medium text-ds-gray-1000">
                 {status?.message_count ?? 0}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-cosmic-dark border border-cosmic-border">
-            <RefreshCw size={14} className="text-cosmic-muted shrink-0" />
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-ds-bg-100 border border-ds-gray-400">
+            <RefreshCw size={14} className="text-ds-gray-900 shrink-0" />
             <div>
-              <p className="text-xs text-cosmic-muted uppercase tracking-wide">Last Activity</p>
-              <p className="text-sm font-mono font-medium text-cosmic-bright" suppressHydrationWarning>
+              <p className="text-xs text-ds-gray-900 uppercase tracking-wide">Last Activity</p>
+              <p className="text-sm font-mono font-medium text-ds-gray-1000" suppressHydrationWarning>
                 {formatRelativeTime(status?.last_message_at ?? null)}
               </p>
             </div>
@@ -284,7 +284,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
             type="button"
             onClick={() => void sendControl("stop")}
             disabled={!canStop || isTransitioning}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-cosmic-rose/20 text-cosmic-rose border border-cosmic-rose/30 hover:bg-cosmic-rose/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-700/20 text-red-700 border border-red-700/30 hover:bg-red-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Square size={14} />
             Stop
@@ -294,14 +294,14 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
             type="button"
             onClick={() => void sendControl("restart")}
             disabled={!canRestart || isTransitioning}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-cosmic-purple/20 text-cosmic-purple border border-cosmic-purple/30 hover:bg-cosmic-purple/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30 hover:bg-ds-gray-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <RotateCcw size={14} className={actionPending === "restart" ? "animate-spin" : ""} />
             Restart
           </button>
 
           {isTransitioning && actionPending && (
-            <span className="text-xs text-cosmic-muted font-mono animate-pulse">
+            <span className="text-xs text-ds-gray-900 font-mono animate-pulse">
               {actionPending}ing…
             </span>
           )}
@@ -310,7 +310,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
       {/* Action error */}
       {actionError && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose text-sm">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700 text-sm">
           <AlertCircle size={15} />
           {actionError}
         </div>
@@ -318,12 +318,12 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
       {/* Session error panel */}
       {state === "error" && status?.error_message && (
-        <div className="p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 space-y-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-cosmic-rose">
+        <div className="p-4 rounded-xl bg-red-700/10 border border-red-700/30 space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-red-700">
             <AlertCircle size={15} />
             Session Error
           </div>
-          <p className="text-xs font-mono text-cosmic-rose/80 leading-relaxed">
+          <p className="text-xs font-mono text-red-700/80 leading-relaxed">
             {status.error_message}
           </p>
         </div>
@@ -331,8 +331,8 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
       {/* Log viewer */}
       <div className="space-y-3">
-        <h2 className="text-sm font-semibold text-cosmic-text uppercase tracking-wide flex items-center gap-2">
-          <Terminal size={14} className="text-cosmic-muted" />
+        <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide flex items-center gap-2">
+          <Terminal size={14} className="text-ds-gray-900" />
           Container Logs
         </h2>
         <LogViewer />

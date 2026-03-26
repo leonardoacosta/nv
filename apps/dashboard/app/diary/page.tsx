@@ -100,14 +100,14 @@ export default function DiaryPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-cosmic-purple/20 border border-cosmic-purple/30 shrink-0">
-            <BookOpen size={18} className="text-cosmic-purple" />
+          <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-ds-gray-alpha-200 border border-ds-gray-1000/30 shrink-0">
+            <BookOpen size={18} className="text-ds-gray-1000" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-cosmic-bright">
+            <h1 className="text-2xl font-semibold text-ds-gray-1000">
               Interaction Diary
             </h1>
-            <p className="text-sm text-cosmic-muted mt-0.5">
+            <p className="text-sm text-ds-gray-900 mt-0.5">
               A log of every interaction Nova handled
             </p>
           </div>
@@ -117,7 +117,7 @@ export default function DiaryPage() {
           type="button"
           onClick={() => void fetchDiary(dateStr)}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50 shrink-0"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50 shrink-0"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -130,17 +130,17 @@ export default function DiaryPage() {
           type="button"
           onClick={goBack}
           aria-label="Previous day"
-          className="flex items-center justify-center w-9 h-9 rounded-lg border border-cosmic-border text-cosmic-muted hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors"
+          className="flex items-center justify-center w-9 h-9 rounded-lg border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
         >
           <ChevronLeft size={16} />
         </button>
 
         <div className="flex-1 text-center">
-          <p className="text-sm font-medium text-cosmic-text">
+          <p className="text-sm font-medium text-ds-gray-1000">
             {formatDisplayDate(dateStr)}
           </p>
           {isToday(dateStr) && (
-            <span className="text-xs text-cosmic-purple font-medium">Today</span>
+            <span className="text-xs text-ds-gray-1000 font-medium">Today</span>
           )}
         </div>
 
@@ -149,7 +149,7 @@ export default function DiaryPage() {
           onClick={goForward}
           disabled={isToday(dateStr)}
           aria-label="Next day"
-          className="flex items-center justify-center w-9 h-9 rounded-lg border border-cosmic-border text-cosmic-muted hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex items-center justify-center w-9 h-9 rounded-lg border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronRight size={16} />
         </button>
@@ -157,7 +157,7 @@ export default function DiaryPage() {
 
       {/* Error state */}
       {error && (
-        <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} className="shrink-0" />
           <span className="text-sm">{error}</span>
         </div>
@@ -166,29 +166,29 @@ export default function DiaryPage() {
       {/* Summary bar */}
       {!loading && !error && stats && (
         <div className="grid grid-cols-3 gap-3">
-          <div className="p-3 rounded-cosmic border border-cosmic-border bg-cosmic-surface">
-            <p className="text-xs text-cosmic-muted uppercase tracking-wide mb-1">
+          <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
+            <p className="text-xs text-ds-gray-900 uppercase tracking-wide mb-1">
               Entries
             </p>
-            <p className="text-xl font-mono font-semibold text-cosmic-bright">
+            <p className="text-xl font-mono font-semibold text-ds-gray-1000">
               {stats.total}
             </p>
           </div>
-          <div className="p-3 rounded-cosmic border border-cosmic-border bg-cosmic-surface">
-            <div className="flex items-center gap-1.5 text-xs text-cosmic-muted uppercase tracking-wide mb-1">
+          <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
+            <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 uppercase tracking-wide mb-1">
               <Zap size={11} />
               Tokens
             </div>
-            <p className="text-xl font-mono font-semibold text-cosmic-bright">
+            <p className="text-xl font-mono font-semibold text-ds-gray-1000">
               {stats.totalTokens.toLocaleString()}
             </p>
           </div>
-          <div className="p-3 rounded-cosmic border border-cosmic-border bg-cosmic-surface">
-            <div className="flex items-center gap-1.5 text-xs text-cosmic-muted uppercase tracking-wide mb-1">
+          <div className="p-3 rounded-xl border border-ds-gray-400 bg-ds-gray-100">
+            <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 uppercase tracking-wide mb-1">
               <Clock size={11} />
               Avg Latency
             </div>
-            <p className="text-xl font-mono font-semibold text-cosmic-bright">
+            <p className="text-xl font-mono font-semibold text-ds-gray-1000">
               {stats.avgLatencyMs > 0
                 ? stats.avgLatencyMs >= 1000
                   ? `${(stats.avgLatencyMs / 1000).toFixed(1)}s`
@@ -205,7 +205,7 @@ export default function DiaryPage() {
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="h-28 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+              className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
             />
           ))}
         </div>
@@ -213,7 +213,7 @@ export default function DiaryPage() {
 
       {/* Empty state */}
       {!loading && !error && data && data.entries.length === 0 && (
-        <div className="flex flex-col items-center gap-3 py-16 text-cosmic-muted">
+        <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
           <BookOpen size={36} className="opacity-40" />
           <p className="text-sm">No diary entries for this day.</p>
         </div>

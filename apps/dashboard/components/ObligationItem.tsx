@@ -32,9 +32,9 @@ const PRIORITY_CONFIG: Record<
   },
   2: {
     label: "P2",
-    color: "text-cosmic-purple",
-    bar: "bg-cosmic-purple",
-    bg: "bg-cosmic-purple/10 border-cosmic-purple/30",
+    color: "text-ds-gray-1000",
+    bar: "bg-ds-gray-700",
+    bg: "bg-ds-gray-alpha-100 border-ds-gray-1000/30",
   },
   3: {
     label: "P3",
@@ -59,7 +59,7 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
 
   return (
     <div
-      className={`flex gap-3 p-4 rounded-cosmic border transition-colors hover:border-cosmic-purple/40 ${p.bg}`}
+      className={`flex gap-3 p-4 rounded-xl border transition-colors hover:border-ds-gray-1000/40 ${p.bg}`}
     >
       {/* Priority bar */}
       <div className={`w-1 rounded-full shrink-0 self-stretch ${p.bar}`} />
@@ -72,7 +72,7 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
             >
               {p.label}
             </span>
-            <span className="text-sm font-medium text-cosmic-bright">
+            <span className="text-sm font-medium text-ds-gray-1000">
               {obligation.title}
             </span>
           </div>
@@ -81,8 +81,8 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
               obligation.status === "in_progress"
                 ? "bg-amber-500/20 text-amber-400"
                 : obligation.status === "open"
-                  ? "bg-cosmic-purple/20 text-cosmic-purple"
-                  : "bg-cosmic-muted/20 text-cosmic-muted"
+                  ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                  : "bg-ds-gray-alpha-200 text-ds-gray-900"
             }`}
           >
             {obligation.status}
@@ -90,32 +90,32 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
         </div>
 
         {obligation.description && (
-          <p className="mt-1 text-xs text-cosmic-muted line-clamp-2">
+          <p className="mt-1 text-xs text-ds-gray-900 line-clamp-2">
             {obligation.description}
           </p>
         )}
 
         <div className="flex items-center gap-4 mt-2 flex-wrap">
           {obligation.due_at && (
-            <div className="flex items-center gap-1 text-xs text-cosmic-muted font-mono">
+            <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
               <Clock size={11} />
               <span suppressHydrationWarning>
                 {new Date(obligation.due_at).toLocaleDateString()}
               </span>
             </div>
           )}
-          <div className="flex items-center gap-1 text-xs text-cosmic-muted">
+          <div className="flex items-center gap-1 text-xs text-ds-gray-900">
             <User size={11} />
             <span className="capitalize">{obligation.owner}</span>
           </div>
           {obligation.tags && obligation.tags.length > 0 && (
             <div className="flex items-center gap-1">
-              <Tag size={11} className="text-cosmic-muted" />
+              <Tag size={11} className="text-ds-gray-900" />
               <div className="flex gap-1 flex-wrap">
                 {obligation.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="text-xs px-1.5 py-0.5 rounded bg-cosmic-surface text-cosmic-muted font-mono"
+                    className="text-xs px-1.5 py-0.5 rounded bg-ds-gray-100 text-ds-gray-900 font-mono"
                   >
                     {tag}
                   </span>

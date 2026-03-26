@@ -74,7 +74,7 @@ const URGENCY_CONFIG: Record<
     dot: "bg-amber-400",
     text: "text-amber-400",
   },
-  low: { label: "Low", dot: "bg-cosmic-muted", text: "text-cosmic-muted" },
+  low: { label: "Low", dot: "bg-ds-gray-600", text: "text-ds-gray-900" },
 };
 
 /** Map daemon priority (0-4) to Approval urgency string. */
@@ -133,20 +133,20 @@ function QueueItem({ approval, selected, onSelect }: QueueItemProps) {
       onClick={onSelect}
       className={[
         "w-full text-left flex items-start gap-3 px-4 py-3.5 min-h-11 transition-colors",
-        "border-b border-cosmic-border last:border-b-0",
+        "border-b border-ds-gray-400 last:border-b-0",
         selected
-          ? "bg-cosmic-purple/15"
-          : "hover:bg-cosmic-surface/60",
+          ? "bg-ds-gray-700/15"
+          : "hover:bg-ds-gray-100/60",
       ].join(" ")}
     >
       {/* Action type icon */}
-      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cosmic-surface border border-cosmic-border shrink-0 mt-0.5">
-        <ActionIcon size={14} className="text-cosmic-muted" />
+      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ds-gray-100 border border-ds-gray-400 shrink-0 mt-0.5">
+        <ActionIcon size={14} className="text-ds-gray-900" />
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-cosmic-bright truncate">
+          <span className="text-sm font-medium text-ds-gray-1000 truncate">
             {approval.title}
           </span>
           {/* Urgency dot */}
@@ -159,11 +159,11 @@ function QueueItem({ approval, selected, onSelect }: QueueItemProps) {
 
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {approval.project && (
-            <span className="text-xs font-mono text-cosmic-muted truncate">
+            <span className="text-xs font-mono text-ds-gray-900 truncate">
               {approval.project}
             </span>
           )}
-          <span className="text-xs text-cosmic-muted flex items-center gap-1">
+          <span className="text-xs text-ds-gray-900 flex items-center gap-1">
             <Clock size={10} />
             <span suppressHydrationWarning>{relativeTime(approval.created_at)}</span>
           </span>
@@ -173,7 +173,7 @@ function QueueItem({ approval, selected, onSelect }: QueueItemProps) {
       <ChevronRight
         size={14}
         className={`shrink-0 mt-1 transition-colors ${
-          selected ? "text-cosmic-purple" : "text-cosmic-muted/40"
+          selected ? "text-ds-gray-1000" : "text-ds-gray-900/40"
         }`}
       />
     </button>
@@ -205,18 +205,18 @@ function DetailPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Detail header */}
-      <div className="px-6 py-5 border-b border-cosmic-border shrink-0">
+      <div className="px-6 py-5 border-b border-ds-gray-400 shrink-0">
         <div className="flex items-start gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-cosmic-purple/10 border border-cosmic-purple/30 shrink-0">
-            <ActionIcon size={18} className="text-cosmic-purple" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 shrink-0">
+            <ActionIcon size={18} className="text-ds-gray-1000" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-cosmic-bright leading-tight">
+            <h2 className="text-base font-semibold text-ds-gray-1000 leading-tight">
               {approval.title}
             </h2>
             <div className="flex items-center gap-3 mt-1 flex-wrap">
               {approval.project && (
-                <span className="text-xs font-mono text-cosmic-muted">
+                <span className="text-xs font-mono text-ds-gray-900">
                   {approval.project}
                 </span>
               )}
@@ -224,7 +224,7 @@ function DetailPanel({
                 {urg.label} urgency
               </span>
               <span
-                className="text-xs text-cosmic-muted flex items-center gap-1"
+                className="text-xs text-ds-gray-900 flex items-center gap-1"
                 suppressHydrationWarning
               >
                 <Clock size={10} />
@@ -239,10 +239,10 @@ function DetailPanel({
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
         {approval.description && (
           <section>
-            <h3 className="text-xs font-semibold text-cosmic-muted uppercase tracking-widest mb-2">
+            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-2">
               Description
             </h3>
-            <p className="text-sm text-cosmic-text leading-relaxed">
+            <p className="text-sm text-ds-gray-1000 leading-relaxed">
               {approval.description}
             </p>
           </section>
@@ -250,10 +250,10 @@ function DetailPanel({
 
         {approval.proposed_changes && (
           <section>
-            <h3 className="text-xs font-semibold text-cosmic-muted uppercase tracking-widest mb-2">
+            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-2">
               Proposed Changes
             </h3>
-            <pre className="text-xs text-cosmic-text font-mono bg-cosmic-dark border border-cosmic-border rounded-cosmic p-4 overflow-x-auto whitespace-pre-wrap">
+            <pre className="text-xs text-ds-gray-1000 font-mono bg-ds-bg-100 border border-ds-gray-400 rounded-xl p-4 overflow-x-auto whitespace-pre-wrap">
               {approval.proposed_changes}
             </pre>
           </section>
@@ -261,10 +261,10 @@ function DetailPanel({
 
         {approval.context && (
           <section>
-            <h3 className="text-xs font-semibold text-cosmic-muted uppercase tracking-widest mb-2">
+            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-2">
               Context
             </h3>
-            <p className="text-sm text-cosmic-muted leading-relaxed">
+            <p className="text-sm text-ds-gray-900 leading-relaxed">
               {approval.context}
             </p>
           </section>
@@ -272,7 +272,7 @@ function DetailPanel({
       </div>
 
       {/* Action buttons */}
-      <div className="px-6 py-4 border-t border-cosmic-border shrink-0">
+      <div className="px-6 py-4 border-t border-ds-gray-400 shrink-0">
         <div className="flex gap-3">
           <button
             type="button"
@@ -287,7 +287,7 @@ function DetailPanel({
             type="button"
             onClick={() => void onDismiss(approval.id)}
             disabled={approving || dismissing}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 min-h-11 rounded-lg text-sm font-semibold bg-cosmic-surface hover:bg-cosmic-rose/20 text-cosmic-muted hover:text-cosmic-rose border border-cosmic-border hover:border-cosmic-rose/40 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 min-h-11 rounded-lg text-sm font-semibold bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
           >
             <XCircle size={16} />
             {dismissing ? "Dismissing…" : "Dismiss"}
@@ -402,7 +402,7 @@ export default function ApprovalsPage() {
       type="button"
       onClick={() => void fetchApprovals()}
       disabled={loading}
-      className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+      className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
     >
       <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
       <span className="hidden sm:inline">Refresh</span>
@@ -426,7 +426,7 @@ export default function ApprovalsPage() {
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
-              className="h-16 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+              className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
             />
           ))}
         </div>
@@ -439,22 +439,22 @@ export default function ApprovalsPage() {
       ) : (
         // Split view: list (left) + detail (right)
         // On mobile (<md): list only, tapping opens detail overlay
-        <div className="flex gap-0 rounded-cosmic border border-cosmic-border overflow-hidden min-h-[500px]">
+        <div className="flex gap-0 rounded-xl border border-ds-gray-400 overflow-hidden min-h-[500px]">
           {/* Queue list */}
           <div
             className={[
-              "flex flex-col border-r border-cosmic-border bg-cosmic-dark overflow-y-auto",
+              "flex flex-col border-r border-ds-gray-400 bg-ds-bg-100 overflow-y-auto",
               // Mobile: full width unless detail open
               mobileDetailOpen ? "hidden md:flex md:w-64 lg:w-72 shrink-0" : "w-full md:w-64 lg:w-72 shrink-0",
             ].join(" ")}
           >
             {/* List header */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-cosmic-border shrink-0">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-ds-gray-400 shrink-0">
               <AlertTriangle size={14} className="text-amber-400 shrink-0" />
-              <span className="text-xs font-semibold text-cosmic-muted uppercase tracking-widest">
+              <span className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest">
                 Queue
               </span>
-              <span className="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 min-w-[1.25rem] rounded text-xs font-mono font-medium bg-cosmic-border text-cosmic-text">
+              <span className="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 min-w-[1.25rem] rounded text-xs font-mono font-medium bg-ds-gray-400 text-ds-gray-1000">
                 {pending.length}
               </span>
             </div>
@@ -472,7 +472,7 @@ export default function ApprovalsPage() {
           {/* Detail panel */}
           <div
             className={[
-              "flex-1 bg-cosmic-surface",
+              "flex-1 bg-ds-gray-100",
               // Mobile: shown as full-width overlay when open
               mobileDetailOpen
                 ? "flex flex-col w-full md:flex"
@@ -483,7 +483,7 @@ export default function ApprovalsPage() {
             <button
               type="button"
               onClick={() => setMobileDetailOpen(false)}
-              className="flex md:hidden items-center gap-2 px-4 py-3 text-sm text-cosmic-muted hover:text-cosmic-text border-b border-cosmic-border"
+              className="flex md:hidden items-center gap-2 px-4 py-3 text-sm text-ds-gray-900 hover:text-ds-gray-1000 border-b border-ds-gray-400"
             >
               <ChevronRight size={14} className="rotate-180" />
               Back to queue
@@ -498,7 +498,7 @@ export default function ApprovalsPage() {
                 dismissing={dismissing}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-cosmic-muted py-16">
+              <div className="flex flex-col items-center justify-center h-full gap-3 text-ds-gray-900 py-16">
                 <AlertTriangle size={32} />
                 <p className="text-sm">Select an item to review</p>
               </div>

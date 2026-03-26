@@ -45,15 +45,15 @@ const STATUS_CONFIG: Record<
   },
   unknown: {
     label: "Unknown",
-    dot: "bg-cosmic-muted",
-    text: "text-cosmic-muted",
+    dot: "bg-ds-gray-600",
+    text: "text-ds-gray-900",
   },
 };
 
 const SEVERITY_COLORS = {
   error: "text-[#EF4444] bg-[#EF4444]/10",
   warning: "text-[#F97316] bg-[#F97316]/10",
-  info: "text-cosmic-purple bg-cosmic-purple/10",
+  info: "text-ds-gray-1000 bg-ds-gray-alpha-100",
 };
 
 interface ProjectAccordionProps {
@@ -70,27 +70,27 @@ export default function ProjectAccordion({
   const errorCount = project.errors?.length ?? 0;
 
   return (
-    <div className="rounded-cosmic border border-cosmic-border bg-cosmic-surface overflow-hidden">
+    <div className="rounded-xl border border-ds-gray-400 bg-ds-gray-100 overflow-hidden">
       {/* Header row */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-cosmic-border/20 transition-colors text-left"
+        className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-ds-gray-alpha-200 transition-colors text-left"
       >
-        <div className="shrink-0 text-cosmic-muted">
+        <div className="shrink-0 text-ds-gray-900">
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </div>
 
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cosmic-dark shrink-0">
-          <FileCode size={16} className="text-cosmic-purple" />
+        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ds-bg-100 shrink-0">
+          <FileCode size={16} className="text-ds-gray-1000" />
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-cosmic-bright truncate">
+          <p className="text-sm font-medium text-ds-gray-1000 truncate">
             {project.name}
           </p>
           {project.path && (
-            <p className="text-xs text-cosmic-muted font-mono truncate">
+            <p className="text-xs text-ds-gray-900 font-mono truncate">
               {project.path}
             </p>
           )}
@@ -114,16 +114,16 @@ export default function ProjectAccordion({
 
       {/* Expanded content */}
       {open && (
-        <div className="border-t border-cosmic-border">
+        <div className="border-t border-ds-gray-400">
           {/* Nova notes */}
           {project.nova_notes && (
-            <div className="flex items-start gap-3 px-4 py-3 bg-cosmic-purple/5 border-b border-cosmic-border">
-              <div className="w-5 h-5 rounded bg-cosmic-purple/30 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-xs font-bold font-mono text-cosmic-purple">
+            <div className="flex items-start gap-3 px-4 py-3 bg-ds-gray-700/5 border-b border-ds-gray-400">
+              <div className="w-5 h-5 rounded bg-ds-gray-700/30 flex items-center justify-center shrink-0 mt-0.5">
+                <span className="text-xs font-bold font-mono text-ds-gray-1000">
                   N
                 </span>
               </div>
-              <p className="text-xs text-cosmic-muted leading-relaxed">
+              <p className="text-xs text-ds-gray-900 leading-relaxed">
                 {project.nova_notes}
               </p>
             </div>
@@ -131,11 +131,11 @@ export default function ProjectAccordion({
 
           {/* Errors list */}
           {errorCount === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-cosmic-muted">
+            <div className="px-4 py-6 text-center text-sm text-ds-gray-900">
               No issues detected
             </div>
           ) : (
-            <div className="divide-y divide-cosmic-border">
+            <div className="divide-y divide-ds-gray-400">
               {project.errors!.map((err) => (
                 <div key={err.id} className="flex items-start gap-3 px-4 py-3">
                   <div
@@ -144,9 +144,9 @@ export default function ProjectAccordion({
                     {err.severity}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-cosmic-text">{err.message}</p>
+                    <p className="text-xs text-ds-gray-1000">{err.message}</p>
                     {err.file && (
-                      <p className="text-xs text-cosmic-muted font-mono mt-0.5">
+                      <p className="text-xs text-ds-gray-900 font-mono mt-0.5">
                         {err.file}
                         {err.line ? `:${err.line}` : ""}
                       </p>
@@ -156,7 +156,7 @@ export default function ProjectAccordion({
                     <button
                       type="button"
                       onClick={() => onSolveWithNexus(project.id, err.id)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-cosmic-purple/20 text-cosmic-purple hover:bg-cosmic-purple/30 transition-colors shrink-0"
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 hover:bg-ds-gray-700/30 transition-colors shrink-0"
                     >
                       <Zap size={11} />
                       Solve with Nexus

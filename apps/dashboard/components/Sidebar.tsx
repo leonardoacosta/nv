@@ -33,7 +33,7 @@ import {
 } from "@/components/providers/DaemonEventContext";
 
 // ---------------------------------------------------------------------------
-// WebSocket status indicator
+// WebSocket status footer
 // ---------------------------------------------------------------------------
 
 const WS_STATUS_CONFIG: Record<
@@ -41,37 +41,37 @@ const WS_STATUS_CONFIG: Record<
   { dot: string; label: string; text: string }
 > = {
   connected: {
-    dot: "bg-emerald-400",
+    dot: "bg-green-700",
     label: "Daemon connected",
     text: "Connected",
   },
   reconnecting: {
-    dot: "bg-amber-400 animate-pulse",
+    dot: "bg-amber-700 animate-pulse",
     label: "Daemon reconnecting",
     text: "Reconnecting…",
   },
   disconnected: {
-    dot: "bg-red-400",
+    dot: "bg-red-700",
     label: "Daemon disconnected",
     text: "Disconnected",
   },
 };
 
-function WsStatusDot({ collapsed }: { collapsed: boolean }) {
+function WsStatusFooter({ collapsed }: { collapsed: boolean }) {
   const status = useDaemonStatus();
   const cfg = WS_STATUS_CONFIG[status];
   return (
     <div
-      className="flex items-center gap-2 px-3 py-2 min-h-11"
+      className="flex items-center gap-2 px-3 py-2.5 min-h-11"
       title={cfg.label}
     >
       <span
-        className={`inline-block w-2 h-2 rounded-full shrink-0 ${cfg.dot}`}
+        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`}
         aria-label={cfg.label}
         role="img"
       />
       {!collapsed && (
-        <span className="text-xs text-cosmic-muted truncate">{cfg.text}</span>
+        <span className="text-label-12 text-ds-gray-700 truncate">{cfg.text}</span>
       )}
     </div>
   );
@@ -105,7 +105,6 @@ function useApprovalCount(): number {
     void fetchCount();
   }, [fetchCount]);
 
-  // Subscribe to approval.created events for real-time badge updates
   useDaemonEvents(
     useCallback(
       (_ev) => {
@@ -120,7 +119,7 @@ function useApprovalCount(): number {
 }
 
 // ---------------------------------------------------------------------------
-// Nav items
+// Nav items with section groups
 // ---------------------------------------------------------------------------
 
 interface NavItem {
@@ -130,22 +129,47 @@ interface NavItem {
   badge?: "approvals";
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/briefing", label: "Briefing", icon: Sun },
-  { to: "/obligations", label: "Obligations", icon: CheckSquare },
-  { to: "/approvals", label: "Approvals", icon: ShieldAlert, badge: "approvals" },
-  { to: "/diary", label: "Diary", icon: BookOpen },
-  { to: "/sessions", label: "Sessions", icon: Layers },
-  { to: "/messages", label: "Messages", icon: MessageSquare },
-  { to: "/contacts", label: "Contacts", icon: Users },
-  { to: "/projects", label: "Projects", icon: FolderOpen },
-  { to: "/integrations", label: "Integrations", icon: Plug },
-  { to: "/usage", label: "Usage", icon: BarChart3 },
-  { to: "/cold-starts", label: "Cold Starts", icon: Activity },
-  { to: "/memory", label: "Memory", icon: Brain },
-  { to: "/session", label: "CC Session", icon: Monitor },
-  { to: "/settings", label: "Settings", icon: Settings },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Overview",
+    items: [
+      { to: "/", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/briefing", label: "Briefing", icon: Sun },
+    ],
+  },
+  {
+    label: "Activity",
+    items: [
+      { to: "/obligations", label: "Obligations", icon: CheckSquare },
+      { to: "/approvals", label: "Approvals", icon: ShieldAlert, badge: "approvals" },
+      { to: "/diary", label: "Diary", icon: BookOpen },
+      { to: "/sessions", label: "Sessions", icon: Layers },
+      { to: "/messages", label: "Messages", icon: MessageSquare },
+    ],
+  },
+  {
+    label: "Data",
+    items: [
+      { to: "/contacts", label: "Contacts", icon: Users },
+      { to: "/projects", label: "Projects", icon: FolderOpen },
+      { to: "/integrations", label: "Integrations", icon: Plug },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { to: "/usage", label: "Usage", icon: BarChart3 },
+      { to: "/cold-starts", label: "Cold Starts", icon: Activity },
+      { to: "/memory", label: "Memory", icon: Brain },
+      { to: "/session", label: "CC Session", icon: Monitor },
+      { to: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -169,30 +193,31 @@ function NavLink({ item, collapsed, isActive, approvalCount, onClick }: NavLinkP
       href={to}
       onClick={onClick}
       className={[
-        "flex items-center gap-3 px-3 py-2 min-h-11 rounded-lg text-sm font-medium",
+        "flex items-center gap-3 px-3 py-2 min-h-9 rounded-md text-label-14",
         "transition-colors duration-150 group relative",
         isActive
-          ? "bg-cosmic-purple/20 text-cosmic-bright"
-          : "text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-surface",
+          ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-l-2 border-ds-gray-1000"
+          : "text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100",
       ].join(" ")}
+      style={isActive ? { paddingLeft: "10px" } : undefined}
     >
       <Icon
         size={18}
         className={[
           "shrink-0 transition-colors",
           isActive
-            ? "text-cosmic-purple"
-            : "text-cosmic-muted group-hover:text-cosmic-text",
+            ? "text-ds-gray-1000"
+            : "text-ds-gray-700 group-hover:text-ds-gray-1000",
         ].join(" ")}
       />
       {!collapsed && <span className="truncate flex-1">{label}</span>}
 
-      {/* Badge */}
+      {/* Approval badge */}
       {badgeCount > 0 && (
         <span
           className={[
             "inline-flex items-center justify-center rounded-full text-xs font-mono font-bold",
-            "bg-amber-500/20 text-amber-400 border border-amber-500/30",
+            "bg-amber-700/20 text-amber-700 border border-amber-700/30",
             collapsed
               ? "absolute -top-0.5 -right-0.5 w-4 h-4 text-[10px]"
               : "px-1.5 py-0.5 min-w-[1.25rem] shrink-0",
@@ -220,14 +245,20 @@ interface SidebarContentProps {
 function SidebarContent({ collapsed, pathname, approvalCount, onNavClick }: SidebarContentProps) {
   return (
     <>
-      {/* Nova mark / logo */}
-      <div className="flex flex-col border-b border-cosmic-border overflow-hidden shrink-0">
-        <div className="flex items-center gap-3 px-4 py-5">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-cosmic-purple/20 border border-cosmic-purple/30 shrink-0">
-            <NovaMark size={20} />
+      {/* Logo */}
+      <div
+        className="flex flex-col overflow-hidden shrink-0"
+        style={{ borderBottom: "1px solid var(--ds-gray-alpha-200)" }}
+      >
+        <div className="flex items-center gap-3 px-4 py-4">
+          <div
+            className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
+            style={{ background: "var(--ds-gray-alpha-200)" }}
+          >
+            <NovaMark size={18} />
           </div>
           {!collapsed && (
-            <span className="text-cosmic-bright font-semibold text-base tracking-tight truncate">
+            <span className="text-label-16 font-semibold text-ds-gray-1000 truncate">
               Nova
             </span>
           )}
@@ -239,29 +270,56 @@ function SidebarContent({ collapsed, pathname, approvalCount, onNavClick }: Side
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto overflow-x-hidden">
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            item.to === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.to);
-          return (
-            <NavLink
-              key={item.to}
-              item={item}
-              collapsed={collapsed}
-              isActive={isActive}
-              approvalCount={approvalCount}
-              onClick={onNavClick}
-            />
-          );
-        })}
+      {/* Navigation with section groups */}
+      <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-hidden">
+        {NAV_GROUPS.map((group, groupIndex) => (
+          <div key={group.label}>
+            {/* Group separator — not before first group */}
+            {groupIndex > 0 && (
+              <div
+                className="my-2 mx-1"
+                style={{ borderBottom: "1px solid var(--ds-gray-alpha-200)" }}
+              />
+            )}
+
+            {/* Group label */}
+            {!collapsed && (
+              <div className="px-2 pt-2 pb-1">
+                <span className="text-label-12 text-ds-gray-700">
+                  {group.label}
+                </span>
+              </div>
+            )}
+
+            {/* Group items */}
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const isActive =
+                  item.to === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.to);
+                return (
+                  <NavLink
+                    key={item.to}
+                    item={item}
+                    collapsed={collapsed}
+                    isActive={isActive}
+                    approvalCount={approvalCount}
+                    onClick={onNavClick}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Footer: WebSocket status */}
-      <div className="border-t border-cosmic-border shrink-0">
-        <WsStatusDot collapsed={collapsed} />
+      <div
+        className="shrink-0"
+        style={{ borderTop: "1px solid var(--ds-gray-alpha-200)" }}
+      >
+        <WsStatusFooter collapsed={collapsed} />
       </div>
     </>
   );
@@ -283,7 +341,7 @@ export default function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Trap focus / close on outside click for mobile drawer
+  // Close on Escape key
   useEffect(() => {
     if (!mobileOpen) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -304,10 +362,10 @@ export default function Sidebar() {
         aria-label="Open navigation"
         className={[
           "sm:hidden fixed top-3 left-3 z-40",
-          "flex items-center justify-center w-11 h-11 rounded-lg",
-          "bg-cosmic-dark border border-cosmic-border text-cosmic-muted",
-          "hover:text-cosmic-text hover:border-cosmic-purple/50 transition-colors",
-          "shadow-cosmic-sm",
+          "flex items-center justify-center w-11 h-11 rounded-md",
+          "bg-ds-bg-200 border border-ds-gray-400 text-ds-gray-900",
+          "hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors",
+          "shadow-sm",
         ].join(" ")}
       >
         <Menu size={18} />
@@ -332,14 +390,14 @@ export default function Sidebar() {
           {/* Drawer */}
           <div
             ref={drawerRef}
-            className="relative z-10 flex flex-col w-64 bg-cosmic-dark border-r border-cosmic-border"
+            className="relative z-10 flex flex-col w-64 bg-ds-bg-200 border-r border-ds-gray-400"
           >
             {/* Close button */}
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
               aria-label="Close navigation"
-              className="absolute top-3 right-3 flex items-center justify-center w-9 h-9 rounded-lg text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-surface transition-colors"
+              className="absolute top-3 right-3 flex items-center justify-center w-9 h-9 rounded-md text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100 transition-colors"
             >
               <X size={16} />
             </button>
@@ -358,7 +416,7 @@ export default function Sidebar() {
       {/* Tablet (641–768px): icon-only rail                                  */}
       {/* ------------------------------------------------------------------ */}
       <aside
-        className="hidden sm:flex md:hidden relative flex-col bg-cosmic-dark border-r border-cosmic-border w-16 shrink-0"
+        className="hidden sm:flex md:hidden relative flex-col bg-ds-bg-200 border-r border-ds-gray-400 w-16 shrink-0"
         aria-label="Navigation rail"
       >
         <SidebarContent
@@ -373,7 +431,7 @@ export default function Sidebar() {
       {/* ------------------------------------------------------------------ */}
       <aside
         className={[
-          "hidden md:relative md:flex flex-col bg-cosmic-dark border-r border-cosmic-border",
+          "hidden md:relative md:flex flex-col bg-ds-bg-200 border-r border-ds-gray-400",
           "transition-all duration-200 ease-in-out shrink-0",
           collapsed ? "w-16" : "w-56",
         ].join(" ")}
@@ -392,9 +450,9 @@ export default function Sidebar() {
           className={[
             "absolute -right-3 top-1/2 -translate-y-1/2 z-10",
             "flex items-center justify-center w-6 h-6 rounded-full",
-            "bg-cosmic-surface border border-cosmic-border",
-            "text-cosmic-muted hover:text-cosmic-text hover:border-cosmic-purple",
-            "transition-colors duration-150 shadow-cosmic-sm",
+            "bg-ds-bg-200 border border-ds-gray-400",
+            "text-ds-gray-700 hover:text-ds-gray-1000 hover:border-ds-gray-500",
+            "transition-colors duration-150 shadow-sm",
           ].join(" ")}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >

@@ -11,6 +11,7 @@ export interface EmptyStateProps {
 /**
  * EmptyState — centered icon + message + optional CTA.
  * Consistent across all empty pages in the dashboard.
+ * Uses Geist neutral palette — no purple.
  */
 export default function EmptyState({
   title = "Nothing here yet",
@@ -19,17 +20,24 @@ export default function EmptyState({
   action,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center">
-      <div className="flex items-center justify-center w-14 h-14 rounded-full bg-cosmic-surface border border-cosmic-border text-cosmic-muted">
-        {icon ?? <Inbox size={24} aria-hidden="true" />}
+    <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center animate-fade-in-up">
+      <div
+        className="flex items-center justify-center w-10 h-10 text-ds-gray-600"
+        aria-hidden="true"
+      >
+        {icon ?? <Inbox size={40} aria-hidden="true" />}
       </div>
 
       <div className="space-y-1">
-        <h3 className="text-sm font-semibold text-cosmic-bright">{title}</h3>
-        <p className="text-sm text-cosmic-muted max-w-xs">{description}</p>
+        <h3 className="text-heading-16 text-ds-gray-1000">{title}</h3>
+        <p className="text-copy-14 text-ds-gray-900 max-w-xs">{description}</p>
       </div>
 
-      {action && <div className="mt-2">{action}</div>}
+      {action && (
+        <div className="mt-2">
+          {action}
+        </div>
+      )}
     </div>
   );
 }

@@ -47,8 +47,8 @@ const RELATIONSHIP_BADGE: Record<
   Contact["relationship_type"],
   { bg: string; text: string; label: string }
 > = {
-  work: { bg: "bg-cosmic-purple/20", text: "text-cosmic-purple", label: "Work" },
-  "personal-client": { bg: "bg-cosmic-rose/20", text: "text-cosmic-rose", label: "Personal" },
+  work: { bg: "bg-ds-gray-alpha-200", text: "text-ds-gray-1000", label: "Work" },
+  "personal-client": { bg: "bg-red-700/20", text: "text-red-700", label: "Personal" },
   contributor: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Contributor" },
   social: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Social" },
 };
@@ -123,7 +123,7 @@ function ChannelList({ channelIds }: { channelIds: Contact["channel_ids"] }) {
   };
 
   return (
-    <p className="text-xs text-cosmic-muted mt-1">
+    <p className="text-xs text-ds-gray-900 mt-1">
       {entries
         .map(([k, v]) => `${labels[k] ?? k}: ${v}`)
         .join(" · ")}
@@ -206,8 +206,8 @@ function ContactModal({ state, onClose, onSaved }: ContactModalProps) {
   };
 
   const inputClass =
-    "w-full bg-cosmic-surface border border-cosmic-border rounded-lg px-3 py-2 text-sm text-cosmic-text placeholder-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors";
-  const labelClass = "block text-xs font-medium text-cosmic-muted mb-1";
+    "w-full bg-ds-gray-100 border border-ds-gray-400 rounded-lg px-3 py-2 text-sm text-ds-gray-1000 placeholder-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors";
+  const labelClass = "block text-xs font-medium text-ds-gray-900 mb-1";
 
   return (
     <div
@@ -223,9 +223,9 @@ function ContactModal({ state, onClose, onSaved }: ContactModalProps) {
       />
 
       {/* Panel */}
-      <div className="relative z-10 max-w-md w-full bg-cosmic-dark border border-cosmic-border rounded-cosmic shadow-cosmic-lg">
-        <div className="px-6 py-5 border-b border-cosmic-border">
-          <h2 className="text-base font-semibold text-cosmic-bright">{title}</h2>
+      <div className="relative z-10 max-w-md w-full bg-ds-bg-100 border border-ds-gray-400 rounded-xl shadow-lg">
+        <div className="px-6 py-5 border-b border-ds-gray-400">
+          <h2 className="text-base font-semibold text-ds-gray-1000">{title}</h2>
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="px-6 py-5 space-y-4">
@@ -311,7 +311,7 @@ function ContactModal({ state, onClose, onSaved }: ContactModalProps) {
 
           {/* Form error */}
           {formError && (
-            <p className="text-xs text-cosmic-rose">{formError}</p>
+            <p className="text-xs text-red-700">{formError}</p>
           )}
 
           {/* Actions */}
@@ -319,14 +319,14 @@ function ContactModal({ state, onClose, onSaved }: ContactModalProps) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors"
+              className="px-4 py-2 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-cosmic-purple/20 text-cosmic-bright border border-cosmic-purple/40 hover:bg-cosmic-purple/30 transition-colors disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/40 hover:bg-ds-gray-700/30 transition-colors disabled:opacity-50"
             >
               {saving ? "Saving…" : isEdit ? "Save" : "Create"}
             </button>
@@ -393,15 +393,15 @@ function ContactCard({ contact, onEdit, onDeleted }: ContactCardProps) {
       : null;
 
   return (
-    <div className="flex items-start justify-between gap-4 p-4 rounded-cosmic bg-cosmic-surface border border-cosmic-border hover:border-cosmic-purple/30 transition-colors">
+    <div className="flex items-start justify-between gap-4 p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 hover:border-ds-gray-1000/30 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-cosmic-bright">{contact.name}</span>
+          <span className="text-sm font-medium text-ds-gray-1000">{contact.name}</span>
           <RelationshipBadge type={contact.relationship_type} />
         </div>
         <ChannelList channelIds={contact.channel_ids} />
         {notesPreview && (
-          <p className="text-xs text-cosmic-muted mt-1 italic">{notesPreview}</p>
+          <p className="text-xs text-ds-gray-900 mt-1 italic">{notesPreview}</p>
         )}
       </div>
 
@@ -413,14 +413,14 @@ function ContactCard({ contact, onEdit, onDeleted }: ContactCardProps) {
               type="button"
               onClick={() => void handleConfirmDelete()}
               disabled={deleting}
-              className="px-2 py-1 rounded text-xs font-medium text-cosmic-rose border border-cosmic-rose/40 hover:bg-cosmic-rose/10 transition-colors disabled:opacity-50"
+              className="px-2 py-1 rounded text-xs font-medium text-red-700 border border-red-700/40 hover:bg-red-700/10 transition-colors disabled:opacity-50"
             >
               {deleting ? "…" : "Confirm?"}
             </button>
             <button
               type="button"
               onClick={handleCancelDelete}
-              className="px-2 py-1 rounded text-xs text-cosmic-muted hover:text-cosmic-text transition-colors"
+              className="px-2 py-1 rounded text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
             >
               Cancel
             </button>
@@ -431,7 +431,7 @@ function ContactCard({ contact, onEdit, onDeleted }: ContactCardProps) {
               type="button"
               onClick={() => onEdit(contact)}
               aria-label={`Edit ${contact.name}`}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-cosmic-muted hover:text-cosmic-text hover:bg-cosmic-dark transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-bg-100 transition-colors"
             >
               <Edit2 size={14} />
             </button>
@@ -439,7 +439,7 @@ function ContactCard({ contact, onEdit, onDeleted }: ContactCardProps) {
               type="button"
               onClick={handleDeleteClick}
               aria-label={`Delete ${contact.name}`}
-              className="flex items-center justify-center w-8 h-8 rounded-lg text-cosmic-muted hover:text-cosmic-rose hover:bg-cosmic-rose/10 transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded-lg text-ds-gray-900 hover:text-red-700 hover:bg-red-700/10 transition-colors"
             >
               <Trash2 size={14} />
             </button>
@@ -544,8 +544,8 @@ export default function ContactsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-cosmic-bright">Contacts</h1>
-            <p className="mt-1 text-sm text-cosmic-muted">
+            <h1 className="text-2xl font-semibold text-ds-gray-1000">Contacts</h1>
+            <p className="mt-1 text-sm text-ds-gray-900">
               {loading
                 ? "Loading…"
                 : `${contacts.length} contact${contacts.length === 1 ? "" : "s"}`}
@@ -555,7 +555,7 @@ export default function ContactsPage() {
             <button
               type="button"
               onClick={() => setModalState({ mode: "create" })}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-cosmic-purple/20 text-cosmic-bright border border-cosmic-purple/40 hover:bg-cosmic-purple/30 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/40 hover:bg-ds-gray-700/30 transition-colors"
             >
               <Users size={14} />
               New contact
@@ -564,7 +564,7 @@ export default function ContactsPage() {
               type="button"
               onClick={handleRefresh}
               disabled={loading}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
               Refresh
@@ -576,14 +576,14 @@ export default function ContactsPage() {
         <div className="relative">
           <Search
             size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-cosmic-muted pointer-events-none"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
           />
           <input
             type="text"
             value={searchQuery}
             onChange={handleSearchChange}
             placeholder="Search contacts…"
-            className="w-full bg-cosmic-surface border border-cosmic-border rounded-lg pl-9 pr-4 py-2 text-sm text-cosmic-text placeholder-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+            className="w-full bg-ds-gray-100 border border-ds-gray-400 rounded-lg pl-9 pr-4 py-2 text-sm text-ds-gray-1000 placeholder-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
           />
         </div>
 
@@ -597,8 +597,8 @@ export default function ContactsPage() {
               className={[
                 "px-3 py-1 rounded-full text-xs font-medium transition-colors border",
                 relationshipFilter === key
-                  ? "bg-cosmic-purple/20 text-cosmic-bright border-cosmic-purple/40"
-                  : "text-cosmic-muted border-cosmic-border hover:text-cosmic-text hover:border-cosmic-purple/30",
+                  ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/40"
+                  : "text-ds-gray-900 border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-1000/30",
               ].join(" ")}
             >
               {label}
@@ -608,7 +608,7 @@ export default function ContactsPage() {
 
         {/* Error state */}
         {error && (
-          <div className="flex items-center gap-3 p-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
             <AlertCircle size={16} />
             <span className="text-sm">{error}</span>
           </div>
@@ -620,16 +620,16 @@ export default function ContactsPage() {
             {Array.from({ length: 5 }).map((_, i) => (
               <div
                 key={i}
-                className="h-16 animate-pulse rounded-cosmic bg-cosmic-surface border border-cosmic-border"
+                className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
               />
             ))}
           </div>
         ) : contacts.length === 0 ? (
           /* Empty state */
-          <div className="flex flex-col items-center gap-4 py-16 text-cosmic-muted">
+          <div className="flex flex-col items-center gap-4 py-16 text-ds-gray-900">
             <Users size={40} />
             <div className="text-center">
-              <p className="text-sm font-medium text-cosmic-text">No contacts yet</p>
+              <p className="text-sm font-medium text-ds-gray-1000">No contacts yet</p>
               <p className="text-xs mt-1">
                 {searchQuery || relationshipFilter !== "all"
                   ? "Try a different search or filter."
@@ -640,7 +640,7 @@ export default function ContactsPage() {
               <button
                 type="button"
                 onClick={() => setModalState({ mode: "create" })}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-cosmic-purple/20 text-cosmic-bright border border-cosmic-purple/40 hover:bg-cosmic-purple/30 transition-colors"
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/40 hover:bg-ds-gray-700/30 transition-colors"
               >
                 Create contact
               </button>

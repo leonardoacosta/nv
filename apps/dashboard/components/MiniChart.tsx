@@ -64,7 +64,7 @@ export default function MiniChart({
       ? "#EF4444"
       : warnThreshold !== undefined && pct >= warnThreshold
         ? "#F97316"
-        : "#8B5CF6"; // cosmic-purple
+        : "#8B5CF6"; // ds-gray-1000
 
   // Threshold bands (expressed as Y coordinates)
   const warnY =

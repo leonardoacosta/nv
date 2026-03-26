@@ -53,23 +53,23 @@ function MetricBar({
     ? "bg-[#EF4444]"
     : isWarn
       ? "bg-[#F97316]"
-      : "bg-cosmic-purple";
+      : "bg-ds-gray-700";
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs text-cosmic-muted">
+        <div className="flex items-center gap-1.5 text-xs text-ds-gray-900">
           <Icon size={12} />
           <span>{label}</span>
         </div>
         <span
-          className={`text-xs font-mono ${isCrit ? "text-[#EF4444]" : isWarn ? "text-[#F97316]" : "text-cosmic-text"}`}
+          className={`text-xs font-mono ${isCrit ? "text-[#EF4444]" : isWarn ? "text-[#F97316]" : "text-ds-gray-1000"}`}
         >
           {value.toFixed(1)}
           {unit}
         </span>
       </div>
-      <div className="h-1.5 rounded-full bg-cosmic-dark overflow-hidden">
+      <div className="h-1.5 rounded-full bg-ds-bg-100 overflow-hidden">
         <div
           className={`h-full rounded-full transition-all duration-700 ${barColor}`}
           style={{ width: `${pct}%` }}
@@ -94,10 +94,10 @@ export default function ServerHealth({
 }: ServerHealthProps) {
   if (loading) {
     return (
-      <div className="p-5 rounded-cosmic border border-cosmic-border bg-cosmic-surface space-y-4">
-        <div className="h-4 w-32 animate-pulse rounded bg-cosmic-border" />
+      <div className="p-5 rounded-xl border border-ds-gray-400 bg-ds-gray-100 space-y-4">
+        <div className="h-4 w-32 animate-pulse rounded bg-ds-gray-400" />
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-6 animate-pulse rounded bg-cosmic-border" />
+          <div key={i} className="h-6 animate-pulse rounded bg-ds-gray-400" />
         ))}
       </div>
     );
@@ -105,7 +105,7 @@ export default function ServerHealth({
 
   if (error || !metrics) {
     return (
-      <div className="p-5 rounded-cosmic border border-cosmic-rose/30 bg-cosmic-rose/10 flex items-center gap-3 text-cosmic-rose">
+      <div className="p-5 rounded-xl border border-red-700/30 bg-red-700/10 flex items-center gap-3 text-red-700">
         <AlertCircle size={16} />
         <span className="text-sm">{error ?? "No metrics available"}</span>
       </div>
@@ -136,7 +136,7 @@ export default function ServerHealth({
   const showCharts = history && history.length > 1;
 
   return (
-    <div className="p-5 rounded-cosmic border border-cosmic-border bg-cosmic-surface space-y-5">
+    <div className="p-5 rounded-xl border border-ds-gray-400 bg-ds-gray-100 space-y-5">
       {/* Status header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -147,7 +147,7 @@ export default function ServerHealth({
           ) : (
             <WifiOff size={16} className="text-[#EF4444]" />
           )}
-          <span className="text-sm font-medium text-cosmic-text">
+          <span className="text-sm font-medium text-ds-gray-1000">
             Daemon Health
           </span>
         </div>
@@ -239,12 +239,12 @@ export default function ServerHealth({
       </div>
 
       {/* Info row */}
-      <div className="flex items-center justify-between pt-2 border-t border-cosmic-border">
-        <div className="flex items-center gap-1.5 text-xs text-cosmic-muted font-mono">
+      <div className="flex items-center justify-between pt-2 border-t border-ds-gray-400">
+        <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 font-mono">
           <Clock size={12} />
           <span>{formatUptime(metrics.uptime_seconds)}</span>
         </div>
-        <div className="text-xs text-cosmic-muted font-mono">
+        <div className="text-xs text-ds-gray-900 font-mono">
           {metrics.memory_used_mb.toFixed(0)} /{" "}
           {metrics.memory_total_mb.toFixed(0)} MB ({memPct.toFixed(0)}%)
         </div>
@@ -252,19 +252,19 @@ export default function ServerHealth({
 
       {/* Load average row */}
       {(metrics.load_avg_1m != null || metrics.load_avg_5m != null) && (
-        <div className="flex items-center gap-4 text-xs text-cosmic-muted font-mono">
+        <div className="flex items-center gap-4 text-xs text-ds-gray-900 font-mono">
           <div className="flex items-center gap-1.5">
             <Activity size={12} />
             <span>Load</span>
           </div>
           {metrics.load_avg_1m != null && (
             <span>
-              1m <span className="text-cosmic-text">{metrics.load_avg_1m.toFixed(2)}</span>
+              1m <span className="text-ds-gray-1000">{metrics.load_avg_1m.toFixed(2)}</span>
             </span>
           )}
           {metrics.load_avg_5m != null && (
             <span>
-              5m <span className="text-cosmic-text">{metrics.load_avg_5m.toFixed(2)}</span>
+              5m <span className="text-ds-gray-1000">{metrics.load_avg_5m.toFixed(2)}</span>
             </span>
           )}
         </div>
@@ -272,7 +272,7 @@ export default function ServerHealth({
 
       {/* Disk usage summary */}
       {hasDisk && (
-        <div className="flex items-center justify-between text-xs text-cosmic-muted font-mono">
+        <div className="flex items-center justify-between text-xs text-ds-gray-900 font-mono">
           <div className="flex items-center gap-1.5">
             <HardDrive size={12} />
             <span>Disk</span>
@@ -286,7 +286,7 @@ export default function ServerHealth({
 
       {/* Version / PID */}
       {(metrics.version ?? metrics.pid) && (
-        <div className="flex items-center justify-between text-xs text-cosmic-muted font-mono">
+        <div className="flex items-center justify-between text-xs text-ds-gray-900 font-mono">
           {metrics.version && <span>v{metrics.version}</span>}
           {metrics.pid && <span>PID {metrics.pid}</span>}
         </div>

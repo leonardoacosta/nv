@@ -10,6 +10,7 @@ export interface PageShellProps {
 /**
  * PageShell — standard page wrapper with header (title, subtitle, action slot)
  * and a max-width content container. Used by every dashboard page.
+ * Geist type scale: text-heading-24 for title, text-copy-14 for subtitle.
  */
 export default function PageShell({
   title,
@@ -20,13 +21,16 @@ export default function PageShell({
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
-      <header className="flex items-start justify-between gap-4 px-6 py-5 border-b border-cosmic-border shrink-0">
+      <header
+        className="flex items-start justify-between gap-4 px-6 py-5 shrink-0"
+        style={{ borderBottom: "1px solid var(--ds-gray-alpha-200)" }}
+      >
         <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-cosmic-bright leading-tight truncate">
+          <h1 className="text-heading-24 text-ds-gray-1000 leading-tight truncate">
             {title}
           </h1>
           {subtitle && (
-            <p className="mt-0.5 text-sm text-cosmic-muted truncate">
+            <p className="mt-1 text-copy-14 text-ds-gray-900 truncate">
               {subtitle}
             </p>
           )}
@@ -39,7 +43,9 @@ export default function PageShell({
 
       {/* Page content */}
       <div className="flex-1 overflow-auto px-6 py-6">
-        <div className="max-w-6xl mx-auto w-full">{children}</div>
+        <div className="max-w-6xl mx-auto w-full animate-fade-in-up">
+          {children}
+        </div>
       </div>
     </div>
   );

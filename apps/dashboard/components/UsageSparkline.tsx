@@ -73,7 +73,7 @@ export default function UsageSparkline() {
     return (
       <div
         style={{ width: W, height: H }}
-        className="animate-pulse rounded bg-cosmic-border/40"
+        className="animate-pulse rounded bg-ds-gray-alpha-200"
       />
     );
   }

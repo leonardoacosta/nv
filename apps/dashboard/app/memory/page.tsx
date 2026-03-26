@@ -77,8 +77,8 @@ export default function MemoryPage() {
     <div className="p-8 h-full max-w-7xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-cosmic-bright">Memory</h1>
-          <p className="mt-1 text-sm text-cosmic-muted">
+          <h1 className="text-2xl font-semibold text-ds-gray-1000">Memory</h1>
+          <p className="mt-1 text-sm text-ds-gray-900">
             {loading ? "Loading..." : `${files.length} memory files`}
           </p>
         </div>
@@ -86,7 +86,7 @@ export default function MemoryPage() {
           type="button"
           onClick={() => void fetchMemory()}
           disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-cosmic-muted hover:text-cosmic-text border border-cosmic-border hover:border-cosmic-purple/50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           Refresh
@@ -94,7 +94,7 @@ export default function MemoryPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-3 p-4 mb-4 rounded-cosmic bg-cosmic-rose/10 border border-cosmic-rose/30 text-cosmic-rose">
+        <div className="flex items-center gap-3 p-4 mb-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
           <AlertCircle size={16} />
           <span className="text-sm">{error}</span>
         </div>
@@ -106,14 +106,14 @@ export default function MemoryPage() {
           <div className="relative shrink-0">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-cosmic-muted"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900"
             />
             <input
               type="text"
               placeholder="Search memory..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-lg bg-cosmic-surface border border-cosmic-border text-sm text-cosmic-text placeholder:text-cosmic-muted focus:outline-none focus:border-cosmic-purple/60 transition-colors"
+              className="w-full pl-9 pr-4 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
             />
           </div>
 
@@ -122,11 +122,11 @@ export default function MemoryPage() {
               Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-12 animate-pulse rounded-lg bg-cosmic-surface border border-cosmic-border"
+                  className="h-12 animate-pulse rounded-lg bg-ds-gray-100 border border-ds-gray-400"
                 />
               ))
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-12 text-cosmic-muted">
+              <div className="flex flex-col items-center gap-3 py-12 text-ds-gray-900">
                 <Brain size={28} />
                 <p className="text-xs">
                   {search ? "No files match" : "No memory files found"}
@@ -140,29 +140,29 @@ export default function MemoryPage() {
                   onClick={() => setSelected(file)}
                   className={`w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                     selected?.path === file.path
-                      ? "bg-cosmic-purple/20 border border-cosmic-purple/40"
-                      : "hover:bg-cosmic-surface border border-transparent hover:border-cosmic-border"
+                      ? "bg-ds-gray-alpha-200 border border-ds-gray-1000/40"
+                      : "hover:bg-ds-gray-100 border border-transparent hover:border-ds-gray-400"
                   }`}
                 >
                   <FileText
                     size={14}
                     className={
                       selected?.path === file.path
-                        ? "text-cosmic-purple shrink-0 mt-0.5"
-                        : "text-cosmic-muted shrink-0 mt-0.5"
+                        ? "text-ds-gray-1000 shrink-0 mt-0.5"
+                        : "text-ds-gray-900 shrink-0 mt-0.5"
                     }
                   />
                   <div className="min-w-0">
-                    <p className="text-xs font-medium text-cosmic-text truncate">
+                    <p className="text-xs font-medium text-ds-gray-1000 truncate">
                       {file.name}
                     </p>
                     {file.topics && file.topics.length > 0 && (
-                      <p className="text-xs text-cosmic-muted truncate mt-0.5">
+                      <p className="text-xs text-ds-gray-900 truncate mt-0.5">
                         {file.topics.join(", ")}
                       </p>
                     )}
                     {file.size_bytes !== undefined && (
-                      <p className="text-xs text-cosmic-muted font-mono">
+                      <p className="text-xs text-ds-gray-900 font-mono">
                         {(file.size_bytes / 1024).toFixed(1)} KB
                       </p>
                     )}

@@ -7,7 +7,7 @@ export default function LeoBadge({ className = "" }: LeoBadgeProps) {
     <span
       className={[
         "inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold font-mono",
-        "bg-cosmic-rose/20 text-[#fda4af] border border-cosmic-rose/30",
+        "bg-red-700/20 text-[#fda4af] border border-red-700/30",
         className,
       ].join(" ")}
     >

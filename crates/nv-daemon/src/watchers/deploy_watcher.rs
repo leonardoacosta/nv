@@ -221,8 +221,18 @@ mod tests {
                     status TEXT NOT NULL DEFAULT 'open',
                     owner TEXT,
                     owner_reason TEXT,
+                    deadline TEXT,
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                CREATE TABLE IF NOT EXISTS obligation_notes (
+                    id TEXT PRIMARY KEY,
+                    obligation_id TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    findings_json TEXT NOT NULL DEFAULT '[]',
+                    tools_used TEXT NOT NULL DEFAULT '[]',
+                    error TEXT,
+                    researched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
                 );",
             )
             .expect("schema");

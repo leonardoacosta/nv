@@ -602,7 +602,7 @@
       "specs": [
         {
           "name": "slim-daemon",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -612,11 +612,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:34:54.120103"
         },
         {
           "name": "register-mcp-servers",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -626,7 +626,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:34:54.120117"
         }
       ]
     },
@@ -636,7 +636,7 @@
       "specs": [
         {
           "name": "wire-conversation-history",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -646,7 +646,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:34:54.120119"
         }
       ]
     },
@@ -822,7 +822,7 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 7,
+  "current_wave": 9,
   "started_at": "2026-03-26T17:15:08.767015",
   "completed_at": null,
   "completed_waves": [
@@ -831,7 +831,9 @@
     3,
     4,
     5,
-    6
+    6,
+    7,
+    8
   ],
   "completed_specs": [
     "scaffold-tool-service",
@@ -846,7 +848,10 @@
     "add-teams-svc",
     "add-graph-svc",
     "add-schedule-svc",
-    "add-meta-svc"
+    "add-meta-svc",
+    "slim-daemon",
+    "register-mcp-servers",
+    "wire-conversation-history"
   ],
   "failed_specs": [],
   "mode": "consolidated",

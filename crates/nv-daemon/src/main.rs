@@ -34,6 +34,7 @@ mod shutdown;
 mod state;
 #[allow(dead_code)]
 mod tailscale;
+mod tool_cache;
 mod tools;
 mod tts;
 mod health_poller;
@@ -1175,6 +1176,7 @@ async fn main() -> anyhow::Result<()> {
         briefing_store: Some(Arc::clone(&briefing_store)),
         cold_start_store,
         contact_store: contact_store_for_workers,
+        tool_cache: crate::tool_cache::ToolResultCache::new(),
     });
 
     // Extract Telegram client and chat_id for reactions

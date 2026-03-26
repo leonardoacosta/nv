@@ -35,6 +35,7 @@ use crate::obligation_store::ObligationStore;
 use crate::tools::schedule::ScheduleStore;
 use crate::state::State;
 use crate::channels::telegram::client::TelegramClient;
+use crate::tool_cache::{cache_ttl_for_tool, invalidation_prefix_for_tool, ToolResultCache};
 use crate::tools;
 use crate::tts;
 use tokio::sync::mpsc;
@@ -273,6 +274,8 @@ pub struct SharedDeps {
     pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
     /// Contact store for sender identity lookup during message ingestion.
     pub contact_store: Option<Arc<crate::contact_store::ContactStore>>,
+    /// In-memory TTL cache for tool results. Shared across workers in the pool.
+    pub tool_cache: ToolResultCache,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────
@@ -2057,69 +2060,112 @@ impl Worker {
                         }
                     }
                 } else {
-                    // Determine timeout based on tool category
-                    let timeout_secs = if WRITE_TOOLS.contains(&name.as_str()) {
-                        TOOL_TIMEOUT_WRITE
+                    // ── Cache lookup ─────────────────────────────────────────
+                    // Check the in-memory tool result cache before hitting the
+                    // external API. Cache is only used for read-only tools
+                    // (cache_ttl_for_tool returns Some) and skipped entirely
+                    // for write/mutation tools.
+                    if let Some(cached) = deps.tool_cache.get(name, input) {
+                        tracing::debug!(tool = %name, "tool result cache hit");
+                        Ok(tools::ToolResult::Immediate(cached))
                     } else {
-                        TOOL_TIMEOUT_READ
-                    };
-                    let timeout_dur = Duration::from_secs(timeout_secs);
+                        // Determine timeout based on tool category
+                        let timeout_secs = if WRITE_TOOLS.contains(&name.as_str()) {
+                            TOOL_TIMEOUT_WRITE
+                        } else {
+                            TOOL_TIMEOUT_READ
+                        };
+                        let timeout_dur = Duration::from_secs(timeout_secs);
 
-                    // Wrap tool execution in a timeout
-                    let svc_regs = tools::ServiceRegistries {
-                        stripe: deps.stripe_registry.as_ref(),
-                        vercel: deps.vercel_registry.as_ref(),
-                        sentry: deps.sentry_registry.as_ref(),
-                        resend: deps.resend_registry.as_ref(),
-                        ha: deps.ha_registry.as_ref(),
-                        upstash: deps.upstash_registry.as_ref(),
-                        ado: deps.ado_registry.as_ref(),
-                        cloudflare: deps.cloudflare_registry.as_ref(),
-                        doppler: deps.doppler_registry.as_ref(),
-                        teams: deps.teams_client.as_deref(),
-                    };
-                    // Build a NexusBackend from TeamAgentDispatcher if configured.
-                    let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
-                        deps.team_agent_dispatcher
-                            .as_ref()
-                            .map(|d| nexus::backend::NexusBackend::new(d.clone()));
-                    let nexus_backend_ref = nexus_backend_owned.as_ref();
+                        // Wrap tool execution in a timeout
+                        let svc_regs = tools::ServiceRegistries {
+                            stripe: deps.stripe_registry.as_ref(),
+                            vercel: deps.vercel_registry.as_ref(),
+                            sentry: deps.sentry_registry.as_ref(),
+                            resend: deps.resend_registry.as_ref(),
+                            ha: deps.ha_registry.as_ref(),
+                            upstash: deps.upstash_registry.as_ref(),
+                            ado: deps.ado_registry.as_ref(),
+                            cloudflare: deps.cloudflare_registry.as_ref(),
+                            doppler: deps.doppler_registry.as_ref(),
+                            teams: deps.teams_client.as_deref(),
+                        };
+                        // Build a NexusBackend from TeamAgentDispatcher if configured.
+                        let nexus_backend_owned: Option<nexus::backend::NexusBackend> =
+                            deps.team_agent_dispatcher
+                                .as_ref()
+                                .map(|d| nexus::backend::NexusBackend::new(d.clone()));
+                        let nexus_backend_ref = nexus_backend_owned.as_ref();
 
-                    match tokio::time::timeout(
-                        timeout_dur,
-                        tools::execute_tool_send_with_backend(
-                            name,
-                            input,
-                            &deps.memory,
-                            deps.jira_registry.as_ref(),
-                            nexus_backend_ref,
-                            &deps.project_registry,
-                            &deps.channels,
-                            deps.calendar_credentials.as_deref(),
-                            &deps.calendar_id,
-                            &svc_regs,
-                        ),
-                    )
-                    .await
-                    {
-                        Ok(result) => result,
-                        Err(_elapsed) => {
-                            tracing::warn!(
-                                tool = %name,
-                                timeout_secs,
-                                "tool execution timed out"
-                            );
-                            let _ = deps.event_tx.send(WorkerEvent::Error {
-                                worker_id,
-                                error: format!("Tool {name} timed out after {timeout_secs}s"),
-                            });
-                            Err(anyhow!(
-                                "Tool timed out after {timeout_secs}s"
-                            ))
+                        let exec_result = match tokio::time::timeout(
+                            timeout_dur,
+                            tools::execute_tool_send_with_backend(
+                                name,
+                                input,
+                                &deps.memory,
+                                deps.jira_registry.as_ref(),
+                                nexus_backend_ref,
+                                &deps.project_registry,
+                                &deps.channels,
+                                deps.calendar_credentials.as_deref(),
+                                &deps.calendar_id,
+                                &svc_regs,
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(result) => result,
+                            Err(_elapsed) => {
+                                tracing::warn!(
+                                    tool = %name,
+                                    timeout_secs,
+                                    "tool execution timed out"
+                                );
+                                let _ = deps.event_tx.send(WorkerEvent::Error {
+                                    worker_id,
+                                    error: format!("Tool {name} timed out after {timeout_secs}s"),
+                                });
+                                Err(anyhow!(
+                                    "Tool timed out after {timeout_secs}s"
+                                ))
+                            }
+                        };
+
+                        // ── Cache write (read tools) ──────────────────────────
+                        if let Ok(tools::ToolResult::Immediate(ref output)) = exec_result {
+                            if let Some(ttl) = cache_ttl_for_tool(name) {
+                                deps.tool_cache.insert(name, input, output.clone(), ttl);
+                                tracing::debug!(tool = %name, ttl_secs = ttl.as_secs(), "tool result cached");
+                            }
                         }
+
+                        // ── Write invalidation ────────────────────────────────
+                        if exec_result.is_ok() {
+                            if let Some(prefix) = invalidation_prefix_for_tool(name) {
+                                deps.tool_cache.invalidate_prefix(prefix);
+                                tracing::debug!(tool = %name, prefix, "cache invalidated after write");
+                            }
+                            // Obligation write tools invalidate two separate prefixes.
+                            if matches!(
+                                name.as_str(),
+                                "patch_obligation" | "create_obligation" | "close_obligation"
+                            ) {
+                                deps.tool_cache.invalidate_prefix("list_obligation");
+                            }
+                        }
+
+                        exec_result
                     }
                 };
+                // Track whether the result came from the cache (cache_hit is true
+                // when tool_start elapsed is negligible — but we detect it via the
+                // distinct code path above; here we approximate it by duration).
                 let tool_duration_ms = tool_start.elapsed().as_millis() as i64;
+                // A cache hit produces a result in < 5 ms; everything else is an
+                // external call. This threshold gives us a cache_hit signal for
+                // the audit log without threading a bool across the if/else arms.
+                let cache_hit = tool_duration_ms < 5
+                    && matches!(&result, Ok(tools::ToolResult::Immediate(_)));
 
                 // Log tool usage to audit table
                 {
@@ -2145,6 +2191,9 @@ impl Worker {
                         None,
                     ) {
                         tracing::warn!(error = %e, tool = %name, "failed to log tool usage");
+                    }
+                    if cache_hit {
+                        tracing::debug!(tool = %name, duration_ms = tool_duration_ms, "audit: cache hit");
                     }
                 }
 

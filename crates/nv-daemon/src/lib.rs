@@ -49,6 +49,7 @@ mod tts;
 mod health_poller;
 mod server_health_store;
 mod watchers;
+mod tool_cache;
 mod worker;
 
 /// Service tools — `Checkable` trait, `ServiceRegistry<T>`, `CheckResult`,

@@ -54,14 +54,14 @@ const SECTIONS: SectionDef[] = [
     label: "Daemon",
     icon: Cpu,
     description: "Core daemon process settings",
-    keys: ["daemon", "server", "log_level", "debug", "port", "host", "interval_ms"],
+    keys: ["daemon", "agent", "proactive_watcher", "server", "log_level", "debug", "port", "host", "interval_ms"],
   },
   {
     id: "channels",
     label: "Channels",
     icon: Radio,
-    description: "WebSocket and notification channel configuration",
-    keys: ["websocket", "ws", "channels", "notifications", "pubsub"],
+    description: "Messaging channel and notification configuration",
+    keys: ["telegram", "teams", "discord", "slack", "websocket", "ws", "channels", "notifications", "pubsub"],
   },
   {
     id: "integrations",
@@ -71,6 +71,7 @@ const SECTIONS: SectionDef[] = [
     keys: [
       "openai",
       "anthropic",
+      "elevenlabs",
       "github",
       "stripe",
       "resend",
@@ -87,8 +88,8 @@ const SECTIONS: SectionDef[] = [
     id: "memory",
     label: "Memory",
     icon: Brain,
-    description: "Memory and context storage settings",
-    keys: ["memory", "context", "storage", "db", "database", "cache"],
+    description: "Memory, personas and context storage settings",
+    keys: ["memory", "personas", "context", "storage", "db", "database", "cache"],
   },
 ];
 

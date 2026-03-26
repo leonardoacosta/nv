@@ -479,7 +479,15 @@ export default function ContactsPage() {
         const query = params.toString();
         const url = query ? `/api/contacts?${query}` : "/api/contacts";
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          if (res.status === 503) {
+            // Contact store not configured — treat as empty list, not an error
+            setContacts([]);
+            setError(null);
+            return;
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
         const data = (await res.json()) as unknown;
         setContacts(Array.isArray(data) ? (data as Contact[]) : []);
       } catch (err) {

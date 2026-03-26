@@ -78,7 +78,10 @@ export default function SessionWidget() {
   const fetchStatus = async () => {
     try {
       const res = await fetch("/api/session/status");
-      if (!res.ok) return;
+      if (!res.ok) {
+        setLoading(false);
+        return;
+      }
       const data = (await res.json()) as SessionStatus;
       setStatus(data);
     } catch {

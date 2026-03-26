@@ -295,48 +295,64 @@ export default function DashboardPage() {
       ]);
 
       // Obligations
-      const oblList: ApiObligation[] =
-        oblRes.status === "fulfilled" && oblRes.value.ok
-          ? ((await oblRes.value.json()) as ApiObligation[])
-          : [];
+      let oblList: ApiObligation[] = [];
+      if (oblRes.status === "fulfilled" && oblRes.value.ok) {
+        try {
+          oblList = (await oblRes.value.json()) as ApiObligation[];
+        } catch {
+          // JSON parse failure — keep empty list
+        }
+      }
       setObligations(oblList);
 
       // Projects
-      const projectsCount =
-        projRes.status === "fulfilled" && projRes.value.ok
-          ? ((await projRes.value.json()) as ProjectsGetResponse).projects.length
-          : 0;
+      let projectsCount = 0;
+      if (projRes.status === "fulfilled" && projRes.value.ok) {
+        try {
+          projectsCount = ((await projRes.value.json()) as ProjectsGetResponse).projects.length;
+        } catch {
+          // JSON parse failure — keep 0
+        }
+      }
 
       // Sessions
       let sessData: ActiveSessionData[] = [];
       if (sessRes.status === "fulfilled" && sessRes.value.ok) {
-        const raw = (await sessRes.value.json()) as SessionsGetResponse;
-        sessData = (raw.sessions ?? []).map(mapNexusSession);
+        try {
+          const raw = (await sessRes.value.json()) as SessionsGetResponse;
+          sessData = (raw.sessions ?? []).map(mapNexusSession);
+        } catch {
+          // JSON parse failure — keep empty list
+        }
       }
       setSessions(sessData);
 
       // Health
       if (healthRes.status === "fulfilled" && healthRes.value.ok) {
-        const hData = (await healthRes.value.json()) as ServerHealthGetResponse;
-        if (hData.latest) {
-          const mapStatus = (
-            s: ServerHealthGetResponse["status"],
-          ): HealthSummary["status"] => {
-            if (s === "healthy") return "ok";
-            if (s === "critical") return "critical";
-            return s as "degraded";
-          };
-          setHealth({
-            status: mapStatus(hData.status),
-            cpu_percent: hData.latest.cpu_percent ?? 0,
-            memory_used_mb: hData.latest.memory_used_mb ?? 0,
-            memory_total_mb: hData.latest.memory_total_mb ?? 0,
-            uptime_seconds: hData.latest.uptime_seconds ?? 0,
-          });
+        try {
+          const hData = (await healthRes.value.json()) as ServerHealthGetResponse;
+          if (hData.latest) {
+            const mapStatus = (
+              s: ServerHealthGetResponse["status"],
+            ): HealthSummary["status"] => {
+              if (s === "healthy") return "ok";
+              if (s === "critical") return "critical";
+              return s as "degraded";
+            };
+            setHealth({
+              status: mapStatus(hData.status),
+              cpu_percent: hData.latest.cpu_percent ?? 0,
+              memory_used_mb: hData.latest.memory_used_mb ?? 0,
+              memory_total_mb: hData.latest.memory_total_mb ?? 0,
+              uptime_seconds: hData.latest.uptime_seconds ?? 0,
+            });
+          }
+        } catch {
+          // JSON parse failure — health stays null
         }
       }
 
-      // Summary
+      // Summary — always set so stat cards never remain as skeletons
       setSummary({
         obligations_count: oblList.length,
         active_sessions: sessData.filter((s) => s.status === "active").length,

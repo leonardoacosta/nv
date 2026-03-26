@@ -12,6 +12,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { Pool } from "pg";
 import { logger } from "../logger.js";
 import { loadConfig } from "../config.js";
+import { handleDiaryGet } from "../http/routes/diary.js";
 
 // ---------------------------------------------------------------------------
 // Version — read once at module load time
@@ -268,26 +269,7 @@ app.get("/api/messages", async (c) => {
 // ---------------------------------------------------------------------------
 // GET /api/diary
 // ---------------------------------------------------------------------------
-app.get("/api/diary", async (c) => {
-  const dateParam = c.req.query("date");
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
-  const dateStr = dateParam ?? today;
-
-  // Validate YYYY-MM-DD format
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return c.json({ error: "Invalid date format — expected YYYY-MM-DD" }, 400);
-  }
-
-  const startOfDay = new Date(`${dateStr}T00:00:00.000Z`);
-  const startOfNextDay = new Date(startOfDay.getTime() + 86_400_000);
-
-  const result = await getPool().query(
-    "SELECT * FROM diary_entries WHERE created_at >= $1 AND created_at < $2 ORDER BY created_at ASC",
-    [startOfDay.toISOString(), startOfNextDay.toISOString()],
-  );
-
-  return c.json({ entries: result.rows, date: dateStr });
-});
+app.get("/api/diary", handleDiaryGet);
 
 // ---------------------------------------------------------------------------
 // Memory directory helper

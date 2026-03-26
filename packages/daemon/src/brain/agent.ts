@@ -5,6 +5,7 @@ import type { Config } from "../config.js";
 import type { Message } from "../types.js";
 import { logger } from "../logger.js";
 import type { AgentResponse, ToolCall } from "./types.js";
+import { writeEntry } from "../features/diary/index.js";
 
 const ALLOWED_TOOLS = [
   "Read",
@@ -70,6 +71,9 @@ export class NovaAgent {
     const toolCalls: ToolCall[] = [];
     let resultText = "";
     let stopReason = "end_turn";
+    let tokensIn = 0;
+    let tokensOut = 0;
+    const startMs = Date.now();
 
     const queryStream = query({
       prompt: message.content,
@@ -86,9 +90,9 @@ export class NovaAgent {
       },
     });
 
-    for await (const message of queryStream as AsyncIterable<SDKMessage>) {
-      if (message.type === "assistant") {
-        const content = message.message.content;
+    for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {
+      if (sdkMsg.type === "assistant") {
+        const content = sdkMsg.message.content;
         for (const block of content) {
           if (block.type === "tool_use") {
             // Tool calls are tracked; results will be in subsequent messages
@@ -99,17 +103,38 @@ export class NovaAgent {
             });
           }
         }
-      } else if (message.type === "result") {
-        if (message.subtype === "success") {
-          resultText = message.result;
-          stopReason = message.stop_reason ?? "end_turn";
+        // Accumulate token usage from assistant messages
+        const usage = sdkMsg.message.usage;
+        if (usage) {
+          tokensIn += usage.input_tokens ?? 0;
+          tokensOut += usage.output_tokens ?? 0;
+        }
+      } else if (sdkMsg.type === "result") {
+        if (sdkMsg.subtype === "success") {
+          resultText = sdkMsg.result;
+          stopReason = sdkMsg.stop_reason ?? "end_turn";
         } else {
           throw new Error(
-            `Agent query failed: ${message.subtype}`,
+            `Agent query failed: ${sdkMsg.subtype}`,
           );
         }
       }
     }
+
+    const responseLatencyMs = Date.now() - startMs;
+
+    // Write diary entry — fire-and-forget, never disrupts response path
+    void writeEntry({
+      triggerType: "message",
+      triggerSource: message.senderId,
+      channel: message.channel,
+      slug: message.content.slice(0, 50),
+      content: resultText,
+      toolsUsed: toolCalls.map((t) => t.name),
+      tokensIn: tokensIn > 0 ? tokensIn : undefined,
+      tokensOut: tokensOut > 0 ? tokensOut : undefined,
+      responseLatencyMs,
+    });
 
     return {
       text: resultText,

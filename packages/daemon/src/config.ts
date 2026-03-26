@@ -4,6 +4,14 @@ import { join } from "node:path";
 import * as TOML from "@iarna/toml";
 import "dotenv/config";
 
+export interface AutonomyConfig {
+  enabled: boolean;
+  timeoutMs: number;
+  cooldownHours: number;
+  idleDebounceMs: number;
+  pollIntervalMs: number;
+}
+
 export interface Config {
   logLevel: string;
   daemonPort: number;
@@ -11,6 +19,7 @@ export interface Config {
   vercelGatewayKey?: string;
   databaseUrl: string;
   systemPromptPath: string;
+  autonomy?: AutonomyConfig;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
@@ -25,6 +34,13 @@ interface TomlConfig {
   daemon?: {
     port?: number;
     log_level?: string;
+  };
+  autonomy?: {
+    enabled?: boolean;
+    timeout_ms?: number;
+    cooldown_hours?: number;
+    idle_debounce_ms?: number;
+    poll_interval_ms?: number;
   };
 }
 
@@ -71,6 +87,14 @@ export async function loadConfig(
   const systemPromptPath =
     process.env["NV_SYSTEM_PROMPT_PATH"] ?? DEFAULTS.systemPromptPath;
 
+  const autonomy: AutonomyConfig = {
+    enabled: toml.autonomy?.enabled ?? true,
+    timeoutMs: toml.autonomy?.timeout_ms ?? 300_000,
+    cooldownHours: toml.autonomy?.cooldown_hours ?? 2,
+    idleDebounceMs: toml.autonomy?.idle_debounce_ms ?? 60_000,
+    pollIntervalMs: toml.autonomy?.poll_interval_ms ?? 30_000,
+  };
+
   return {
     logLevel,
     daemonPort,
@@ -78,5 +102,6 @@ export async function loadConfig(
     databaseUrl,
     vercelGatewayKey,
     systemPromptPath,
+    autonomy,
   };
 }

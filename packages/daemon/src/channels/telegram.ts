@@ -4,6 +4,16 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { createLogger } from "../logger.js";
 import type { Message } from "../types.js";
+import { buildDiaryReply } from "../telegram/commands/diary.js";
+
+// ─── HTML Escape ─────────────────────────────────────────────────────────────
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
 
 // ─── Exported Types ──────────────────────────────────────────────────────────
 
@@ -340,7 +350,15 @@ export class TelegramAdapter {
   }
 
   private registerCommandHandlers(): void {
-    const commands = ["/start", "/help", "/ob", "/diary", "/status"] as const;
+    // /diary is handled directly — it queries the diary and replies inline
+    this.bot.onText(/^\/diary(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const dateArg = match?.[3]?.trim();
+      void this.handleDiaryCommand(chatId, dateArg);
+    });
+
+    // All other commands are routed through onMessageCallback
+    const commands = ["/start", "/help", "/ob", "/status"] as const;
 
     for (const command of commands) {
       this.bot.onText(new RegExp(`^\\${command}(@\\S+)?$`), (msg) => {
@@ -348,6 +366,19 @@ export class TelegramAdapter {
         const normalized = normalizeTextMessage(msg);
         this.onMessageCallback({ ...normalized, text: command, content: command });
       });
+    }
+  }
+
+  private async handleDiaryCommand(chatId: string, dateArg?: string): Promise<void> {
+    try {
+      const text = await buildDiaryReply(dateArg);
+      await this.sendMessage(chatId, `<pre>${escapeHtml(text)}</pre>`, {
+        parseMode: "HTML",
+        disablePreview: true,
+      });
+    } catch (err: unknown) {
+      this.log.error({ err }, "Failed to handle /diary command");
+      await this.sendMessage(chatId, "Failed to retrieve diary entries. Please try again.");
     }
   }
 }

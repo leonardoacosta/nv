@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
+import { startApiServer } from "./api/server.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -38,7 +39,9 @@ export async function main(): Promise<void> {
 
   // TODO(agent-loop): Initialize Anthropic Agent SDK and start the agent loop
 
-  // TODO(http-server): Start HTTP server for health checks and control plane
+  const apiPort = Number(process.env["API_PORT"] ?? 3443);
+  await startApiServer(apiPort);
+  log.info({ service: "nova-daemon", port: apiPort }, `API server listening on :${apiPort}`);
 
   log.info({ service: "nova-daemon" }, "Nova daemon ready");
 }

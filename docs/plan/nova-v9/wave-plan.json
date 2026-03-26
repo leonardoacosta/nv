@@ -538,7 +538,7 @@
       "specs": [
         {
           "name": "add-morning-briefing",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -547,8 +547,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T13:21:47.032356",
+          "merged_at": "2026-03-26T13:26:20.812458"
         }
       ]
     }
@@ -586,7 +586,7 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 8,
+  "current_wave": 9,
   "started_at": "2026-03-26T12:21:27.410133",
   "completed_at": null,
   "completed_waves": [
@@ -596,7 +596,8 @@
     4,
     5,
     6,
-    7
+    7,
+    8
   ],
   "completed_specs": [
     "scaffold-ts-daemon",
@@ -613,7 +614,8 @@
     "add-obligation-system",
     "add-diary-system",
     "add-proactive-watcher",
-    "add-memory-system"
+    "add-memory-system",
+    "add-morning-briefing"
   ],
   "failed_specs": [],
   "mode": "consolidated",

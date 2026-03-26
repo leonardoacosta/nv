@@ -3,6 +3,7 @@ pub use nv_tools::tools::calendar;
 pub mod channels;
 pub mod check;
 pub mod checkable_impls;
+pub mod cloudpc;
 pub mod discord;
 pub mod outlook;
 pub use nv_tools::tools::cloudflare;
@@ -1106,42 +1107,19 @@ pub async fn execute_tool_send_with_backend(
 
         // ── Teams Tools ───────────────────────────────────────────────
         "teams_channels" => {
-            let _owned_teams;
-            let client: &crate::channels::teams::client::TeamsClient =
-                if let Some(c) = service_registries.teams {
-                    c
-                } else {
-                    let secrets = nv_core::config::Secrets::from_env()?;
-                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
-                    &_owned_teams
-                };
-            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
-            let team_id = input["team_id"]
+            let team_name = input["team_name"]
                 .as_str()
-                .or(env_team_id.as_deref())
-                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
-            let output = teams_tools::teams_channels(client, team_id).await?;
+                .ok_or_else(|| anyhow!("missing 'team_name' parameter"))?;
+            let output = teams_tools::teams_channels(team_name).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_messages" => {
-            let _owned_teams;
-            let client: &crate::channels::teams::client::TeamsClient =
-                if let Some(c) = service_registries.teams {
-                    c
-                } else {
-                    let secrets = nv_core::config::Secrets::from_env()?;
-                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
-                    &_owned_teams
-                };
-            let env_team_id = std::env::var("NV_TEAMS_TEAM_ID").ok();
-            let team_id = input["team_id"]
+            let team_name = input["team_name"]
                 .as_str()
-                .or(env_team_id.as_deref())
-                .ok_or_else(|| anyhow!("team_id is required. Pass it as a parameter or set NV_TEAMS_TEAM_ID env var."))?;
-            let channel_id = input["channel_id"]
-                .as_str()
-                .ok_or_else(|| anyhow!("missing 'channel_id' parameter"))?;
-            let output = teams_tools::teams_messages(client, team_id, channel_id).await?;
+                .ok_or_else(|| anyhow!("missing 'team_name' parameter"))?;
+            let channel_name = input["channel_name"].as_str();
+            let count = input["count"].as_u64().unwrap_or(20).min(50) as usize;
+            let output = teams_tools::teams_messages(team_name, channel_name, count).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_send" => {
@@ -1193,34 +1171,16 @@ pub async fn execute_tool_send_with_backend(
             Ok(ToolResult::Immediate(output))
         }
         "teams_list_chats" => {
-            let _owned_teams;
-            let client: &crate::channels::teams::client::TeamsClient =
-                if let Some(c) = service_registries.teams {
-                    c
-                } else {
-                    let secrets = nv_core::config::Secrets::from_env()?;
-                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
-                    &_owned_teams
-                };
             let limit = input["limit"].as_u64().unwrap_or(20).min(50) as usize;
-            let output = teams_tools::teams_list_chats(client, limit).await?;
+            let output = teams_tools::teams_list_chats(limit).await?;
             Ok(ToolResult::Immediate(output))
         }
         "teams_read_chat" => {
-            let _owned_teams;
-            let client: &crate::channels::teams::client::TeamsClient =
-                if let Some(c) = service_registries.teams {
-                    c
-                } else {
-                    let secrets = nv_core::config::Secrets::from_env()?;
-                    _owned_teams = teams_tools::build_teams_client(&secrets, None)?;
-                    &_owned_teams
-                };
             let chat_id = input["chat_id"]
                 .as_str()
                 .ok_or_else(|| anyhow!("missing 'chat_id' parameter"))?;
             let limit = input["limit"].as_u64().unwrap_or(20).min(50) as usize;
-            let output = teams_tools::teams_read_chat(client, chat_id, limit).await?;
+            let output = teams_tools::teams_read_chat(chat_id, limit).await?;
             Ok(ToolResult::Immediate(output))
         }
 

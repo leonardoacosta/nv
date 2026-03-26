@@ -227,7 +227,14 @@ impl Channel for TelegramChannel {
 ///
 /// The `voice_enabled` flag is toggled by the `/voice` command, which is
 /// intercepted here before reaching the agent loop.
-pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBool>) {
+///
+/// `deepgram_model` is the Deepgram model name used for voice transcription
+/// (e.g. `"nova-2"`), sourced from `AgentConfig.deepgram_model` at startup.
+pub async fn run_poll_loop(
+    channel: TelegramChannel,
+    voice_enabled: Arc<AtomicBool>,
+    deepgram_model: String,
+) {
     let mut backoff = Duration::from_secs(1);
     let max_backoff = Duration::from_secs(60);
 
@@ -262,7 +269,7 @@ pub async fn run_poll_loop(channel: TelegramChannel, voice_enabled: Arc<AtomicBo
 
                     // Handle voice messages — transcribe before dispatch
                     let msg = if msg.metadata.get("voice").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        match transcribe_voice_message(&channel, &msg).await {
+                        match transcribe_voice_message(&channel, &msg, &deepgram_model).await {
                             Ok(transcribed) => transcribed,
                             Err(e) => {
                                 tracing::warn!(error = %e, "voice transcription failed");
@@ -516,13 +523,16 @@ async fn handle_audio_message(
 
 // ── Voice Transcription ─────────────────────────────────────────────
 
-/// Transcribe a voice message by downloading from Telegram and calling ElevenLabs STT.
+/// Transcribe a voice message by downloading from Telegram and calling Deepgram STT.
 ///
 /// Returns a modified `InboundMessage` with the transcribed text as content.
 /// The original voice metadata is preserved.
+///
+/// Rejects files larger than 20 MB before downloading (Req-2).
 async fn transcribe_voice_message(
     channel: &TelegramChannel,
     msg: &InboundMessage,
+    model: &str,
 ) -> anyhow::Result<InboundMessage> {
     let file_id = msg
         .metadata
@@ -542,20 +552,38 @@ async fn transcribe_voice_message(
         .and_then(|v| v.as_i64())
         .unwrap_or(channel.chat_id);
 
-    // Check for ELEVENLABS_API_KEY
-    let api_key = match std::env::var("ELEVENLABS_API_KEY") {
+    // Large-file gate: reject voice messages over 20 MB before downloading.
+    // file_size is absent for very small files — skip the gate in that case.
+    const MAX_VOICE_BYTES: i64 = 20 * 1024 * 1024; // 20 971 520 bytes
+    if let Some(file_size) = msg.metadata.get("file_size").and_then(|v| v.as_i64()) {
+        if file_size > MAX_VOICE_BYTES {
+            let _ = channel
+                .client
+                .send_message(
+                    chat_id,
+                    "Voice message too large to transcribe (max 20 MB).",
+                    Some(msg.id.clone()),
+                    None,
+                )
+                .await;
+            anyhow::bail!("voice message too large: {file_size} bytes > {MAX_VOICE_BYTES}");
+        }
+    }
+
+    // Check for DEEPGRAM_API_KEY
+    let api_key = match std::env::var("DEEPGRAM_API_KEY") {
         Ok(key) if !key.is_empty() => key,
         _ => {
             let _ = channel
                 .client
                 .send_message(
                     chat_id,
-                    "Voice transcription not configured (ELEVENLABS_API_KEY missing).",
+                    "Voice transcription not configured (DEEPGRAM_API_KEY missing).",
                     Some(msg.id.clone()),
                     None,
                 )
                 .await;
-            anyhow::bail!("ELEVENLABS_API_KEY not set");
+            anyhow::bail!("DEEPGRAM_API_KEY not set");
         }
     };
 
@@ -570,15 +598,16 @@ async fn transcribe_voice_message(
         file_id,
         bytes = audio_bytes.len(),
         mime_type,
+        model,
         "downloaded voice message for transcription"
     );
 
-    // Transcribe via ElevenLabs STT
-    let transcript = crate::speech_to_text::transcribe_audio_elevenlabs(
+    // Transcribe via Deepgram STT
+    let transcript = crate::speech_to_text::transcribe_audio_deepgram(
         audio_bytes,
-        "voice.ogg",
         mime_type,
         &api_key,
+        model,
     )
     .await?;
 
@@ -592,7 +621,7 @@ async fn transcribe_voice_message(
                 None,
             )
             .await;
-        anyhow::bail!("empty transcript from ElevenLabs");
+        anyhow::bail!("empty transcript from Deepgram");
     }
 
     tracing::info!(

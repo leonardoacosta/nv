@@ -1,10 +1,13 @@
-//! ElevenLabs Speech-to-Text client.
+//! Speech-to-Text clients.
 //!
-//! Provides `transcribe_audio_elevenlabs()` which POSTs audio bytes to the
-//! ElevenLabs `/v1/speech-to-text` endpoint and returns the transcript text.
+//! Provides two STT functions:
+//! - `transcribe_audio_elevenlabs()` — multipart POST to ElevenLabs; used for
+//!   MP3/WAV audio files sent via the Telegram audio player.
+//! - `transcribe_audio_deepgram()` — raw-body POST to Deepgram nova-2; used for
+//!   OGG voice notes from Telegram voice messages.
 //!
-//! Used for both voice notes (OGG) and audio files (MP3/WAV).
-//! Single provider for all speech-to-text in Nova.
+//! The two providers are kept separate so each can use the best fit for its
+//! audio format and billing model.
 
 use std::time::Duration;
 
@@ -14,7 +17,10 @@ use reqwest::multipart;
 /// ElevenLabs Speech-to-Text API endpoint.
 const ELEVENLABS_STT_URL: &str = "https://api.elevenlabs.io/v1/speech-to-text";
 
-/// Request timeout for audio transcription (30 seconds as specified in the proposal).
+/// Deepgram Speech-to-Text API endpoint (model and options appended at call time).
+const DEEPGRAM_STT_URL: &str = "https://api.deepgram.com/v1/listen";
+
+/// Request timeout for audio transcription (30 seconds).
 const TRANSCRIPTION_TIMEOUT_SECS: u64 = 30;
 
 /// Transcribe audio bytes using the ElevenLabs Speech-to-Text API.
@@ -87,6 +93,78 @@ pub async fn transcribe_audio_elevenlabs(
     Ok(trimmed.to_string())
 }
 
+// ── Deepgram STT ──────────────────────────────────────────────────
+
+/// Transcribe audio bytes using the Deepgram Speech-to-Text API.
+///
+/// `audio_bytes` — raw bytes of the audio file (OGG Opus, etc.)
+/// `mime_type`   — MIME type of the audio (e.g. `"audio/ogg"`)
+/// `api_key`     — Deepgram API key from `DEEPGRAM_API_KEY` env var
+/// `model`       — Deepgram model name (e.g. `"nova-2"`)
+///
+/// POSTs the raw audio body to:
+///   `https://api.deepgram.com/v1/listen?model={model}&smart_format=true`
+///
+/// Extracts `results.channels[0].alternatives[0].transcript` from the response.
+/// Returns an error if the API call fails, the response cannot be parsed,
+/// the transcript path is missing, or the transcript is empty.
+pub async fn transcribe_audio_deepgram(
+    audio_bytes: Vec<u8>,
+    mime_type: &str,
+    api_key: &str,
+    model: &str,
+) -> Result<String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(TRANSCRIPTION_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| anyhow!("failed to build HTTP client: {e}"))?;
+
+    let url = format!(
+        "{DEEPGRAM_STT_URL}?model={model}&smart_format=true"
+    );
+
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Token {api_key}"))
+        .header("Content-Type", mime_type)
+        .body(audio_bytes)
+        .send()
+        .await
+        .map_err(|e| anyhow!("Deepgram STT request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow!("Deepgram STT returned {status}: {body}"));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| anyhow!("failed to parse Deepgram STT response: {e}"))?;
+
+    // Extract results.channels[0].alternatives[0].transcript
+    let transcript = json
+        .pointer("/results/channels/0/alternatives/0/transcript")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            anyhow!("Deepgram STT response missing transcript field: {json}")
+        })?;
+
+    let trimmed = transcript.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("Deepgram STT returned empty transcript"));
+    }
+
+    tracing::info!(
+        transcript_len = trimmed.len(),
+        model,
+        "audio transcribed via Deepgram STT"
+    );
+
+    Ok(trimmed.to_string())
+}
+
 // ── Tests ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -128,5 +206,68 @@ mod tests {
             .map(str::trim)
             .unwrap_or("");
         assert!(transcript.is_empty());
+    }
+
+    // ── Deepgram response parsing ──────────────────────────────────
+
+    #[test]
+    fn deepgram_parse_transcript_success() {
+        let json = serde_json::json!({
+            "results": {
+                "channels": [{
+                    "alternatives": [{ "transcript": "  Hello world  " }]
+                }]
+            }
+        });
+
+        let transcript = json
+            .pointer("/results/channels/0/alternatives/0/transcript")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string());
+
+        assert_eq!(transcript, Some("Hello world".to_string()));
+    }
+
+    #[test]
+    fn deepgram_missing_alternatives_returns_none() {
+        let json = serde_json::json!({
+            "results": {
+                "channels": [{}]
+            }
+        });
+
+        let result = json
+            .pointer("/results/channels/0/alternatives/0/transcript")
+            .and_then(|v| v.as_str());
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn deepgram_empty_transcript_is_detected() {
+        let json = serde_json::json!({
+            "results": {
+                "channels": [{
+                    "alternatives": [{ "transcript": "  " }]
+                }]
+            }
+        });
+
+        let transcript = json
+            .pointer("/results/channels/0/alternatives/0/transcript")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or("");
+
+        assert!(transcript.is_empty());
+    }
+
+    #[test]
+    fn deepgram_http_error_body_is_captured() {
+        // Simulate what the error path would produce
+        let status = 401u16;
+        let body = r#"{"err_code":"INVALID_AUTH","err_msg":"Invalid credentials."}"#;
+        let error_msg = format!("Deepgram STT returned {status}: {body}");
+        assert!(error_msg.contains("INVALID_AUTH"));
     }
 }

@@ -371,8 +371,9 @@ async fn main() -> anyhow::Result<()> {
         });
 
         let poll_voice_enabled = voice_enabled.clone();
+        let deepgram_model = config.agent.deepgram_model.clone();
         tokio::spawn(async move {
-            run_poll_loop(tg_channel, poll_voice_enabled).await;
+            run_poll_loop(tg_channel, poll_voice_enabled, deepgram_model).await;
         });
         tracing::info!("Telegram channel started");
     }

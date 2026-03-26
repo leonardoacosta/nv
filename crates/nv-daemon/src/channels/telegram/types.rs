@@ -152,7 +152,7 @@ impl Update {
             // Build metadata and content based on message type
             let (metadata, content) = if let Some(voice) = &msg.voice {
                 // Voice note
-                let meta = serde_json::json!({
+                let mut meta = serde_json::json!({
                     "message_id": msg.message_id,
                     "chat_id": msg.chat.id,
                     "voice": true,
@@ -160,6 +160,10 @@ impl Update {
                     "duration_secs": voice.duration,
                     "mime_type": voice.mime_type.as_deref().unwrap_or("audio/ogg"),
                 });
+                // Include file_size when present — used by the large-file gate (>20 MB reject)
+                if let Some(size) = voice.file_size {
+                    meta["file_size"] = serde_json::Value::Number(size.into());
+                }
                 (meta, msg.text.clone().unwrap_or_default())
             } else if let Some(photos) = &msg.photo {
                 // Photo message — use the last (largest) PhotoSize

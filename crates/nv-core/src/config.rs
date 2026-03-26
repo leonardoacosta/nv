@@ -30,6 +30,10 @@ fn default_elevenlabs_model() -> String {
     "eleven_multilingual_v2".to_string()
 }
 
+fn default_deepgram_model() -> String {
+    "nova-2".to_string()
+}
+
 fn default_weekly_budget_usd() -> f64 {
     50.0
 }
@@ -140,6 +144,9 @@ pub struct AgentConfig {
     /// Alert threshold as a percentage of the weekly budget (default: 90).
     #[serde(default = "default_alert_threshold_pct")]
     pub alert_threshold_pct: u8,
+    /// Deepgram model for voice message transcription. Defaults to "nova-2".
+    #[serde(default = "default_deepgram_model")]
+    pub deepgram_model: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

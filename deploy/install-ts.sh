@@ -4,6 +4,19 @@ set -euo pipefail
 # Nova TypeScript Daemon Install Script
 # Builds from source, installs to ~/.local/lib/nova-ts/, and configures the
 # systemd user service.  Idempotent -- safe to re-run after code changes.
+#
+# Install layout (mini pnpm workspace so workspace:* deps resolve correctly):
+#
+#   ~/.local/lib/nova-ts/
+#   ├── package.json           (private workspace root, no deps)
+#   ├── pnpm-workspace.yaml    (packages: ["packages/*"])
+#   └── packages/
+#       ├── daemon/
+#       │   ├── dist/
+#       │   └── package.json
+#       └── db/
+#           ├── dist/
+#           └── package.json
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -47,19 +60,43 @@ pnpm --filter @nova/daemon build
 
 echo "==> Installing to ${INSTALL_DIR}..."
 
-# Create destination directory
-mkdir -p "${INSTALL_DIR}/dist"
+# Remove any prior install so pnpm does not encounter a stale node_modules
+# layout from a different workspace structure (avoids ERR_PNPM_ABORTED_REMOVE_MODULES_DIR).
+rm -rf "${INSTALL_DIR}"
 
-# Copy compiled output
-cp -r "${PROJECT_DIR}/packages/daemon/dist/." "${INSTALL_DIR}/dist/"
+# Create mini workspace directory structure
+mkdir -p "${INSTALL_DIR}/packages/daemon"
+mkdir -p "${INSTALL_DIR}/packages/db"
 
-# Copy package manifest so npm/pnpm can resolve prod deps in place
-cp "${PROJECT_DIR}/packages/daemon/package.json" "${INSTALL_DIR}/package.json"
+# Write workspace root package.json (private, no deps — just anchors the workspace)
+cat > "${INSTALL_DIR}/package.json" <<'EOF'
+{
+  "name": "nova-ts-install",
+  "version": "0.0.0",
+  "private": true
+}
+EOF
 
-# Install production-only node_modules at the deploy target.
-# This produces a self-contained directory that can be run with plain node.
+# Write pnpm-workspace.yaml so pnpm resolves workspace:* references
+cat > "${INSTALL_DIR}/pnpm-workspace.yaml" <<'EOF'
+packages:
+  - "packages/*"
+EOF
+
+# Copy daemon dist + manifest
+cp -r "${PROJECT_DIR}/packages/daemon/dist/." "${INSTALL_DIR}/packages/daemon/dist/"
+cp "${PROJECT_DIR}/packages/daemon/package.json" "${INSTALL_DIR}/packages/daemon/package.json"
+
+# Copy db dist + manifest
+cp -r "${PROJECT_DIR}/packages/db/dist/." "${INSTALL_DIR}/packages/db/dist/"
+cp "${PROJECT_DIR}/packages/db/package.json" "${INSTALL_DIR}/packages/db/package.json"
+
+# Install production-only node_modules from the workspace root so pnpm can
+# resolve @nova/db@workspace:* correctly.  Must cd into the install dir —
+# using --prefix keeps pnpm anchored to the monorepo workspace and causes it
+# to see the wrong set of packages.
 echo "    Installing production dependencies..."
-pnpm install --prod --ignore-workspace --prefix "${INSTALL_DIR}"
+(cd "${INSTALL_DIR}" && pnpm install --prod)
 
 echo "==> Installing systemd service..."
 
@@ -96,7 +133,7 @@ fi
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 
-VERSION=$(node -e "const p=require('${INSTALL_DIR}/package.json'); process.stdout.write(p.version)" 2>/dev/null || echo "unknown")
+VERSION=$(node -e "const p=require('${INSTALL_DIR}/packages/daemon/package.json'); process.stdout.write(p.version)" 2>/dev/null || echo "unknown")
 
 echo ""
 echo "nova-ts installed successfully."

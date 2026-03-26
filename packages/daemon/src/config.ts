@@ -8,13 +8,17 @@ export interface Config {
   logLevel: string;
   daemonPort: number;
   configPath: string;
+  vercelGatewayKey?: string;
+  databaseUrl: string;
+  systemPromptPath: string;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
 
-const DEFAULTS: Omit<Config, "configPath"> = {
+const DEFAULTS: Omit<Config, "configPath" | "databaseUrl"> = {
   logLevel: "info",
   daemonPort: 7700,
+  systemPromptPath: "config/system-prompt.md",
 };
 
 interface TomlConfig {
@@ -54,9 +58,25 @@ export async function loadConfig(
     ? parseInt(daemonPortRaw, 10)
     : (toml.daemon?.port ?? DEFAULTS.daemonPort);
 
+  const databaseUrl = process.env["DATABASE_URL"];
+  if (!databaseUrl) {
+    throw new Error(
+      "DATABASE_URL environment variable is required but not set. " +
+        "Set it to a valid PostgreSQL connection string.",
+    );
+  }
+
+  const vercelGatewayKey = process.env["VERCEL_GATEWAY_KEY"];
+
+  const systemPromptPath =
+    process.env["NV_SYSTEM_PROMPT_PATH"] ?? DEFAULTS.systemPromptPath;
+
   return {
     logLevel,
     daemonPort,
     configPath,
+    databaseUrl,
+    vercelGatewayKey,
+    systemPromptPath,
   };
 }

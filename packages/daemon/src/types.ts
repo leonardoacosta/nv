@@ -1,8 +1,22 @@
 export type Channel = "telegram" | "teams" | "discord" | "email" | "imessage";
 
+export type MessageType = "text" | "voice" | "photo" | "callback";
+
 export interface Message {
   id: string;
   channel: Channel;
+  // New fields for Telegram adapter (and future channel adapters)
+  chatId: string;
+  text: string;
+  type: MessageType;
+  from: {
+    id: string;
+    username?: string;
+    firstName: string;
+  };
+  timestamp: Date;
+  metadata: Record<string, unknown>;
+  // Legacy fields — kept for backward compatibility with existing code
   threadId?: string;
   senderId: string;
   senderName: string;

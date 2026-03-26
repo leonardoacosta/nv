@@ -10,18 +10,24 @@ use super::types::OAuthTokenResponse;
 /// Buffer before token expiry to trigger refresh (5 minutes).
 const REFRESH_BUFFER: Duration = Duration::from_secs(300);
 
-/// Delegated (user) permission scopes for all Graph features requiring user context.
-/// Includes Outlook (Mail, Calendar) and Teams Chat access.
-const DELEGATED_SCOPES: &str =
-    "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read \
-     https://graph.microsoft.com/Chat.Read https://graph.microsoft.com/User.Read offline_access";
+/// Delegated (user) permission scopes — uses `.default` to request all permissions
+/// the app registration has, matching the ws PowerShell scripts exactly.
+/// Client ID: 14d82eec-204b-4c2f-b7e8-296a70dab67e (MS Graph PowerShell first-party).
+const DELEGATED_SCOPES: &str = "https://graph.microsoft.com/.default offline_access";
+
+/// Client ID for delegated auth — Microsoft Graph PowerShell (first-party app).
+/// Same as ws/scripts/graph-teams.ps1 and graph-outlook.ps1.
+const DELEGATED_CLIENT_ID: &str = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
+
+/// Tenant ID for delegated auth — "common" allows any org/personal account.
+const DELEGATED_TENANT_ID: &str = "common";
 
 /// Device-code poll timeout (5 minutes).
 const DEVICE_CODE_TIMEOUT: Duration = Duration::from_secs(300);
 
 // ── Token Cache Serialization ─────────────────────────────────────────
 
-/// On-disk representation of a cached user token.
+/// On-disk representation of a cached user token (nv native format).
 #[derive(Debug, Serialize, Deserialize)]
 struct TokenCache {
     access_token: String,
@@ -30,6 +36,17 @@ struct TokenCache {
     expires_at_unix: u64,
     client_id: String,
     tenant_id: String,
+}
+
+/// Token format written by the ws PowerShell scripts (graph-teams.ps1, graph-outlook.ps1).
+/// Differs from `TokenCache`: uses ISO 8601 `expiry` string instead of `expires_at_unix`,
+/// and omits `client_id` / `tenant_id` (always MS Graph PowerShell + common).
+#[derive(Debug, Deserialize)]
+struct WsTokenCache {
+    access_token: String,
+    refresh_token: Option<String>,
+    /// ISO 8601 datetime string, e.g. "2026-03-26T01:45:00.0000000-05:00"
+    expiry: String,
 }
 
 // ── Device-Code Response Types ────────────────────────────────────────
@@ -80,34 +97,70 @@ pub struct MsGraphUserAuth {
 impl MsGraphUserAuth {
     /// Load a cached token from disk.
     ///
+    /// Supports two formats:
+    /// 1. **nv native** — `expires_at_unix` (u64) + `client_id` + `tenant_id`
+    /// 2. **ws script** — `expiry` (ISO 8601 string), no client_id/tenant_id
+    ///    (assumes MS Graph PowerShell client + common tenant)
+    ///
     /// Returns `None` if the file is missing, cannot be parsed, or the token is
     /// expired with no refresh token available.
     pub fn from_cache(path: &Path) -> Option<Self> {
         let content = std::fs::read_to_string(path).ok()?;
-        let cache: TokenCache = serde_json::from_str(&content).ok()?;
 
-        let now_unix = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        // Convert unix expiry to an Instant
-        let secs_remaining = cache.expires_at_unix.saturating_sub(now_unix);
-        let expires_at = Instant::now() + Duration::from_secs(secs_remaining);
-
-        // If expired and no refresh token, caller needs to re-authenticate
-        if secs_remaining == 0 && cache.refresh_token.is_none() {
-            return None;
+        // Try nv native format first
+        if let Ok(cache) = serde_json::from_str::<TokenCache>(&content) {
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let secs_remaining = cache.expires_at_unix.saturating_sub(now_unix);
+            let expires_at = Instant::now() + Duration::from_secs(secs_remaining);
+            if secs_remaining == 0 && cache.refresh_token.is_none() {
+                return None;
+            }
+            return Some(Self {
+                access_token: cache.access_token,
+                refresh_token: cache.refresh_token,
+                expires_at,
+                client_id: cache.client_id,
+                tenant_id: cache.tenant_id,
+                http: Client::new(),
+            });
         }
 
-        Some(Self {
-            access_token: cache.access_token,
-            refresh_token: cache.refresh_token,
-            expires_at,
-            client_id: cache.client_id,
-            tenant_id: cache.tenant_id,
-            http: Client::new(),
-        })
+        // Try ws PowerShell script format (expiry as ISO 8601 string)
+        if let Ok(ws_cache) = serde_json::from_str::<WsTokenCache>(&content) {
+            let expires_at_unix = chrono::DateTime::parse_from_rfc3339(&ws_cache.expiry)
+                .or_else(|_| {
+                    // PowerShell's .ToString("o") can produce 7 fractional digits;
+                    // try parsing with chrono's flexible parser
+                    chrono::DateTime::parse_from_str(&ws_cache.expiry, "%Y-%m-%dT%H:%M:%S%.f%:z")
+                })
+                .map(|dt| dt.timestamp() as u64)
+                .unwrap_or(0);
+
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let secs_remaining = expires_at_unix.saturating_sub(now_unix);
+            let expires_at = Instant::now() + Duration::from_secs(secs_remaining);
+
+            if secs_remaining == 0 && ws_cache.refresh_token.is_none() {
+                return None;
+            }
+
+            return Some(Self {
+                access_token: ws_cache.access_token,
+                refresh_token: ws_cache.refresh_token,
+                expires_at,
+                client_id: DELEGATED_CLIENT_ID.to_string(),
+                tenant_id: DELEGATED_TENANT_ID.to_string(),
+                http: Client::new(),
+            });
+        }
+
+        None
     }
 
     /// Run interactive device-code flow to acquire delegated tokens.

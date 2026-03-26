@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::agent::{
     build_system_context, check_bootstrap_state, ChannelRegistry,
 };
+use crate::error_recovery::{classify_error, is_retryable, retry_keyboard, user_message as error_user_message};
 use crate::dashboard_client::{DashboardError, ForwardRequest};
 use crate::briefing_store::BriefingStore;
 use crate::cold_start_store::{ColdStartEvent, ColdStartStore};
@@ -1312,11 +1313,20 @@ impl Worker {
         };
 
         // Call Claude — streaming path for Telegram turns, cold-start otherwise.
+        // Wraps the call in a worker-level retry loop (up to MAX_WORKER_RETRIES retries,
+        // backoff [2s, 5s]) for transient error classes.  Non-transient errors (AuthFailure,
+        // Unknown) surface immediately without retry.
         let call_start = Instant::now();
 
-        // Attempt streaming via persistent session when no image attachment.
-        // image_path forces cold-start (no attachment support in persistent mode).
-        let streaming_result: Option<anyhow::Result<crate::claude::ApiResponse>> =
+        /// Maximum number of *retries* (not total attempts).  Total attempts = MAX + 1.
+        const MAX_WORKER_RETRIES: u32 = 2;
+        const MAX_ATTEMPTS: u32 = MAX_WORKER_RETRIES + 1;
+        const BACKOFF_SECS: [u64; 2] = [2, 5];
+
+        // First attempt uses the streaming path (when eligible); subsequent retry
+        // attempts always use cold-start because the `on_text_delta` closure is
+        // consumed by the first `send_messages_streaming` call.
+        let first_streaming_result: Option<anyhow::Result<crate::claude::ApiResponse>> =
             if placeholder_msg_id.is_some() && image_path.is_none() {
                 client
                     .send_messages_streaming(
@@ -1330,65 +1340,121 @@ impl Worker {
                 None
             };
 
-        let response = match streaming_result {
-            // Persistent streaming path succeeded.
-            Some(Ok(r)) => r,
-            // Persistent streaming path unavailable or failed — fall back to cold-start.
-            // This also covers the case where placeholder_msg_id is None (non-Telegram).
-            _ => {
-                match client
-                    .send_messages_with_image(
-                        &system_prompt,
-                        &conversation_history,
-                        &tool_definitions,
-                        image_path.as_deref(),
-                    )
-                    .await
-                {
-                    Ok(r) => r,
+        let response = {
+            // The streaming result either succeeded, or we fall through to cold-start.
+            // `first_call_result` is `Some(result)` when streaming was attempted;
+            // `None` means we should go straight to cold-start on attempt 1.
+            let mut first_call_result: Option<anyhow::Result<crate::claude::ApiResponse>> =
+                first_streaming_result;
+            let mut attempt: u32 = 0;
+
+            loop {
+                attempt += 1;
+
+                // On the first iteration, consume the pre-computed streaming result if
+                // available; on retries (attempt > 1) always go to cold-start directly.
+                let call_result: anyhow::Result<crate::claude::ApiResponse> =
+                    if let Some(r) = first_call_result.take() {
+                        match r {
+                            Ok(resp) => Ok(resp),
+                            Err(_e) => {
+                                // Streaming failed — fall back to cold-start on this attempt.
+                                client
+                                    .send_messages_with_image(
+                                        &system_prompt,
+                                        &conversation_history,
+                                        &tool_definitions,
+                                        image_path.as_deref(),
+                                    )
+                                    .await
+                            }
+                        }
+                    } else {
+                        // Retry attempt or first attempt without streaming.
+                        client
+                            .send_messages_with_image(
+                                &system_prompt,
+                                &conversation_history,
+                                &tool_definitions,
+                                image_path.as_deref(),
+                            )
+                            .await
+                    };
+
+                match call_result {
+                    Ok(r) => break r,
                     Err(e) => {
-                        // Emit Error event
+                        let error_class = classify_error(&e);
+
+                        if attempt < MAX_ATTEMPTS && is_retryable(&error_class) {
+                            // Intermediate retry — notify user and sleep backoff.
+                            let backoff_secs =
+                                BACKOFF_SECS[(attempt as usize - 1).min(BACKOFF_SECS.len() - 1)];
+
+                            tracing::warn!(
+                                error_class = ?error_class,
+                                attempt,
+                                worker_id = %task_id,
+                                backoff_secs,
+                                "worker Claude call failed — retrying"
+                            );
+
+                            if let Some(channel) = deps.channels.get("telegram") {
+                                let msg = OutboundMessage {
+                                    channel: "telegram".into(),
+                                    content: error_user_message(&error_class, attempt, MAX_ATTEMPTS),
+                                    reply_to: reply_to_id.clone(),
+                                    keyboard: None,
+                                };
+                                let _ = channel.send_message(msg).await;
+                            }
+
+                            tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+                            continue;
+                        }
+
+                        // Final failure — all retries exhausted or non-retryable error.
+                        tracing::error!(
+                            worker_id = %task_id,
+                            error_class = ?error_class,
+                            attempt = MAX_ATTEMPTS,
+                            raw_error = %e,
+                            "worker failed after all retries"
+                        );
+
                         let _ = event_tx.send(WorkerEvent::Error {
                             worker_id: task_id,
                             error: format!("Claude API failure: {e}"),
                         });
-                        // React with error
-                        if let (Some(tg), Some(chat_id), Some(msg_id)) = (&tg_client, tg_chat_id, tg_msg_id) {
-                            let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await; // red X
+
+                        // React with red X on the original user message.
+                        if let (Some(tg), Some(chat_id), Some(msg_id)) =
+                            (&tg_client, tg_chat_id, tg_msg_id)
+                        {
+                            let _ = tg.set_message_reaction(chat_id, msg_id, "\u{274C}").await;
                         }
-                        // Send user-friendly error to Telegram
+
+                        // Send final user-facing message to Telegram with optional Retry button.
                         if let Some(channel) = deps.channels.get("telegram") {
-                            let error_str = e.to_string();
-                            let user_msg = if error_str.contains("EOF while parsing")
-                                || error_str.contains("Broken pipe")
-                                || error_str.contains("closed stdout")
-                                || error_str.contains("process died")
-                            {
-                                "Something went wrong — please try again.".to_string()
-                            } else if error_str.contains("Timeout") || error_str.contains("timed out") {
-                                "That took too long — try a simpler request.".to_string()
-                            } else if error_str.contains("hit your limit") || error_str.contains("rate limit") {
-                                let reset_info = error_str
-                                    .split("resets ")
-                                    .nth(1)
-                                    .map(|s| s.trim_end_matches([')', '.']))
-                                    .map(|s| format!(" Resets at {s}."))
-                                    .unwrap_or_default();
-                                format!("\u{23F8}\u{FE0F} I've hit my usage limit for now.{reset_info} I'll be back shortly — try again later.")
-                            } else if error_str.contains("Not logged in") || error_str.contains("auth") {
-                                "\u{1F511} Authentication issue — check Claude CLI credentials.".to_string()
+                            let final_text =
+                                error_user_message(&error_class, MAX_ATTEMPTS, MAX_ATTEMPTS);
+                            // Auth failures do not get a Retry button — the user must fix
+                            // credentials first; a button would just fail again immediately.
+                            let keyboard = if matches!(error_class, crate::error_recovery::NovaError::AuthFailure) {
+                                None
                             } else {
-                                format!("\u{26A0} {e}")
+                                Some(retry_keyboard(&task.slug))
                             };
                             let msg = OutboundMessage {
                                 channel: "telegram".into(),
-                                content: user_msg,
+                                content: final_text,
                                 reply_to: reply_to_id.clone(),
-                                keyboard: None,
+                                keyboard,
                             };
                             let _ = channel.send_message(msg).await;
                         }
-                        // Send error to CLI channels
+
+                        // Forward error to CLI callers.
                         let err_msg = format!("API error: {e}");
                         for tx in task.cli_response_txs {
                             let _ = tx.send(err_msg.clone());

@@ -11,6 +11,7 @@
 // Declare all modules so the library target compiles cleanly.
 // These are needed because `tools` imports from sibling modules.
 mod account;
+mod error_recovery;
 mod aggregation;
 mod briefing_store;
 mod cc_sessions;

@@ -1,5 +1,6 @@
 mod account;
 mod anthropic;
+mod error_recovery;
 mod agent;
 mod aggregation;
 mod briefing_store;

@@ -871,9 +871,42 @@ impl Orchestrator {
                         continue;
                     }
 
-                    // Session error retry callback (stub — routing via nexus_err:)
-                    if let Some(_event_id) = data.strip_prefix("retry:") {
-                        tracing::debug!("retry callback (not yet implemented)");
+                    // Worker error retry callback — dispatch a new high-priority task
+                    // using the slug encoded in the callback data as the trigger text.
+                    if let Some(slug) = data.strip_prefix("retry:") {
+                        tracing::info!(slug, "retry callback received — dispatching new high-priority task");
+
+                        let retry_chat_id = tg_chat_id.or(self.telegram_chat_id);
+                        let task_id = Uuid::new_v4();
+                        let trigger_msg = nv_core::types::InboundMessage {
+                            id: format!("retry-{task_id}"),
+                            channel: "telegram".to_string(),
+                            sender: "user".to_string(),
+                            content: slug.to_string(),
+                            timestamp: chrono::Utc::now(),
+                            thread_id: None,
+                            metadata: {
+                                let mut m = serde_json::Map::new();
+                                if let Some(chat_id) = retry_chat_id {
+                                    m.insert("chat_id".to_string(), serde_json::json!(chat_id));
+                                }
+                                serde_json::Value::Object(m)
+                            },
+                        };
+
+                        let task = WorkerTask {
+                            id: task_id,
+                            triggers: vec![Trigger::Message(trigger_msg)],
+                            priority: Priority::High,
+                            created_at: std::time::Instant::now(),
+                            telegram_chat_id: retry_chat_id,
+                            telegram_message_id: None,
+                            cli_response_txs: vec![],
+                            is_edit_reply: false,
+                            editing_action_id: None,
+                            slug: slug.to_string(),
+                        };
+                        self.worker_pool.dispatch(task).await;
                         continue;
                     }
 

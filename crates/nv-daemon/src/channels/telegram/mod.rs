@@ -526,6 +526,8 @@ pub fn callback_label(data: Option<&str>) -> &'static str {
         "Editing..."
     } else if data.starts_with("cancel:") {
         "Cancelled."
+    } else if data.starts_with("retry:") {
+        "Retrying..."
     } else {
         "Got it."
     }
@@ -623,6 +625,7 @@ mod tests {
         assert_eq!(callback_label(Some("approve:abc-123")), "Working on it...");
         assert_eq!(callback_label(Some("edit:abc-123")), "Editing...");
         assert_eq!(callback_label(Some("cancel:abc-123")), "Cancelled.");
+        assert_eq!(callback_label(Some("retry:my-task-slug")), "Retrying...");
         assert_eq!(callback_label(Some("action:abc-123")), "Got it.");
         assert_eq!(callback_label(Some("unknown:xyz")), "Got it.");
         assert_eq!(callback_label(None), "Got it.");

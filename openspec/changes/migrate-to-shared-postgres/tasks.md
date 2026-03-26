@@ -21,5 +21,5 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Restart `nova-ts.service` and verify daemon health endpoint responds at `/health` [owner:e2e-engineer] [beads:nv-s3b0]
-- [ ] [4.2] Verify `docker compose up -d` succeeds with only the dashboard service (no postgres) [owner:e2e-engineer] [beads:nv-nvvv]
+- [x] [4.1] Restart `nova-ts.service` and verify daemon health endpoint responds at `/health` [owner:e2e-engineer] [beads:nv-s3b0]
+- [x] [4.2] Verify `docker compose up -d` succeeds with only the dashboard service (no postgres) [owner:e2e-engineer] [beads:nv-nvvv]

@@ -3,9 +3,9 @@
   "generated_by": "plan:roadmap",
   "project": "nv",
   "stack": "typescript",
-  "git_sha": "",
+  "git_sha": "9c04d02",
   "plan_dir": "docs/plan/nova-v10",
-  "execution_mode": "sequential-apply",
+  "execution_mode": "consolidated",
   "spec_names": [
     "scaffold-tool-service",
     "add-schedule-tables",
@@ -31,59 +31,849 @@
     "restructure-navigation"
   ],
   "specs": [
-    {"name": "scaffold-tool-service", "wave": 1, "priority": "P1", "phase": 1, "feature_area": "infrastructure", "files": ["packages/tools/service-template/"], "conflicts_with": [], "depends_on": []},
-    {"name": "add-schedule-tables", "wave": 1, "priority": "P1", "phase": 1, "feature_area": "database", "files": ["packages/db/src/schema/"], "conflicts_with": [], "depends_on": []},
-    {"name": "migrate-to-shared-postgres", "wave": 1, "priority": "P1", "phase": 1, "feature_area": "infrastructure", "files": ["docker-compose.yml", "packages/db/drizzle/"], "conflicts_with": [], "depends_on": []},
-    {"name": "add-tool-router", "wave": 2, "priority": "P1", "phase": 1, "feature_area": "infrastructure", "files": ["packages/tools/tool-router/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service"]},
-    {"name": "add-fleet-deploy", "wave": 2, "priority": "P1", "phase": 1, "feature_area": "deploy", "files": ["deploy/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service"]},
-    {"name": "add-memory-svc", "wave": 3, "priority": "P1", "phase": 2, "feature_area": "tools", "files": ["packages/tools/memory-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service", "migrate-to-shared-postgres"]},
-    {"name": "add-messages-svc", "wave": 3, "priority": "P1", "phase": 2, "feature_area": "tools", "files": ["packages/tools/messages-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service", "migrate-to-shared-postgres"]},
-    {"name": "add-channels-svc", "wave": 3, "priority": "P1", "phase": 2, "feature_area": "tools", "files": ["packages/tools/channels-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service"]},
-    {"name": "add-discord-svc", "wave": 4, "priority": "P2", "phase": 3, "feature_area": "tools", "files": ["packages/tools/discord-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service", "add-channels-svc"]},
-    {"name": "add-teams-svc", "wave": 4, "priority": "P1", "phase": 3, "feature_area": "tools", "files": ["packages/tools/teams-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service"]},
-    {"name": "add-graph-svc", "wave": 4, "priority": "P1", "phase": 3, "feature_area": "tools", "files": ["packages/tools/graph-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service"]},
-    {"name": "add-schedule-svc", "wave": 5, "priority": "P2", "phase": 4, "feature_area": "tools", "files": ["packages/tools/schedule-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service", "add-schedule-tables"]},
-    {"name": "add-meta-svc", "wave": 5, "priority": "P2", "phase": 4, "feature_area": "tools", "files": ["packages/tools/meta-svc/"], "conflicts_with": [], "depends_on": ["scaffold-tool-service"]},
-    {"name": "slim-daemon", "wave": 6, "priority": "P1", "phase": 5, "feature_area": "daemon", "files": ["packages/daemon/src/"], "conflicts_with": ["wire-conversation-history"], "depends_on": ["add-tool-router"]},
-    {"name": "wire-conversation-history", "wave": 6, "priority": "P1", "phase": 5, "feature_area": "daemon", "files": ["packages/daemon/src/index.ts", "packages/daemon/src/brain/"], "conflicts_with": ["slim-daemon"], "depends_on": []},
-    {"name": "register-mcp-servers", "wave": 6, "priority": "P1", "phase": 5, "feature_area": "infrastructure", "files": ["deploy/", "config/"], "conflicts_with": [], "depends_on": ["add-memory-svc", "add-messages-svc", "add-channels-svc"]},
-    {"name": "add-dashboard-auth", "wave": 7, "priority": "P2", "phase": 6, "feature_area": "dashboard", "files": ["apps/dashboard/"], "conflicts_with": [], "depends_on": []},
-    {"name": "improve-messages-ux", "wave": 7, "priority": "P3", "phase": 6, "feature_area": "dashboard", "files": ["apps/dashboard/"], "conflicts_with": [], "depends_on": []},
-    {"name": "improve-obligation-ux", "wave": 7, "priority": "P3", "phase": 6, "feature_area": "dashboard", "files": ["apps/dashboard/"], "conflicts_with": [], "depends_on": []},
-    {"name": "improve-system-pages", "wave": 7, "priority": "P3", "phase": 6, "feature_area": "dashboard", "files": ["apps/dashboard/"], "conflicts_with": [], "depends_on": []},
-    {"name": "polish-dashboard", "wave": 7, "priority": "P3", "phase": 6, "feature_area": "dashboard", "files": ["apps/dashboard/"], "conflicts_with": [], "depends_on": []},
-    {"name": "restructure-navigation", "wave": 7, "priority": "P3", "phase": 6, "feature_area": "dashboard", "files": ["apps/dashboard/"], "conflicts_with": [], "depends_on": []}
+    {
+      "name": "scaffold-tool-service",
+      "wave": 1,
+      "priority": "P1",
+      "phase": 1,
+      "feature_area": "infrastructure",
+      "files": [
+        "packages/tools/service-template/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "add-schedule-tables",
+      "wave": 1,
+      "priority": "P1",
+      "phase": 1,
+      "feature_area": "database",
+      "files": [
+        "packages/db/src/schema/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "migrate-to-shared-postgres",
+      "wave": 1,
+      "priority": "P1",
+      "phase": 1,
+      "feature_area": "infrastructure",
+      "files": [
+        "docker-compose.yml",
+        "packages/db/drizzle/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "add-tool-router",
+      "wave": 2,
+      "priority": "P1",
+      "phase": 1,
+      "feature_area": "infrastructure",
+      "files": [
+        "packages/tools/tool-router/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service"
+      ]
+    },
+    {
+      "name": "add-fleet-deploy",
+      "wave": 2,
+      "priority": "P1",
+      "phase": 1,
+      "feature_area": "deploy",
+      "files": [
+        "deploy/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service"
+      ]
+    },
+    {
+      "name": "add-memory-svc",
+      "wave": 3,
+      "priority": "P1",
+      "phase": 2,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/memory-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service",
+        "migrate-to-shared-postgres"
+      ]
+    },
+    {
+      "name": "add-messages-svc",
+      "wave": 3,
+      "priority": "P1",
+      "phase": 2,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/messages-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service",
+        "migrate-to-shared-postgres"
+      ]
+    },
+    {
+      "name": "add-channels-svc",
+      "wave": 3,
+      "priority": "P1",
+      "phase": 2,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/channels-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service"
+      ]
+    },
+    {
+      "name": "add-discord-svc",
+      "wave": 4,
+      "priority": "P2",
+      "phase": 3,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/discord-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service",
+        "add-channels-svc"
+      ]
+    },
+    {
+      "name": "add-teams-svc",
+      "wave": 4,
+      "priority": "P1",
+      "phase": 3,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/teams-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service"
+      ]
+    },
+    {
+      "name": "add-graph-svc",
+      "wave": 4,
+      "priority": "P1",
+      "phase": 3,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/graph-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service"
+      ]
+    },
+    {
+      "name": "add-schedule-svc",
+      "wave": 5,
+      "priority": "P2",
+      "phase": 4,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/schedule-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service",
+        "add-schedule-tables"
+      ]
+    },
+    {
+      "name": "add-meta-svc",
+      "wave": 6,
+      "priority": "P2",
+      "phase": 4,
+      "feature_area": "tools",
+      "files": [
+        "packages/tools/meta-svc/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "scaffold-tool-service"
+      ]
+    },
+    {
+      "name": "slim-daemon",
+      "wave": 7,
+      "priority": "P1",
+      "phase": 5,
+      "feature_area": "daemon",
+      "files": [
+        "packages/daemon/src/"
+      ],
+      "conflicts_with": [
+        "wire-conversation-history"
+      ],
+      "depends_on": [
+        "add-tool-router"
+      ]
+    },
+    {
+      "name": "register-mcp-servers",
+      "wave": 7,
+      "priority": "P1",
+      "phase": 5,
+      "feature_area": "infrastructure",
+      "files": [
+        "deploy/",
+        "config/"
+      ],
+      "conflicts_with": [],
+      "depends_on": [
+        "add-memory-svc",
+        "add-messages-svc",
+        "add-channels-svc"
+      ]
+    },
+    {
+      "name": "wire-conversation-history",
+      "wave": 8,
+      "priority": "P1",
+      "phase": 5,
+      "feature_area": "daemon",
+      "files": [
+        "packages/daemon/src/index.ts",
+        "packages/daemon/src/brain/"
+      ],
+      "conflicts_with": [
+        "slim-daemon"
+      ],
+      "depends_on": []
+    },
+    {
+      "name": "add-dashboard-auth",
+      "wave": 9,
+      "priority": "P2",
+      "phase": 6,
+      "feature_area": "dashboard",
+      "files": [
+        "apps/dashboard/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "improve-messages-ux",
+      "wave": 9,
+      "priority": "P3",
+      "phase": 6,
+      "feature_area": "dashboard",
+      "files": [
+        "apps/dashboard/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "polish-dashboard",
+      "wave": 9,
+      "priority": "P3",
+      "phase": 6,
+      "feature_area": "dashboard",
+      "files": [
+        "apps/dashboard/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "improve-obligation-ux",
+      "wave": 10,
+      "priority": "P3",
+      "phase": 6,
+      "feature_area": "dashboard",
+      "files": [
+        "apps/dashboard/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "improve-system-pages",
+      "wave": 10,
+      "priority": "P3",
+      "phase": 6,
+      "feature_area": "dashboard",
+      "files": [
+        "apps/dashboard/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    },
+    {
+      "name": "restructure-navigation",
+      "wave": 10,
+      "priority": "P3",
+      "phase": 6,
+      "feature_area": "dashboard",
+      "files": [
+        "apps/dashboard/"
+      ],
+      "conflicts_with": [],
+      "depends_on": []
+    }
   ],
   "dependency_map": {
-    "add-tool-router": ["scaffold-tool-service"],
-    "add-fleet-deploy": ["scaffold-tool-service"],
-    "add-memory-svc": ["scaffold-tool-service", "migrate-to-shared-postgres"],
-    "add-messages-svc": ["scaffold-tool-service", "migrate-to-shared-postgres"],
-    "add-channels-svc": ["scaffold-tool-service"],
-    "add-discord-svc": ["scaffold-tool-service", "add-channels-svc"],
-    "add-teams-svc": ["scaffold-tool-service"],
-    "add-graph-svc": ["scaffold-tool-service"],
-    "add-schedule-svc": ["scaffold-tool-service", "add-schedule-tables"],
-    "add-meta-svc": ["scaffold-tool-service"],
-    "slim-daemon": ["add-tool-router"],
-    "register-mcp-servers": ["add-memory-svc", "add-messages-svc", "add-channels-svc"]
+    "add-tool-router": [
+      "scaffold-tool-service"
+    ],
+    "add-fleet-deploy": [
+      "scaffold-tool-service"
+    ],
+    "add-memory-svc": [
+      "scaffold-tool-service",
+      "migrate-to-shared-postgres"
+    ],
+    "add-messages-svc": [
+      "scaffold-tool-service",
+      "migrate-to-shared-postgres"
+    ],
+    "add-channels-svc": [
+      "scaffold-tool-service"
+    ],
+    "add-discord-svc": [
+      "scaffold-tool-service",
+      "add-channels-svc"
+    ],
+    "add-teams-svc": [
+      "scaffold-tool-service"
+    ],
+    "add-graph-svc": [
+      "scaffold-tool-service"
+    ],
+    "add-schedule-svc": [
+      "scaffold-tool-service",
+      "add-schedule-tables"
+    ],
+    "add-meta-svc": [
+      "scaffold-tool-service"
+    ],
+    "slim-daemon": [
+      "add-tool-router"
+    ],
+    "register-mcp-servers": [
+      "add-memory-svc",
+      "add-messages-svc",
+      "add-channels-svc"
+    ]
   },
   "waves": [
-    {"number": 1, "label": "Wave 1 — Foundation + DB Migration", "specs": [{"name": "scaffold-tool-service"}, {"name": "add-schedule-tables"}, {"name": "migrate-to-shared-postgres"}]},
-    {"number": 2, "label": "Wave 2 — Router + Deploy", "specs": [{"name": "add-tool-router"}, {"name": "add-fleet-deploy"}]},
-    {"number": 3, "label": "Wave 3 — Core Tools", "specs": [{"name": "add-memory-svc"}, {"name": "add-messages-svc"}, {"name": "add-channels-svc"}]},
-    {"number": 4, "label": "Wave 4 — Communication Tools", "specs": [{"name": "add-discord-svc"}, {"name": "add-teams-svc"}, {"name": "add-graph-svc"}]},
-    {"number": 5, "label": "Wave 5 — Automation Tools", "specs": [{"name": "add-schedule-svc"}, {"name": "add-meta-svc"}]},
-    {"number": 6, "label": "Wave 6 — Daemon Refactor + MCP", "specs": [{"name": "slim-daemon"}, {"name": "wire-conversation-history"}, {"name": "register-mcp-servers"}]},
-    {"number": 7, "label": "Wave 7 — Dashboard", "specs": [{"name": "add-dashboard-auth"}, {"name": "improve-messages-ux"}, {"name": "improve-obligation-ux"}, {"name": "improve-system-pages"}, {"name": "polish-dashboard"}, {"name": "restructure-navigation"}]}
+    {
+      "number": 1,
+      "label": "Wave 1 \u2014 Foundation + DB Migration",
+      "specs": [
+        {
+          "name": "scaffold-tool-service",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-26T17:41:11.058262"
+        },
+        {
+          "name": "add-schedule-tables",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-26T17:41:11.058263"
+        },
+        {
+          "name": "migrate-to-shared-postgres",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-26T17:41:11.058264"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "label": "Wave 2 \u2014 Router + Deploy",
+      "specs": [
+        {
+          "name": "add-tool-router",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-fleet-deploy",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "label": "Wave 3 \u2014 Core Tools",
+      "specs": [
+        {
+          "name": "add-memory-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-messages-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-channels-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "label": "Wave 4 \u2014 Communication Tools",
+      "specs": [
+        {
+          "name": "add-discord-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-teams-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-graph-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "label": "Wave 5 \u2014 Schedule Service",
+      "specs": [
+        {
+          "name": "add-schedule-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "label": "Wave 6 \u2014 Meta Service",
+      "specs": [
+        {
+          "name": "add-meta-svc",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 7,
+      "label": "Wave 7 \u2014 Daemon Slim + MCP Registration",
+      "specs": [
+        {
+          "name": "slim-daemon",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "register-mcp-servers",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 8,
+      "label": "Wave 8 \u2014 Conversation History",
+      "specs": [
+        {
+          "name": "wire-conversation-history",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 9,
+      "label": "Wave 9 \u2014 Dashboard Auth + Polish A",
+      "specs": [
+        {
+          "name": "add-dashboard-auth",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "improve-messages-ux",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "polish-dashboard",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 10,
+      "label": "Wave 10 \u2014 Dashboard Polish B",
+      "specs": [
+        {
+          "name": "improve-obligation-ux",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "improve-system-pages",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "restructure-navigation",
+          "status": "queued",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    }
   ],
   "decisions": [
-    {"date": "2026-03-26", "decision": "SSH to CloudPC is primary for all MS Graph operations", "rationale": "Direct Graph API CLIs are unproven with real creds. SSH is the proven Rust pattern.", "source": "user"},
-    {"date": "2026-03-26", "decision": "Dual HTTP + MCP per service", "rationale": "Dashboard calls HTTP, Agent SDK uses MCP native discovery. Both transports from day one.", "source": "user"},
-    {"date": "2026-03-26", "decision": "Traefik-exposed services", "rationale": "Dashboard (Docker) needs direct access to tool services.", "source": "user"},
-    {"date": "2026-03-26", "decision": "Slim daemon — keep Telegram + agent dispatch only", "rationale": "All tool logic moves to fleet. Daemon is just the message pump.", "source": "user"},
-    {"date": "2026-03-26", "decision": "Include all dashboard work in v10", "rationale": "User wants auth + 5 polish specs alongside fleet build.", "source": "user"},
-    {"date": "2026-03-26", "decision": "Migrate to shared homelab Postgres", "rationale": "Shared pgvector instance at port 5436 already hosts other project DBs. Consolidate.", "source": "user"},
-    {"date": "2026-03-26", "decision": "Sequential /apply per spec", "rationale": "Proven reliable from v9. Most waves have 2-3 specs.", "source": "system"}
-  ]
+    {
+      "date": "2026-03-26",
+      "decision": "SSH to CloudPC is primary for all MS Graph operations",
+      "rationale": "Direct Graph API CLIs are unproven with real creds. SSH is the proven Rust pattern.",
+      "source": "user"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Dual HTTP + MCP per service",
+      "rationale": "Dashboard calls HTTP, Agent SDK uses MCP native discovery. Both transports from day one.",
+      "source": "user"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Traefik-exposed services",
+      "rationale": "Dashboard (Docker) needs direct access to tool services.",
+      "source": "user"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Slim daemon \u2014 keep Telegram + agent dispatch only",
+      "rationale": "All tool logic moves to fleet. Daemon is just the message pump.",
+      "source": "user"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Include all dashboard work in v10",
+      "rationale": "User wants auth + 5 polish specs alongside fleet build.",
+      "source": "user"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Migrate to shared homelab Postgres",
+      "rationale": "Shared pgvector instance at port 5436 already hosts other project DBs. Consolidate.",
+      "source": "user"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Sequential /apply per spec",
+      "rationale": "Proven reliable from v9. Most waves have 2-3 specs.",
+      "source": "system"
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Split waves 5-7 into 10 sub-waves for mega-batch execution",
+      "rationale": "Wave 5 had meta-svc at 74% dominant (39/53 tasks). Wave 6 had file conflicts (slim-daemon vs wire-conversation-history). Wave 7 had 56 tasks >40 limit. Split resolves all guardrail violations.",
+      "source": "guardrail",
+      "affected_waves": [
+        5,
+        6,
+        7
+      ],
+      "affected_specs": [
+        "add-meta-svc",
+        "slim-daemon",
+        "wire-conversation-history",
+        "add-dashboard-auth",
+        "improve-obligation-ux",
+        "improve-system-pages",
+        "restructure-navigation"
+      ]
+    },
+    {
+      "date": "2026-03-26",
+      "decision": "Override >40 task limit for waves 3 (51) and 4 (42)",
+      "rationale": "User chose mega-batch with splits. Waves 3 and 4 are borderline and specs touch non-overlapping directories.",
+      "source": "user",
+      "affected_waves": [
+        3,
+        4
+      ]
+    }
+  ],
+  "status": "in_progress",
+  "current_wave": 2,
+  "started_at": "2026-03-26T17:15:08.767015",
+  "completed_at": null,
+  "completed_waves": [
+    1
+  ],
+  "completed_specs": [
+    "scaffold-tool-service",
+    "add-schedule-tables",
+    "migrate-to-shared-postgres"
+  ],
+  "failed_specs": [],
+  "mode": "consolidated",
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [
+      "DB",
+      "API",
+      "E2E"
+    ],
+    "task_results": {
+      "scaffold-tool-service": {},
+      "add-schedule-tables": {},
+      "migrate-to-shared-postgres": {},
+      "add-tool-router": {},
+      "add-fleet-deploy": {},
+      "add-memory-svc": {},
+      "add-messages-svc": {},
+      "add-channels-svc": {},
+      "add-discord-svc": {},
+      "add-teams-svc": {},
+      "add-graph-svc": {},
+      "add-schedule-svc": {},
+      "add-meta-svc": {},
+      "slim-daemon": {},
+      "register-mcp-servers": {},
+      "wire-conversation-history": {},
+      "add-dashboard-auth": {},
+      "improve-messages-ux": {},
+      "polish-dashboard": {},
+      "improve-obligation-ux": {},
+      "improve-system-pages": {},
+      "restructure-navigation": {}
+    },
+    "phase_started_at": {
+      "DB": "2026-03-26T17:30:40.804238",
+      "API": "2026-03-26T17:32:49.225485"
+    },
+    "phase_completed_at": {
+      "DB": "2026-03-26T17:32:49.225480",
+      "API": "2026-03-26T17:38:33.954481",
+      "E2E": "2026-03-26T17:41:11.058252"
+    }
+  }
 }

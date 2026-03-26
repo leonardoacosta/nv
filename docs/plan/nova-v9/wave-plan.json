@@ -354,7 +354,7 @@
       "specs": [
         {
           "name": "add-http-api",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -363,12 +363,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:42:01.031298",
+          "merged_at": "2026-03-26T12:49:08.708219"
         },
         {
           "name": "add-systemd-service",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -377,8 +377,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-26T12:42:01.031304",
+          "merged_at": "2026-03-26T12:49:08.708227"
         }
       ]
     },
@@ -586,18 +586,21 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 3,
+  "current_wave": 4,
   "started_at": "2026-03-26T12:21:27.410133",
   "completed_at": null,
   "completed_waves": [
     1,
-    2
+    2,
+    3
   ],
   "completed_specs": [
     "scaffold-ts-daemon",
     "setup-postgres-drizzle",
     "add-telegram-adapter",
-    "add-agent-sdk-integration"
+    "add-agent-sdk-integration",
+    "add-http-api",
+    "add-systemd-service"
   ],
   "failed_specs": [],
   "mode": "consolidated",

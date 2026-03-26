@@ -1,0 +1,30 @@
+{
+  "name": "@nova/messages-svc",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "dev": "tsx --watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.11",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@nova/db": "workspace:*",
+    "drizzle-orm": "^0.39.3",
+    "hono": "^4.12.9",
+    "pino": "^9.5.0",
+    "postgres": "^3.4.5",
+    "zod": "^3.25.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

@@ -276,7 +276,9 @@ impl SpawnConfig {
 async fn drain_init_events(
     stdout: &mut BufReader<ChildStdout>,
 ) -> Result<Option<String>, ApiError> {
-    let drain_timeout = Duration::from_secs(20);
+    // 5s is enough for SessionStart hooks to emit their system events.
+    // Previously 20s — caused unnecessary delay when hooks were slow.
+    let drain_timeout = Duration::from_secs(5);
     let mut line = String::new();
 
     loop {

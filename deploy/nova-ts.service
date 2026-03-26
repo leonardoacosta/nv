@@ -1,0 +1,16 @@
+[Unit]
+Description=Nova TypeScript Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=doppler run --project nova --config prd -- node %h/.local/lib/nova-ts/dist/index.js
+Environment=NODE_ENV=production
+Environment=ANTHROPIC_BASE_URL=https://ai-gateway.vercel.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

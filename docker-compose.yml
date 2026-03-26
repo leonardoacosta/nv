@@ -6,9 +6,9 @@ services:
     expose:
       - "3000"
     environment:
-      - DAEMON_URL=http://nv-daemon:3443
-    depends_on:
-      - nv-daemon
+      - DAEMON_URL=http://host.docker.internal:3443
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -16,8 +16,8 @@ services:
       - "traefik.http.routers.nova-dashboard.entrypoints=web"
       - "traefik.http.services.nova-dashboard.loadbalancer.server.port=3000"
     networks:
-      - traefik
+      - homelab
 
 networks:
-  traefik:
+  homelab:
     external: true

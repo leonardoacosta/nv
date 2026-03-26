@@ -3,10 +3,21 @@ services:
     build:
       context: apps/dashboard
       dockerfile: Dockerfile
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
       - DAEMON_URL=http://nv-daemon:3443
     depends_on:
       - nv-daemon
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nova-dashboard.rule=Host(`nova.local`)"
+      - "traefik.http.routers.nova-dashboard.entrypoints=web"
+      - "traefik.http.services.nova-dashboard.loadbalancer.server.port=3000"
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    external: true

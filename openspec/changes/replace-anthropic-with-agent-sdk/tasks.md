@@ -9,10 +9,10 @@
 
 ## API Batch — Python Sidecar Scripts
 
-- [ ] [2.1] [P-1] Create `scripts/agent-sidecar.py` — long-running process reading JSON from stdin, calling `claude_agent_sdk.query()` with system_prompt + prompt + custom MCP server, writing JSON response to stdout; handle timeouts via `max_turns` and asyncio timeout; log errors to stderr [owner:api-engineer]
-- [ ] [2.2] [P-1] Create `scripts/nova-tools-mcp.py` — MCP server module using `claude_agent_sdk.create_sdk_mcp_server` that registers all Nova tools (from the tools list in the request) and executes them via HTTP POST to `http://127.0.0.1:8400/api/tool-call`; import as module in agent-sidecar.py [owner:api-engineer]
-- [ ] [2.3] [P-2] Handle tool definitions dynamically — each sidecar request includes a `tools` array; the MCP server registers those tools for that request's `query()` call [owner:api-engineer]
-- [ ] [2.4] [P-2] Add graceful shutdown — catch SIGTERM, cancel any in-flight query, flush stdout, exit cleanly [owner:api-engineer]
+- [x] [2.1] [P-1] Create `scripts/agent-sidecar.py` — long-running process reading JSON from stdin, calling `claude_agent_sdk.query()` with system_prompt + prompt + custom MCP server, writing JSON response to stdout; handle timeouts via `max_turns` and asyncio timeout; log errors to stderr [owner:api-engineer]
+- [x] [2.2] [P-1] Create `scripts/nova-tools-mcp.py` — MCP server module using `claude_agent_sdk.create_sdk_mcp_server` that registers all Nova tools (from the tools list in the request) and executes them via HTTP POST to `http://127.0.0.1:8400/api/tool-call`; import as module in agent-sidecar.py [owner:api-engineer]
+- [x] [2.3] [P-2] Handle tool definitions dynamically — each sidecar request includes a `tools` array; the MCP server registers those tools for that request's `query()` call [owner:api-engineer]
+- [x] [2.4] [P-2] Add graceful shutdown — catch SIGTERM, cancel any in-flight query, flush stdout, exit cleanly [owner:api-engineer]
 
 ## API Batch — Rust Sidecar Manager
 
@@ -30,7 +30,7 @@
 
 ## Deploy
 
-- [ ] [5.1] [P-1] Add `pip3 install claude-agent-sdk` to `deploy/install.sh` [owner:api-engineer]
+- [x] [5.1] [P-1] Add `pip3 install claude-agent-sdk` to `deploy/install.sh` [owner:api-engineer]
 - [ ] [5.2] [P-2] Add sidecar health check — on daemon startup, send a no-op test request to verify sidecar is responsive; log result [owner:api-engineer]
 
 ## Verify

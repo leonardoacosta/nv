@@ -66,6 +66,13 @@ if [ ! -f "$NV_DIR/bootstrap-state.json" ]; then
     echo "    Copied bootstrap.md (first-run template)"
 fi
 
+# ── Python Agent SDK Sidecar ─────────────────────────────────────────
+
+echo "==> Installing claude-agent-sdk (Python Agent SDK)..."
+pipx install claude-agent-sdk 2>/dev/null || \
+  pip3 install claude-agent-sdk --break-system-packages 2>/dev/null || \
+  { echo "    WARNING: Failed to install claude-agent-sdk — sidecar will not function"; }
+
 # ── Discord Relay Bot ────────────────────────────────────────────────
 
 echo "==> Setting up Discord relay..."

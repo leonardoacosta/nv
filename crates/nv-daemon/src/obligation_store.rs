@@ -398,12 +398,11 @@ impl ObligationStore {
     /// Stores a timestamped entry recording what happened during an execution attempt
     /// (success summary or failure reason).
     pub fn append_execution_note(&self, obligation_id: &str, note: &str) -> Result<()> {
-        let note_id = Uuid::new_v4().to_string();
         self.conn.execute(
             "INSERT INTO obligation_notes
-                (id, obligation_id, note_type, content, created_at)
-             VALUES (?1, ?2, 'execution', ?3, datetime('now'))",
-            params![note_id, obligation_id, note],
+                (obligation_id, note_type, content, created_at)
+             VALUES (?1, 'execution', ?2, datetime('now'))",
+            params![obligation_id, note],
         )?;
         Ok(())
     }

@@ -99,8 +99,15 @@ pub fn build_obligation_context(obligation: &Obligation, research_summary: Optio
          Priority: {priority_label}\n\
          {project_info}{source_info}Obligation: {action}\
          {research_info}\n\
-         Use your tools to fulfill this obligation completely. \
-         When done, summarize what you accomplished in 2-3 sentences. \
+         IMPORTANT: You MUST use your tools to fulfill this obligation. Do NOT just \
+         describe what you would do — actually call the tools. For example:\
+         \n- Need Teams data? Call teams_list_chats, teams_read_chat, teams_messages\
+         \n- Need Jira data? Call jira_search, jira_get\
+         \n- Need to save findings? Call write_memory\
+         \n- Need Outlook? Call read_outlook_inbox, read_outlook_calendar\
+         \n- Need ADO? Call query_ado_work_items\
+         \nYou have full tool access. Use tool_use blocks, not text descriptions. \
+         After completing the work, summarize what you accomplished in 2-3 sentences. \
          Do not ask for confirmation — act directly.",
         base = base,
         id = obligation.id,

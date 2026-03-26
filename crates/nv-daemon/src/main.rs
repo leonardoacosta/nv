@@ -954,9 +954,10 @@ async fn main() -> anyhow::Result<()> {
     let diary_for_http = Arc::clone(&diary_writer);
     // Clone TeamAgentDispatcher for the HTTP server (cheaply cloned via Arc internally).
     let dispatcher_for_http = team_agent_dispatcher.clone();
-    // Clone project registry and config path for the HTTP server.
+    // Clone project registry, config path, and memory base path for the HTTP server.
     let project_registry_for_http = config.projects.clone();
     let config_path_for_http = nv_core::config::Config::default_path().ok();
+    let memory_base_path_for_http = Some(nv_base.join("memory"));
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -977,6 +978,7 @@ async fn main() -> anyhow::Result<()> {
             dispatcher_for_http,
             project_registry_for_http,
             config_path_for_http,
+            memory_base_path_for_http,
         )
         .await
         {

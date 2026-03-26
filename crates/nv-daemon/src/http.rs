@@ -105,6 +105,8 @@ pub struct HttpState {
     pub project_registry: HashMap<String, PathBuf>,
     /// Path to the daemon config file (nv.toml). Used by GET /api/config.
     pub config_path: Option<PathBuf>,
+    /// Base path of the memory directory (`~/.nv/memory`). Used by GET/PUT /api/memory.
+    pub memory_base_path: Option<PathBuf>,
 }
 
 /// Request body for POST /ask.
@@ -145,6 +147,8 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/api/obligations/{id}", patch(patch_obligation_handler))
         .route("/api/projects", get(get_projects_handler))
         .route("/api/config", get(get_config_handler).put(put_config_handler))
+        .route("/api/memory", get(get_memory_handler).put(put_memory_handler))
+        .route("/api/solve", post(post_solve_handler))
         .route("/api/approvals/{id}/approve", post(approve_obligation_handler))
         .route("/api/cc-sessions", get(get_cc_sessions_handler))
         // Contact CRUD
@@ -1127,6 +1131,168 @@ async fn put_config_handler(
         .into_response()
 }
 
+// ── GET /api/memory + PUT /api/memory ────────────────────────────────
+
+/// Query parameters for GET /api/memory.
+#[derive(Debug, Deserialize, Default)]
+pub struct MemoryQuery {
+    pub topic: Option<String>,
+}
+
+/// Request body for PUT /api/memory.
+#[derive(Debug, Deserialize)]
+pub struct PutMemoryRequest {
+    pub topic: String,
+    pub content: String,
+}
+
+/// GET /api/memory — list topics or read a specific topic.
+///
+/// Without `?topic=`: returns `{ "topics": ["<name>", ...] }`.
+/// With `?topic=<name>`: returns `{ "topic": "<name>", "content": "<text>" }`.
+/// Returns 404 if the requested topic does not exist.
+/// Returns 503 if the memory path is not configured.
+async fn get_memory_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<MemoryQuery>,
+) -> impl IntoResponse {
+    let base_path = match &state.memory_base_path {
+        Some(p) => p.clone(),
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "Memory not configured"})),
+            )
+                .into_response();
+        }
+    };
+
+    let memory = crate::memory::Memory::from_base_path(base_path);
+
+    match query.topic {
+        Some(topic) => {
+            // Check if the topic file exists before reading.
+            let filename = topic
+                .chars()
+                .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+                .collect::<String>()
+                .to_lowercase();
+            let topic_path = memory.base_path.join(format!("{filename}.md"));
+            if !topic_path.exists() {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "Topic not found"})),
+                )
+                    .into_response();
+            }
+            match memory.read(&topic) {
+                Ok(content) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({"topic": topic, "content": content})),
+                )
+                    .into_response(),
+                Err(e) => {
+                    tracing::warn!(topic = %topic, error = %e, "get_memory: read failed");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to read topic: {e}")})),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        None => match memory.list_topics() {
+            Ok(topics) => (
+                StatusCode::OK,
+                Json(serde_json::json!({"topics": topics})),
+            )
+                .into_response(),
+            Err(e) => {
+                tracing::warn!(error = %e, "get_memory: list_topics failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("Failed to list topics: {e}")})),
+                )
+                    .into_response()
+            }
+        },
+    }
+}
+
+/// PUT /api/memory — write content to a memory topic.
+///
+/// Accepts `{ "topic": "<name>", "content": "<text>" }`.
+/// Returns `{ "topic": "<name>", "written": <byte_count> }` on success.
+/// Returns 503 if the memory path is not configured.
+async fn put_memory_handler(
+    State(state): State<Arc<HttpState>>,
+    Json(body): Json<PutMemoryRequest>,
+) -> impl IntoResponse {
+    let base_path = match &state.memory_base_path {
+        Some(p) => p.clone(),
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({"error": "Memory not configured"})),
+            )
+                .into_response();
+        }
+    };
+
+    let memory = crate::memory::Memory::from_base_path(base_path);
+    let byte_count = body.content.len();
+
+    match memory.write(&body.topic, &body.content) {
+        Ok(_) => {
+            tracing::info!(topic = %body.topic, bytes = byte_count, "memory topic written via PUT /api/memory");
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({"topic": body.topic, "written": byte_count})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!(topic = %body.topic, error = %e, "put_memory: write failed");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to write topic: {e}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── POST /api/solve ───────────────────────────────────────────────────
+
+/// Request body for POST /api/solve.
+#[derive(Debug, Deserialize)]
+pub struct SolveRequest {
+    pub project: String,
+    pub error: String,
+    pub context: Option<String>,
+}
+
+/// POST /api/solve — start a solve session for a project error.
+///
+/// Accepts `{ "project": "<code>", "error": "<message>", "context": "<optional>" }`.
+/// Returns `{ "session_id": "<uuid>" }` immediately.
+/// Full session wiring (Claude Code invocation) is out of scope for this iteration.
+async fn post_solve_handler(
+    State(_state): State<Arc<HttpState>>,
+    Json(body): Json<SolveRequest>,
+) -> impl IntoResponse {
+    let session_id = uuid::Uuid::new_v4().to_string();
+    tracing::info!(
+        project = %body.project,
+        session_id = %session_id,
+        "solve session initiated via POST /api/solve"
+    );
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({"session_id": session_id})),
+    )
+}
+
 /// Response body for `POST /api/approvals/:id/approve`.
 #[derive(Debug, Serialize)]
 pub struct ApproveResponse {
@@ -1362,6 +1528,7 @@ pub async fn run_http_server(
     dispatcher: Option<TeamAgentDispatcher>,
     project_registry: HashMap<String, PathBuf>,
     config_path: Option<PathBuf>,
+    memory_base_path: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -1381,6 +1548,7 @@ pub async fn run_http_server(
         dispatcher,
         project_registry,
         config_path,
+        memory_base_path,
     });
     let app = build_router(state);
 
@@ -1825,6 +1993,7 @@ mod tests {
             dispatcher: None,
             project_registry: HashMap::new(),
             config_path: None,
+            memory_base_path: None,
         });
         (state, rx, tmp)
     }
@@ -2053,6 +2222,7 @@ mod tests {
             dispatcher: None,
             project_registry: HashMap::new(),
             config_path: None,
+            memory_base_path: None,
         });
         (state, rx, tmp)
     }
@@ -2109,6 +2279,7 @@ mod tests {
             dispatcher: None,
             project_registry: HashMap::new(),
             config_path: None,
+            memory_base_path: None,
         });
         drop(rx);
 
@@ -2167,6 +2338,7 @@ mod tests {
             dispatcher: None,
             project_registry: HashMap::new(),
             config_path: None,
+            memory_base_path: None,
         });
         drop(rx);
 
@@ -2203,5 +2375,127 @@ mod tests {
 
         let response = app.oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    // ── Memory endpoint tests [4.1] ──────────────────────────────────
+
+    fn setup_with_memory() -> (Arc<HttpState>, mpsc::UnboundedReceiver<Trigger>, tempfile::TempDir) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let health = Arc::new(HealthState::new());
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = tmp.path().join("messages.db");
+        let _store = MessageStore::init(&db_path).unwrap();
+
+        // Initialise a memory directory inside the temp dir.
+        let mem = crate::memory::Memory::new(tmp.path());
+        mem.init().unwrap();
+
+        let (event_tx, _event_rx) = broadcast::channel(64);
+        let state = Arc::new(HttpState {
+            trigger_tx: tx,
+            health,
+            stats_db_path: db_path,
+            teams_message_buffer: None,
+            teams_client: None,
+            jira_webhook_state: None,
+            weekly_budget_usd: 50.0,
+            teams_client_state: None,
+            briefing_store: None,
+            cold_start_store: None,
+            event_tx,
+            cc_session_manager: None,
+            contact_store: None,
+            diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
+            memory_base_path: Some(tmp.path().join("memory")),
+        });
+        (state, rx, tmp)
+    }
+
+    // [4.1a] GET /api/memory returns 200 with { topics: [...] }
+    #[tokio::test]
+    async fn memory_list_returns_topics() {
+        let (state, _rx, _tmp) = setup_with_memory();
+        let app = build_router(state);
+
+        let request = Request::builder()
+            .uri("/api/memory")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(resp["topics"].is_array(), "expected 'topics' array in response");
+    }
+
+    // [4.1b] PUT /api/memory with valid body returns 200
+    #[tokio::test]
+    async fn memory_put_returns_written() {
+        let (state, _rx, _tmp) = setup_with_memory();
+        let app = build_router(state);
+
+        let payload = serde_json::json!({
+            "topic": "test-topic",
+            "content": "# Test\n\nSome content here."
+        });
+
+        let request = Request::builder()
+            .method("PUT")
+            .uri("/api/memory")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(resp["topic"], "test-topic");
+        assert!(resp["written"].as_u64().unwrap_or(0) > 0);
+    }
+
+    // [4.1c] POST /api/solve returns 200 with session_id
+    #[tokio::test]
+    async fn solve_returns_session_id() {
+        let (state, _rx, _tmp) = setup();
+        let app = build_router(state);
+
+        let payload = serde_json::json!({
+            "project": "nv",
+            "error": "build failed",
+            "context": "Cargo.toml:12"
+        });
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/api/solve")
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_string(&payload).unwrap()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let session_id = resp["session_id"].as_str().unwrap_or("");
+        assert!(!session_id.is_empty(), "expected non-empty session_id");
+        // Validate it's a valid UUID
+        assert!(
+            uuid::Uuid::parse_str(session_id).is_ok(),
+            "session_id should be a valid UUID, got: {session_id}"
+        );
     }
 }

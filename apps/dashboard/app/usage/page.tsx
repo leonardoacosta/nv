@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Terminal,
@@ -72,7 +72,15 @@ function SuccessBar({ rate }: { rate: number }) {
   );
 }
 
-export default function UsagePage() {
+export default function UsagePageWrapper() {
+  return (
+    <Suspense>
+      <UsagePage />
+    </Suspense>
+  );
+}
+
+function UsagePage() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "performance" ? "performance" : "cost";
   const [activeTab, setActiveTab] = useState<UsageTab>(initialTab);

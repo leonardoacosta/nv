@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Suspense,
   useEffect,
   useState,
   useCallback,
@@ -499,7 +500,15 @@ function ProjectSessionsTable() {
 // Sessions Page
 // ---------------------------------------------------------------------------
 
-export default function SessionsPage() {
+export default function SessionsPageWrapper() {
+  return (
+    <Suspense>
+      <SessionsPage />
+    </Suspense>
+  );
+}
+
+function SessionsPage() {
   // 1. Context/Routing
   const searchParams = useSearchParams();
   const showCcPanel = searchParams.get("panel") === "cc";

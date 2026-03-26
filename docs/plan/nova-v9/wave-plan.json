@@ -585,10 +585,10 @@
       "source": "system"
     }
   ],
-  "status": "in_progress",
+  "status": "completed",
   "current_wave": 9,
   "started_at": "2026-03-26T12:21:27.410133",
-  "completed_at": null,
+  "completed_at": "2026-03-26T13:27:19.293564",
   "completed_waves": [
     1,
     2,

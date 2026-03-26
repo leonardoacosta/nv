@@ -466,7 +466,7 @@
       "specs": [
         {
           "name": "add-memory-svc",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -476,11 +476,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:05:57.852979"
         },
         {
           "name": "add-messages-svc",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -490,11 +490,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:05:57.852986"
         },
         {
           "name": "add-channels-svc",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -504,7 +504,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-26T18:05:57.852988"
         }
       ]
     },
@@ -822,19 +822,23 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 3,
+  "current_wave": 4,
   "started_at": "2026-03-26T17:15:08.767015",
   "completed_at": null,
   "completed_waves": [
     1,
-    2
+    2,
+    3
   ],
   "completed_specs": [
     "scaffold-tool-service",
     "add-schedule-tables",
     "migrate-to-shared-postgres",
     "add-tool-router",
-    "add-fleet-deploy"
+    "add-fleet-deploy",
+    "add-memory-svc",
+    "add-messages-svc",
+    "add-channels-svc"
   ],
   "failed_specs": [],
   "mode": "consolidated",
@@ -842,8 +846,7 @@
     "current_phase": null,
     "phases_completed": [
       "API",
-      "E2E",
-      "Config"
+      "E2E"
     ],
     "task_results": {
       "scaffold-tool-service": {},
@@ -871,7 +874,7 @@
     },
     "phase_started_at": {
       "DB": "2026-03-26T17:30:40.804238",
-      "API": "2026-03-26T17:50:12.029602"
+      "API": "2026-03-26T17:59:32.758414"
     },
     "phase_completed_at": {
       "DB": "2026-03-26T17:32:49.225480",

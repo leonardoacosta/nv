@@ -20,6 +20,7 @@ mod cc_sessions;
 mod cold_start_store;
 mod agent;
 mod alert_rules;
+pub mod persona;
 mod bash;
 mod dashboard_client;
 mod callbacks;

@@ -920,8 +920,18 @@ impl Worker {
 
         let trigger_text = trigger_text_for_memory;
 
+        // Extract channel from the first Message trigger for persona injection.
+        // Cron and CLI triggers carry no channel — None uses the default soul.md persona.
+        let channel: Option<&str> = task.triggers.iter().find_map(|t| {
+            if let Trigger::Message(msg) = t {
+                Some(msg.channel.as_str())
+            } else {
+                None
+            }
+        });
+
         // Build system context and tool definitions
-        let base_system_prompt = build_system_context();
+        let base_system_prompt = build_system_context(channel);
         let system_prompt = if let Some(ctx) = &recent_outbound_context {
             format!("Your recent messages to Leo:\n{ctx}\n\n{base_system_prompt}")
         } else {

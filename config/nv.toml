@@ -165,3 +165,32 @@ health_port = 8400
 # Flat (default):
 #   DOPPLER_API_TOKEN
 # ─────────────────────────────────────────────────────────────────────
+
+# ── Per-channel Persona Overrides ────────────────────────────────────
+# Define tone, verbosity, and formality per channel. Key must match the
+# channel name used in InboundMessage.channel (case-insensitive).
+# When absent, Nova uses the default persona from soul.md unchanged.
+#
+# tone       — "casual" | "professional" | "technical"
+# verbosity  — "brief" | "normal" | "verbose"
+# formality  — "casual" | "professional"
+# language_hints — free-form instruction strings appended to the block
+#
+# [personas.telegram]
+# tone = "casual"
+# verbosity = "normal"
+# formality = "casual"
+# language_hints = ["use contractions", "light emoji ok"]
+#
+# [personas.teams]
+# tone = "professional"
+# verbosity = "brief"
+# formality = "professional"
+# language_hints = ["no emoji", "use full sentences"]
+#
+# [personas.discord]
+# tone = "technical"
+# verbosity = "brief"
+# formality = "casual"
+# language_hints = ["code-first answers", "skip pleasantries"]
+# ─────────────────────────────────────────────────────────────────────

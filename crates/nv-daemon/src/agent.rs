@@ -88,7 +88,11 @@ pub fn check_bootstrap_state() -> bool {
 ///
 /// Also injects a listing of available memory files so Nova always knows
 /// what context files exist before calling `read_memory`.
-pub fn build_system_context() -> String {
+///
+/// When `channel` is `Some`, a per-channel persona override block is appended
+/// after `soul.md` if a matching entry exists in `[personas]` of `nv.toml`.
+/// Cron and CLI triggers pass `None` and receive the default soul.md persona.
+pub fn build_system_context(channel: Option<&str>) -> String {
     let mut context = load_system_prompt();
 
     if check_bootstrap_state() {
@@ -101,6 +105,26 @@ pub fn build_system_context() -> String {
             context.push_str("\n\n");
             context.push_str(&soul);
         }
+
+        // Inject per-channel persona override block after soul.md (when channel is provided).
+        if let Some(ch) = channel {
+            match nv_core::Config::load() {
+                Ok(config) => {
+                    if let Some(block) = crate::persona::render_persona_block(&config.personas, ch) {
+                        context.push_str("\n\n");
+                        context.push_str(&block);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        channel = ch,
+                        error = %e,
+                        "failed to load config for persona injection; using default persona"
+                    );
+                }
+            }
+        }
+
         if let Some(user) = load_file_optional("user.md") {
             context.push_str("\n\n");
             context.push_str(&user);
@@ -416,7 +440,7 @@ mod tests {
 
     #[test]
     fn build_system_context_includes_system_prompt() {
-        let context = build_system_context();
+        let context = build_system_context(None);
         // Should always contain the system prompt content
         assert!(context.contains("Nova"));
         assert!(context.contains("Dispatch Test"));

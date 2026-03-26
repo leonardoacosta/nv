@@ -111,6 +111,28 @@ pub struct DopplerConfig {
     pub projects: HashMap<String, String>,
 }
 
+/// Per-channel persona override configuration.
+///
+/// ```toml
+/// [personas.telegram]
+/// tone = "casual"
+/// verbosity = "normal"
+/// formality = "casual"
+/// language_hints = ["use contractions", "light emoji ok"]
+/// ```
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct PersonaConfig {
+    /// Tone of voice: "casual", "professional", "technical".
+    pub tone: Option<String>,
+    /// Response length: "brief", "normal", "verbose".
+    pub verbosity: Option<String>,
+    /// Formality level: "casual", "professional".
+    pub formality: Option<String>,
+    /// Free-form instruction strings appended to the persona block.
+    #[serde(default)]
+    pub language_hints: Vec<String>,
+}
+
 /// Configuration for the contact profiles system.
 ///
 /// ```toml
@@ -159,6 +181,9 @@ pub struct Config {
     pub proactive_watcher: Option<ProactiveWatcherConfig>,
     /// Optional proactive obligation research configuration.
     pub obligation_research: Option<ObligationResearchConfig>,
+    /// Per-channel persona overrides. Key is channel name (case-insensitive).
+    #[serde(default)]
+    pub personas: HashMap<String, PersonaConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

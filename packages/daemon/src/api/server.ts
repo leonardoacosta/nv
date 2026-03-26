@@ -1,6 +1,5 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createServer } from "node:http";
 import { Hono } from "hono";
 import { logger as honoLogger } from "hono/logger";
 import { cors } from "hono/cors";
@@ -346,17 +345,11 @@ export async function startApiServer(port: number): Promise<void> {
   pool = new Pool({ connectionString: config.databaseUrl });
   _memoryService = createMemoryService(pool);
 
-  // Create Node.js HTTP server wrapping Hono
-  const server = createServer();
-
-  // Wire Hono as the request handler
+  // Let serve() create and wire the HTTP server with the Hono fetch handler.
+  // Passing a custom createServer factory would require forwarding the requestListener
+  // argument that @hono/node-server supplies — omitting it causes requests to hang.
   const nodeServer = serve(
-    {
-      fetch: app.fetch,
-      port,
-      // We manage the server ourselves for WebSocket support
-      createServer: () => server,
-    },
+    { fetch: app.fetch, port },
     (info) => {
       logger.info({ port: info.port }, `API server listening on :${info.port}`);
     },

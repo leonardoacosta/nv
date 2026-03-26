@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use base64::Engine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use nv_core::ToolDefinition;
 
@@ -24,7 +24,7 @@ const MAX_BUILDS: usize = 10;
 
 // ── Types ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdoProject {
     #[allow(dead_code)]
     pub id: String,
@@ -39,7 +39,7 @@ struct ProjectsResponse {
     value: Vec<AdoProject>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdoPipeline {
     pub id: u32,
     pub name: String,
@@ -53,7 +53,7 @@ struct PipelinesResponse {
     value: Vec<AdoPipeline>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdoBuild {
     #[serde(rename = "buildNumber")]
     pub build_number: Option<String>,
@@ -69,7 +69,7 @@ pub struct AdoBuild {
     pub requested_for: Option<AdoIdentity>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdoIdentity {
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
@@ -80,10 +80,60 @@ struct BuildsResponse {
     value: Vec<AdoBuild>,
 }
 
+/// A build with pipeline definition info (used in all-builds listing).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdoBuildWithPipeline {
+    #[serde(rename = "buildNumber")]
+    pub build_number: Option<String>,
+    pub status: Option<String>,
+    pub result: Option<String>,
+    #[serde(rename = "queueTime")]
+    pub queue_time: Option<String>,
+    #[serde(rename = "finishTime")]
+    pub finish_time: Option<String>,
+    #[serde(rename = "sourceBranch")]
+    pub source_branch: Option<String>,
+    #[serde(rename = "requestedFor")]
+    pub requested_for: Option<AdoIdentity>,
+    pub definition: Option<AdoBuildDefinitionRef>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdoBuildDefinitionRef {
+    pub id: Option<u32>,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BuildsAllResponse {
+    value: Vec<AdoBuildWithPipeline>,
+}
+
+/// A pipeline run response from the Pipelines Runs API.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdoPipelineRun {
+    pub id: u32,
+    pub name: Option<String>,
+    pub state: Option<String>,
+    #[serde(rename = "_links")]
+    pub links: Option<AdoPipelineRunLinks>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdoPipelineRunLinks {
+    #[serde(rename = "web")]
+    pub web: Option<AdoLink>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AdoLink {
+    pub href: Option<String>,
+}
+
 // ── Work Item Types ───────────────────────────────────────────────────
 
 /// Fields for an ADO work item (populated via batch fetch).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdoWorkItemFields {
     #[serde(rename = "System.Id")]
     pub system_id: Option<u32>,
@@ -100,7 +150,7 @@ pub struct AdoWorkItemFields {
 }
 
 /// A single ADO work item with ID and fields.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdoWorkItem {
     pub id: u32,
     pub fields: AdoWorkItemFields,
@@ -215,6 +265,43 @@ impl AdoClient {
         }
 
         let data: BuildsResponse = resp.json().await?;
+        Ok(data.value)
+    }
+
+    /// Trigger a pipeline run and return the run ID and web URL.
+    pub async fn run_pipeline(&self, project: &str, pipeline_id: u32) -> Result<AdoPipelineRun> {
+        let url = format!(
+            "{org_url}/{project}/_apis/pipelines/{pipeline_id}/runs?api-version=7.1",
+            org_url = self.org_url
+        );
+        let body = serde_json::json!({ "resources": { "repositories": { "self": { "refName": "refs/heads/main" } } } });
+        let resp = self.http.post(&url).json(&body).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("ADO run pipeline error ({status}): {text}");
+        }
+
+        let run: AdoPipelineRun = resp.json().await?;
+        Ok(run)
+    }
+
+    /// List recent builds across all pipelines for a project (no definition filter).
+    pub async fn builds_all(&self, project: &str, top: usize) -> Result<Vec<AdoBuildWithPipeline>> {
+        let url = format!(
+            "{}/{}/_apis/build/builds?$top={}&api-version=7.1",
+            self.org_url, project, top
+        );
+        let resp = self.http.get(&url).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("ADO API error ({status}): {body}");
+        }
+
+        let data: BuildsAllResponse = resp.json().await?;
         Ok(data.value)
     }
 

@@ -10,9 +10,11 @@ use super::types::OAuthTokenResponse;
 /// Buffer before token expiry to trigger refresh (5 minutes).
 const REFRESH_BUFFER: Duration = Duration::from_secs(300);
 
-/// Delegated (user) permission scopes for Outlook access.
-const OUTLOOK_SCOPES: &str =
-    "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read offline_access";
+/// Delegated (user) permission scopes for all Graph features requiring user context.
+/// Includes Outlook (Mail, Calendar) and Teams Chat access.
+const DELEGATED_SCOPES: &str =
+    "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read \
+     https://graph.microsoft.com/Chat.Read https://graph.microsoft.com/User.Read offline_access";
 
 /// Device-code poll timeout (5 minutes).
 const DEVICE_CODE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -233,7 +235,7 @@ impl MsGraphUserAuth {
                     ("grant_type", "refresh_token"),
                     ("client_id", &self.client_id),
                     ("refresh_token", refresh_token),
-                    ("scope", OUTLOOK_SCOPES),
+                    ("scope", DELEGATED_SCOPES),
                 ])
                 .send()
                 .await?;
@@ -310,7 +312,7 @@ impl MsGraphUserAuth {
         let tenant_id = std::env::var("MS_GRAPH_TENANT_ID")
             .map_err(|_| anyhow::anyhow!("MS Graph not configured — MS_GRAPH_TENANT_ID env var not set"))?;
 
-        let auth = Self::device_code_flow(&client_id, &tenant_id, OUTLOOK_SCOPES).await?;
+        let auth = Self::device_code_flow(&client_id, &tenant_id, DELEGATED_SCOPES).await?;
         auth.save(&cache_path)?;
         Ok(auth)
     }

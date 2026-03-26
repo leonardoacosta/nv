@@ -1029,11 +1029,16 @@ impl TelegramClient {
     /// Uses multipart/form-data to upload the audio bytes via Telegram's
     /// `sendVoice` endpoint. The voice message appears as an inline
     /// waveform bubble in the chat.
+    ///
+    /// If `caption` is `Some`, it is appended as the voice message caption
+    /// (Telegram supports up to 1024 chars). Strings longer than 1024 chars
+    /// are truncated to 1023 chars with a trailing `…` ellipsis.
     pub async fn send_voice(
         &self,
         chat_id: i64,
         ogg_bytes: Vec<u8>,
         reply_to: Option<i64>,
+        caption: Option<&str>,
     ) -> anyhow::Result<i64> {
         let url = format!("{}/sendVoice", self.base_url);
 
@@ -1047,6 +1052,13 @@ impl TelegramClient {
 
         if let Some(reply_id) = reply_to {
             form = form.text("reply_to_message_id", reply_id.to_string());
+        }
+
+        if let Some(cap) = caption {
+            let truncated = truncate_voice_caption(cap);
+            form = form
+                .text("caption", truncated)
+                .text("parse_mode", "HTML");
         }
 
         let resp: TelegramResponse<serde_json::Value> = self
@@ -1268,6 +1280,22 @@ impl TelegramClient {
 
 /// Re-export the canonical chunk_message from the shared util module.
 pub use crate::channels::util::chunk_message;
+
+/// Truncate a voice caption to Telegram's 1024-char limit.
+///
+/// If `text` fits within the limit, returns it unchanged. If it exceeds 1023 chars,
+/// the string is cut at 1023 chars and `…` (U+2026) is appended so the total length
+/// is exactly 1024 chars.
+pub(crate) fn truncate_voice_caption(text: &str) -> String {
+    const MAX_CAPTION_CHARS: usize = 1024;
+    if text.len() <= MAX_CAPTION_CHARS {
+        text.to_string()
+    } else {
+        let mut s = text[..MAX_CAPTION_CHARS - 1].to_string();
+        s.push('\u{2026}'); // …
+        s
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1536,5 +1564,35 @@ mod tests {
         assert_eq!(EFFECT_THUMBSUP, "5107584321108051014");
         assert_eq!(EFFECT_THUMBSDOWN, "5104858069142078462");
         assert_eq!(EFFECT_POOP, "5046589136895476101");
+    }
+
+    // ── voice caption truncation tests (Req-5 / Task 4.4) ───────────
+
+    /// [4.4] A string of exactly 1024 chars is returned unchanged.
+    #[test]
+    fn voice_caption_at_limit_unchanged() {
+        let text = "a".repeat(1024);
+        let result = truncate_voice_caption(&text);
+        assert_eq!(result.len(), 1024);
+        assert!(!result.contains('\u{2026}'), "should not add ellipsis at exactly 1024 chars");
+    }
+
+    /// [4.4] A string of 1025 chars is truncated to 1024 chars ending with ellipsis.
+    #[test]
+    fn voice_caption_over_limit_truncated_with_ellipsis() {
+        let text = "a".repeat(1025);
+        let result = truncate_voice_caption(&text);
+        // `…` is 3 bytes in UTF-8, so byte length = 1023 'a's + 3 = 1026 bytes.
+        // Char length must be 1024 (1023 'a' chars + 1 ellipsis char).
+        assert_eq!(result.chars().count(), 1024, "truncated caption must be exactly 1024 chars");
+        assert!(result.ends_with('\u{2026}'), "truncated caption must end with ellipsis");
+    }
+
+    /// [4.4] A short string well below the limit is returned unchanged.
+    #[test]
+    fn voice_caption_short_string_unchanged() {
+        let text = "Short reply.";
+        let result = truncate_voice_caption(text);
+        assert_eq!(result, text);
     }
 }

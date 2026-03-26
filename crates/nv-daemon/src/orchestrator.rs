@@ -720,6 +720,11 @@ impl Orchestrator {
         let slug = generate_slug_for_triggers(triggers);
         let task_id = Uuid::new_v4();
 
+        // Detect whether the originating trigger was a Telegram voice note.
+        // Any trigger in the batch carrying metadata["voice"] == true marks the
+        // whole task as voice-triggered so the worker can respond in kind.
+        let is_voice_trigger = any_trigger_is_voice(triggers);
+
         // Emit and persist the `receive` latency span — time from trigger arrival
         // to worker dispatch.
         if let Some(arrival) = self.trigger_arrival.take() {
@@ -745,6 +750,7 @@ impl Orchestrator {
             is_edit_reply,
             editing_action_id,
             slug,
+            is_voice_trigger,
         };
 
         // Before dispatch — send typing indicator immediately so the user sees feedback
@@ -955,6 +961,7 @@ impl Orchestrator {
                             is_edit_reply: false,
                             editing_action_id: None,
                             slug: slug.to_string(),
+                            is_voice_trigger: false,
                         };
                         self.worker_pool.dispatch(task).await;
                         continue;
@@ -2342,6 +2349,19 @@ pub fn is_quiet_hours(
     }
 }
 
+/// Returns `true` if any trigger in `triggers` is a `Trigger::Message` whose
+/// `metadata["voice"]` field is `true` (set by the Telegram poll loop for inbound
+/// voice notes).  All other trigger sources (text, CLI, cron, watchers) return `false`.
+pub(crate) fn any_trigger_is_voice(triggers: &[Trigger]) -> bool {
+    triggers.iter().any(|t| {
+        if let Trigger::Message(msg) = t {
+            msg.metadata.get("voice").and_then(|v| v.as_bool()).unwrap_or(false)
+        } else {
+            false
+        }
+    })
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -2808,5 +2828,50 @@ mod tests {
         assert!(result.contains("P2 Important"), "expected P2 label");
         assert!(result.contains("P3 Minor"), "expected P3 label");
         assert!(result.contains("P4 Backlog"), "expected P4 label");
+    }
+
+    // ── voice origin detection tests (Req-1, Req-2) ─────────────────
+
+    fn make_voice_message(content: &str) -> Trigger {
+        Trigger::Message(InboundMessage {
+            id: "v1".into(),
+            channel: "telegram".into(),
+            sender: "leo".into(),
+            content: content.into(),
+            timestamp: chrono::Utc::now(),
+            thread_id: None,
+            metadata: serde_json::json!({"voice": true}),
+        })
+    }
+
+    /// [4.2] Trigger batch with a voice message sets is_voice_trigger = true.
+    #[test]
+    fn any_trigger_is_voice_detects_voice_message() {
+        let triggers = vec![make_voice_message("[voice transcription] hello nova")];
+        assert!(any_trigger_is_voice(&triggers), "voice message should set is_voice_trigger");
+    }
+
+    /// [4.2] Trigger batch with only text messages returns false.
+    #[test]
+    fn any_trigger_is_voice_false_for_text_messages() {
+        let triggers = vec![make_message("what is the status of OO-42?")];
+        assert!(!any_trigger_is_voice(&triggers), "text message should not set is_voice_trigger");
+    }
+
+    /// [4.2] Mixed batch (text + voice) returns true because any() is satisfied.
+    #[test]
+    fn any_trigger_is_voice_true_for_mixed_batch() {
+        let triggers = vec![
+            make_message("some text"),
+            make_voice_message("[voice transcription] also send this"),
+        ];
+        assert!(any_trigger_is_voice(&triggers), "mixed batch with voice should return true");
+    }
+
+    /// [4.2] Non-message triggers (Cron, CLI) always return false.
+    #[test]
+    fn any_trigger_is_voice_false_for_cron_trigger() {
+        let triggers = vec![Trigger::Cron(CronEvent::Digest)];
+        assert!(!any_trigger_is_voice(&triggers), "cron trigger must never be voice");
     }
 }

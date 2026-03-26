@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Nova TypeScript Daemon - Pre-push deploy hook
+# Nova - Pre-push deploy hook
 #
-# Automatically deploys the Nova TS daemon when pushing to main.
-# TTS announces success or failure. Deploy failures warn but do NOT
-# block the push — the code always lands.
+# Automatically deploys the Nova TS daemon (systemd) and dashboard
+# (Docker container) when pushing to main. TTS announces success or
+# failure. Deploy failures warn but do NOT block the push — the code
+# always lands.
 #
 # Skip deployment:  SKIP_DEPLOY=1 git push
 #
@@ -43,22 +44,62 @@ echo "=== Nova: Deploying TS daemon to homelab ==="
 echo "    Log: ${LOG_FILE}"
 echo ""
 
-# Run the deploy — capture output to log but also stream to terminal
+# ── Deploy TS Daemon ─────────────────────────────────────────────────────────
+
 if bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
     echo ""
-    echo "Deploy succeeded."
-    _notify "Nova deploy succeeded"
+    echo "Daemon deploy succeeded."
 else
     DEPLOY_EXIT="${PIPESTATUS[0]}"
     echo ""
-    echo "Deploy failed (exit ${DEPLOY_EXIT}). Push continues — check logs:"
+    echo "Daemon deploy failed (exit ${DEPLOY_EXIT}). Push continues — check logs:"
     echo "  ${LOG_FILE}"
     echo "  journalctl --user -u nova-ts.service -n 30"
     echo ""
     echo "Re-deploy manually:  bash deploy/install-ts.sh"
     echo "Skip next time:      SKIP_DEPLOY=1 git push"
-    _notify "Nova deploy failed, check logs"
-    # Exit 0 intentionally — do not block the push on deploy failure
+    _notify "Nova daemon deploy failed, check logs"
+fi
+
+# ── Deploy Dashboard ─────────────────────────────────────────────────────────
+
+COMPOSE_FILE="${GIT_ROOT}/docker-compose.yml"
+
+if [[ -f "$COMPOSE_FILE" ]]; then
+    echo ""
+    echo "=== Nova: Rebuilding dashboard container ==="
+
+    if docker compose -f "$COMPOSE_FILE" build --no-cache dashboard 2>&1 | tee -a "$LOG_FILE"; then
+        # Restart the container with the new image
+        docker compose -f "$COMPOSE_FILE" up -d dashboard 2>&1 | tee -a "$LOG_FILE"
+
+        echo "    Waiting for dashboard to start..."
+        sleep 5
+
+        # Health check — dashboard serves on port 3000 behind Traefik
+        DASH_HEALTHY=false
+        for i in 1 2 3; do
+            if docker compose -f "$COMPOSE_FILE" ps dashboard --format json 2>/dev/null | grep -q '"running"'; then
+                DASH_HEALTHY=true
+                break
+            fi
+            sleep 3
+        done
+
+        if $DASH_HEALTHY; then
+            echo "    Dashboard deploy succeeded."
+            _notify "Nova deploy succeeded — daemon + dashboard"
+        else
+            echo "    Dashboard container not running. Check: docker compose -f $COMPOSE_FILE logs dashboard"
+            _notify "Nova daemon OK, dashboard failed"
+        fi
+    else
+        echo "    Dashboard build failed. Check logs: ${LOG_FILE}"
+        _notify "Nova daemon OK, dashboard build failed"
+    fi
+else
+    echo "    No docker-compose.yml found — skipping dashboard deploy"
+    _notify "Nova daemon deployed (no dashboard compose file)"
 fi
 
 exit 0

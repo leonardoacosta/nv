@@ -1,8 +1,13 @@
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
-export async function GET() {
-  return NextResponse.json(
-    { error: "Not implemented — daemon endpoint pending" },
-    { status: 501 },
-  );
+import { daemonFetch } from "@/lib/daemon";
+
+export async function GET(_req: NextRequest) {
+  try {
+    const res = await daemonFetch("/api/sessions");
+    const data = await res.json();
+    return NextResponse.json(data, { status: res.status });
+  } catch {
+    return NextResponse.json({ error: "Daemon unreachable" }, { status: 502 });
+  }
 }

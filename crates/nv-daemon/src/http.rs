@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -6,9 +6,9 @@ use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post, put};
 use axum::{Json, Router};
-use nv_core::types::{CliCommand, CliRequest, CronEvent, ObligationStatus, Trigger};
+use nv_core::types::{CliCommand, CliRequest, CronEvent, ObligationOwner, ObligationStatus, Trigger};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::sync::Mutex as TokioMutex;
@@ -20,6 +20,7 @@ use crate::contact_store::ContactStore;
 use crate::diary::DiaryWriter;
 use crate::health::HealthState;
 use crate::obligation_store::ObligationStore;
+use crate::team_agent::TeamAgentDispatcher;
 use crate::tools::jira::webhooks::{jira_webhook_handler, JiraWebhookState};
 use crate::messages::MessageStore;
 use crate::channels::teams::types::{ChangeNotificationCollection, ChatMessage};
@@ -97,6 +98,13 @@ pub struct HttpState {
     pub contact_store: Option<Arc<ContactStore>>,
     /// Diary writer for reading daily diary files via GET /api/diary.
     pub diary: Option<Arc<std::sync::Mutex<DiaryWriter>>>,
+    /// TeamAgentDispatcher for GET /api/sessions. None if team_agents not configured.
+    pub dispatcher: Option<TeamAgentDispatcher>,
+    /// Project code to filesystem path registry (from config.projects).
+    /// Used by GET /api/projects.
+    pub project_registry: HashMap<String, PathBuf>,
+    /// Path to the daemon config file (nv.toml). Used by GET /api/config.
+    pub config_path: Option<PathBuf>,
 }
 
 /// Request body for POST /ask.
@@ -133,6 +141,10 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/api/latency", get(get_latency_handler))
         // Dashboard API
         .route("/api/messages", get(get_messages_handler))
+        .route("/api/obligations", get(get_obligations_handler))
+        .route("/api/obligations/{id}", patch(patch_obligation_handler))
+        .route("/api/projects", get(get_projects_handler))
+        .route("/api/config", get(get_config_handler).put(put_config_handler))
         .route("/api/approvals/{id}/approve", post(approve_obligation_handler))
         .route("/api/cc-sessions", get(get_cc_sessions_handler))
         // Contact CRUD
@@ -146,7 +158,9 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         // WebSocket event stream
         .route("/ws/events", get(ws_events_handler))
         // Diary
-        .route("/api/diary", get(get_diary_handler));
+        .route("/api/diary", get(get_diary_handler))
+        // Sessions (TeamAgentDispatcher)
+        .route("/api/sessions", get(get_sessions_handler));
 
     // Add Jira webhook route if configured (uses its own sub-state)
     if let Some(jira_state) = &state.jira_webhook_state {
@@ -734,6 +748,385 @@ async fn get_messages_handler(
 
 // ── POST /api/approvals/:id/approve ──────────────────────────────
 
+// ── GET /api/obligations ──────────────────────────────────────────────
+
+/// Query parameters for GET /api/obligations.
+#[derive(Debug, Deserialize, Default)]
+pub struct ObligationsQuery {
+    pub status: Option<String>,
+    pub owner: Option<String>,
+}
+
+/// GET /api/obligations — list obligations with optional status/owner filters.
+///
+/// Returns `{ obligations: [...] }`. Returns an empty list gracefully when the
+/// obligation store is not initialised.
+async fn get_obligations_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(params): Query<ObligationsQuery>,
+) -> impl IntoResponse {
+    match ObligationStore::new(&state.stats_db_path) {
+        Ok(store) => {
+            let result = match (&params.status, &params.owner) {
+                (Some(status_str), Some(owner_str)) => {
+                    // Filter by both status and owner: fetch by owner then filter status in memory.
+                    match owner_str.parse::<ObligationOwner>() {
+                        Ok(owner) => store
+                            .list_by_owner(&owner)
+                            .map(|list| {
+                                list.into_iter()
+                                    .filter(|o| o.status.as_str() == status_str.as_str())
+                                    .collect::<Vec<_>>()
+                            }),
+                        Err(_) => {
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Json(serde_json::json!({"error": format!("unknown owner: {owner_str}")})),
+                            )
+                                .into_response();
+                        }
+                    }
+                }
+                (Some(status_str), None) => {
+                    match status_str.parse::<ObligationStatus>() {
+                        Ok(status) => store.list_by_status(&status),
+                        Err(_) => {
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Json(serde_json::json!({"error": format!("unknown status: {status_str}")})),
+                            )
+                                .into_response();
+                        }
+                    }
+                }
+                (None, Some(owner_str)) => {
+                    match owner_str.parse::<ObligationOwner>() {
+                        Ok(owner) => store.list_by_owner(&owner),
+                        Err(_) => {
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Json(serde_json::json!({"error": format!("unknown owner: {owner_str}")})),
+                            )
+                                .into_response();
+                        }
+                    }
+                }
+                (None, None) => store.list_all(),
+            };
+
+            match result {
+                Ok(obligations) => (
+                    StatusCode::OK,
+                    Json(serde_json::json!({ "obligations": obligations })),
+                )
+                    .into_response(),
+                Err(e) => {
+                    tracing::error!(error = %e, "get_obligations: query failed");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Query failed: {e}")})),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "get_obligations: obligation store not available");
+            // Graceful degradation: return empty list so dashboard doesn't break
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({ "obligations": [] })),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── PATCH /api/obligations/:id ────────────────────────────────────────
+
+/// Request body for PATCH /api/obligations/:id.
+#[derive(Debug, Deserialize)]
+pub struct PatchObligationRequest {
+    pub status: String,
+}
+
+/// PATCH /api/obligations/:id — update obligation status.
+///
+/// Accepts `{ "status": "dismissed" | "open" | "in_progress" | "done" }`,
+/// updates the obligation, broadcasts `ApprovalUpdated`, returns `{ id, status }`.
+async fn patch_obligation_handler(
+    State(state): State<Arc<HttpState>>,
+    Path(id): Path<String>,
+    Json(body): Json<PatchObligationRequest>,
+) -> impl IntoResponse {
+    let new_status = match body.status.parse::<ObligationStatus>() {
+        Ok(s) => s,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("unknown status: {}", body.status)})),
+            )
+                .into_response();
+        }
+    };
+
+    match ObligationStore::new(&state.stats_db_path) {
+        Ok(store) => {
+            match store.get_by_id(&id) {
+                Ok(None) => {
+                    return (
+                        StatusCode::NOT_FOUND,
+                        Json(serde_json::json!({"error": format!("obligation {id} not found")})),
+                    )
+                        .into_response();
+                }
+                Err(e) => {
+                    tracing::error!(id = %id, error = %e, "patch_obligation: get_by_id failed");
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to fetch obligation: {e}")})),
+                    )
+                        .into_response();
+                }
+                Ok(Some(_)) => {}
+            }
+
+            match store.update_status(&id, &new_status) {
+                Ok(true) => {
+                    let _ = state.event_tx.send(DaemonEvent::ApprovalUpdated {
+                        id: id.clone(),
+                        status: new_status.as_str().to_string(),
+                        owner: String::new(),
+                    });
+                    tracing::info!(id = %id, status = %new_status, "obligation status updated via dashboard");
+                    (
+                        StatusCode::OK,
+                        Json(serde_json::json!({ "id": id, "status": new_status.as_str() })),
+                    )
+                        .into_response()
+                }
+                Ok(false) => (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": format!("obligation {id} not found")})),
+                )
+                    .into_response(),
+                Err(e) => {
+                    tracing::error!(id = %id, error = %e, "patch_obligation: update_status failed");
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": format!("Failed to update obligation: {e}")})),
+                    )
+                        .into_response()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "patch_obligation: failed to open obligation store");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to open obligation store: {e}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+// ── GET /api/projects ─────────────────────────────────────────────────
+
+/// GET /api/projects — return the configured project registry.
+///
+/// Returns `{ projects: [{ code, path }] }`. The list is derived from the
+/// `project_registry` field in `HttpState` (populated from `config.projects`).
+async fn get_projects_handler(State(state): State<Arc<HttpState>>) -> impl IntoResponse {
+    let projects: Vec<serde_json::Value> = state
+        .project_registry
+        .iter()
+        .map(|(code, path)| {
+            serde_json::json!({
+                "code": code,
+                "path": path.to_string_lossy(),
+            })
+        })
+        .collect();
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "projects": projects })),
+    )
+}
+
+// ── GET /api/config + PUT /api/config ────────────────────────────────
+
+/// Secret key patterns — values whose keys match any of these are masked.
+const SECRET_KEY_PATTERNS: &[&str] = &[
+    "token", "secret", "password", "key", "api_key", "auth", "webhook",
+];
+
+fn is_secret_key(key: &str) -> bool {
+    let lower = key.to_lowercase();
+    SECRET_KEY_PATTERNS.iter().any(|p| lower.contains(p))
+}
+
+/// Recursively mask secret values in a JSON object.
+fn mask_secrets(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let masked = map
+                .into_iter()
+                .map(|(k, v)| {
+                    let new_v = if is_secret_key(&k) && v.is_string() && !v.as_str().unwrap_or("").is_empty() {
+                        serde_json::Value::String("***".to_string())
+                    } else {
+                        mask_secrets(v)
+                    };
+                    (k, new_v)
+                })
+                .collect();
+            serde_json::Value::Object(masked)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(mask_secrets).collect())
+        }
+        other => other,
+    }
+}
+
+/// GET /api/config — return daemon config from disk as JSON, masking secrets.
+///
+/// Returns `{}` (HTTP 200) when no config file exists, so the dashboard
+/// never gets a 502 error just because the config is absent.
+async fn get_config_handler(State(state): State<Arc<HttpState>>) -> impl IntoResponse {
+    let config_path = match &state.config_path {
+        Some(p) => p.clone(),
+        None => match nv_core::config::Config::default_path() {
+            Ok(p) => p,
+            Err(_) => {
+                return (StatusCode::OK, Json(serde_json::json!({}))).into_response();
+            }
+        },
+    };
+
+    let contents = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => {
+            // Config file missing — return empty object gracefully (HTTP 200).
+            return (StatusCode::OK, Json(serde_json::json!({}))).into_response();
+        }
+    };
+
+    let raw: serde_json::Value = match toml::from_str(&contents) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, "get_config: failed to parse config toml");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to parse config: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    let masked = mask_secrets(raw);
+    (StatusCode::OK, Json(masked)).into_response()
+}
+
+/// Request body for PUT /api/config.
+#[derive(Debug, Deserialize)]
+pub struct PutConfigRequest {
+    pub fields: serde_json::Value,
+}
+
+/// PUT /api/config — merge fields into the daemon config on disk.
+///
+/// Reads the existing config, merges in the provided fields (top-level merge),
+/// writes back to disk. Returns `{ applied: [keys], note: "..." }`.
+async fn put_config_handler(
+    State(state): State<Arc<HttpState>>,
+    Json(body): Json<PutConfigRequest>,
+) -> impl IntoResponse {
+    let config_path = match &state.config_path {
+        Some(p) => p.clone(),
+        None => match nv_core::config::Config::default_path() {
+            Ok(p) => p,
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Cannot determine config path"})),
+                )
+                    .into_response();
+            }
+        },
+    };
+
+    // Read existing config (or start fresh if missing)
+    let existing_toml = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let mut config_map: toml::Value = if existing_toml.is_empty() {
+        toml::Value::Table(toml::map::Map::new())
+    } else {
+        match toml::from_str(&existing_toml) {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": format!("Failed to parse existing config: {e}")})),
+                )
+                    .into_response();
+            }
+        }
+    };
+
+    // Merge top-level fields from the request body
+    let mut applied: Vec<String> = Vec::new();
+    if let (serde_json::Value::Object(fields), toml::Value::Table(ref mut table)) =
+        (&body.fields, &mut config_map)
+    {
+        for (key, value) in fields {
+            // Convert JSON value to TOML value
+            let toml_val: toml::Value = match serde_json::to_string(value)
+                .ok()
+                .and_then(|s| toml::from_str(&format!("x = {s}")).ok())
+                .and_then(|mut t: toml::value::Table| t.remove("x"))
+            {
+                Some(v) => v,
+                None => continue,
+            };
+            table.insert(key.clone(), toml_val);
+            applied.push(key.clone());
+        }
+    }
+
+    // Write back
+    let new_toml = match toml::to_string_pretty(&config_map) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": format!("Failed to serialize config: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    if let Err(e) = std::fs::write(&config_path, new_toml) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Failed to write config: {e}")})),
+        )
+            .into_response();
+    }
+
+    tracing::info!(keys = ?applied, "config updated via dashboard PUT /api/config");
+
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "applied": applied,
+            "note": "Config updated. Daemon restart may be required for some changes.",
+        })),
+    )
+        .into_response()
+}
+
 /// Response body for `POST /api/approvals/:id/approve`.
 #[derive(Debug, Serialize)]
 pub struct ApproveResponse {
@@ -966,6 +1359,9 @@ pub async fn run_http_server(
     cc_session_manager: Option<CcSessionManager>,
     contact_store: Option<Arc<ContactStore>>,
     diary: Option<Arc<std::sync::Mutex<DiaryWriter>>>,
+    dispatcher: Option<TeamAgentDispatcher>,
+    project_registry: HashMap<String, PathBuf>,
+    config_path: Option<PathBuf>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -982,6 +1378,9 @@ pub async fn run_http_server(
         cc_session_manager,
         contact_store,
         diary,
+        dispatcher,
+        project_registry,
+        config_path,
     });
     let app = build_router(state);
 
@@ -1340,6 +1739,57 @@ async fn get_diary_handler(
     .into_response()
 }
 
+// ── Sessions API ─────────────────────────────────────────────────────
+
+/// Response shape for GET /api/sessions.
+#[derive(Debug, Serialize)]
+pub struct SessionsResponse {
+    pub sessions: Vec<SessionItem>,
+}
+
+/// A single session in the GET /api/sessions response.
+#[derive(Debug, Serialize)]
+pub struct SessionItem {
+    pub id: String,
+    pub project: Option<String>,
+    pub status: String,
+    pub agent_name: String,
+    pub started_at: Option<String>,
+    pub duration_display: String,
+    pub branch: Option<String>,
+    pub spec: Option<String>,
+    pub progress: Option<serde_json::Value>,
+}
+
+/// GET /api/sessions — list all TeamAgent sessions.
+///
+/// Returns `{ "sessions": [...] }` with the shape expected by the dashboard
+/// `SessionsGetResponse` type. When `team_agents` is not configured, returns
+/// an empty sessions array (not an error).
+async fn get_sessions_handler(State(state): State<Arc<HttpState>>) -> impl IntoResponse {
+    let Some(ref dispatcher) = state.dispatcher else {
+        return Json(SessionsResponse { sessions: vec![] }).into_response();
+    };
+
+    let summaries = dispatcher.list_agents().await;
+    let sessions = summaries
+        .into_iter()
+        .map(|s| SessionItem {
+            id: s.id,
+            project: s.project,
+            status: s.status,
+            agent_name: s.agent_name,
+            started_at: s.started_at.map(|dt| dt.to_rfc3339()),
+            duration_display: s.duration_display,
+            branch: s.branch,
+            spec: s.spec,
+            progress: None,
+        })
+        .collect();
+
+    Json(SessionsResponse { sessions }).into_response()
+}
+
 // ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1372,6 +1822,9 @@ mod tests {
             cc_session_manager: None,
             contact_store: None,
             diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
         });
         (state, rx, tmp)
     }
@@ -1597,6 +2050,9 @@ mod tests {
             event_tx,
             cc_session_manager: None,
             diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
         });
         (state, rx, tmp)
     }
@@ -1650,6 +2106,9 @@ mod tests {
             event_tx,
             cc_session_manager: None,
             diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
         });
         drop(rx);
 
@@ -1705,6 +2164,9 @@ mod tests {
             event_tx,
             cc_session_manager: None,
             diary: None,
+            dispatcher: None,
+            project_registry: HashMap::new(),
+            config_path: None,
         });
         drop(rx);
 

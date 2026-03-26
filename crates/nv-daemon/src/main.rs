@@ -952,6 +952,11 @@ async fn main() -> anyhow::Result<()> {
     let cc_session_manager_for_http = cc_session_manager.clone();
     // Clone diary writer for the HTTP server (shared with workers via SharedDeps).
     let diary_for_http = Arc::clone(&diary_writer);
+    // Clone TeamAgentDispatcher for the HTTP server (cheaply cloned via Arc internally).
+    let dispatcher_for_http = team_agent_dispatcher.clone();
+    // Clone project registry and config path for the HTTP server.
+    let project_registry_for_http = config.projects.clone();
+    let config_path_for_http = nv_core::config::Config::default_path().ok();
     tokio::spawn(async move {
         if let Err(e) = http::run_http_server(
             health_port,
@@ -969,6 +974,9 @@ async fn main() -> anyhow::Result<()> {
             cc_session_manager_for_http,
             contact_store_for_http,
             Some(diary_for_http),
+            dispatcher_for_http,
+            project_registry_for_http,
+            config_path_for_http,
         )
         .await
         {

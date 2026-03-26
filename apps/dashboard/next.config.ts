@@ -4,6 +4,15 @@ const DAEMON_URL = process.env.DAEMON_URL ?? "http://127.0.0.1:3443";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  async redirects() {
+    return [
+      {
+        source: "/nexus",
+        destination: "/sessions",
+        permanent: true,
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

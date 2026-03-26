@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nova Dashboard — UX Inventory & Improvement Plan</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #09090b;
+    --bg-card: #111113;
+    --bg-card-hover: #18181b;
+    --border: #27272a;
+    --border-subtle: #1e1e21;
+    --text-primary: #fafafa;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --green: #22c55e;
+    --green-dim: #15803d;
+    --amber: #f59e0b;
+    --amber-dim: #a16207;
+    --red: #ef4444;
+    --red-dim: #991b1b;
+    --blue: #3b82f6;
+    --blue-dim: #1d4ed8;
+    --purple: #a78bfa;
+    --purple-dim: #6d28d9;
+    --cyan: #06b6d4;
+  }
+
+  html { font-size: 15px; }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, .mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+  }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 3rem 2rem 6rem;
+  }
+
+  /* Header */
+  .hero {
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 0.5rem;
+  }
+  .hero .subtitle {
+    color: var(--text-secondary);
+    font-size: 1.05rem;
+    max-width: 600px;
+  }
+  .hero .meta {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+  }
+  .hero .meta span { display: flex; align-items: center; gap: 0.35rem; }
+
+  /* Scores row */
+  .scores {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 3rem;
+  }
+  .score-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .score-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 10px 0 0 10px;
+  }
+  .score-card.green::before { background: var(--green); }
+  .score-card.amber::before { background: var(--amber); }
+  .score-card.red::before { background: var(--red); }
+  .score-card.blue::before { background: var(--blue); }
+  .score-card .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-bottom: 0.35rem;
+  }
+  .score-card .value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .score-card .detail {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 0.15rem;
+  }
+
+  /* Section */
+  .section {
+    margin-bottom: 3rem;
+  }
+  .section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  /* Page card */
+  .page-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .page-card:hover { border-color: #3f3f46; }
+  .page-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.25rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .page-card-header:hover { background: var(--bg-card-hover); }
+  .page-name {
+    font-weight: 600;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+  .page-route {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.04);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+  }
+  .page-badges {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: 100px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .badge-green { background: rgba(34,197,94,0.12); color: var(--green); }
+  .badge-amber { background: rgba(245,158,11,0.12); color: var(--amber); }
+  .badge-red { background: rgba(239,68,68,0.12); color: var(--red); }
+  .badge-blue { background: rgba(59,130,246,0.12); color: var(--blue); }
+  .badge-purple { background: rgba(167,139,250,0.12); color: var(--purple); }
+
+  .page-card-body {
+    padding: 0 1.25rem 1.25rem;
+    display: none;
+  }
+  .page-card.open .page-card-body { display: block; }
+  .page-card.open .chevron { transform: rotate(180deg); }
+  .chevron {
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    font-size: 0.9rem;
+  }
+
+  .page-purpose {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid var(--border);
+  }
+
+  /* Issue lists */
+  .issue-group {
+    margin-bottom: 1rem;
+  }
+  .issue-group-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  .issue-group-title.issues-title { color: var(--amber); }
+  .issue-group-title.suggestions-title { color: var(--cyan); }
+  .issue-group-title.animation-title { color: var(--purple); }
+
+  .issue-list {
+    list-style: none;
+  }
+  .issue-list li {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    padding: 0.4rem 0 0.4rem 1rem;
+    position: relative;
+    line-height: 1.5;
+  }
+  .issue-list li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.7rem;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+  }
+  .issue-list.issues li::before { background: var(--amber); }
+  .issue-list.suggestions li::before { background: var(--cyan); }
+  .issue-list.animations li::before { background: var(--purple); }
+
+  .issue-list li strong {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  /* Crosscutting */
+  .crosscut-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+  .crosscut-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .crosscut-card h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .crosscut-card .items {
+    list-style: none;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+  }
+  .crosscut-card .items li {
+    padding: 0.3rem 0;
+    padding-left: 0.85rem;
+    position: relative;
+  }
+  .crosscut-card .items li::before {
+    content: '\2192';
+    position: absolute;
+    left: 0;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+
+  /* Animation spec table */
+  .anim-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+  }
+  .anim-table th {
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .anim-table td {
+    padding: 0.5rem 0.75rem;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-subtle);
+    vertical-align: top;
+  }
+  .anim-table td:first-child { color: var(--text-primary); font-weight: 500; }
+  .anim-table code {
+    background: rgba(255,255,255,0.04);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.8rem;
+  }
+
+  /* Priority legend */
+  .legend {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* Journey map */
+  .journey-section { margin-bottom: 2rem; }
+  .journey-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+  }
+  .journey-flow {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex-wrap: wrap;
+    padding: 0.75rem;
+    background: rgba(255,255,255,0.02);
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+  }
+  .journey-node {
+    font-size: 0.82rem;
+    padding: 0.3rem 0.7rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .journey-node.primary {
+    border-color: var(--green-dim);
+    color: var(--green);
+    background: rgba(34,197,94,0.06);
+  }
+  .journey-arrow {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+  }
+  .journey-note {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HERO -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="hero">
+  <h1>Nova Dashboard — UX Inventory</h1>
+  <p class="subtitle">
+    Page-by-page audit of purpose, UX issues, animation opportunities, and user journey coherence.
+    Designed to be scanned — expand any card for details.
+  </p>
+  <div class="meta">
+    <span>17 routes audited</span>
+    <span>1 crash found</span>
+    <span>Next.js 15 + Geist + Tailwind</span>
+    <span>2026-03-26</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- HEALTH SCORES -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="scores">
+  <div class="score-card green">
+    <div class="label">Design System</div>
+    <div class="value">Strong</div>
+    <div class="detail">Geist tokens, consistent surfaces</div>
+  </div>
+  <div class="score-card amber">
+    <div class="label">Animation</div>
+    <div class="value">Minimal</div>
+    <div class="detail">Only fade-in-up + shimmer exist</div>
+  </div>
+  <div class="score-card amber">
+    <div class="label">Journey Clarity</div>
+    <div class="value">Overloaded</div>
+    <div class="detail">15 nav items, unclear grouping</div>
+  </div>
+  <div class="score-card red">
+    <div class="label">Bugs</div>
+    <div class="value">1 Crash</div>
+    <div class="detail">/briefing — client-side exception</div>
+  </div>
+  <div class="score-card blue">
+    <div class="label">Empty States</div>
+    <div class="value">Good</div>
+    <div class="detail">Consistent EmptyState component</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- USER JOURNEYS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">User Journeys — Are We Overloading?</div>
+
+  <div class="journey-section">
+    <div class="journey-title">J1: Daily Check-in (primary flow)</div>
+    <div class="journey-flow">
+      <span class="journey-node primary">Dashboard</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Obligations</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Approvals</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Briefing</span>
+    </div>
+    <p class="journey-note">Well-supported. Dashboard surfaces all entry points. Briefing crashes though (P0).</p>
+  </div>
+
+  <div class="journey-section">
+    <div class="journey-title">J2: Session Monitoring</div>
+    <div class="journey-flow">
+      <span class="journey-node primary">Dashboard</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Sessions</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Session Detail</span>
+    </div>
+    <p class="journey-note">Clean 2-click path. Session widget on dashboard provides quick glance.</p>
+  </div>
+
+  <div class="journey-section">
+    <div class="journey-title">J3: System Health / Debugging</div>
+    <div class="journey-flow">
+      <span class="journey-node">Usage</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Cold Starts</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">CC Session</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Integrations</span>
+      <span class="journey-arrow">&rarr;</span>
+      <span class="journey-node">Settings</span>
+    </div>
+    <p class="journey-note">Overloaded — 5 pages, no clear entry. Consider merging Cold Starts into Usage, CC Session into Sessions.</p>
+  </div>
+
+  <div class="journey-section">
+    <div class="journey-title">J4: Knowledge Management</div>
+    <div class="journey-flow">
+      <span class="journey-node">Memory</span>
+      <span class="journey-arrow">&harr;</span>
+      <span class="journey-node">Contacts</span>
+      <span class="journey-arrow">&harr;</span>
+      <span class="journey-node">Projects</span>
+    </div>
+    <p class="journey-note">Three standalone pages with no cross-links between them. Could benefit from a unified "Knowledge" view.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- NAV OVERLOAD ANALYSIS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Navigation Overload Analysis</div>
+
+  <div class="crosscut-grid">
+    <div class="crosscut-card">
+      <h3>Current: 15 items in 4 groups</h3>
+      <ul class="items">
+        <li>OVERVIEW: Dashboard, Briefing (2)</li>
+        <li>ACTIVITY: Obligations, Approvals, Diary, Sessions, Messages (5)</li>
+        <li>DATA: Contacts, Projects, Integrations (3)</li>
+        <li>SYSTEM: Usage, Cold Starts, Memory, CC Session, Settings (5)</li>
+      </ul>
+    </div>
+    <div class="crosscut-card">
+      <h3>Suggested: 11 items, clearer grouping</h3>
+      <ul class="items">
+        <li><strong>Merge Cold Starts into Usage</strong> as a tab — both are analytics</li>
+        <li><strong>Merge CC Session into Sessions</strong> as a panel — both manage sessions</li>
+        <li><strong>Move Memory under DATA</strong> — it's knowledge, not system</li>
+        <li><strong>Consider Diary as a Dashboard tab</strong> — it's a daily view, same as briefing</li>
+        <li>Result: OVERVIEW (2), ACTIVITY (4), DATA (4), SYSTEM (2)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- LEGEND -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Page Inventory</div>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-dot" style="background:var(--amber)"></span> UX Issues</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--cyan)"></span> Suggestions</span>
+    <span class="legend-item"><span class="legend-dot" style="background:var(--purple)"></span> Animation Opportunities</span>
+    <span class="legend-item"><span class="badge badge-green">good</span> Healthy</span>
+    <span class="legend-item"><span class="badge badge-amber">improve</span> Needs work</span>
+    <span class="legend-item"><span class="badge badge-red">broken</span> Crash / blocker</span>
+  </div>
+
+<!-- ═════════════ OVERVIEW ═════════════ -->
+
+<!-- Dashboard -->
+<div class="page-card open">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Dashboard
+      <span class="page-route">/</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Central overview: stat cards (obligations, active sessions, five-byte health, cold starts),
+      CC Session widget, active Nexus session card, recent activity feed, quick links.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Stat cards show "0" for everything</strong> when daemon is disconnected — no visual differentiation between "zero data" and "offline". Add a disconnected overlay or dim the cards.</li>
+        <li><strong>6 stat cards in one row</strong> on wide screens creates a wall of numbers. Group into 2 rows: operational (obligations, active, health) vs performance (cold starts, five-byte).</li>
+        <li><strong>Auto-refresh button</strong> has no indicator of refresh interval (how often?).</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li>Add a <strong>greeting/time-of-day</strong> banner — "Good morning, Leo" with today's briefing summary. Personalizes the first touchpoint.</li>
+        <li>Show <strong>last-updated timestamp</strong> next to auto-refresh to build trust in data freshness.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Stat card number counters:</strong> Animate values from 0 to target on load using <code>countUp</code> easing (CSS <code>@property</code> number interpolation). ~200ms per card, staggered 50ms.</li>
+        <li><strong>Section reveals:</strong> Each section (stats, session widget, activity) should fade-in-up with 100ms stagger between groups, not all at once.</li>
+        <li><strong>Activity feed items:</strong> Slide-in-left with 30ms stagger per row when section enters viewport.</li>
+        <li><strong>Refresh button:</strong> Spin the icon 360deg on click, then fade-pulse the updated content.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Briefing -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Briefing
+      <span class="page-route">/briefing</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-red">broken</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      AI-generated daily briefing with history navigation. Should be the "morning coffee" page.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>P0: Client-side exception crashes the entire page.</strong> Full-viewport error with no recovery. Likely a rendering issue with briefing data parsing.</li>
+        <li>No error boundary — one component crash takes down the whole page.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li>Add an <strong>error boundary</strong> wrapping the briefing renderer so history/controls remain usable on crash.</li>
+        <li>Show a <strong>skeleton with typewriter placeholder</strong> while briefing generates — sets expectation of AI processing time.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Typewriter reveal:</strong> When briefing text loads, reveal paragraphs with a subtle typewriter/fade effect — reinforces the "AI generating" metaphor.</li>
+        <li><strong>History navigation:</strong> Slide-left/slide-right transitions when moving between dates.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ ACTIVITY ═════════════ -->
+
+<!-- Obligations -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Obligations
+      <span class="page-route">/obligations</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-amber">improve</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Task/obligation management with status filtering (Active/History), owner tabs, expandable obligation cards with full description and action buttons (Confirm Done, Reopen, Cancel).
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Action button overload:</strong> Every obligation shows Cancel, Confirm Done, Reopen simultaneously. These are mutually exclusive states — show contextual actions only (e.g., active items show "Done" + "Cancel", not "Reopen").</li>
+        <li><strong>Dense stat row:</strong> 5 stat cards + tabs + filter = heavy cognitive load at top. Consider collapsing stats into a single summary bar.</li>
+        <li><strong>No urgency indicators:</strong> All obligations look the same. Items approaching deadline should have visual warning (amber glow, countdown).</li>
+        <li><strong>Activity panel</strong> on right side competes for attention with the main list. Unclear if it's global or scoped to selected obligation.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Contextual actions:</strong> Show only relevant buttons per state. Use icon buttons with tooltips instead of full text to reduce visual weight.</li>
+        <li><strong>Deadline proximity:</strong> Add a subtle amber-to-red gradient on obligation cards approaching due date.</li>
+        <li><strong>Inline expand:</strong> Expand obligation details inline instead of always-visible — save vertical space.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Status change:</strong> When marking done, card should scale down slightly + fade to green, then slide out after 600ms.</li>
+        <li><strong>Tab switch:</strong> Crossfade content between Active/History tabs (opacity 150ms).</li>
+        <li><strong>Expand/collapse:</strong> Smooth height transition (max-height + opacity, 200ms ease) for obligation detail expansion.</li>
+        <li><strong>List reorder:</strong> When an item is completed and removed from active, remaining items should slide up smoothly (layout animation).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Approvals -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Approvals
+      <span class="page-route">/approvals</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-amber">improve</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Queue-based approval flow: left list of pending items, right detail panel with description + Approve/Dismiss actions.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>No urgency triage:</strong> "Medium urgency" label exists but all items look identical. Use color coding — red for urgent, amber for medium, default for low.</li>
+        <li><strong>Approve button is very large</strong> (full-width green) while Dismiss is ghosted — bias is good for approve-heavy workflows, but consider if dismiss needs equal weight.</li>
+        <li><strong>Queue count badge</strong> is only visible in nav and inline header — the page title should reflect count too.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Keyboard shortcuts:</strong> A for approve, D for dismiss, arrow keys to navigate queue. Power user flow.</li>
+        <li><strong>Batch actions:</strong> Select multiple, approve/dismiss all.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Approve/dismiss:</strong> Card slides out left (approved) or right (dismissed) with a green/red flash, next item slides up into position.</li>
+        <li><strong>Detail panel:</strong> Crossfade when selecting different queue items (opacity + subtle translateX 4px).</li>
+        <li><strong>Queue empty:</strong> When last item is cleared, celebratory confetti-fade or a gentle "All clear" animation.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Diary -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Diary
+      <span class="page-route">/diary</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Daily interaction log with date navigation, stat cards (interactions, tokens, latency), and chronological event entries with tags.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Date navigation is minimal</strong> — just left/right arrows. No calendar picker or jump-to-date for reviewing past days.</li>
+        <li><strong>Tag pills</strong> (tool names) are informational but not interactive — clicking a tag should filter the diary to that tool.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Date transition:</strong> Slide diary entries left/right when navigating dates (like a carousel).</li>
+        <li><strong>Entry stagger:</strong> Diary entries fade-in-up with 40ms stagger on load.</li>
+        <li><strong>Stat counters:</strong> Same countUp animation as dashboard stat cards.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Sessions -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Sessions
+      <span class="page-route">/sessions</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      List of all Nexus agent sessions with search, project filter dropdown, and status tabs (All, Active, Idle, Completed).
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Absorb CC Session page:</strong> Add a "CC Session" panel/tab here since both manage sessions. Reduces nav count.</li>
+        <li><strong>Real-time indicators:</strong> Active sessions should pulse or have a subtle breathing animation to show they're live.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Status tab switch:</strong> Crossfade content between filter tabs.</li>
+        <li><strong>Session cards:</strong> Staggered fade-in-up (already present, verify stagger timing).</li>
+        <li><strong>Active session pulse:</strong> Subtle border glow pulse (box-shadow animation, 2s infinite) on active session cards.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Messages -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Messages
+      <span class="page-route">/messages</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-amber">improve</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Channel message history with search, channel filter tabs, and date range. Displays message log from Nexus conversations.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Dense text wall:</strong> Messages are displayed as uniform rows with no visual hierarchy. Long messages truncate without expand affordance.</li>
+        <li><strong>Channel tabs</strong> are too subtle — small text filters with no visual differentiation. Consider pill-style tabs with channel color coding.</li>
+        <li><strong>No message grouping</strong> by conversation or time window — it reads like a flat log, not a conversation view.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Time grouping:</strong> Group messages by hour or conversation thread with subtle dividers.</li>
+        <li><strong>Expand long messages</strong> on click instead of truncating permanently.</li>
+        <li><strong>Channel color coding:</strong> Assign each channel a subtle accent color for quick scanning.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>New message arrival:</strong> Slide-in-down from top with highlight flash (via WebSocket real-time feed).</li>
+        <li><strong>Message expand:</strong> Smooth height reveal (max-height transition 200ms).</li>
+        <li><strong>Channel switch:</strong> Crossfade between channel message lists.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ DATA ═════════════ -->
+
+<!-- Contacts -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Contacts
+      <span class="page-route">/contacts</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Contact directory with search, category filters (All, Work, Personal, Contributor, Social), and "New contact" CTA.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Avatar initials:</strong> When contacts exist, show letter avatars with hashed background colors for visual variety.</li>
+        <li><strong>Cross-link to Messages:</strong> "View messages with this contact" link on contact detail.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Contact cards:</strong> Grid layout with staggered scale-in (scale 0.95 to 1 + opacity, 150ms, 30ms stagger).</li>
+        <li><strong>Filter pills:</strong> Active filter pill should have a smooth underline slide transition.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Projects -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Projects
+      <span class="page-route">/projects</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Daemon-registered project listing with search and issue count. Uses accordion expansion for project details.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Project health indicators:</strong> Show a small status dot (green/amber/red) per project based on recent session success rate.</li>
+        <li><strong>Quick stats:</strong> Show session count, last active time inline without needing to expand.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Accordion expand:</strong> Smooth height + opacity transition (currently likely instant). 200ms ease-out.</li>
+        <li><strong>Project cards:</strong> Staggered fade-in-up on load.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Integrations -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Integrations
+      <span class="page-route">/integrations</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Connected channels (Telegram), tools, and services (Agent, Alert_rules, Autonomy, Daemon, etc.) with status indicators and initials avatars.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Initials avatars</strong> (AG, AL, AU, DA) are functional but bland — all same dark gray. Use hashed colors from the service name for visual differentiation.</li>
+        <li><strong>"Disconnected" dominates</strong> — when most services are disconnected, the page feels like an error state. Consider dimming disconnected items and elevating connected ones.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Connected pulse:</strong> Subtle green glow pulse on "Connected" status badges (2s ease-in-out infinite).</li>
+        <li><strong>Section stagger:</strong> Channels, Tools, Services groups fade-in-up with 100ms stagger between groups.</li>
+        <li><strong>Status change:</strong> When a service connects/disconnects via WebSocket, animate the status badge transition (color crossfade + scale pop).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════ SYSTEM ═════════════ -->
+
+<!-- Usage -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Usage
+      <span class="page-route">/usage</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-amber">improve</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Cost analytics with stat cards (cost subscriber, cost/time, total), token usage bars, and tool invocation table with usage bars.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>$0.0000 everywhere</strong> when daemon is off — same "zero vs offline" problem as dashboard. Show "No data" or "--" instead of literal zeros.</li>
+        <li><strong>Tool usage bars</strong> are very small and hard to read at a glance. Needs more vertical space or a proper bar chart.</li>
+        <li><strong>No time range selector</strong> — is this today? This week? All time? Ambiguous.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Absorb Cold Starts</strong> as a tab here — both are performance/analytics views.</li>
+        <li><strong>Time range picker:</strong> Today / 7d / 30d / All time toggle.</li>
+        <li><strong>Sparkline charts</strong> for cost trends over time, not just point-in-time values.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Bar chart reveal:</strong> Bars grow from left to right on load (width transition 400ms ease-out, staggered).</li>
+        <li><strong>Cost counters:</strong> countUp animation for dollar values.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Cold Starts -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Cold Starts
+      <span class="page-route">/cold-starts</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-amber">improve</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Session latency percentiles (p50, p95, p99) and a latency chart over recent events.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Standalone page for one chart</strong> — this doesn't justify its own nav entry. Could be a tab on the Usage page.</li>
+        <li><strong>Stat card colors</strong> (green/amber/red) suggest thresholds but these aren't documented — what's a "good" p50?</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Merge into Usage page</strong> as "Performance" tab.</li>
+        <li><strong>Add threshold labels:</strong> Show target vs actual (e.g., "target &lt; 10s") so the color has meaning.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Chart draw-in:</strong> SVG path drawing animation for the latency line chart (stroke-dashoffset, 800ms).</li>
+        <li><strong>Percentile cards:</strong> countUp + stagger as with other stat cards.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Memory -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Memory
+      <span class="page-route">/memory</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Knowledge base file browser. Left panel lists memory files (conversations, decisions, identity, people, etc.), right panel shows content with Edit button.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Right panel shows "(empty)"</strong> for the selected file — unclear if this is the file content or a loading error.</li>
+        <li><strong>No preview of file size/type</strong> in the left list — all files look identical.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Move to DATA group</strong> in nav — this is knowledge management, not system.</li>
+        <li><strong>File metadata:</strong> Show last-modified date and word count next to each file name.</li>
+        <li><strong>Markdown preview:</strong> Render memory file content as formatted markdown, not raw text.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>File select:</strong> Right panel crossfades when switching files (opacity 150ms).</li>
+        <li><strong>File list:</strong> Staggered fade-in-up on initial load.</li>
+        <li><strong>Edit mode:</strong> Smooth transition from read view to edit view (border color change + subtle scale, 200ms).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- CC Session -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      CC Session
+      <span class="page-route">/session</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-amber">improve</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Claude Code container session manager — Start/Stop/Restart controls, uptime/messages/last-activity stats, container log viewer.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>Standalone page for one session</strong> — this is just a control panel card. Could be a panel within the Sessions page.</li>
+        <li><strong>Log viewer shows "No log output yet..."</strong> even when stopped — should say "Session is stopped" instead.</li>
+        <li><strong>Start/Stop/Restart</strong> buttons are all always visible but some are disabled. Only show currently valid actions.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Merge into Sessions page</strong> as a dedicated "CC Session" card at the top or as a tab.</li>
+        <li><strong>Log streaming:</strong> Auto-scroll to bottom with follow-mode toggle when session is active.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Status transitions:</strong> "Stopped" to "Starting" to "Running" should animate — spinner during start, green pulse when running.</li>
+        <li><strong>Log lines:</strong> New log lines slide-in-up from bottom with monospace typewriter feel.</li>
+        <li><strong>Button state:</strong> Smooth enable/disable transitions (opacity + scale).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- Settings -->
+<div class="page-card">
+  <div class="page-card-header" onclick="this.parentElement.classList.toggle('open')">
+    <div class="page-name">
+      Settings
+      <span class="page-route">/settings</span>
+    </div>
+    <div class="page-badges">
+      <span class="badge badge-green">good</span>
+      <span class="chevron">&#9662;</span>
+    </div>
+  </div>
+  <div class="page-card-body">
+    <p class="page-purpose">
+      Daemon configuration — 28 settings organized in a clean list with inline editing. Includes toggles, text inputs, and "restart required" warnings.
+    </p>
+    <div class="issue-group">
+      <div class="issue-group-title issues-title">UX Issues</div>
+      <ul class="issue-list issues">
+        <li><strong>28 settings in a flat list</strong> is a lot. Group into categories (General, Network, Scheduling, Advanced) with collapsible sections.</li>
+        <li><strong>"restart required"</strong> label is amber text next to the field — easy to miss. Make it a more prominent banner when any restart-required field has been changed.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title suggestions-title">Suggestions</div>
+      <ul class="issue-list suggestions">
+        <li><strong>Dirty state indicator:</strong> Show unsaved changes count and a floating "Save & Restart" bar when restart-required fields are modified.</li>
+        <li><strong>Group settings</strong> into expandable sections with counts.</li>
+      </ul>
+    </div>
+    <div class="issue-group">
+      <div class="issue-group-title animation-title">Animation Opportunities</div>
+      <ul class="issue-list animations">
+        <li><strong>Save confirmation:</strong> Brief green flash on saved field (background-color transition 300ms).</li>
+        <li><strong>Section collapse:</strong> Smooth height transition for grouped sections.</li>
+        <li><strong>Toggle switch:</strong> Spring-physics feel on toggle interaction (slightly overshoot then settle).</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</div> <!-- end page inventory section -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- CROSS-CUTTING ANIMATION SPEC -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Cross-Cutting Animation System</div>
+  <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1.25rem;">
+    These animations should be implemented as reusable CSS utilities or a thin React wrapper. No animation library needed — CSS keyframes + transitions cover everything here.
+  </p>
+
+  <table class="anim-table">
+    <thead>
+      <tr>
+        <th>Animation</th>
+        <th>Technique</th>
+        <th>Duration</th>
+        <th>Where Used</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>fade-in-up</td>
+        <td>Existing. <code>opacity 0→1, translateY 8px→0</code></td>
+        <td>200ms ease</td>
+        <td>Page content, cards, empty states</td>
+      </tr>
+      <tr>
+        <td>countUp</td>
+        <td>CSS <code>@property --num</code> with <code>transition: --num 800ms</code>, or 15-line JS hook</td>
+        <td>600-800ms ease-out</td>
+        <td>All StatCards, cost values, percentiles</td>
+      </tr>
+      <tr>
+        <td>slide-out-left</td>
+        <td><code>translateX(0→-100%), opacity 1→0</code></td>
+        <td>300ms ease-in</td>
+        <td>Approval approve, obligation done</td>
+      </tr>
+      <tr>
+        <td>slide-out-right</td>
+        <td><code>translateX(0→100%), opacity 1→0</code></td>
+        <td>300ms ease-in</td>
+        <td>Approval dismiss</td>
+      </tr>
+      <tr>
+        <td>crossfade</td>
+        <td><code>opacity 1→0→1</code> on content swap</td>
+        <td>150ms ease</td>
+        <td>Tab switches, panel transitions, file select</td>
+      </tr>
+      <tr>
+        <td>height-reveal</td>
+        <td><code>grid-template-rows: 0fr→1fr</code> + opacity</td>
+        <td>200ms ease-out</td>
+        <td>Accordions, expand/collapse, detail panels</td>
+      </tr>
+      <tr>
+        <td>bar-grow</td>
+        <td><code>width: 0→target%</code> or <code>scaleX(0→1)</code></td>
+        <td>400ms ease-out, staggered</td>
+        <td>Usage bars, token bars, latency bars</td>
+      </tr>
+      <tr>
+        <td>glow-pulse</td>
+        <td><code>box-shadow</code> green/amber keyframe, infinite</td>
+        <td>2s ease-in-out</td>
+        <td>Active sessions, connected integrations, running CC session</td>
+      </tr>
+      <tr>
+        <td>path-draw</td>
+        <td>SVG <code>stroke-dasharray/offset</code> animation</td>
+        <td>800ms ease-out</td>
+        <td>Cold Starts latency chart line</td>
+      </tr>
+      <tr>
+        <td>slide-date</td>
+        <td><code>translateX(±20px)</code> + opacity, direction-aware</td>
+        <td>200ms ease</td>
+        <td>Diary date nav, briefing history nav</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- PRIORITY RECOMMENDATIONS -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Priority Recommendations</div>
+
+  <div class="crosscut-grid">
+    <div class="crosscut-card">
+      <h3 style="color:var(--red)">P0 — Fix Now</h3>
+      <ul class="items">
+        <li><strong>/briefing crash:</strong> Client-side exception kills the page. Add error boundary + debug the root cause.</li>
+      </ul>
+    </div>
+    <div class="crosscut-card">
+      <h3 style="color:var(--amber)">P1 — Quick Wins</h3>
+      <ul class="items">
+        <li><strong>countUp animation</strong> on all StatCards — high-impact, 15 lines of code.</li>
+        <li><strong>Crossfade tab transitions</strong> — wrap tab content in opacity transition.</li>
+        <li><strong>Staggered page load</strong> — add stagger-N classes to section groups on every page.</li>
+        <li><strong>Contextual obligation actions</strong> — show only relevant buttons per state.</li>
+      </ul>
+    </div>
+    <div class="crosscut-card">
+      <h3 style="color:var(--blue)">P2 — Strategic Improvements</h3>
+      <ul class="items">
+        <li><strong>Merge Cold Starts into Usage</strong> — reduces nav by 1, consolidates analytics.</li>
+        <li><strong>Merge CC Session into Sessions</strong> — reduces nav by 1, consolidates session management.</li>
+        <li><strong>Move Memory to DATA group</strong> — better information architecture.</li>
+        <li><strong>Approval keyboard shortcuts</strong> — power user productivity.</li>
+        <li><strong>Message grouping by time/thread</strong> — conversation readability.</li>
+      </ul>
+    </div>
+    <div class="crosscut-card">
+      <h3 style="color:var(--purple)">P3 — Polish</h3>
+      <ul class="items">
+        <li><strong>glow-pulse on active sessions/integrations</strong> — shows liveness.</li>
+        <li><strong>SVG path-draw on charts</strong> — satisfying reveal.</li>
+        <li><strong>Approval queue celebration</strong> — "all clear" animation when queue empties.</li>
+        <li><strong>Settings section grouping</strong> — collapsible categories for 28 settings.</li>
+        <li><strong>Greeting banner on dashboard</strong> — personalized daily touch.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+</div> <!-- container -->
+
+<script>
+// Auto-open first card, all others start collapsed
+document.querySelectorAll('.page-card').forEach((card, i) => {
+  if (i > 0) card.classList.remove('open');
+});
+</script>
+
+</body>
+</html>

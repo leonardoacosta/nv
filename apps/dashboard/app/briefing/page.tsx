@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { parseBriefingSections } from "@/lib/briefing";
 import ErrorBanner from "@/components/layout/ErrorBanner";
+import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import EmptyState from "@/components/layout/EmptyState";
 import type {
   BriefingEntry,
@@ -256,7 +257,7 @@ export default function BriefingPage() {
       )}
 
       {/* Sources status */}
-      {displayEntry &&
+      {displayEntry?.sources_status &&
         Object.keys(displayEntry.sources_status).length > 0 && (
           <div className="flex flex-wrap gap-2">
             {Object.entries(displayEntry.sources_status).map(
@@ -278,60 +279,62 @@ export default function BriefingPage() {
       {/* Main grid: content + history rail */}
       <div className="flex gap-6 items-start">
         {/* Content panel */}
-        <div className="flex-1 min-w-0 space-y-4">
-          {loading ? (
-            <LoadingSkeleton />
-          ) : !displayEntry ? (
-            /* Empty state */
-            <EmptyState
-              title="No briefing yet today"
-              description="Nova generates a briefing each morning at 7am"
-              icon={<Sun size={40} aria-hidden="true" />}
-            />
-          ) : (
-            <>
-              {/* Section cards */}
-              <div className="space-y-4">
-                {parseBriefingSections(displayEntry.content).map(
-                  (section, idx) => (
-                    <BriefingSectionCard
-                      key={idx}
-                      title={section.title}
-                      body={section.body}
-                    />
-                  ),
-                )}
-              </div>
-
-              {/* Suggested actions chips */}
-              {displayEntry.suggested_actions.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-label-12 text-ds-gray-700">
-                    Suggested Actions
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {displayEntry.suggested_actions.map((action) => {
-                      const chipClass =
-                        action.status === "completed"
-                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                          : action.status === "dismissed"
-                            ? "bg-ds-gray-100 border-ds-gray-400 text-ds-gray-900 line-through"
-                            : "bg-ds-gray-alpha-100 border-ds-gray-1000/30 text-ds-gray-1000";
-                      return (
-                        <span
-                          key={action.id}
-                          className={`px-3 py-1.5 rounded-full border text-xs font-medium ${chipClass}`}
-                        >
-                          {action.label}
-                        </span>
-                      );
-                    })}
-                  </div>
+        <ErrorBoundary onReset={handleRefresh}>
+          <div className="flex-1 min-w-0 space-y-4">
+            {loading ? (
+              <LoadingSkeleton />
+            ) : !displayEntry ? (
+              /* Empty state */
+              <EmptyState
+                title="No briefing yet today"
+                description="Nova generates a briefing each morning at 7am"
+                icon={<Sun size={40} aria-hidden="true" />}
+              />
+            ) : (
+              <>
+                {/* Section cards */}
+                <div className="space-y-4">
+                  {(displayEntry.content ? parseBriefingSections(displayEntry.content) : []).map(
+                    (section, idx) => (
+                      <BriefingSectionCard
+                        key={idx}
+                        title={section.title}
+                        body={section.body}
+                      />
+                    ),
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </div>
+
+                {/* Suggested actions chips */}
+                {(displayEntry.suggested_actions?.length ?? 0) > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-label-12 text-ds-gray-700">
+                      Suggested Actions
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {displayEntry.suggested_actions.map((action) => {
+                        const chipClass =
+                          action.status === "completed"
+                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            : action.status === "dismissed"
+                              ? "bg-ds-gray-100 border-ds-gray-400 text-ds-gray-900 line-through"
+                              : "bg-ds-gray-alpha-100 border-ds-gray-1000/30 text-ds-gray-1000";
+                        return (
+                          <span
+                            key={action.id}
+                            className={`px-3 py-1.5 rounded-full border text-xs font-medium ${chipClass}`}
+                          >
+                            {action.label}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </ErrorBoundary>
 
         {/* History rail */}
         {history.length > 0 && (

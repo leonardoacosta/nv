@@ -223,9 +223,9 @@ export interface BriefingEntry {
   sources_status: Record<string, string>;
 }
 
-/** Response from GET /api/briefing — returns latest entry or 404. */
+/** Response from GET /api/briefing — returns latest entry (or null when no briefing exists). */
 export interface BriefingGetResponse {
-  entry: BriefingEntry;
+  entry: BriefingEntry | null;
 }
 
 /** Response from GET /api/briefing/history — returns list of past entries. */

@@ -551,7 +551,7 @@ export default function ObligationsPage() {
 
       {/* Stats bar */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 section-stagger-1">
           <StatCard
             icon={<ListTodo size={16} aria-hidden="true" />}
             label="Open (Nova)"
@@ -586,7 +586,7 @@ export default function ObligationsPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit">
+      <div className="flex gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit section-stagger-2">
         {(["open", "history"] as TabKey[]).map((t) => (
           <button
             key={t}
@@ -618,7 +618,7 @@ export default function ObligationsPage() {
       )}
 
       {/* Two-column layout: list (2/3) + activity feed (1/3) */}
-      <div className="flex flex-col lg:flex-row gap-6">
+      <div className="flex flex-col lg:flex-row gap-6 section-stagger-3">
         {/* Obligations list */}
         <div ref={listRef} className="flex-1 lg:w-2/3 min-w-0">
           {loading ? (
@@ -631,7 +631,7 @@ export default function ObligationsPage() {
               ))}
             </div>
           ) : tab === "open" ? (
-            <div className="space-y-8">
+            <div key="open" className="animate-crossfade-in space-y-8">
               {/* Nova */}
               <section>
                 <SectionHeading
@@ -712,7 +712,7 @@ export default function ObligationsPage() {
             </div>
           ) : (
             // History tab
-            <div className="space-y-3">
+            <div key="history" className="animate-crossfade-in space-y-3">
               {history.length === 0 ? (
                 <EmptyState
                   title="No history yet"

@@ -457,7 +457,7 @@ export default function DashboardPage() {
         )}
 
         {/* Stat cards — 3 columns on desktop */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 section-stagger-1">
           {loading ? (
             Array.from({ length: 6 }).map((_, i) => (
               <div
@@ -533,13 +533,13 @@ export default function DashboardPage() {
           {/* Main column — sessions + activity */}
           <div className="lg:col-span-2 space-y-6">
             {/* CC Session widget */}
-            <div className="space-y-2">
+            <div className="space-y-2 section-stagger-2">
               <SectionHeader label="CC Session" statusDot="muted" />
               <SessionWidget />
             </div>
 
             {/* Active sessions summary */}
-            <div className="space-y-2">
+            <div className="space-y-2 section-stagger-3">
               <div className="flex items-center justify-between">
                 <SectionHeader
                   label="Active Sessions"
@@ -580,7 +580,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Recent activity feed */}
-            <div className="space-y-2">
+            <div className="space-y-2 section-stagger-4">
               <SectionHeader
                 label="Recent Activity"
                 count={activityFeed.length}

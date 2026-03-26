@@ -1,5 +1,9 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+
+import { useCountUp } from "@/hooks/useCountUp";
 
 export type TrendDirection = "up" | "down" | "flat";
 export type StatCardVariant = "default" | "success" | "warning" | "error";
@@ -56,6 +60,10 @@ export default function StatCard({
   variant = "default",
   trend,
 }: StatCardProps) {
+  const numericValue = typeof value === "number" ? value : 0;
+  const animatedValue = useCountUp(numericValue);
+  const displayValue = typeof value === "number" ? animatedValue : String(value);
+
   const trendCfg = trend ? TREND_CONFIG[trend.direction] : null;
   const accentBar = ACCENT_BAR[variant];
 
@@ -83,7 +91,7 @@ export default function StatCard({
       {/* Value */}
       <div className="pl-2">
         <div className="text-heading-32 text-ds-gray-1000 leading-none">
-          {value}
+          {displayValue}
         </div>
         {sublabel && (
           <div className="mt-1 text-label-13 text-ds-gray-900">{sublabel}</div>

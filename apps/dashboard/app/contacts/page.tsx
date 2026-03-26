@@ -656,7 +656,7 @@ export default function ContactsPage() {
           </div>
         ) : (
           /* Contact list */
-          <div className="space-y-2">
+          <div key={relationshipFilter} className="animate-crossfade-in space-y-2">
             {contacts.map((contact) => (
               <ContactCard
                 key={contact.id}

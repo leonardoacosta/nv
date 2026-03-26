@@ -629,7 +629,7 @@ export default function SessionsPage() {
           )}
 
           {/* Filter bar */}
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 section-stagger-1">
             {/* Search */}
             <div className="relative flex-1 max-w-sm">
               <Search
@@ -693,7 +693,7 @@ export default function SessionsPage() {
 
           {/* Results count */}
           {!loading && (
-            <p className="text-xs text-ds-gray-900">
+            <p className="text-xs text-ds-gray-900 section-stagger-2">
               {filtered.length} session{filtered.length !== 1 ? "s" : ""}
               {deferredSearch ? ` matching "${deferredSearch}"` : ""}
             </p>
@@ -720,7 +720,7 @@ export default function SessionsPage() {
               icon={<Layers size={24} aria-hidden="true" />}
             />
           ) : (
-            <div className="space-y-6">
+            <div key={statusFilter} className="animate-crossfade-in space-y-6 section-stagger-3">
               {/* Active */}
               {active.length > 0 && (
                 <section className="space-y-2">

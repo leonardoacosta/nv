@@ -487,7 +487,7 @@ export default function MessagesPage() {
         )}
 
         {/* Messages list */}
-        <div className="surface-card overflow-hidden">
+        <div key={`${channelFilter}-${dateRange}`} className="animate-crossfade-in surface-card overflow-hidden">
           {loading ? (
             <ul className="divide-y divide-ds-gray-400">
               {Array.from({ length: 8 }).map((_, i) => (

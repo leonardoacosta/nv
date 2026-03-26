@@ -229,6 +229,28 @@ export interface StatsGetResponse {
   [key: string]: unknown;
 }
 
+// ── GET /api/contacts ──────────────────────────────────────────────────────
+
+/**
+ * A single contact returned by GET /api/contacts.
+ * Field names match the Rust `Contact` struct in crates/nv-daemon/src/contact_store.rs.
+ * The GET /api/contacts handler returns Vec<Contact> as a plain JSON array.
+ */
+export interface Contact {
+  id: string;
+  name: string;
+  channel_ids: {
+    telegram?: string;
+    discord?: string;
+    teams?: string;
+    [key: string]: string | undefined;
+  };
+  relationship_type: "work" | "personal-client" | "contributor" | "social";
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── GET /api/diary ─────────────────────────────────────────────────────────
 
 /** A single diary entry returned by GET /api/diary. */

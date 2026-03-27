@@ -11,6 +11,7 @@ import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/inde
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
 import { DreamScheduler } from "./features/dream/index.js";
 import { startDigestScheduler } from "./features/digest/index.js";
+import { startTokenRefresh } from "./features/token-refresh.js";
 import { setDigestDeps } from "./telegram/commands/digest.js";
 import { JobQueue } from "./queue/index.js";
 import { NovaAgent } from "./brain/agent.js";
@@ -207,6 +208,10 @@ export async function main(): Promise<void> {
       "Digest scheduler not started",
     );
   }
+
+  // ── Token refresh cron ─────────────────────────────────────────────────────
+
+  const stopTokenRefresh = startTokenRefresh();
 
   // ── Reminder delivery poller ────────────────────────────────────────────────
 
@@ -790,6 +795,8 @@ export async function main(): Promise<void> {
     if (dreamScheduler !== null) {
       dreamScheduler.stop();
     }
+
+    stopTokenRefresh();
 
     if (watcher !== null) {
       watcher.stop();

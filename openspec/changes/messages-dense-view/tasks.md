@@ -2,9 +2,9 @@
 
 ## API Batch
 
-- [ ] [1.1] [P-1] Create `apps/dashboard/app/api/contacts/resolve/route.ts` -- new POST endpoint accepting `{ senders: string[] }` body; query the `contacts` table, scan `channelIds` JSONB for matches against each sender identifier; return `Record<string, string>` mapping sender IDs to contact display names; return 200 with empty object if no matches [owner:api-engineer]
-- [ ] [1.2] [P-1] Extend `apps/dashboard/app/api/messages/route.ts` -- add `direction` query param (filter using `sender = 'nova'` for outbound, `sender != 'nova'` for inbound); add `sort` param ("asc"/"desc", default "desc"); add `type` param (filter on `metadata->>'type'`); add a parallel `COUNT(*)` query and return `total` in the response; extract `metadata.type` into the mapped response as `type` field defaulting to `"conversation"` [owner:api-engineer]
-- [ ] [1.3] [P-2] Update `apps/dashboard/types/api.ts` -- add `type: "conversation" | "tool-call" | "system"` field to `StoredMessage` interface; add `total: number` to `MessagesGetResponse` [owner:api-engineer]
+- [x] [1.1] [P-1] Create `apps/dashboard/app/api/contacts/resolve/route.ts` -- new POST endpoint accepting `{ senders: string[] }` body; query the `contacts` table, scan `channelIds` JSONB for matches against each sender identifier; return `Record<string, string>` mapping sender IDs to contact display names; return 200 with empty object if no matches [owner:api-engineer]
+- [x] [1.2] [P-1] Extend `apps/dashboard/app/api/messages/route.ts` -- add `direction` query param (filter using `sender = 'nova'` for outbound, `sender != 'nova'` for inbound); add `sort` param ("asc"/"desc", default "desc"); add `type` param (filter on `metadata->>'type'`); add a parallel `COUNT(*)` query and return `total` in the response; extract `metadata.type` into the mapped response as `type` field defaulting to `"conversation"` [owner:api-engineer]
+- [x] [1.3] [P-2] Update `apps/dashboard/types/api.ts` -- add `type: "conversation" | "tool-call" | "system"` field to `StoredMessage` interface; add `total: number` to `MessagesGetResponse` [owner:api-engineer]
 
 ## UI Batch 1 -- Core Components
 

@@ -385,6 +385,7 @@ export default function ChatPage() {
         response_time_ms: null,
         tokens_in: null,
         tokens_out: null,
+        type: "conversation",
       };
       setMessages((prev) => [...prev, userMsg]);
       setInputValue("");
@@ -452,6 +453,7 @@ export default function ChatPage() {
               response_time_ms: null,
               tokens_in: null,
               tokens_out: null,
+              type: "conversation",
             };
             setMessages((prev) => [...prev, novaMsg]);
             setStreamingText("");

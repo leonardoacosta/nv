@@ -246,10 +246,14 @@ export interface StoredMessage {
   response_time_ms: number | null;
   tokens_in: number | null;
   tokens_out: number | null;
+  /** Message type derived from metadata.type JSONB field. Defaults to "conversation". */
+  type: "conversation" | "tool-call" | "system";
 }
 
 export interface MessagesGetResponse {
   messages: StoredMessage[];
+  /** Total count of matching messages (for "Showing N of M" display). */
+  total: number;
   limit: number;
   offset: number;
 }
@@ -556,4 +560,49 @@ export interface ChannelStatus {
   name: string;
   status: "configured" | "unknown";
   direction: "bidirectional" | "inbound" | "outbound";
+}
+
+// ── GET /api/sessions/analytics ───────────────────────────────────────────
+
+/** Daily session count entry used in the sessions_7d sparkline. */
+export interface SessionDailyCount {
+  date: string;
+  count: number;
+}
+
+/** Project session count entry for the breakdown chart. */
+export interface SessionProjectBreakdown {
+  project: string;
+  count: number;
+}
+
+/** Response from GET /api/sessions/analytics. */
+export interface SessionAnalyticsResponse {
+  sessions_today: number;
+  sessions_7d: SessionDailyCount[];
+  avg_duration_mins: number;
+  project_breakdown: SessionProjectBreakdown[];
+  total_sessions: number;
+}
+
+// ── GET /api/sessions/[id] ────────────────────────────────────────────────
+
+/**
+ * Detailed view of a single session from DB.
+ * Source: Drizzle query on sessions table by ID.
+ */
+export interface SessionDetail {
+  id: string;
+  /** Derived from command: "CLI" | "Telegram" | command value */
+  service: string;
+  /** "active" when status is "running", otherwise as-is from DB */
+  status: string;
+  /** Not tracked in current schema — always 0 */
+  messages: number;
+  /** Not tracked in current schema — always 0 */
+  tools_executed: number;
+  started_at: string;
+  /** ISO timestamp from stopped_at column, or null if still running */
+  ended_at: string | null;
+  project: string;
 }

@@ -70,7 +70,7 @@ export function createHttpApp(
   // The named routes below are convenience aliases.
 
   app.post("/tools/:name", safe(async (c) => {
-    const name = c.req.param("name");
+    const name = c.req.param("name") ?? "";
     const input = await c.req.json<Record<string, unknown>>().catch(
       () => ({}) as Record<string, unknown>,
     );
@@ -147,7 +147,7 @@ export function createHttpApp(
   }));
 
   app.get("/ado/build-logs/:buildId", safe(async (c) => {
-    const buildId = parseInt(c.req.param("buildId"), 10);
+    const buildId = parseInt(c.req.param("buildId") ?? "", 10);
     if (isNaN(buildId)) {
       return c.json({ error: "buildId must be a number", status: 400 }, 400);
     }

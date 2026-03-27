@@ -27,7 +27,7 @@
     {
       "wave": 2,
       "name": "Page Redesigns",
-      "status": "pending",
+      "status": "completed",
       "specs": [
         {
           "name": "redesign-dashboard-home",
@@ -91,7 +91,7 @@
     "current_wave": null,
     "current_phase": null
   },
-  "completed_waves": [1],
+  "completed_waves": [1, 2],
   "failed_specs": [],
   "telemetry": []
 }

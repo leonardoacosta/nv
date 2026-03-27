@@ -42,6 +42,18 @@ export async function GET(request: NextRequest) {
       .from(diary)
       .where(where);
 
+    // Count distinct channels
+    const [channelResult] = await db
+      .select({ count: sql<number>`count(distinct ${diary.channel})::int` })
+      .from(diary)
+      .where(where);
+
+    // Get last interaction timestamp
+    const [lastResult] = await db
+      .select({ last: sql<string>`max(${diary.createdAt})` })
+      .from(diary)
+      .where(where);
+
     const entries: DiaryEntryItem[] = rows.map((row) => ({
       time: row.createdAt.toISOString(),
       trigger_type: row.triggerType,
@@ -59,6 +71,8 @@ export async function GET(request: NextRequest) {
       date: dateLabel,
       entries,
       total: totalResult?.count ?? entries.length,
+      distinct_channels: channelResult?.count ?? 0,
+      last_interaction_at: lastResult?.last ?? null,
     };
 
     return NextResponse.json(response);

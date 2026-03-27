@@ -531,6 +531,8 @@ export interface DiaryGetResponse {
   date: string;
   entries: DiaryEntryItem[];
   total: number;
+  distinct_channels: number;
+  last_interaction_at: string | null;
 }
 
 // ── GET /api/fleet-status ────────────────────────────────────────────────

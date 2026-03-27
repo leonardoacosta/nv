@@ -7,13 +7,13 @@ import {
   ChevronRight,
   RefreshCw,
   Clock,
-  Zap,
   Hash,
+  Radio,
 } from "lucide-react";
 import DiaryEntryCard from "@/components/DiaryEntry";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import StatCard from "@/components/layout/StatCard";
-import type { DiaryGetResponse, DiaryEntryItem } from "@/types/api";
+import type { DiaryGetResponse } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,21 +47,32 @@ function isToday(dateStr: string): boolean {
   return dateStr === toDateString(new Date());
 }
 
-// ── Summary stats ────────────────────────────────────────────────────────────
+function isYesterday(dateStr: string): boolean {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return dateStr === toDateString(yesterday);
+}
 
-function computeStats(entries: DiaryEntryItem[]) {
-  const total = entries.length;
-  const totalTokens = entries.reduce(
-    (sum, e) => sum + e.tokens_in + e.tokens_out,
-    0,
-  );
-  const avgLatencyMs =
-    total === 0
-      ? 0
-      : Math.round(
-          entries.reduce((sum, e) => sum + e.response_latency_ms, 0) / total,
-        );
-  return { total, totalTokens, avgLatencyMs };
+function relativeTime(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diffMs = now - then;
+  if (diffMs < 0) return "just now";
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+/** Contextual day label: "Today", "Yesterday", or formatted date. */
+function dayLabel(dateStr: string): string {
+  if (isToday(dateStr)) return "Today";
+  if (isYesterday(dateStr)) return "Yesterday";
+  return formatDisplayDate(dateStr);
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -96,8 +107,6 @@ export default function DiaryPage() {
     if (!isToday(dateStr)) setDateStr((d) => addDays(d, 1));
   };
 
-  const stats = data ? computeStats(data.entries) : null;
-
   return (
     <div className="p-4 space-y-3 w-full animate-fade-in-up">
       {/* Header */}
@@ -108,10 +117,10 @@ export default function DiaryPage() {
           </div>
           <div>
             <h1 className="text-heading-20 text-ds-gray-1000">
-              Interaction Diary
+              Activity Log
             </h1>
             <p className="text-copy-13 text-ds-gray-900 mt-0.5">
-              A log of every interaction Nova handled
+              Nova&apos;s interaction history
             </p>
           </div>
         </div>
@@ -168,29 +177,27 @@ export default function DiaryPage() {
       )}
 
       {/* Summary bar */}
-      {!loading && !error && stats && (
+      {!loading && !error && data && (
         <div className="flex flex-wrap border-b border-ds-gray-400">
           <StatCard
             icon={<Hash size={14} />}
             label="Entries"
-            value={stats.total}
+            value={data.total}
             inline
           />
           <StatCard
-            icon={<Zap size={14} />}
-            label="Tokens"
-            value={stats.totalTokens.toLocaleString()}
+            icon={<Radio size={14} />}
+            label="Channels"
+            value={data.distinct_channels}
             inline
           />
           <StatCard
             icon={<Clock size={14} />}
-            label="Avg Latency"
+            label="Last Activity"
             value={
-              stats.avgLatencyMs > 0
-                ? stats.avgLatencyMs >= 1000
-                  ? `${(stats.avgLatencyMs / 1000).toFixed(1)}s`
-                  : `${stats.avgLatencyMs}ms`
-                : "—"
+              data.last_interaction_at
+                ? relativeTime(data.last_interaction_at)
+                : "\u2014"
             }
             inline
           />
@@ -216,7 +223,12 @@ export default function DiaryPage() {
 
       {/* Diary entries — reverse-chronological (API already returns newest first) */}
       {!loading && !error && data && data.entries.length > 0 && (
-        <div className="space-y-3">
+        <div>
+          {/* Day header */}
+          <div className="text-label-12 text-ds-gray-900 uppercase tracking-wider py-2 border-b border-ds-gray-400">
+            {dayLabel(dateStr)}
+          </div>
+
           {data.entries.map((entry, idx) => (
             <div
               key={`${entry.time}-${idx}`}

@@ -24,7 +24,6 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import CCSessionPanel from "@/components/CCSessionPanel";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import type {
@@ -135,10 +134,10 @@ function EnhancedSessionCard({
       type="button"
       onClick={() => onSelect(session)}
       className={[
-        "w-full text-left p-4 space-y-3 surface-card",
+        "w-full text-left py-2.5 px-3 space-y-2 border-b border-ds-gray-400",
         selected
-          ? "!border-ds-gray-1000/60 !bg-ds-gray-alpha-100"
-          : "",
+          ? "bg-ds-gray-alpha-100"
+          : "hover:bg-ds-gray-100/40",
       ].join(" ")}
     >
       {/* Header row */}
@@ -637,7 +636,7 @@ function SessionsPage() {
         subtitle="Active, idle, and completed agent sessions"
         action={headerAction}
       >
-        <div className="space-y-5">
+        <div className="space-y-3">
           {/* CC Session panel toggle + collapsible panel */}
           <div className="space-y-3">
             <button
@@ -750,17 +749,13 @@ function SessionsPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <EmptyState
-              title="No sessions found"
-              description={
-                deferredSearch || statusFilter !== "all" || projectFilter !== "all"
-                  ? "Try adjusting your filters."
-                  : "Sessions will appear here when the daemon is active."
-              }
-              icon={<Layers size={24} aria-hidden="true" />}
-            />
+            <p className="text-copy-13 text-ds-gray-900 py-3">
+              {deferredSearch || statusFilter !== "all" || projectFilter !== "all"
+                ? "No sessions found. Try adjusting your filters."
+                : "No sessions found. Sessions will appear here when the daemon is active."}
+            </p>
           ) : (
-            <div key={statusFilter} className="animate-crossfade-in space-y-6 section-stagger-3">
+            <div key={statusFilter} className="animate-crossfade-in space-y-3 section-stagger-3">
               {/* Active */}
               {active.length > 0 && (
                 <section className="space-y-2">

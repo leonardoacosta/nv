@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import DiaryEntryCard from "@/components/DiaryEntry";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import StatCard from "@/components/layout/StatCard";
 import type { DiaryGetResponse, DiaryEntryItem } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
@@ -100,7 +99,7 @@ export default function DiaryPage() {
   const stats = data ? computeStats(data.entries) : null;
 
   return (
-    <div className="p-6 sm:p-8 space-y-6 max-w-3xl animate-fade-in-up">
+    <div className="p-4 space-y-3 w-full animate-fade-in-up">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -108,10 +107,10 @@ export default function DiaryPage() {
             <BookOpen size={18} className="text-ds-gray-1000" />
           </div>
           <div>
-            <h1 className="text-heading-24 text-ds-gray-1000">
+            <h1 className="text-heading-20 text-ds-gray-1000">
               Interaction Diary
             </h1>
-            <p className="text-copy-14 text-ds-gray-900 mt-0.5">
+            <p className="text-copy-13 text-ds-gray-900 mt-0.5">
               A log of every interaction Nova handled
             </p>
           </div>
@@ -170,19 +169,21 @@ export default function DiaryPage() {
 
       {/* Summary bar */}
       {!loading && !error && stats && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="flex flex-wrap border-b border-ds-gray-400">
           <StatCard
-            icon={<Hash size={16} />}
+            icon={<Hash size={14} />}
             label="Entries"
             value={stats.total}
+            inline
           />
           <StatCard
-            icon={<Zap size={16} />}
+            icon={<Zap size={14} />}
             label="Tokens"
             value={stats.totalTokens.toLocaleString()}
+            inline
           />
           <StatCard
-            icon={<Clock size={16} />}
+            icon={<Clock size={14} />}
             label="Avg Latency"
             value={
               stats.avgLatencyMs > 0
@@ -191,6 +192,7 @@ export default function DiaryPage() {
                   : `${stats.avgLatencyMs}ms`
                 : "—"
             }
+            inline
           />
         </div>
       )}
@@ -209,11 +211,7 @@ export default function DiaryPage() {
 
       {/* Empty state */}
       {!loading && !error && data && data.entries.length === 0 && (
-        <EmptyState
-          title="No entries for this day"
-          description="Diary entries appear here as Nova processes interactions."
-          icon={<BookOpen size={40} aria-hidden="true" />}
-        />
+        <p className="text-copy-13 text-ds-gray-900 py-3">No entries for this day</p>
       )}
 
       {/* Diary entries — reverse-chronological (API already returns newest first) */}

@@ -5,7 +5,6 @@ import { Brain, AlertCircle, RefreshCw, Search, FileText } from "lucide-react";
 import MemoryPreview, { type MemoryFile } from "@/components/MemoryPreview";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import type { MemoryListResponse, MemoryTopicResponse } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
@@ -161,15 +160,9 @@ export default function MemoryPage() {
                   />
                 ))
               ) : filtered.length === 0 ? (
-                <EmptyState
-                  title={search ? "No files match" : "No memory files"}
-                  description={
-                    search
-                      ? "Try a different search term."
-                      : "Memory files will appear here once created."
-                  }
-                  icon={<Brain size={24} aria-hidden="true" />}
-                />
+                <p className="text-copy-13 text-ds-gray-900 py-3">
+                  {search ? "No files match" : "No memory files"}
+                </p>
               ) : (
                 filtered.map((file) => (
                   <button

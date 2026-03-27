@@ -8,7 +8,7 @@ import {
   Terminal,
   HelpCircle,
 } from "lucide-react";
-import type { Approval, ApprovalActionType } from "@/components/approvals/types";
+import type { Approval, ApprovalActionType } from "./types";
 
 // ---------------------------------------------------------------------------
 // Helpers

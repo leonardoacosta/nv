@@ -455,7 +455,7 @@ export default function SettingsPage() {
         </div>
       ) : (
         <div
-          className="space-y-4 transition-colors duration-300"
+          className="space-y-3 transition-colors duration-300"
           style={{
             backgroundColor: saveFlash ? "rgba(12, 206, 107, 0.08)" : "transparent",
             borderRadius: "12px",

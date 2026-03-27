@@ -25,7 +25,6 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import { channelAccentColor } from "@/lib/channel-colors";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
@@ -622,17 +621,11 @@ export default function MessagesPage() {
               ))}
             </ul>
           ) : filtered.length === 0 ? (
-            <div className="py-4">
-              <EmptyState
-                title="No messages found"
-                description={
-                  deferredSearch || channelFilter !== "all" || dateRange !== "all"
-                    ? "Try adjusting your search or filters."
-                    : "Messages will appear here as Nova processes activity."
-                }
-                icon={<MessageSquare size={24} aria-hidden="true" />}
-              />
-            </div>
+            <p className="text-copy-13 text-ds-gray-900 py-3 px-4">
+              {deferredSearch || channelFilter !== "all" || dateRange !== "all"
+                ? "No messages found. Try adjusting your search or filters."
+                : "No messages found."}
+            </p>
           ) : (
             <>
               <ul>

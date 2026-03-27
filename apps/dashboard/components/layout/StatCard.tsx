@@ -21,6 +21,8 @@ export interface StatCardProps {
     direction: TrendDirection;
     label: string;
   };
+  /** Render as a flat inline row (no card, no border-radius, no box-shadow) */
+  inline?: boolean;
 }
 
 const ACCENT_BAR: Record<StatCardVariant, string> = {
@@ -51,6 +53,9 @@ const TREND_CONFIG: Record<
 /**
  * StatCard — metric tile with Geist surface-card material.
  * Left accent bar indicates semantic status. Icon, value, label, optional trend.
+ *
+ * When `inline` is true, renders as a flat horizontal row with border-r separator
+ * instead of a card container.
  */
 export default function StatCard({
   icon,
@@ -59,12 +64,40 @@ export default function StatCard({
   sublabel,
   variant = "default",
   trend,
+  inline = false,
 }: StatCardProps) {
   const numericValue = typeof value === "number" ? value : 0;
   const animatedValue = useCountUp(numericValue);
   const displayValue = typeof value === "number" ? animatedValue : String(value);
 
   const trendCfg = trend ? TREND_CONFIG[trend.direction] : null;
+
+  if (inline) {
+    return (
+      <div className="flex items-center gap-2.5 py-2 px-3 border-r border-ds-gray-400 last:border-r-0">
+        <div
+          className="flex items-center justify-center w-4 h-4 shrink-0 text-ds-gray-700"
+          aria-hidden="true"
+        >
+          {icon}
+        </div>
+        <span className="text-label-12 text-ds-gray-900">{label}</span>
+        <span className="text-label-13-mono text-ds-gray-1000 font-semibold">
+          {displayValue}
+        </span>
+        {sublabel && (
+          <span className="text-label-12 text-ds-gray-700">{sublabel}</span>
+        )}
+        {trendCfg && trend && (
+          <span className={`flex items-center gap-0.5 text-label-12 ${trendCfg.color}`}>
+            {trendCfg.icon}
+            <span>{trend.label}</span>
+          </span>
+        )}
+      </div>
+    );
+  }
+
   const accentBar = ACCENT_BAR[variant];
 
   return (

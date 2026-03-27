@@ -7,7 +7,6 @@ import ProjectAccordion, {
   type ProjectError,
 } from "@/components/ProjectAccordion";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import type { ApiProject, ProjectsGetResponse } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
@@ -91,13 +90,13 @@ export default function ProjectsPage() {
   );
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl animate-fade-in-up">
+    <div className="p-4 space-y-3 w-full animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-heading-24 text-ds-gray-1000">
+          <h1 className="text-heading-20 text-ds-gray-1000">
             Projects
           </h1>
-          <p className="mt-1 text-copy-14 text-ds-gray-900">
+          <p className="mt-0.5 text-copy-13 text-ds-gray-900">
             {loading
               ? "Loading..."
               : `${projects.length} projects · ${errorCount} issues`}
@@ -153,15 +152,9 @@ export default function ProjectsPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <EmptyState
-          title={search ? "No projects match your search" : "No projects found"}
-          description={
-            search
-              ? "Try a different search term."
-              : "Projects registered with the daemon will appear here."
-          }
-          icon={<FolderOpen size={40} aria-hidden="true" />}
-        />
+        <p className="text-copy-13 text-ds-gray-900 py-3">
+          {search ? "No projects match your search" : "No projects found"}
+        </p>
       ) : (
         <div className="space-y-2">
           {filtered.map((project, idx) => (

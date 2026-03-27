@@ -8,7 +8,6 @@ import {
 import { parseBriefingSections } from "@/lib/briefing";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
-import EmptyState from "@/components/layout/EmptyState";
 import type {
   BriefingEntry,
   BriefingGetResponse,
@@ -216,14 +215,14 @@ export default function BriefingPage() {
 
   // 8. Render
   return (
-    <div className="p-8 space-y-6 max-w-6xl animate-fade-in-up">
+    <div className="p-4 space-y-3 w-full animate-fade-in-up">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-heading-24 text-ds-gray-1000">
+          <h1 className="text-heading-20 text-ds-gray-1000">
             Morning Briefing
           </h1>
-          <p className="mt-1 text-copy-14 text-ds-gray-900">
+          <p className="mt-0.5 text-copy-13 text-ds-gray-900">
             {displayEntry
               ? formatGeneratedAt(displayEntry.generated_at)
               : "Nova generates a briefing each morning at 7am"}
@@ -278,7 +277,7 @@ export default function BriefingPage() {
         )}
 
       {/* Main grid: content + history rail */}
-      <div className="flex gap-6 items-start">
+      <div className="flex gap-4 items-start">
         {/* Content panel */}
         <ErrorBoundary onReset={handleRefresh}>
           <div className="flex-1 min-w-0 space-y-4">
@@ -286,11 +285,7 @@ export default function BriefingPage() {
               <LoadingSkeleton />
             ) : !displayEntry ? (
               /* Empty state */
-              <EmptyState
-                title="No briefing yet today"
-                description="Nova generates a briefing each morning at 7am"
-                icon={<Sun size={40} aria-hidden="true" />}
-              />
+              <p className="text-copy-13 text-ds-gray-900 py-3">No briefing yet today</p>
             ) : (
               <>
                 {/* Section cards */}

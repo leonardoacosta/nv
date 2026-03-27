@@ -17,7 +17,6 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import StatCard from "@/components/layout/StatCard";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ColdStartsPanel from "@/components/ColdStartsPanel";
 import type { StatsGetResponse } from "@/types/api";
@@ -145,7 +144,7 @@ function UsagePage() {
       action={activeTab === "cost" ? headerAction : undefined}
     >
       {/* Tab switcher */}
-      <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit mb-6">
+      <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit mb-3">
         {(["cost", "performance"] as UsageTab[]).map((tab) => (
           <button
             key={tab}
@@ -166,7 +165,7 @@ function UsagePage() {
       {activeTab === "performance" ? (
         <ColdStartsPanel />
       ) : (
-      <div className="space-y-8 animate-fade-in-up">
+      <div className="space-y-4 animate-fade-in-up">
         {error && (
           <ErrorBanner
             message="Failed to load usage data"
@@ -177,7 +176,7 @@ function UsagePage() {
 
         {/* Cost summary — StatCard grid */}
         <div>
-          <div className="mb-3"><SectionHeader label="Cost Summary" /></div>
+          <div className="mb-2"><SectionHeader label="Cost Summary" /></div>
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -213,7 +212,7 @@ function UsagePage() {
 
         {/* Token usage — StatCard grid */}
         <div>
-          <div className="mb-3"><SectionHeader label="Token Usage" /></div>
+          <div className="mb-2"><SectionHeader label="Token Usage" /></div>
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {Array.from({ length: 2 }).map((_, i) => (
@@ -245,7 +244,7 @@ function UsagePage() {
 
         {/* Tool usage table */}
         <div>
-          <div className="mb-3"><SectionHeader label="Tool Usage" /></div>
+          <div className="mb-2"><SectionHeader label="Tool Usage" /></div>
           {loading ? (
             <div className="space-y-1">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -256,11 +255,7 @@ function UsagePage() {
               ))}
             </div>
           ) : !data?.tools.length ? (
-            <EmptyState
-              title="No tool usage recorded"
-              description="Tool invocations will appear here once the daemon is active."
-              icon={<Terminal size={24} aria-hidden="true" />}
-            />
+            <p className="text-copy-13 text-ds-gray-900 py-3">No tool usage recorded</p>
           ) : (
             <div className="surface-card overflow-hidden">
               <table className="w-full text-sm">
@@ -327,7 +322,7 @@ function UsagePage() {
 
         {/* Credentials */}
         <div>
-          <div className="mb-3"><SectionHeader label="Credentials" /></div>
+          <div className="mb-2"><SectionHeader label="Credentials" /></div>
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -338,11 +333,7 @@ function UsagePage() {
               ))}
             </div>
           ) : !data?.credentials.length ? (
-            <EmptyState
-              title="No credential data"
-              description="Credential status will appear here when configured."
-              icon={<Key size={24} aria-hidden="true" />}
-            />
+            <p className="text-copy-13 text-ds-gray-900 py-3">No credential data</p>
           ) : (
             <div className="space-y-2">
               {data.credentials.map((cred) => (

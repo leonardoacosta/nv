@@ -11,17 +11,14 @@ import {
   Cpu,
   MemoryStick,
   Heart,
-  Activity,
   ArrowRight,
   Timer,
-  WifiOff,
 } from "lucide-react";
 import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
 import StatCard, { type StatCardVariant } from "@/components/layout/StatCard";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import EmptyState from "@/components/layout/EmptyState";
 import SessionWidget from "@/components/SessionWidget";
 import ActiveSession, {
   type ActiveSessionData,
@@ -151,11 +148,7 @@ function formatSecondsAgo(ms: number): string {
 function ActivityFeed({ events }: { events: ActivityEvent[] }) {
   if (events.length === 0) {
     return (
-      <EmptyState
-        title="No recent events"
-        description="Events will appear here as the daemon processes activity."
-        icon={<Activity size={24} aria-hidden="true" />}
-      />
+      <p className="text-copy-13 text-ds-gray-900 py-3">No recent events</p>
     );
   }
 
@@ -202,7 +195,7 @@ function ObligationsSidebar({
   const done = obligations.filter((o) => o.status === "done");
 
   return (
-    <div className="surface-card p-4 space-y-4">
+    <div className="border-b border-ds-gray-400 py-3 space-y-3">
       <div className="flex items-center justify-between">
         <SectionHeader label="Obligations" count={obligations.length} />
         <Link
@@ -523,7 +516,7 @@ export default function DashboardPage() {
       subtitle={briefingSummary ? `${todayDate} — ${briefingSummary}` : todayDate}
       action={headerAction}
     >
-      <div className="space-y-6 animate-fade-in-up">
+      <div className="space-y-3 animate-fade-in-up">
         {error && (
           <ErrorBanner
             message="Failed to load dashboard data"
@@ -533,7 +526,7 @@ export default function DashboardPage() {
         )}
 
         {/* Stat cards — grouped into Operational + Performance rows */}
-        <div className={`space-y-4 section-stagger-1 transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
+        <div className={`space-y-3 section-stagger-1 transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
           {loading ? (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -545,114 +538,72 @@ export default function DashboardPage() {
             </div>
           ) : (
             <>
-              {/* Operational row */}
+              {/* Operational row — inline border-separated stats */}
               <div>
-                <p className="text-label-12 text-ds-gray-900 mb-2 uppercase tracking-wider">
+                <p className="text-label-12 text-ds-gray-900 mb-1 uppercase tracking-wider">
                   Operational
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="relative animate-fade-in-up stagger-1">
-                    <StatCard
-                      icon={<CheckSquare size={16} />}
-                      label="Obligations"
-                      value={summary?.obligations_count ?? 0}
-                    />
-                    {isDisconnected && (
-                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
-                        <WifiOff size={10} aria-hidden="true" />
-                        Offline
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative animate-fade-in-up stagger-2">
-                    <StatCard
-                      icon={<Layers size={16} />}
-                      label="Active"
-                      value={summary?.active_sessions ?? 0}
-                      variant="success"
-                    />
-                    {isDisconnected && (
-                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
-                        <WifiOff size={10} aria-hidden="true" />
-                        Offline
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative animate-fade-in-up stagger-3">
-                    <StatCard
-                      icon={<Heart size={16} />}
-                      label="Health"
-                      value={health?.status ?? "—"}
-                      variant={hVariant}
-                    />
-                    {isDisconnected && (
-                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
-                        <WifiOff size={10} aria-hidden="true" />
-                        Offline
-                      </span>
-                    )}
-                  </div>
+                <div className="flex flex-wrap border-b border-ds-gray-400">
+                  <StatCard
+                    icon={<CheckSquare size={14} />}
+                    label="Obligations"
+                    value={summary?.obligations_count ?? 0}
+                    inline
+                  />
+                  <StatCard
+                    icon={<Layers size={14} />}
+                    label="Active"
+                    value={summary?.active_sessions ?? 0}
+                    variant="success"
+                    inline
+                  />
+                  <StatCard
+                    icon={<Heart size={14} />}
+                    label="Health"
+                    value={health?.status ?? "—"}
+                    variant={hVariant}
+                    inline
+                  />
                 </div>
               </div>
 
-              {/* Performance row */}
+              {/* Performance row — inline border-separated stats */}
               <div>
-                <p className="text-label-12 text-ds-gray-900 mb-2 uppercase tracking-wider">
+                <p className="text-label-12 text-ds-gray-900 mb-1 uppercase tracking-wider">
                   Performance
                 </p>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="relative animate-fade-in-up stagger-4">
-                    <StatCard
-                      icon={<TrendingUp size={16} />}
-                      label="Projects"
-                      value={summary?.projects_count ?? 0}
-                    />
-                    {isDisconnected && (
-                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
-                        <WifiOff size={10} aria-hidden="true" />
-                        Offline
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative animate-fade-in-up stagger-5">
-                    <StatCard
-                      icon={<Cpu size={16} />}
-                      label="CPU"
-                      value={
-                        health ? `${health.cpu_percent.toFixed(1)}%` : "—"
-                      }
-                      variant={cVariant}
-                    />
-                    {isDisconnected && (
-                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
-                        <WifiOff size={10} aria-hidden="true" />
-                        Offline
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative animate-fade-in-up stagger-6">
-                    <StatCard
-                      icon={<MemoryStick size={16} />}
-                      label="Memory"
-                      value={
-                        health && health.memory_total_mb > 0
-                          ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
-                          : "—"
-                      }
-                      variant={mVariant}
-                      sublabel={
-                        health?.uptime_seconds
-                          ? `up ${formatUptime(health.uptime_seconds)}`
-                          : undefined
-                      }
-                    />
-                    {isDisconnected && (
-                      <span className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-ds-gray-100 text-ds-gray-900 border border-ds-gray-400">
-                        <WifiOff size={10} aria-hidden="true" />
-                        Offline
-                      </span>
-                    )}
-                  </div>
+                <div className="flex flex-wrap border-b border-ds-gray-400">
+                  <StatCard
+                    icon={<TrendingUp size={14} />}
+                    label="Projects"
+                    value={summary?.projects_count ?? 0}
+                    inline
+                  />
+                  <StatCard
+                    icon={<Cpu size={14} />}
+                    label="CPU"
+                    value={
+                      health ? `${health.cpu_percent.toFixed(1)}%` : "—"
+                    }
+                    variant={cVariant}
+                    inline
+                  />
+                  <StatCard
+                    icon={<MemoryStick size={14} />}
+                    label="Memory"
+                    value={
+                      health && health.memory_total_mb > 0
+                        ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
+                        : "—"
+                    }
+                    variant={mVariant}
+                    sublabel={
+                      health?.uptime_seconds
+                        ? `up ${formatUptime(health.uptime_seconds)}`
+                        : undefined
+                    }
+                    inline
+                  />
                 </div>
               </div>
             </>
@@ -660,9 +611,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Two-column layout — 2/3 main + 1/3 sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Main column — sessions + activity */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-3">
             {/* CC Session widget */}
             <div className="space-y-2 section-stagger-2">
               <SectionHeader label="CC Session" statusDot="muted" />
@@ -696,11 +647,7 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : topSessions.length === 0 ? (
-                <EmptyState
-                  title="No sessions"
-                  description="Sessions will appear here when the daemon is active."
-                  icon={<Layers size={24} aria-hidden="true" />}
-                />
+                <p className="text-copy-13 text-ds-gray-900 py-3">No sessions</p>
               ) : (
                 <div className="space-y-2">
                   {topSessions.map((s) => (
@@ -716,21 +663,21 @@ export default function DashboardPage() {
                 label="Recent Activity"
                 count={activityFeed.length}
               />
-              <div className="surface-card p-2">
+              <div className="border-b border-ds-gray-400 py-1">
                 <ActivityFeed events={activityFeed} />
               </div>
             </div>
           </div>
 
           {/* Sidebar column — obligations + metrics */}
-          <div className="space-y-4">
+          <div className="space-y-0">
             <ObligationsSidebar
               obligations={obligations}
               loading={loading}
             />
 
             {/* Quick session stats */}
-            <div className="surface-card p-4 space-y-3">
+            <div className="border-b border-ds-gray-400 py-3 space-y-3">
               <SectionHeader label="Session Breakdown" />
               {[
                 {
@@ -776,7 +723,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Messages link */}
-            <div className="surface-card p-4 space-y-3">
+            <div className="border-b border-ds-gray-400 py-3 space-y-3">
               <SectionHeader label="Messages" />
               <p className="text-xs text-ds-gray-900">
                 View channel messages, search history, and filter by date.

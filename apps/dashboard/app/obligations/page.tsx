@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   CheckSquare,
   RefreshCw,
@@ -13,11 +14,26 @@ import {
   Play,
   Radio,
   FolderOpen,
+  ShieldAlert,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  ChevronRight,
+  FileText,
+  GitPullRequest,
+  Terminal,
+  HelpCircle,
 } from "lucide-react";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import ObligationSummaryBar from "@/components/ObligationSummaryBar";
 import ActivityFeed from "@/components/ActivityFeed";
+import ApprovalQueueItem from "@/components/approvals/ApprovalQueueItem";
+import BatchActionBar from "@/components/approvals/BatchActionBar";
+import QueueClearCelebration from "@/components/approvals/QueueClearCelebration";
+import { useApprovalKeyboard } from "@/components/approvals/useApprovalKeyboard";
+import type { Approval, ApprovalActionType } from "@/components/approvals/types";
+import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import type {
   DaemonObligation,
   ObligationNote,
@@ -42,7 +58,7 @@ function relativeTime(ts: string): string {
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
-  return text.slice(0, max) + "…";
+  return text.slice(0, max) + "\u2026";
 }
 
 // ---------------------------------------------------------------------------
@@ -587,7 +603,7 @@ function SectionHeading({
   initial: string;
 }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
+    <div className="flex items-center gap-2 mb-2">
       <div
         className={`w-6 h-6 rounded flex items-center justify-center ${colorClass}`}
       >
@@ -602,16 +618,488 @@ function SectionHeading({
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Approvals helpers (merged from approvals page)
 // ---------------------------------------------------------------------------
 
-type TabKey = "open" | "history";
+const ACTION_ICON: Record<ApprovalActionType, React.ElementType> = {
+  file_write: FileText,
+  file_delete: FileText,
+  shell_exec: Terminal,
+  git_push: GitPullRequest,
+  api_call: GitPullRequest,
+  other: HelpCircle,
+};
 
-export default function ObligationsPage() {
+const URGENCY_CONFIG: Record<
+  Approval["urgency"],
+  { label: string; dot: string; text: string }
+> = {
+  critical: {
+    label: "Critical",
+    dot: "bg-[#EF4444]",
+    text: "text-[#EF4444]",
+  },
+  high: { label: "High", dot: "bg-[#F97316]", text: "text-[#F97316]" },
+  medium: {
+    label: "Medium",
+    dot: "bg-amber-400",
+    text: "text-amber-400",
+  },
+  low: { label: "Low", dot: "bg-ds-gray-600", text: "text-ds-gray-900" },
+};
+
+function priorityToUrgency(priority: number): Approval["urgency"] {
+  if (priority === 0) return "critical";
+  if (priority === 1) return "high";
+  if (priority === 2) return "medium";
+  return "low";
+}
+
+function mapObligationToApproval(o: DaemonObligation): Approval {
+  const status: Approval["status"] =
+    o.status === "done" ? "approved" : o.status === "dismissed" ? "dismissed" : "pending";
+  return {
+    id: o.id,
+    title: o.detected_action,
+    description: o.source_message ?? undefined,
+    action_type: "other",
+    project: o.project_code ?? undefined,
+    proposed_changes: undefined,
+    context: undefined,
+    urgency: priorityToUrgency(o.priority),
+    status,
+    created_at: o.created_at,
+  };
+}
+
+function approvalRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  return `${Math.floor(diffH / 24)}d ago`;
+}
+
+// ---------------------------------------------------------------------------
+// Approval Detail Panel
+// ---------------------------------------------------------------------------
+
+interface DetailPanelProps {
+  approval: Approval;
+  onApprove: (id: string) => Promise<void>;
+  onDismiss: (id: string) => Promise<void>;
+  approving: boolean;
+  dismissing: boolean;
+}
+
+function DetailPanel({
+  approval,
+  onApprove,
+  onDismiss,
+  approving,
+  dismissing,
+}: DetailPanelProps) {
+  const ActionIcon = ACTION_ICON[approval.action_type] ?? HelpCircle;
+  const urg = URGENCY_CONFIG[approval.urgency];
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Detail header */}
+      <div className="px-4 py-3 border-b border-ds-gray-400 shrink-0">
+        <div className="flex items-start gap-3">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ds-gray-alpha-100 border border-ds-gray-1000/30 shrink-0">
+            <ActionIcon size={16} className="text-ds-gray-1000" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-sm font-semibold text-ds-gray-1000 leading-tight">
+              {approval.title}
+            </h2>
+            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+              {approval.project && (
+                <span className="text-xs font-mono text-ds-gray-900">
+                  {approval.project}
+                </span>
+              )}
+              <span className={`text-xs font-medium ${urg.text}`}>
+                {urg.label} urgency
+              </span>
+              <span
+                className="text-xs text-ds-gray-900 flex items-center gap-1"
+                suppressHydrationWarning
+              >
+                <Clock size={10} />
+                {approvalRelativeTime(approval.created_at)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+        {approval.description && (
+          <section>
+            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-1">
+              Description
+            </h3>
+            <p className="text-sm text-ds-gray-1000 leading-relaxed">
+              {approval.description}
+            </p>
+          </section>
+        )}
+
+        {approval.proposed_changes && (
+          <section>
+            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-1">
+              Proposed Changes
+            </h3>
+            <pre className="text-xs text-ds-gray-1000 font-mono bg-ds-bg-100 border border-ds-gray-400 rounded-xl p-3 overflow-x-auto whitespace-pre-wrap">
+              {approval.proposed_changes}
+            </pre>
+          </section>
+        )}
+
+        {approval.context && (
+          <section>
+            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-1">
+              Context
+            </h3>
+            <p className="text-sm text-ds-gray-900 leading-relaxed">
+              {approval.context}
+            </p>
+          </section>
+        )}
+      </div>
+
+      {/* Action buttons */}
+      <div className="px-4 py-3 border-t border-ds-gray-400 shrink-0">
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => void onApprove(approval.id)}
+            disabled={approving || dismissing}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-9 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+          >
+            <CheckCircle size={14} />
+            {approving ? "Approving\u2026" : "Approve"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void onDismiss(approval.id)}
+            disabled={approving || dismissing}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-9 rounded-lg text-sm font-semibold bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
+          >
+            <XCircle size={14} />
+            {dismissing ? "Dismissing\u2026" : "Dismiss"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Approvals Tab Content
+// ---------------------------------------------------------------------------
+
+function ApprovalsTabContent() {
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [dismissing, setDismissing] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [batchBusy, setBatchBusy] = useState(false);
+
+  const pending = approvals.filter((a) => a.status === "pending");
+  const selected = pending.find((a) => a.id === selectedId) ?? null;
+
+  const fetchApprovals = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/obligations?owner=leo&status=open");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as ObligationsGetResponse;
+      const mapped = (data.obligations ?? []).map(mapObligationToApproval);
+      setApprovals(mapped);
+      if (mapped.length > 0 && !selectedId) {
+        setSelectedId(mapped[0]!.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load approvals");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    void fetchApprovals();
+  }, [fetchApprovals]);
+
+  useDaemonEvents(
+    useCallback(
+      (_ev) => {
+        void fetchApprovals();
+      },
+      [fetchApprovals],
+    ),
+    "approval",
+  );
+
+  const handleApprove = async (id: string) => {
+    setApproving(true);
+    try {
+      const res = await apiFetch(`/api/approvals/${id}/approve`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setApprovals((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to approve");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const handleDismiss = async (id: string) => {
+    setDismissing(true);
+    try {
+      const res = await apiFetch(`/api/obligations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "dismissed" }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setApprovals((prev) => {
+        const next = prev.filter((a) => a.id !== id);
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to dismiss");
+    } finally {
+      setDismissing(false);
+    }
+  };
+
+  const handleSelect = (id: string) => {
+    setSelectedId(id);
+    setMobileDetailOpen(true);
+  };
+
+  const handleToggleCheck = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBatchApprove = async () => {
+    setBatchBusy(true);
+    try {
+      await Promise.all(
+        Array.from(checkedIds).map(async (id) => {
+          const res = await apiFetch(`/api/approvals/${id}/approve`, { method: "POST" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }),
+      );
+      setApprovals((prev) => {
+        const next = prev.filter((a) => !checkedIds.has(a.id));
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds(new Set());
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to batch approve");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const handleBatchDismiss = async () => {
+    setBatchBusy(true);
+    try {
+      await Promise.all(
+        Array.from(checkedIds).map(async (id) => {
+          const res = await apiFetch(`/api/obligations/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "dismissed" }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        }),
+      );
+      setApprovals((prev) => {
+        const next = prev.filter((a) => !checkedIds.has(a.id));
+        if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
+          setShowCelebration(true);
+        }
+        return next;
+      });
+      setCheckedIds(new Set());
+      setSelectedId(null);
+      setMobileDetailOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to batch dismiss");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  useApprovalKeyboard({
+    pendingIds: pending.map((a) => a.id),
+    selectedId,
+    onNavigate: (id) => {
+      setSelectedId(id);
+      setMobileDetailOpen(true);
+    },
+    onApprove: (id) => void handleApprove(id),
+    onDismiss: (id) => void handleDismiss(id),
+    busy: approving || dismissing || batchBusy,
+  });
+
+  if (error) {
+    return <ErrorBanner message={error} onRetry={() => void fetchApprovals()} />;
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-14 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
+        ))}
+      </div>
+    );
+  }
+
+  if (pending.length === 0) {
+    return showCelebration ? (
+      <QueueClearCelebration />
+    ) : (
+      <p className="text-copy-13 text-ds-gray-900 py-3">No pending approvals</p>
+    );
+  }
+
+  return (
+    <div className="flex gap-0 surface-card overflow-hidden min-h-[400px]">
+      {/* Queue list */}
+      <div
+        className={[
+          "flex flex-col border-r border-ds-gray-400 bg-ds-bg-100 overflow-y-auto",
+          mobileDetailOpen ? "hidden md:flex md:w-64 lg:w-72 shrink-0" : "w-full md:w-64 lg:w-72 shrink-0",
+        ].join(" ")}
+      >
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ds-gray-400 shrink-0">
+          <AlertTriangle size={14} className="text-amber-400 shrink-0" />
+          <span className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest">Queue</span>
+          <span className="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 min-w-[1.25rem] rounded text-xs font-mono font-medium bg-ds-gray-400 text-ds-gray-1000">
+            {pending.length}
+          </span>
+        </div>
+
+        {pending.map((a) => (
+          <ApprovalQueueItem
+            key={a.id}
+            approval={a}
+            selected={a.id === selectedId}
+            checked={checkedIds.has(a.id)}
+            onSelect={() => handleSelect(a.id)}
+            onToggleCheck={handleToggleCheck}
+          />
+        ))}
+
+        <BatchActionBar
+          selectedCount={checkedIds.size}
+          onApproveAll={() => void handleBatchApprove()}
+          onDismissAll={() => void handleBatchDismiss()}
+          onClearSelection={() => setCheckedIds(new Set())}
+          busy={batchBusy}
+        />
+      </div>
+
+      {/* Detail panel */}
+      <div
+        className={[
+          "flex-1 surface-raised rounded-none",
+          mobileDetailOpen ? "flex flex-col w-full md:flex" : "hidden md:flex md:flex-col",
+        ].join(" ")}
+      >
+        <button
+          type="button"
+          onClick={() => setMobileDetailOpen(false)}
+          className="flex md:hidden items-center gap-2 px-4 py-2.5 text-sm text-ds-gray-900 hover:text-ds-gray-1000 border-b border-ds-gray-400"
+        >
+          <ChevronRight size={14} className="rotate-180" />
+          Back to queue
+        </button>
+
+        {selected ? (
+          <DetailPanel
+            approval={selected}
+            onApprove={handleApprove}
+            onDismiss={handleDismiss}
+            approving={approving}
+            dismissing={dismissing}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-ds-gray-900 py-8">
+            <AlertTriangle size={24} />
+            <p className="text-sm">Select an item to review</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page (with Suspense for useSearchParams)
+// ---------------------------------------------------------------------------
+
+export default function ObligationsPageWrapper() {
+  return (
+    <Suspense>
+      <ObligationsPage />
+    </Suspense>
+  );
+}
+
+type TabKey = "open" | "history" | "approvals";
+
+function ObligationsPage() {
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as TabKey) ?? "open";
+
   const [obligations, setObligations] = useState<DaemonObligation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabKey>("open");
+  const [tab, setTab] = useState<TabKey>(
+    initialTab === "approvals" ? "approvals" : initialTab === "history" ? "history" : "open",
+  );
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [initialExpandDone, setInitialExpandDone] = useState(false);
   const [approachingDeadlineHours, setApproachingDeadlineHours] = useState(
@@ -695,12 +1183,12 @@ export default function ObligationsPage() {
   );
 
   return (
-    <div className="p-8 space-y-6 max-w-7xl animate-fade-in-up">
+    <div className="p-4 space-y-3 w-full animate-fade-in-up">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-heading-24 text-ds-gray-1000">Obligations</h1>
-          <p className="mt-1 text-copy-14 text-ds-gray-900">
+          <h1 className="text-heading-20 text-ds-gray-1000">Obligations</h1>
+          <p className="mt-0.5 text-copy-13 text-ds-gray-900">
             Active tasks and commitments
           </p>
         </div>
@@ -715,33 +1203,37 @@ export default function ObligationsPage() {
         </button>
       </div>
 
-      {/* Compact summary bar — replaces the 5 stat cards */}
+      {/* Compact summary bar */}
       {obligations.length > 0 && (
         <div className="section-stagger-1">
           <ObligationSummaryBar obligations={obligations} />
         </div>
       )}
 
-      {/* Tabs */}
+      {/* Tabs — now includes Approvals */}
       <div className="flex gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit section-stagger-2">
-        {(["open", "history"] as TabKey[]).map((t) => (
+        {(
+          [
+            { key: "open" as const, icon: <CheckSquare size={14} />, label: "Active", count: open.length },
+            { key: "approvals" as const, icon: <ShieldAlert size={14} />, label: "Approvals", count: null },
+            { key: "history" as const, icon: <Clock size={14} />, label: "History", count: history.length },
+          ] as const
+        ).map((t) => (
           <button
-            key={t}
+            key={t.key}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => setTab(t.key)}
             className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-colors ${
-              tab === t
+              tab === t.key
                 ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
                 : "text-ds-gray-900 hover:text-ds-gray-1000"
             }`}
           >
-            {t === "open" ? <CheckSquare size={14} /> : <Clock size={14} />}
-            <span className="capitalize">
-              {t === "open" ? "Active" : "History"}
-            </span>
-            <span className="text-xs font-mono opacity-70">
-              {t === "open" ? open.length : history.length}
-            </span>
+            {t.icon}
+            <span>{t.label}</span>
+            {t.count !== null && (
+              <span className="text-xs font-mono opacity-70">{t.count}</span>
+            )}
           </button>
         ))}
       </div>
@@ -754,148 +1246,145 @@ export default function ObligationsPage() {
         />
       )}
 
-      {/* Two-column layout: list (2/3) + activity feed (1/3) */}
-      <div className="flex flex-col lg:flex-row gap-6 section-stagger-3">
-        {/* Obligations list */}
-        <div ref={listRef} className="flex-1 lg:w-2/3 min-w-0">
-          {loading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-                />
-              ))}
-            </div>
-          ) : tab === "open" ? (
-            <div key="open" className="animate-crossfade-in space-y-8">
-              {/* Nova */}
-              <section>
-                <SectionHeading
-                  label="Nova"
-                  count={nova.length}
-                  initial="N"
-                  colorClass="bg-ds-gray-700/30 text-ds-gray-1000"
-                />
-                {nova.length === 0 ? (
-                  <p className="text-copy-14 text-ds-gray-900 py-4 pl-2">
-                    No obligations assigned to Nova
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {nova.map((o, idx) => (
-                      <div
-                        key={o.id}
-                        className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-                      >
-                        <ObligationCard
-                          obligation={o}
-                          onRefresh={fetchObligations}
-                          approachingDeadlineHours={approachingDeadlineHours}
-                          isExpanded={expandedIds.has(o.id)}
-                          onToggleExpand={() => toggleExpand(o.id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              {/* Leo */}
-              <section>
-                <SectionHeading
-                  label="Leo"
-                  count={leo.length}
-                  initial="L"
-                  colorClass="bg-red-700/30 text-red-700"
-                />
-                {leo.length === 0 ? (
-                  <p className="text-copy-14 text-ds-gray-900 py-4 pl-2">
-                    No obligations assigned to Leo
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    {leo.map((o, idx) => (
-                      <div
-                        key={o.id}
-                        className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-                      >
-                        <ObligationCard
-                          obligation={o}
-                          onRefresh={fetchObligations}
-                          approachingDeadlineHours={approachingDeadlineHours}
-                          isExpanded={expandedIds.has(o.id)}
-                          onToggleExpand={() => toggleExpand(o.id)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              {/* Other */}
-              {other.length > 0 && (
+      {/* Tab content */}
+      {tab === "approvals" ? (
+        <ApprovalsTabContent />
+      ) : (
+        /* Two-column layout: list (2/3) + activity feed (1/3) */
+        <div className="flex flex-col lg:flex-row gap-4 section-stagger-3">
+          {/* Obligations list */}
+          <div ref={listRef} className="flex-1 lg:w-2/3 min-w-0">
+            {loading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+                  />
+                ))}
+              </div>
+            ) : tab === "open" ? (
+              <div key="open" className="animate-crossfade-in space-y-6">
+                {/* Nova */}
                 <section>
-                  <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-3">
-                    Other
-                  </h2>
-                  <div className="space-y-3">
-                    {other.map((o) => (
+                  <SectionHeading
+                    label="Nova"
+                    count={nova.length}
+                    initial="N"
+                    colorClass="bg-ds-gray-700/30 text-ds-gray-1000"
+                  />
+                  {nova.length === 0 ? (
+                    <p className="text-copy-13 text-ds-gray-900 py-3 pl-2">
+                      No obligations assigned to Nova
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {nova.map((o, idx) => (
+                        <div
+                          key={o.id}
+                          className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                        >
+                          <ObligationCard
+                            obligation={o}
+                            onRefresh={fetchObligations}
+                            approachingDeadlineHours={approachingDeadlineHours}
+                            isExpanded={expandedIds.has(o.id)}
+                            onToggleExpand={() => toggleExpand(o.id)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Leo */}
+                <section>
+                  <SectionHeading
+                    label="Leo"
+                    count={leo.length}
+                    initial="L"
+                    colorClass="bg-red-700/30 text-red-700"
+                  />
+                  {leo.length === 0 ? (
+                    <p className="text-copy-13 text-ds-gray-900 py-3 pl-2">
+                      No obligations assigned to Leo
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {leo.map((o, idx) => (
+                        <div
+                          key={o.id}
+                          className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                        >
+                          <ObligationCard
+                            obligation={o}
+                            onRefresh={fetchObligations}
+                            approachingDeadlineHours={approachingDeadlineHours}
+                            isExpanded={expandedIds.has(o.id)}
+                            onToggleExpand={() => toggleExpand(o.id)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {/* Other */}
+                {other.length > 0 && (
+                  <section>
+                    <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-2">
+                      Other
+                    </h2>
+                    <div className="space-y-3">
+                      {other.map((o) => (
+                        <ObligationCard
+                          key={o.id}
+                          obligation={o}
+                          onRefresh={fetchObligations}
+                          approachingDeadlineHours={approachingDeadlineHours}
+                          isExpanded={expandedIds.has(o.id)}
+                          onToggleExpand={() => toggleExpand(o.id)}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {open.length === 0 && (
+                  <p className="text-copy-13 text-ds-gray-900 py-3">No active obligations</p>
+                )}
+              </div>
+            ) : (
+              // History tab
+              <div key="history" className="animate-crossfade-in space-y-3">
+                {history.length === 0 ? (
+                  <p className="text-copy-13 text-ds-gray-900 py-3">No history yet</p>
+                ) : (
+                  sortByPriority(history).map((o, idx) => (
+                    <div
+                      key={o.id}
+                      className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                    >
                       <ObligationCard
-                        key={o.id}
                         obligation={o}
                         onRefresh={fetchObligations}
                         approachingDeadlineHours={approachingDeadlineHours}
                         isExpanded={expandedIds.has(o.id)}
                         onToggleExpand={() => toggleExpand(o.id)}
                       />
-                    ))}
-                  </div>
-                </section>
-              )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
-              {open.length === 0 && (
-                <EmptyState
-                  title="No active obligations"
-                  description="All clear. New obligations will appear here when detected."
-                  icon={<CheckSquare size={40} aria-hidden="true" />}
-                />
-              )}
-            </div>
-          ) : (
-            // History tab
-            <div key="history" className="animate-crossfade-in space-y-3">
-              {history.length === 0 ? (
-                <EmptyState
-                  title="No history yet"
-                  description="Completed and dismissed obligations will appear here."
-                  icon={<Clock size={40} aria-hidden="true" />}
-                />
-              ) : (
-                sortByPriority(history).map((o, idx) => (
-                  <div
-                    key={o.id}
-                    className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-                  >
-                    <ObligationCard
-                      obligation={o}
-                      onRefresh={fetchObligations}
-                      approachingDeadlineHours={approachingDeadlineHours}
-                      isExpanded={expandedIds.has(o.id)}
-                      onToggleExpand={() => toggleExpand(o.id)}
-                    />
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+          {/* Activity feed sidebar */}
+          <div className="w-full lg:w-1/3 shrink-0">
+            <ActivityFeed onObligationClick={scrollToObligation} />
+          </div>
         </div>
-
-        {/* Activity feed sidebar */}
-        <div className="w-full lg:w-1/3 shrink-0">
-          <ActivityFeed onObligationClick={scrollToObligation} />
-        </div>
-      </div>
+      )}
     </div>
   );
 }

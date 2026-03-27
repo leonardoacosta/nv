@@ -67,13 +67,13 @@ export default function IntegrationsPage() {
   }));
 
   return (
-    <div className="p-8 space-y-6 max-w-4xl animate-fade-in-up">
+    <div className="p-4 space-y-3 w-full animate-fade-in-up">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-heading-24 text-ds-gray-1000">
+          <h1 className="text-heading-20 text-ds-gray-1000">
             Integrations
           </h1>
-          <p className="mt-1 text-copy-14 text-ds-gray-900">
+          <p className="mt-0.5 text-copy-13 text-ds-gray-900">
             Connected channels, tools, and services
           </p>
         </div>
@@ -116,12 +116,9 @@ export default function IntegrationsPage() {
           ))}
         </div>
       ) : integrations.length === 0 ? (
-        <div className="surface-card flex flex-col items-center gap-3 py-16 text-ds-gray-900">
-          <Plug size={36} className="text-ds-gray-600" />
-          <p className="text-copy-14">No integrations configured</p>
-        </div>
+        <p className="text-copy-13 text-ds-gray-900 py-3">No integrations configured</p>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {grouped.map(({ key, label, items }) => (
             <section key={key}>
               <div className="flex items-center gap-2 mb-3">

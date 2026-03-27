@@ -10,7 +10,6 @@ import {
   BookOpen,
   FolderOpen,
   Plug,
-  BarChart3,
   Brain,
   Settings,
   Layers,
@@ -19,7 +18,6 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
-  ShieldAlert,
   Menu,
   X,
   LogOut,
@@ -63,7 +61,7 @@ function WsStatusFooter({ collapsed }: { collapsed: boolean }) {
   const cfg = WS_STATUS_CONFIG[status];
   return (
     <div
-      className="flex items-center gap-2 px-3 py-2.5 min-h-11"
+      className="flex items-center gap-2 px-3 py-2 min-h-9"
       title={cfg.label}
     >
       <span
@@ -148,7 +146,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/chat", label: "Chat", icon: MessageSquareText },
       { to: "/obligations", label: "Obligations", icon: CheckSquare },
-      { to: "/approvals", label: "Approvals", icon: ShieldAlert, badge: "approvals" },
       { to: "/diary", label: "Diary", icon: BookOpen },
       { to: "/sessions", label: "Sessions", icon: Layers },
       { to: "/messages", label: "Messages", icon: MessageSquare },
@@ -161,13 +158,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/projects", label: "Projects", icon: FolderOpen },
       { to: "/memory", label: "Memory", icon: Brain },
       { to: "/integrations", label: "Integrations", icon: Plug },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      { to: "/usage", label: "Usage", icon: BarChart3 },
-      { to: "/settings", label: "Settings", icon: Settings },
     ],
   },
 ];
@@ -193,7 +183,7 @@ function NavLink({ item, collapsed, isActive, approvalCount, onClick }: NavLinkP
       href={to}
       onClick={onClick}
       className={[
-        "flex items-center gap-3 px-3 py-2 min-h-9 rounded-md text-label-14",
+        "flex items-center gap-3 px-3 py-1.5 min-h-8 rounded-md text-label-14",
         "transition-colors duration-150 group relative",
         isActive
           ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-l-2 border-ds-gray-1000"
@@ -202,7 +192,7 @@ function NavLink({ item, collapsed, isActive, approvalCount, onClick }: NavLinkP
       style={isActive ? { paddingLeft: "10px" } : undefined}
     >
       <Icon
-        size={18}
+        size={16}
         className={[
           "shrink-0 transition-colors",
           isActive
@@ -251,7 +241,7 @@ function SidebarContent({ collapsed, pathname, approvalCount, onNavClick, onLogo
         className="flex flex-col overflow-hidden shrink-0"
         style={{ borderBottom: "1px solid var(--ds-gray-alpha-200)" }}
       >
-        <div className="flex items-center gap-3 px-4 py-4">
+        <div className="flex items-center gap-3 px-4 py-3">
           <div
             className="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
             style={{ background: "var(--ds-gray-alpha-200)" }}
@@ -285,7 +275,7 @@ function SidebarContent({ collapsed, pathname, approvalCount, onNavClick, onLogo
 
             {/* Group label */}
             {!collapsed && (
-              <div className="px-2 pt-2 pb-1">
+              <div className="px-2 pt-1.5 pb-0.5">
                 <span className="text-label-12 text-ds-gray-700">
                   {group.label}
                 </span>
@@ -315,22 +305,32 @@ function SidebarContent({ collapsed, pathname, approvalCount, onNavClick, onLogo
         ))}
       </nav>
 
-      {/* Logout + Footer */}
+      {/* Settings + Logout + Footer */}
       <div
         className="shrink-0"
         style={{ borderTop: "1px solid var(--ds-gray-alpha-200)" }}
       >
-        {onLogout && (
-          <button
-            type="button"
-            onClick={onLogout}
-            className="flex items-center gap-3 w-full px-3 py-2.5 text-label-14 text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100 transition-colors"
-            title="Log out"
+        <div className="flex items-center">
+          <Link
+            href="/settings"
+            className="flex items-center gap-3 px-3 py-2 text-label-14 text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100 transition-colors"
+            title="Settings"
           >
-            <LogOut size={16} className="shrink-0" />
-            {!collapsed && <span className="truncate">Log out</span>}
-          </button>
-        )}
+            <Settings size={16} className="shrink-0" />
+            {!collapsed && <span className="truncate">Settings</span>}
+          </Link>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-3 px-3 py-2 text-label-14 text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100 transition-colors ml-auto"
+              title="Log out"
+            >
+              <LogOut size={16} className="shrink-0" />
+              {!collapsed && <span className="truncate">Log out</span>}
+            </button>
+          )}
+        </div>
         <WsStatusFooter collapsed={collapsed} />
       </div>
     </>
@@ -346,6 +346,7 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  // Approval count still needed for obligations page badge
   const approvalCount = useApprovalCount();
   const drawerRef = useRef<HTMLDivElement>(null);
 

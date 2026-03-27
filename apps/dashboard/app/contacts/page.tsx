@@ -394,7 +394,7 @@ function ContactCard({ contact, onEdit, onDeleted }: ContactCardProps) {
       : null;
 
   return (
-    <div className="flex items-start justify-between gap-4 p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400 hover:border-ds-gray-1000/30 transition-colors">
+    <div className="flex items-start justify-between gap-4 py-2.5 px-3 border-b border-ds-gray-400 hover:bg-ds-gray-100/40 transition-colors">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-ds-gray-1000">{contact.name}</span>
@@ -549,7 +549,7 @@ export default function ContactsPage() {
 
   return (
     <>
-      <div className="p-8 space-y-6 max-w-3xl">
+      <div className="p-4 space-y-3 w-full">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -635,26 +635,11 @@ export default function ContactsPage() {
           </div>
         ) : contacts.length === 0 ? (
           /* Empty state */
-          <div className="flex flex-col items-center gap-4 py-16 text-ds-gray-900">
-            <Users size={40} />
-            <div className="text-center">
-              <p className="text-sm font-medium text-ds-gray-1000">No contacts yet</p>
-              <p className="text-xs mt-1">
-                {searchQuery || relationshipFilter !== "all"
-                  ? "Try a different search or filter."
-                  : "Get started by creating your first contact."}
-              </p>
-            </div>
-            {!searchQuery && relationshipFilter === "all" && (
-              <button
-                type="button"
-                onClick={() => setModalState({ mode: "create" })}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/40 hover:bg-ds-gray-700/30 transition-colors"
-              >
-                Create contact
-              </button>
-            )}
-          </div>
+          <p className="text-copy-13 text-ds-gray-900 py-3">
+            {searchQuery || relationshipFilter !== "all"
+              ? "No contacts found. Try a different search or filter."
+              : "No contacts yet."}
+          </p>
         ) : (
           /* Contact list */
           <div key={relationshipFilter} className="animate-crossfade-in space-y-2">

@@ -60,9 +60,9 @@ else
         FLEET_CHANGED=true
     fi
 
-    # Dashboard rebuild: dashboard code, shared DB, docker config
+    # Dashboard rebuild: dashboard code, workspace packages it depends on, docker config
     DASHBOARD_CHANGED=false
-    if echo "$CHANGED_FILES" | grep -qE '^(apps/dashboard/|packages/db/|docker-compose\.yml|\.dockerignore)'; then
+    if echo "$CHANGED_FILES" | grep -qE '^(apps/dashboard/|packages/(db|api|auth|ui|validators)/|docker-compose\.yml|\.dockerignore)'; then
         DASHBOARD_CHANGED=true
     fi
 fi

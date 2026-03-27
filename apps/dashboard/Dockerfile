@@ -6,26 +6,40 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
 # Copy workspace root config
-COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json ./
 
-# Copy only the packages needed for dashboard
+# Copy all workspace package.json files needed for dashboard
 COPY packages/db/package.json packages/db/
+COPY packages/api/package.json packages/api/
+COPY packages/auth/package.json packages/auth/
+COPY packages/ui/package.json packages/ui/
+COPY packages/validators/package.json packages/validators/
 COPY apps/dashboard/package.json apps/dashboard/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
-# Copy source for @nova/db and dashboard
+# Copy all workspace package sources
 COPY packages/db/ packages/db/
+COPY packages/api/ packages/api/
+COPY packages/auth/ packages/auth/
+COPY packages/ui/ packages/ui/
+COPY packages/validators/ packages/validators/
 COPY apps/dashboard/ apps/dashboard/
 
-# Build @nova/db first (dashboard depends on it)
-RUN pnpm --filter @nova/db build
+# Build workspace deps first (db, api, auth — validators is not in the dep graph).
+RUN pnpm --filter @nova/db build && \
+    pnpm --filter @nova/api build && \
+    pnpm --filter @nova/auth build
 
-# Build dashboard (dummy DATABASE_URL prevents @nova/db client from throwing
-# at import time during next build page-data collection — not used for queries)
-RUN DATABASE_URL=postgresql://build:build@localhost:5432/build \
-    pnpm --filter nova-dashboard build
+# Build dashboard. Dummy env vars prevent runtime-init checks from throwing
+# during next build page-data collection — they are NOT used for actual queries.
+ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+ENV BETTER_AUTH_SECRET=build-time-placeholder
+RUN pnpm --filter nova-dashboard build
+# Clear build-only env vars so they don't leak to later stages
+ENV DATABASE_URL=
+ENV BETTER_AUTH_SECRET=
 
 # Stage 2: Runtime
 FROM node:22-alpine AS runner

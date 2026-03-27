@@ -16,6 +16,9 @@ services:
       - MEMORY_SVC_URL=http://172.20.0.1:4101
       - MESSAGES_SVC_URL=http://172.20.0.1:4102
       - META_SVC_URL=http://172.20.0.1:4108
+      # Better Auth session encryption
+      - BETTER_AUTH_SECRET=pAGAOUJeoXAFYqs7BRdiybINOyJ+DVpiZp2NFbR8/Fs=
+      - BETTER_AUTH_URL=https://nova.leonardoacosta.dev
     restart: unless-stopped
     labels:
       - "traefik.enable=true"

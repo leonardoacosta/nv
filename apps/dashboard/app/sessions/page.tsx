@@ -20,17 +20,24 @@ import {
   MessageSquare,
   Terminal,
   Monitor,
+  WifiOff,
+  Wifi,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import CCSessionPanel from "@/components/CCSessionPanel";
-import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
+import MiniChart from "@/components/MiniChart";
+import {
+  useDaemonEvents,
+  useDaemonStatus,
+} from "@/components/providers/DaemonEventContext";
 import type {
   SessionsGetResponse,
   NexusSessionRaw,
   CcSessionSummary,
   CcSessionsGetResponse,
+  SessionAnalyticsResponse,
 } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
@@ -87,8 +94,28 @@ function elapsed(startedAt: string): string {
   return `${hr}h ${min % 60}m`;
 }
 
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  if (days === 1) return "yesterday";
+  return `${days}d ago`;
+}
+
+function formatDuration(mins: number): string {
+  if (mins < 1) return "<1m";
+  if (mins < 60) return `${Math.round(mins)}m`;
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 // ---------------------------------------------------------------------------
-// Status dot
+// Status dot constants
 // ---------------------------------------------------------------------------
 
 const STATUS_DOT: Record<SessionItem["status"], string> = {
@@ -110,6 +137,190 @@ const STATUS_TEXT: Record<SessionItem["status"], string> = {
 };
 
 // ---------------------------------------------------------------------------
+// DaemonOfflineBanner
+// ---------------------------------------------------------------------------
+
+interface DaemonOfflineBannerProps {
+  status: "reconnecting" | "disconnected";
+  onRetry: () => void;
+}
+
+function DaemonOfflineBanner({ status, onRetry }: DaemonOfflineBannerProps) {
+  const isReconnecting = status === "reconnecting";
+  return (
+    <div
+      className={[
+        "flex items-start gap-3 px-4 py-3 rounded-lg border",
+        isReconnecting
+          ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+          : "bg-ds-gray-200 border-ds-gray-400 text-ds-gray-900",
+      ].join(" ")}
+    >
+      <WifiOff size={15} className="shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium">
+          {isReconnecting ? "Daemon reconnecting…" : "Daemon offline"}
+        </p>
+        <p className="text-xs mt-0.5 opacity-80">
+          Showing historical sessions. Live updates paused.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        className={[
+          "shrink-0 px-2.5 py-1 rounded text-xs font-medium border transition-colors",
+          isReconnecting
+            ? "border-amber-500/40 hover:border-amber-500/70 text-amber-400"
+            : "border-ds-gray-500 hover:border-ds-gray-600 text-ds-gray-900 hover:text-ds-gray-1000",
+        ].join(" ")}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// StatTile
+// ---------------------------------------------------------------------------
+
+interface StatTileProps {
+  label: string;
+  value: string | number;
+  sparkData?: number[];
+}
+
+function StatTile({ label, value, sparkData }: StatTileProps) {
+  return (
+    <div className="surface-card p-4 flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-0.5">
+          <p className="text-[11px] text-ds-gray-900 uppercase tracking-widest font-medium">
+            {label}
+          </p>
+          <p className="text-heading-20 text-ds-gray-1000 font-mono">{value}</p>
+        </div>
+        {sparkData && sparkData.length > 0 && (
+          <MiniChart data={sparkData} width={60} height={24} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ProjectBreakdownChart
+// ---------------------------------------------------------------------------
+
+function ProjectBreakdownChart({
+  data,
+}: {
+  data: { project: string; count: number }[];
+}) {
+  if (data.length === 0) return null;
+  const max = Math.max(...data.map((d) => d.count), 1);
+
+  return (
+    <div className="space-y-2">
+      {data.map((row) => (
+        <div key={row.project} className="flex items-center gap-2">
+          <span className="text-xs text-ds-gray-900 font-mono w-32 truncate shrink-0">
+            {row.project}
+          </span>
+          <div className="flex-1 h-2 rounded-full bg-ds-gray-300 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-ds-gray-700 transition-all duration-500"
+              style={{ width: `${Math.max(2, (row.count / max) * 100)}%` }}
+            />
+          </div>
+          <span className="text-xs text-ds-gray-900 font-mono w-6 text-right shrink-0">
+            {row.count}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SessionAnalytics
+// ---------------------------------------------------------------------------
+
+function SessionAnalytics() {
+  const [data, setData] = useState<SessionAnalyticsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await apiFetch("/api/sessions/analytics");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as SessionAnalyticsResponse;
+        setData(json);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load analytics");
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-20 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <p className="text-xs text-destructive">Analytics unavailable: {error}</p>
+    );
+  }
+
+  const sparkData = data.sessions_7d.map((d) => d.count);
+  const distinctProjects = data.project_breakdown.length;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatTile
+          label="Today"
+          value={data.sessions_today}
+          sparkData={sparkData}
+        />
+        <StatTile
+          label="Avg Duration"
+          value={formatDuration(data.avg_duration_mins)}
+        />
+        <StatTile label="Total" value={data.total_sessions} />
+        <StatTile label="Projects" value={distinctProjects} />
+      </div>
+
+      {data.project_breakdown.length > 0 && (
+        <div className="surface-card p-4 space-y-3">
+          <p className="text-[11px] text-ds-gray-900 uppercase tracking-widest font-medium">
+            Project Breakdown
+          </p>
+          <ProjectBreakdownChart data={data.project_breakdown} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Enhanced Session Card
 // ---------------------------------------------------------------------------
 
@@ -117,12 +328,14 @@ interface SessionCardProps {
   session: SessionItem;
   onSelect: (s: SessionItem) => void;
   selected: boolean;
+  showHistoricalLabel?: boolean;
 }
 
 function EnhancedSessionCard({
   session,
   onSelect,
   selected,
+  showHistoricalLabel,
 }: SessionCardProps) {
   const dot = STATUS_DOT[session.status];
   const statusText = STATUS_TEXT[session.status];
@@ -148,6 +361,11 @@ function EnhancedSessionCard({
             {session.project}
           </span>
           <span className={`text-xs font-medium ${statusText}`}>{label}</span>
+          {showHistoricalLabel && (
+            <span className="text-[10px] text-ds-gray-700 font-mono px-1.5 py-0.5 rounded bg-ds-gray-alpha-200">
+              historical
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0 text-xs text-ds-gray-900 font-mono">
           <Clock size={11} />
@@ -371,11 +589,21 @@ const CC_STATE_DOT: Record<string, string> = {
   stopped: "bg-amber-700",
 };
 
-function ProjectSessionsTable() {
+interface ProjectSessionsTableProps {
+  externalRefreshAt?: number;
+  daemonConnected: boolean;
+}
+
+function ProjectSessionsTable({
+  externalRefreshAt,
+  daemonConnected,
+}: ProjectSessionsTableProps) {
   const [sessions, setSessions] = useState<CcSessionSummary[]>([]);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const prevRefreshAt = useRef<number | undefined>(undefined);
 
   const fetchCcSessions = useCallback(async () => {
     setLoading(true);
@@ -386,10 +614,12 @@ function ProjectSessionsTable() {
       const data = (await res.json()) as CcSessionsGetResponse;
       setSessions(data.sessions ?? []);
       setConfigured(data.configured ?? false);
+      setLastUpdatedAt(new Date());
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load CC sessions",
       );
+      // Keep existing data on error — do not clear
     } finally {
       setLoading(false);
     }
@@ -399,15 +629,37 @@ function ProjectSessionsTable() {
     void fetchCcSessions();
   }, [fetchCcSessions]);
 
+  // Sync refresh with main session list
+  useEffect(() => {
+    if (
+      externalRefreshAt !== undefined &&
+      externalRefreshAt !== prevRefreshAt.current
+    ) {
+      prevRefreshAt.current = externalRefreshAt;
+      void fetchCcSessions();
+    }
+  }, [externalRefreshAt, fetchCcSessions]);
+
   if (!configured && !loading) return null;
+
+  const lastUpdatedText = lastUpdatedAt
+    ? formatRelativeTime(lastUpdatedAt.toISOString())
+    : null;
 
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-ds-gray-1000 flex items-center gap-2">
-          <Terminal size={14} className="text-ds-gray-1000" />
-          CC Sessions
-        </h3>
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold text-ds-gray-1000 flex items-center gap-2">
+            <Terminal size={14} className="text-ds-gray-1000" />
+            CC Sessions
+          </h3>
+          {!daemonConnected && lastUpdatedText && (
+            <p className="text-[11px] text-ds-gray-700 font-mono">
+              Last updated {lastUpdatedText}
+            </p>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => void fetchCcSessions()}
@@ -425,7 +677,7 @@ function ProjectSessionsTable() {
         </p>
       )}
 
-      {loading ? (
+      {loading && sessions.length === 0 ? (
         <div className="space-y-1.5">
           {Array.from({ length: 3 }).map((_, i) => (
             <div
@@ -441,21 +693,12 @@ function ProjectSessionsTable() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-ds-gray-400 bg-ds-gray-100/60">
-                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
-                  ID
-                </th>
-                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
-                  Project
-                </th>
-                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
-                  State
-                </th>
-                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
-                  Duration
-                </th>
-                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">
-                  Restarts
-                </th>
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">ID</th>
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">Project</th>
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">State</th>
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">Duration</th>
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">Restarts</th>
+                <th className="px-3 py-2 text-left font-medium text-ds-gray-900">Stopped</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-ds-gray-400">
@@ -475,9 +718,7 @@ function ProjectSessionsTable() {
                       <span
                         className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${CC_STATE_DOT[s.state] ?? "bg-ds-gray-600"}`}
                       />
-                      <span className="text-ds-gray-900 capitalize">
-                        {s.state}
-                      </span>
+                      <span className="text-ds-gray-900 capitalize">{s.state}</span>
                     </span>
                   </td>
                   <td className="px-3 py-2 text-ds-gray-900 font-mono">
@@ -486,6 +727,11 @@ function ProjectSessionsTable() {
                   <td className="px-3 py-2 text-ds-gray-900 font-mono">
                     {s.restart_attempts}
                   </td>
+                  <td className="px-3 py-2 text-ds-gray-900 font-mono" suppressHydrationWarning>
+                    {s.state !== "running" && s.started_at
+                      ? formatRelativeTime(s.started_at)
+                      : "\u2014"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -493,6 +739,75 @@ function ProjectSessionsTable() {
         </div>
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Empty State
+// ---------------------------------------------------------------------------
+
+interface EmptyStateProps {
+  daemonStatus: "connected" | "reconnecting" | "disconnected";
+  hasFilters: boolean;
+  onRetry: () => void;
+  onClearFilters: () => void;
+}
+
+function SessionEmptyState({
+  daemonStatus,
+  hasFilters,
+  onRetry,
+  onClearFilters,
+}: EmptyStateProps) {
+  if (hasFilters) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-10">
+        <Search size={28} className="text-ds-gray-600" />
+        <p className="text-sm text-ds-gray-900 text-center">
+          No sessions match your filters.
+        </p>
+        <button
+          type="button"
+          onClick={onClearFilters}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+        >
+          Clear filters
+        </button>
+      </div>
+    );
+  }
+
+  if (daemonStatus === "disconnected" || daemonStatus === "reconnecting") {
+    return (
+      <div className="flex flex-col items-center gap-3 py-10">
+        <WifiOff size={28} className="text-ds-gray-600" />
+        <div className="text-center space-y-1">
+          <p className="text-sm text-ds-gray-900">No sessions found.</p>
+          <p className="text-xs text-ds-gray-700">
+            The daemon is offline — sessions will sync when connectivity is restored.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-3 py-10">
+      <Layers size={28} className="text-ds-gray-600" />
+      <div className="text-center space-y-1">
+        <p className="text-sm text-ds-gray-900">No sessions recorded yet.</p>
+        <p className="text-xs text-ds-gray-700">
+          Sessions will appear automatically when agent commands run.
+        </p>
+      </div>
+    </div>
   );
 }
 
@@ -523,9 +838,17 @@ function SessionsPage() {
   const [projectFilter, setProjectFilter] = useState("all");
   const [searchInput, setSearchInput] = useState("");
   const deferredSearch = useDeferredValue(searchInput);
+  const [refreshAt, setRefreshAt] = useState(0);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2. WebSocket — live session updates
+  // Session map ref for deduplication (real-time merge)
+  const sessionMapRef = useRef<Map<string, SessionItem>>(new Map());
+
+  // 3. WebSocket status
+  const wsStatus = useDaemonStatus();
+  const daemonConnected = wsStatus === "connected";
+
+  // 4. WebSocket — live session updates (merge by ID, never clear)
   useDaemonEvents(
     useCallback((ev) => {
       const payload = ev.payload as
@@ -534,32 +857,33 @@ function SessionsPage() {
         | undefined;
       if (!payload?.id) return;
       setSessions((prev) => {
-        const idx = prev.findIndex((s) => s.id === payload.id);
-        if (idx === -1) {
+        const map = new Map(prev.map((s) => [s.id, s]));
+        const existing = map.get(payload.id!);
+        if (!existing) {
           const mapped = mapSession(payload as NexusSessionRaw);
-          return [mapped, ...prev];
+          map.set(mapped.id, mapped);
+        } else {
+          const updated = { ...existing };
+          if (payload.status) {
+            updated.status = (() => {
+              if (payload.status === "active") return "active";
+              if (payload.status === "idle") return "idle";
+              return "completed";
+            })();
+          }
+          if (payload.progress) {
+            updated.progress = payload.progress.progress_pct;
+            updated.phase_label = payload.progress.phase_label;
+          }
+          map.set(updated.id, updated);
         }
-        const updated = { ...prev[idx]! };
-        if (payload.status) {
-          updated.status = (() => {
-            if (payload.status === "active") return "active";
-            if (payload.status === "idle") return "idle";
-            return "completed";
-          })();
-        }
-        if (payload.progress) {
-          updated.progress = payload.progress.progress_pct;
-          updated.phase_label = payload.progress.phase_label;
-        }
-        const copy = [...prev];
-        copy[idx] = updated;
-        return copy;
+        return Array.from(map.values());
       });
     }, []),
     "session",
   );
 
-  // 3. Fetch sessions
+  // 5. Fetch sessions from DB (always, regardless of WS status)
   const fetchSessions = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -567,30 +891,54 @@ function SessionsPage() {
       const res = await apiFetch("/api/sessions");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = (await res.json()) as SessionsGetResponse;
-      setSessions((data.sessions ?? []).map(mapSession));
+      const fetched = (data.sessions ?? []).map(mapSession);
+
+      // Merge: DB data as baseline, existing real-time data takes priority
+      setSessions((prev) => {
+        const map = new Map(fetched.map((s) => [s.id, s]));
+        // Overlay any real-time updates we already have
+        for (const s of prev) {
+          if (s.status === "active" || s.status === "idle") {
+            map.set(s.id, s); // real-time takes priority for live sessions
+          }
+        }
+        return Array.from(map.values());
+      });
+      setRefreshAt(Date.now());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load sessions");
+      // Do NOT clear existing sessions on error — preserve last-fetched data
     } finally {
       setLoading(false);
     }
   }, []);
 
-  // 4. Effects
+  // 6. Effects
   useEffect(() => {
     void fetchSessions();
   }, [fetchSessions]);
 
-  // 5. Search debounce (300ms)
+  // 7. Search debounce (300ms)
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
-      // Deferred value takes care of rendering — nothing extra needed
+      // Deferred value takes care of rendering
     }, 300);
   };
 
-  // 6. Derived — filtered lists
+  // 8. Refresh handler (used by banner Retry and header button)
+  const handleRefresh = useCallback(() => {
+    void fetchSessions();
+  }, [fetchSessions]);
+
+  // 9. Derived — filtered lists
   const projects = Array.from(new Set(sessions.map((s) => s.project))).sort();
+
+  const hasFilters =
+    deferredSearch !== "" ||
+    statusFilter !== "all" ||
+    projectFilter !== "all";
 
   const filtered = sessions.filter((s) => {
     if (statusFilter !== "all" && s.status !== statusFilter) return false;
@@ -616,17 +964,45 @@ function SessionsPage() {
 
   const selectedSession = sessions.find((s) => s.id === selectedId) ?? null;
 
-  // 7. Header action
+  const handleClearFilters = () => {
+    setSearchInput("");
+    setProjectFilter("all");
+    setStatusFilter("all");
+  };
+
+  // 10. Header action
   const headerAction = (
-    <button
-      type="button"
-      onClick={() => void fetchSessions()}
-      disabled={loading}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
-    >
-      <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-      Refresh
-    </button>
+    <div className="flex items-center gap-2">
+      {/* Connection indicator */}
+      <span
+        className={[
+          "flex items-center gap-1.5 text-xs font-medium",
+          daemonConnected ? "text-green-700" : "text-ds-gray-700",
+        ].join(" ")}
+      >
+        {daemonConnected ? (
+          <>
+            <span className="w-1.5 h-1.5 rounded-full bg-green-700 animate-pulse inline-block" />
+            Connected
+          </>
+        ) : (
+          <>
+            <WifiOff size={11} />
+            {wsStatus === "reconnecting" ? "Reconnecting" : "Offline"}
+          </>
+        )}
+      </span>
+
+      <button
+        type="button"
+        onClick={handleRefresh}
+        disabled={loading}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+      >
+        <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+        Refresh
+      </button>
+    </div>
   );
 
   return (
@@ -663,9 +1039,20 @@ function SessionsPage() {
             <ErrorBanner
               message="Failed to load sessions"
               detail={error}
-              onRetry={() => void fetchSessions()}
+              onRetry={handleRefresh}
             />
           )}
+
+          {/* Daemon offline banner — shows when disconnected/reconnecting */}
+          {wsStatus !== "connected" && (
+            <DaemonOfflineBanner
+              status={wsStatus}
+              onRetry={handleRefresh}
+            />
+          )}
+
+          {/* Session analytics */}
+          <SessionAnalytics />
 
           {/* Filter bar */}
           <div className="flex flex-col sm:flex-row gap-3 section-stagger-1">
@@ -731,7 +1118,7 @@ function SessionsPage() {
           </div>
 
           {/* Results count */}
-          {!loading && (
+          {!loading && sessions.length > 0 && (
             <p className="text-xs text-ds-gray-900 section-stagger-2">
               {filtered.length} session{filtered.length !== 1 ? "s" : ""}
               {deferredSearch ? ` matching "${deferredSearch}"` : ""}
@@ -739,7 +1126,7 @@ function SessionsPage() {
           )}
 
           {/* Skeleton */}
-          {loading ? (
+          {loading && sessions.length === 0 ? (
             <div className="space-y-2">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
@@ -749,13 +1136,17 @@ function SessionsPage() {
               ))}
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-copy-13 text-ds-gray-900 py-3">
-              {deferredSearch || statusFilter !== "all" || projectFilter !== "all"
-                ? "No sessions found. Try adjusting your filters."
-                : "No sessions found. Sessions will appear here when the daemon is active."}
-            </p>
+            <SessionEmptyState
+              daemonStatus={wsStatus}
+              hasFilters={hasFilters}
+              onRetry={handleRefresh}
+              onClearFilters={handleClearFilters}
+            />
           ) : (
-            <div key={statusFilter} className="animate-crossfade-in space-y-3 section-stagger-3">
+            <div
+              key={statusFilter}
+              className="animate-crossfade-in space-y-3 section-stagger-3"
+            >
               {/* Active */}
               {active.length > 0 && (
                 <section className="space-y-2">
@@ -834,6 +1225,7 @@ function SessionsPage() {
                         <EnhancedSessionCard
                           session={s}
                           selected={selectedId === s.id}
+                          showHistoricalLabel={!daemonConnected && s.status === "completed"}
                           onSelect={(sess) =>
                             setSelectedId((prev) =>
                               prev === sess.id ? null : sess.id,
@@ -847,8 +1239,12 @@ function SessionsPage() {
               )}
             </div>
           )}
-          {/* CC Sessions table (CcSessionManager) */}
-          <ProjectSessionsTable />
+
+          {/* CC Sessions table */}
+          <ProjectSessionsTable
+            externalRefreshAt={refreshAt}
+            daemonConnected={daemonConnected}
+          />
         </div>
       </PageShell>
 

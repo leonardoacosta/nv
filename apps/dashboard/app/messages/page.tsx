@@ -7,13 +7,10 @@ import {
   useRef,
   useDeferredValue,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Search,
   X,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
   MessageSquare,
   Terminal,
   ArrowUpRight,
@@ -21,9 +18,11 @@ import {
   Clock,
   Zap,
   Gauge,
+  ChevronDown,
+  ChevronUp,
+  ArrowUp,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
-import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import { channelAccentColor } from "@/lib/channel-colors";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
@@ -34,24 +33,19 @@ import { apiFetch } from "@/lib/api-client";
 // ---------------------------------------------------------------------------
 
 const PAGE_SIZE = 50;
+const LOAD_MORE_THRESHOLD = 5; // rows from bottom before fetching more
 
 const CHANNEL_ICONS: Record<string, React.ReactNode> = {
-  telegram: <MessageSquare size={13} className="text-[#229ED9]" />,
-  discord: <MessageSquare size={13} className="text-[#5865F2]" />,
-  slack: <MessageSquare size={13} className="text-[#E01E5A]" />,
-  cli: <Terminal size={13} className="text-ds-gray-1000" />,
-  api: <Zap size={13} className="text-red-700" />,
-};
-
-const CHANNEL_COLOR: Record<string, string> = {
-  telegram: "text-[#229ED9]",
-  discord: "text-[#5865F2]",
-  slack: "text-[#E01E5A]",
-  cli: "text-ds-gray-1000",
-  api: "text-red-700",
+  telegram: <MessageSquare size={12} className="text-[#229ED9]" />,
+  discord: <MessageSquare size={12} className="text-[#5865F2]" />,
+  slack: <MessageSquare size={12} className="text-[#E01E5A]" />,
+  cli: <Terminal size={12} className="text-ds-gray-1000" />,
+  api: <Zap size={12} className="text-red-700" />,
 };
 
 type DateRange = "today" | "7d" | "all";
+type SortMode = "newest" | "oldest" | "channel" | "direction";
+type DirectionFilter = "all" | "inbound" | "outbound";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -59,11 +53,7 @@ type DateRange = "today" | "7d" | "all";
 
 function channelIcon(channel: string): React.ReactNode {
   const key = channel.toLowerCase();
-  return CHANNEL_ICONS[key] ?? <MessageSquare size={13} className="text-ds-gray-900" />;
-}
-
-function channelColor(channel: string): string {
-  return CHANNEL_COLOR[channel.toLowerCase()] ?? "text-ds-gray-900";
+  return CHANNEL_ICONS[key] ?? <MessageSquare size={12} className="text-ds-gray-900" />;
 }
 
 function formatTs(iso: string): string {
@@ -76,7 +66,19 @@ function formatTs(iso: string): string {
   });
 }
 
-function truncate(text: string, max = 120): string {
+function formatRelativeTs(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function truncate(text: string, max = 100): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`;
 }
 
@@ -89,18 +91,68 @@ function isInRange(iso: string, range: DateRange): boolean {
     startOfDay.setHours(0, 0, 0, 0);
     return ts >= startOfDay.getTime();
   }
-  // 7d
   return ts >= now - 7 * 24 * 60 * 60 * 1000;
 }
 
 // ---------------------------------------------------------------------------
-// Time Grouping
+// Contact resolver hook
 // ---------------------------------------------------------------------------
 
-interface MessageGroup {
-  label: string;
-  messages: StoredMessage[];
+function useContactResolver(messages: StoredMessage[]) {
+  const cacheRef = useRef<Map<string, string>>(new Map());
+  const [, forceUpdate] = useState(0);
+
+  useEffect(() => {
+    const unique = Array.from(new Set(messages.map((m) => m.sender).filter(Boolean)));
+    const uncached = unique.filter((s) => !cacheRef.current.has(s));
+    if (uncached.length === 0) return;
+
+    void apiFetch("/api/contacts/resolve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ senders: uncached }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Record<string, string> | null) => {
+        if (!data) return;
+        // Cache all resolved names, mark unresolved ones with empty to avoid refetch
+        for (const s of uncached) {
+          cacheRef.current.set(s, data[s] ?? s);
+        }
+        forceUpdate((n) => n + 1);
+      })
+      .catch(() => {
+        // On failure mark as unresolved so we don't loop
+        for (const s of uncached) {
+          cacheRef.current.set(s, s);
+        }
+      });
+  }, [messages]);
+
+  const resolve = useCallback(
+    (sender: string): string => cacheRef.current.get(sender) ?? sender,
+    [],
+  );
+
+  return resolve;
 }
+
+// ---------------------------------------------------------------------------
+// Time grouping helpers
+// ---------------------------------------------------------------------------
+
+interface GroupHeader {
+  kind: "group-header";
+  label: string;
+  key: string;
+}
+
+interface MessageVirtualItem {
+  kind: "message";
+  msg: StoredMessage;
+}
+
+type VirtualRow = GroupHeader | MessageVirtualItem;
 
 function hourKey(iso: string): string {
   const d = new Date(iso);
@@ -137,90 +189,144 @@ function formatGroupLabel(isoHourKey: string): string {
   return `${datePrefix}, ${hourStart} \u2013 ${hourEnd}`;
 }
 
-function groupMessagesByHour(messages: StoredMessage[]): MessageGroup[] {
-  const groups: MessageGroup[] = [];
-  let currentKey = "";
-  let currentGroup: MessageGroup | null = null;
+function buildVirtualRows(messages: StoredMessage[], sort: SortMode): VirtualRow[] {
+  const rows: VirtualRow[] = [];
 
+  if (sort === "channel") {
+    const grouped = new Map<string, StoredMessage[]>();
+    for (const msg of messages) {
+      const key = msg.channel.toLowerCase();
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(msg);
+    }
+    const channels = Array.from(grouped.keys()).sort();
+    for (const ch of channels) {
+      rows.push({ kind: "group-header", label: `Channel: ${ch}`, key: `channel-${ch}` });
+      for (const msg of grouped.get(ch)!) {
+        rows.push({ kind: "message", msg });
+      }
+    }
+    return rows;
+  }
+
+  if (sort === "direction") {
+    const inbound = messages.filter((m) => m.direction === "inbound");
+    const outbound = messages.filter((m) => m.direction === "outbound");
+    if (inbound.length > 0) {
+      rows.push({ kind: "group-header", label: "Inbound", key: "dir-inbound" });
+      for (const msg of inbound) rows.push({ kind: "message", msg });
+    }
+    if (outbound.length > 0) {
+      rows.push({ kind: "group-header", label: "Outbound", key: "dir-outbound" });
+      for (const msg of outbound) rows.push({ kind: "message", msg });
+    }
+    return rows;
+  }
+
+  // Newest / Oldest — hour grouping
+  let currentKey = "";
   for (const msg of messages) {
     const key = hourKey(msg.timestamp);
     if (key !== currentKey) {
       currentKey = key;
-      currentGroup = { label: formatGroupLabel(key), messages: [] };
-      groups.push(currentGroup);
+      rows.push({ kind: "group-header", label: formatGroupLabel(key), key: `hour-${key}` });
     }
-    currentGroup!.messages.push(msg);
+    rows.push({ kind: "message", msg });
   }
-
-  return groups;
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
-// Message Row (collapsed + expanded inline)
+// Type badge
 // ---------------------------------------------------------------------------
 
-interface MessageRowProps {
+function TypeBadge({ type }: { type: StoredMessage["type"] }) {
+  if (type === "conversation") return null;
+  if (type === "tool-call") {
+    return (
+      <span className="shrink-0 px-1 py-0.5 rounded text-[10px] font-mono bg-amber-500/15 text-amber-500">
+        tool
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] font-mono bg-ds-gray-alpha-200 text-ds-gray-900">
+      sys
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MessageRowDense
+// ---------------------------------------------------------------------------
+
+interface MessageRowDenseProps {
   msg: StoredMessage;
   expanded: boolean;
+  active: boolean;
   onToggle: () => void;
+  resolvedName: string;
+  measureRef: (el: HTMLElement | null) => void;
 }
 
-function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
-  const [contentExpanded, setContentExpanded] = useState(false);
+function MessageRowDense({
+  msg,
+  expanded,
+  active,
+  onToggle,
+  resolvedName,
+  measureRef,
+}: MessageRowDenseProps) {
   const isInbound = msg.direction === "inbound";
   const channelKey = msg.channel.toLowerCase();
-  const cColor = channelColor(channelKey);
   const cIcon = channelIcon(channelKey);
   const accent = channelAccentColor(channelKey);
 
-  // Consider "long" if content exceeds ~180 chars (roughly 3 lines)
-  const isLongContent = msg.content.length > 180;
-
   return (
-    <li
-      className="border-b border-ds-gray-400 last:border-0"
+    <div
+      ref={measureRef}
+      data-message-id={msg.id}
       style={{ borderLeft: `3px solid ${accent}` }}
+      className="border-b border-ds-gray-400 last:border-0"
     >
-      {/* Collapsed row */}
+      {/* Dense row — 28-32px target height */}
       <button
         type="button"
         onClick={onToggle}
-        className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-ds-gray-200 transition-colors group"
+        className={[
+          "w-full text-left flex items-center gap-2 py-1.5 px-3 hover:bg-ds-gray-200 transition-colors",
+          active ? "bg-ds-gray-alpha-100" : "",
+        ].join(" ")}
       >
         {/* Direction icon */}
-        <div className="shrink-0 text-ds-gray-900">
+        <div className="shrink-0">
           {isInbound ? (
-            <ArrowDownLeft size={13} className="text-emerald-400" />
+            <ArrowDownLeft size={12} className="text-emerald-400" />
           ) : (
-            <ArrowUpRight size={13} className="text-amber-400" />
+            <ArrowUpRight size={12} className="text-amber-400" />
           )}
         </div>
 
         {/* Channel icon */}
-        <div className={`shrink-0 ${cColor}`}>{cIcon}</div>
+        <div className="shrink-0">{cIcon}</div>
 
-        {/* Channel badge with accent tint */}
-        <span
-          className="shrink-0 text-[11px] font-mono font-medium rounded px-1.5 py-0.5 hidden sm:inline"
-          style={{ color: accent, backgroundColor: `${accent}15` }}
-        >
-          {msg.channel}
+        {/* Resolved sender name */}
+        <span className="shrink-0 text-xs text-ds-gray-1000 font-medium w-[72px] truncate hidden md:inline">
+          {resolvedName || "\u2014"}
         </span>
 
-        {/* Sender */}
-        <span className="shrink-0 text-xs text-ds-gray-1000 font-medium min-w-[80px] truncate hidden md:inline">
-          {msg.sender || "\u2014"}
-        </span>
-
-        {/* Preview */}
+        {/* Message preview */}
         <span className="flex-1 min-w-0 text-sm text-ds-gray-900 truncate">
           {truncate(msg.content)}
         </span>
 
+        {/* Type badge */}
+        <TypeBadge type={msg.type} />
+
         {/* Latency badge */}
         {msg.response_time_ms !== null && msg.response_time_ms !== undefined && (
-          <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900 hidden lg:flex">
-            <Gauge size={9} />
+          <span className="shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-mono bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900 hidden lg:flex">
+            <Gauge size={8} />
             {msg.response_time_ms}ms
           </span>
         )}
@@ -230,45 +336,13 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
           className="shrink-0 text-xs text-ds-gray-900 font-mono hidden sm:inline"
           suppressHydrationWarning
         >
-          {formatTs(msg.timestamp)}
+          {formatRelativeTs(msg.timestamp)}
         </span>
       </button>
 
-      {/* Inline content expand/collapse (independent of metadata expand) */}
-      {isLongContent && !expanded && (
-        <div className="px-4 pb-2">
-          <div
-            className="overflow-hidden transition-[max-height] duration-200 ease-out"
-            style={{ maxHeight: contentExpanded ? "2000px" : "0px" }}
-          >
-            <pre className="text-xs text-ds-gray-1000 whitespace-pre-wrap break-words font-mono py-1">
-              {msg.content}
-            </pre>
-          </div>
-          <button
-            type="button"
-            onClick={() => setContentExpanded((prev) => !prev)}
-            className="flex items-center gap-1 text-[11px] text-ds-gray-900 hover:text-ds-gray-1000 transition-colors mt-1"
-          >
-            {contentExpanded ? (
-              <>
-                <ChevronUp size={11} />
-                Show less
-              </>
-            ) : (
-              <>
-                <ChevronDown size={11} />
-                Show more
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Expanded inline content (full metadata panel) */}
-      <div className={`height-reveal ${expanded ? "open" : ""}`}>
+      {/* Expanded content */}
+      {expanded && (
         <div className="px-4 pb-4 pt-1 space-y-4 bg-ds-gray-100/30">
-          {/* Full content */}
           <section className="space-y-1.5">
             <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest font-semibold">
               Message content
@@ -278,122 +352,199 @@ function MessageRow({ msg, expanded, onToggle }: MessageRowProps) {
             </pre>
           </section>
 
-          {/* Metadata grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-0.5">
-              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                Direction
-              </p>
-              <p className="text-xs font-medium text-ds-gray-1000 capitalize">
-                {msg.direction}
-              </p>
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Direction</p>
+              <p className="text-xs font-medium text-ds-gray-1000 capitalize">{msg.direction}</p>
             </div>
             <div className="space-y-0.5">
-              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                Channel
-              </p>
-              <p className={`text-xs font-medium ${channelColor(msg.channel.toLowerCase())}`}>
-                {msg.channel}
-              </p>
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Channel</p>
+              <p className="text-xs font-medium" style={{ color: accent }}>{msg.channel}</p>
             </div>
             <div className="space-y-0.5">
-              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                Sender
-              </p>
-              <p className="text-xs font-medium text-ds-gray-1000">
-                {msg.sender || "\u2014"}
-              </p>
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Sender</p>
+              <p className="text-xs font-medium text-ds-gray-1000">{msg.sender || "\u2014"}</p>
             </div>
             <div className="space-y-0.5">
-              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                Timestamp
-              </p>
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Timestamp</p>
               <p className="text-xs font-mono text-ds-gray-1000" suppressHydrationWarning>
                 {formatTs(msg.timestamp)}
               </p>
             </div>
             {msg.response_time_ms !== null && msg.response_time_ms !== undefined && (
               <div className="space-y-0.5">
-                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                  Latency
-                </p>
-                <p className="text-xs font-mono text-ds-gray-1000">
-                  {msg.response_time_ms}ms
-                </p>
+                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Latency</p>
+                <p className="text-xs font-mono text-ds-gray-1000">{msg.response_time_ms}ms</p>
               </div>
             )}
             {msg.tokens_in !== null && msg.tokens_in !== undefined && (
               <div className="space-y-0.5">
-                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                  Tokens in
-                </p>
-                <p className="text-xs font-mono text-ds-gray-1000">
-                  {msg.tokens_in.toLocaleString()}
-                </p>
+                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Tokens in</p>
+                <p className="text-xs font-mono text-ds-gray-1000">{msg.tokens_in.toLocaleString()}</p>
               </div>
             )}
             {msg.tokens_out !== null && msg.tokens_out !== undefined && (
               <div className="space-y-0.5">
-                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">
-                  Tokens out
-                </p>
-                <p className="text-xs font-mono text-ds-gray-1000">
-                  {msg.tokens_out.toLocaleString()}
-                </p>
+                <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Tokens out</p>
+                <p className="text-xs font-mono text-ds-gray-1000">{msg.tokens_out.toLocaleString()}</p>
               </div>
             )}
+            <div className="space-y-0.5">
+              <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Type</p>
+              <p className="text-xs font-medium text-ds-gray-1000 capitalize">{msg.type}</p>
+            </div>
           </div>
         </div>
-      </div>
-    </li>
+      )}
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Pagination Controls
+// Group header row
 // ---------------------------------------------------------------------------
 
-interface PaginationProps {
-  page: number;
-  pageCount: number;
-  onPrev: () => void;
-  onNext: () => void;
-  disabled: boolean;
+function GroupHeaderRow({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2 bg-ds-gray-100/60 sticky top-0 z-10">
+      <Clock size={11} className="text-ds-gray-900 shrink-0" />
+      <span className="text-[11px] font-mono font-medium text-ds-gray-900 tracking-wide">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-ds-gray-400" />
+    </div>
+  );
 }
 
-function PaginationControls({
-  page,
-  pageCount,
-  onPrev,
-  onNext,
-  disabled,
-}: PaginationProps) {
+// ---------------------------------------------------------------------------
+// Faceted filter bar
+// ---------------------------------------------------------------------------
+
+interface FilterBarProps {
+  search: string;
+  onSearchChange: (v: string) => void;
+  channels: string[];
+  channelFilter: string;
+  onChannelFilter: (v: string) => void;
+  direction: DirectionFilter;
+  onDirection: (v: DirectionFilter) => void;
+  dateRange: DateRange;
+  onDateRange: (v: DateRange) => void;
+  sort: SortMode;
+  onSort: (v: SortMode) => void;
+  hasActiveFilters: boolean;
+  onClearAll: () => void;
+}
+
+function FacetedFilterBar({
+  search,
+  onSearchChange,
+  channels,
+  channelFilter,
+  onChannelFilter,
+  direction,
+  onDirection,
+  dateRange,
+  onDateRange,
+  sort,
+  onSort,
+  hasActiveFilters,
+  onClearAll,
+}: FilterBarProps) {
   return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-ds-gray-400">
-      <button
-        type="button"
-        onClick={onPrev}
-        disabled={page <= 0 || disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <ChevronLeft size={13} />
-        Prev
-      </button>
+    <div className="flex items-center gap-2 flex-wrap">
+      {/* Search */}
+      <div className="relative min-w-[160px] max-w-xs flex-1">
+        <Search
+          size={13}
+          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder="Search messages…"
+          className="w-full pl-8 pr-7 py-1.5 surface-inset text-xs text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors h-[36px]"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => onSearchChange("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
+            aria-label="Clear search"
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
 
-      <span className="text-xs font-mono text-ds-gray-900">
-        Page {page + 1}
-        {pageCount > 0 ? ` / ${pageCount}` : ""}
-      </span>
-
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={pageCount > 0 && page >= pageCount - 1 || disabled}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+      {/* Channel dropdown */}
+      <select
+        value={channelFilter}
+        onChange={(e) => onChannelFilter(e.target.value)}
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
       >
-        Next
-        <ChevronRight size={13} />
-      </button>
+        <option value="all">All channels</option>
+        {channels.map((ch) => (
+          <option key={ch} value={ch}>
+            {ch}
+          </option>
+        ))}
+      </select>
+
+      {/* Direction dropdown */}
+      <select
+        value={direction}
+        onChange={(e) => onDirection(e.target.value as DirectionFilter)}
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+      >
+        <option value="all">All directions</option>
+        <option value="inbound">Inbound</option>
+        <option value="outbound">Outbound</option>
+      </select>
+
+      {/* Date range toggle */}
+      <div className="flex items-center gap-0.5 p-1 h-[36px] rounded-lg bg-ds-gray-100 border border-ds-gray-400">
+        {(["today", "7d", "all"] as DateRange[]).map((r) => (
+          <button
+            key={r}
+            type="button"
+            onClick={() => onDateRange(r)}
+            className={[
+              "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
+              dateRange === r
+                ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                : "text-ds-gray-900 hover:text-ds-gray-1000",
+            ].join(" ")}
+          >
+            {r === "today" ? "Today" : r === "7d" ? "7d" : "All"}
+          </button>
+        ))}
+      </div>
+
+      {/* Sort dropdown */}
+      <select
+        value={sort}
+        onChange={(e) => onSort(e.target.value as SortMode)}
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+      >
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="channel">By channel</option>
+        <option value="direction">By direction</option>
+      </select>
+
+      {/* Clear all */}
+      {hasActiveFilters && (
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="h-[36px] flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+        >
+          <X size={11} />
+          Clear all
+        </button>
+      )}
     </div>
   );
 }
@@ -404,27 +555,46 @@ function PaginationControls({
 
 export default function MessagesPage() {
   // 1. State
-  const [messages, setMessages] = useState<StoredMessage[]>([]);
+  const [allMessages, setAllMessages] = useState<StoredMessage[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [searchInput, setSearchInput] = useState("");
   const deferredSearch = useDeferredValue(searchInput);
   const [channelFilter, setChannelFilter] = useState("all");
   const [dateRange, setDateRange] = useState<DateRange>("all");
+  const [direction, setDirection] = useState<DirectionFilter>("all");
+  const [sort, setSort] = useState<SortMode>("newest");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [scrolledPast20, setScrolledPast20] = useState(false);
+
+  // Refs
+  const parentRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2. Fetch messages
+  // 2. Contact resolver
+  const resolveContact = useContactResolver(allMessages);
+
+  // 3. Fetch messages
   const fetchMessages = useCallback(
-    async (pg: number, search: string, channel: string) => {
-      setLoading(true);
+    async (reset: boolean, search: string, channel: string, sortMode: SortMode) => {
+      if (reset) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
       try {
+        const currentOffset = reset ? 0 : offset;
         const params = new URLSearchParams({
           limit: String(PAGE_SIZE),
-          offset: String(pg * PAGE_SIZE),
+          offset: String(currentOffset),
+          sort: sortMode === "oldest" ? "asc" : "desc",
         });
         if (search) params.set("search", search);
         if (channel !== "all") params.set("channel", channel);
@@ -432,249 +602,385 @@ export default function MessagesPage() {
         const res = await apiFetch(`/api/messages?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as MessagesGetResponse;
-        setMessages(data.messages ?? []);
-        // Estimate total from whether we got a full page
-        setTotal((prev) => {
-          const rowsReturned = (data.messages ?? []).length;
-          if (rowsReturned < PAGE_SIZE) return pg * PAGE_SIZE + rowsReturned;
-          return Math.max(prev, (pg + 1) * PAGE_SIZE + 1);
-        });
+        const fetched = data.messages ?? [];
+
+        if (reset) {
+          setAllMessages(fetched);
+          setOffset(fetched.length);
+        } else {
+          setAllMessages((prev) => [...prev, ...fetched]);
+          setOffset((prev) => prev + fetched.length);
+        }
+
+        setTotal(data.total ?? fetched.length);
+        setHasMore(fetched.length === PAGE_SIZE);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load messages");
       } finally {
         setLoading(false);
+        setLoadingMore(false);
+        loadingMoreRef.current = false;
       }
     },
-    [],
+    [offset],
   );
 
-  // 3. Effects
+  // 4. Effects — reset on filter/search change
   useEffect(() => {
-    void fetchMessages(page, deferredSearch, channelFilter);
-  }, [fetchMessages, page, deferredSearch, channelFilter]);
+    setOffset(0);
+    setHasMore(true);
+    void fetchMessages(true, deferredSearch, channelFilter, sort);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deferredSearch, channelFilter, sort]);
 
-  // Reset to page 0 when search/filter changes
-  useEffect(() => {
-    setPage(0);
-  }, [deferredSearch, channelFilter]);
-
-  // 4. Search debounce handler (300ms)
+  // 5. Search debounce
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
-      // deferredSearch triggers via useDeferredValue — nothing extra
+      // useDeferredValue handles re-render
     }, 300);
   };
 
-  // 5. Derived
-  const filtered =
-    dateRange === "all"
-      ? messages
-      : messages.filter((m) => isInRange(m.timestamp, dateRange));
+  // 6. Derived — apply client-side filters (date range, direction)
+  const filtered = allMessages.filter((m) => {
+    if (dateRange !== "all" && !isInRange(m.timestamp, dateRange)) return false;
+    if (direction === "inbound" && m.direction !== "inbound") return false;
+    if (direction === "outbound" && m.direction !== "outbound") return false;
+    return true;
+  });
 
-  const pageCount = Math.ceil(total / PAGE_SIZE);
+  // Sort oldest puts them in ascending order (API already returns in order, just need to reverse display)
+  const sorted =
+    sort === "oldest"
+      ? [...filtered].reverse()
+      : sort === "channel"
+        ? [...filtered].sort((a, b) => a.channel.localeCompare(b.channel))
+        : sort === "direction"
+          ? [...filtered].sort((a, b) => {
+              if (a.direction === b.direction) return 0;
+              return a.direction === "inbound" ? -1 : 1;
+            })
+          : filtered;
 
-  const channels = Array.from(
-    new Set(messages.map((m) => m.channel.toLowerCase())),
-  ).sort();
+  const virtualRows = buildVirtualRows(sorted, sort);
+  const messageIndexMap = new Map<number, number>(); // msgId -> virtualRow index
+  virtualRows.forEach((row, idx) => {
+    if (row.kind === "message") {
+      messageIndexMap.set(row.msg.id, idx);
+    }
+  });
+
+  // Only message rows count for active index purposes
+  const messageVirtualRows = virtualRows.filter((r): r is MessageVirtualItem => r.kind === "message");
+
+  const channels = Array.from(new Set(allMessages.map((m) => m.channel.toLowerCase()))).sort();
+
+  const hasActiveFilters =
+    deferredSearch !== "" ||
+    channelFilter !== "all" ||
+    dateRange !== "all" ||
+    direction !== "all" ||
+    sort !== "newest";
+
+  // 7. Virtualizer
+  const rowVirtualizer = useVirtualizer({
+    count: virtualRows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      const row = virtualRows[index];
+      if (!row) return 30;
+      if (row.kind === "group-header") return 34;
+      if (row.kind === "message" && expandedId === row.msg.id) return 280;
+      return 30;
+    },
+    overscan: 10,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  });
+
+  // 8. Infinite scroll — load more when near bottom
+  useEffect(() => {
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (virtualItems.length === 0) return;
+    const lastItem = virtualItems[virtualItems.length - 1];
+    if (!lastItem) return;
+    const threshold = virtualRows.length - LOAD_MORE_THRESHOLD;
+    if (
+      lastItem.index >= threshold &&
+      hasMore &&
+      !loading &&
+      !loadingMore &&
+      !loadingMoreRef.current
+    ) {
+      loadingMoreRef.current = true;
+      void fetchMessages(false, deferredSearch, channelFilter, sort);
+    }
+  }, [
+    rowVirtualizer.getVirtualItems(),
+    virtualRows.length,
+    hasMore,
+    loading,
+    loadingMore,
+    deferredSearch,
+    channelFilter,
+    sort,
+    fetchMessages,
+  ]);
+
+  // 9. Scroll to top button visibility
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const items = rowVirtualizer.getVirtualItems();
+      const firstVisible = items[0];
+      setScrolledPast20(firstVisible ? firstVisible.index > 20 : false);
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [rowVirtualizer]);
+
+  // 10. Keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (messageVirtualRows.length === 0) return;
+    const current = activeIndex ?? -1;
+
+    if (e.key === "j" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = Math.min(current + 1, messageVirtualRows.length - 1);
+      setActiveIndex(next);
+      const row = messageVirtualRows[next];
+      if (row) {
+        const vIdx = messageIndexMap.get(row.msg.id);
+        if (vIdx !== undefined) rowVirtualizer.scrollToIndex(vIdx, { align: "auto" });
+      }
+    } else if (e.key === "k" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const prev = Math.max(current - 1, 0);
+      setActiveIndex(prev);
+      const row = messageVirtualRows[prev];
+      if (row) {
+        const vIdx = messageIndexMap.get(row.msg.id);
+        if (vIdx !== undefined) rowVirtualizer.scrollToIndex(vIdx, { align: "auto" });
+      }
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeIndex !== null) {
+        const row = messageVirtualRows[activeIndex];
+        if (row) {
+          setExpandedId((prev) => (prev === row.msg.id ? null : row.msg.id));
+        }
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setExpandedId(null);
+    }
+  };
+
+  // 11. Clear all filters
+  const handleClearAll = () => {
+    setSearchInput("");
+    setChannelFilter("all");
+    setDateRange("all");
+    setDirection("all");
+    setSort("newest");
+    setExpandedId(null);
+    setActiveIndex(null);
+  };
 
   return (
     <PageShell
       title="Messages"
-      subtitle="Channel message history — newest first"
+      subtitle={
+        !loading && total > 0
+          ? `Showing ${filtered.length} of ${total} messages`
+          : "Channel message history"
+      }
     >
-      <div className="space-y-4">
+      <div className="space-y-3">
         {error && (
           <ErrorBanner
             message="Failed to load messages"
             detail={error}
-            onRetry={() => void fetchMessages(page, deferredSearch, channelFilter)}
+            onRetry={() => void fetchMessages(true, deferredSearch, channelFilter, sort)}
           />
         )}
 
-        {/* Controls bar */}
-        <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-          {/* Search */}
-          <div className="relative flex-1 min-w-0 max-w-sm">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
-            />
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder="Full-text search…"
-              className="w-full pl-9 pr-8 py-2 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
-            />
-            {searchInput && (
-              <button
-                type="button"
-                onClick={() => setSearchInput("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
-                aria-label="Clear search"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
+        {/* Faceted filter bar */}
+        <FacetedFilterBar
+          search={searchInput}
+          onSearchChange={handleSearchChange}
+          channels={channels}
+          channelFilter={channelFilter}
+          onChannelFilter={(v) => {
+            setChannelFilter(v);
+            setActiveIndex(null);
+          }}
+          direction={direction}
+          onDirection={(v) => {
+            setDirection(v);
+            setActiveIndex(null);
+          }}
+          dateRange={dateRange}
+          onDateRange={(v) => {
+            setDateRange(v);
+            setActiveIndex(null);
+          }}
+          sort={sort}
+          onSort={(v) => {
+            setSort(v);
+            setActiveIndex(null);
+          }}
+          hasActiveFilters={hasActiveFilters}
+          onClearAll={handleClearAll}
+        />
 
-          {/* Filter chips row */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Channel filter pills */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setChannelFilter("all")}
-                className={[
-                  "px-3 py-1.5 rounded-full text-xs font-medium border transition-colors",
-                  channelFilter === "all"
-                    ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-500"
-                    : "text-ds-gray-900 hover:text-ds-gray-1000 border-ds-gray-400 hover:border-ds-gray-500",
-                ].join(" ")}
-              >
-                All channels
-              </button>
-              {channels.map((ch) => {
-                const pillAccent = channelAccentColor(ch);
-                const isActive = channelFilter === ch;
-                return (
-                  <button
-                    key={ch}
-                    type="button"
-                    onClick={() => setChannelFilter(ch)}
-                    className={[
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors capitalize",
-                      isActive
-                        ? "text-ds-gray-1000"
-                        : "text-ds-gray-900 hover:text-ds-gray-1000 border-ds-gray-400 hover:border-ds-gray-500",
-                    ].join(" ")}
-                    style={
-                      isActive
-                        ? {
-                            borderColor: pillAccent,
-                            backgroundColor: `${pillAccent}15`,
-                            borderLeftWidth: "3px",
-                          }
-                        : undefined
-                    }
-                  >
-                    {channelIcon(ch)}
-                    {ch}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Date range chips */}
-            <div className="flex items-center gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400">
-              {(["today", "7d", "all"] as DateRange[]).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => setDateRange(r)}
-                  className={[
-                    "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors",
-                    dateRange === r
-                      ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
-                      : "text-ds-gray-900 hover:text-ds-gray-1000",
-                  ].join(" ")}
-                >
-                  <Clock size={10} />
-                  {r === "today" ? "Today" : r === "7d" ? "7 days" : "All time"}
-                </button>
+        {/* Messages virtual list */}
+        <div className="surface-card overflow-hidden relative">
+          {loading ? (
+            <div className="divide-y divide-ds-gray-400">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2 px-3 py-1.5">
+                  <div className="w-3 h-3 rounded-full animate-pulse bg-ds-gray-400" />
+                  <div className="w-8 h-3 animate-pulse rounded bg-ds-gray-400" />
+                  <div
+                    className="flex-1 h-3 animate-pulse rounded bg-ds-gray-400"
+                    style={{ opacity: 1 - i * 0.08 }}
+                  />
+                  <div className="w-14 h-3 animate-pulse rounded bg-ds-gray-400" />
+                </div>
               ))}
             </div>
-          </div>
+          ) : virtualRows.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <Search size={28} className="text-ds-gray-600" />
+              <p className="text-sm text-ds-gray-900 text-center">
+                {hasActiveFilters
+                  ? "No messages match your filters."
+                  : "No messages found."}
+              </p>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div
+              ref={parentRef}
+              tabIndex={0}
+              onKeyDown={handleKeyDown}
+              className="overflow-auto focus:outline-none"
+              style={{ height: "calc(100vh - 220px)", minHeight: "400px" }}
+            >
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                  const row = virtualRows[virtualItem.index];
+                  if (!row) return null;
+
+                  if (row.kind === "group-header") {
+                    return (
+                      <div
+                        key={row.key}
+                        data-index={virtualItem.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
+                      >
+                        <GroupHeaderRow label={row.label} />
+                      </div>
+                    );
+                  }
+
+                  // message row
+                  const msgRow = row;
+                  const msgActiveIdx = messageVirtualRows.findIndex((r) => r.msg.id === msgRow.msg.id);
+                  const isActive = activeIndex === msgActiveIdx;
+                  const resolvedName = resolveContact(msgRow.msg.sender);
+
+                  return (
+                    <div
+                      key={msgRow.msg.id}
+                      data-index={virtualItem.index}
+                      ref={rowVirtualizer.measureElement}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        transform: `translateY(${virtualItem.start}px)`,
+                      }}
+                    >
+                      <MessageRowDense
+                        msg={msgRow.msg}
+                        expanded={expandedId === msgRow.msg.id}
+                        active={isActive}
+                        onToggle={() => {
+                          setExpandedId((prev) =>
+                            prev === msgRow.msg.id ? null : msgRow.msg.id,
+                          );
+                          setActiveIndex(msgActiveIdx);
+                          rowVirtualizer.measure();
+                        }}
+                        resolvedName={resolvedName}
+                        measureRef={(el) => {
+                          if (el) {
+                            const domEl = el as unknown as HTMLElement & { dataset: DOMStringMap };
+                            rowVirtualizer.measureElement(domEl);
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Load more indicator */}
+              {loadingMore && (
+                <div className="flex items-center justify-center py-3">
+                  <div className="w-4 h-4 border border-ds-gray-600 border-t-ds-gray-900 rounded-full animate-spin" />
+                  <span className="ml-2 text-xs text-ds-gray-900">Loading more…</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Scroll to top floating button */}
+          {scrolledPast20 && !loading && (
+            <button
+              type="button"
+              onClick={() => rowVirtualizer.scrollToIndex(0, { align: "start" })}
+              className="absolute bottom-4 right-4 w-8 h-8 flex items-center justify-center rounded-full surface-card border border-ds-gray-500 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-600 transition-colors shadow-lg"
+              aria-label="Scroll to top"
+            >
+              <ArrowUp size={14} />
+            </button>
+          )}
         </div>
 
         {/* Result summary */}
-        {!loading && (
-          <div className="flex items-center justify-between">
-            <SectionHeader
-              label="Messages"
-              count={filtered.length}
-            />
-            {deferredSearch && (
-              <span className="text-xs text-ds-gray-900">
-                Searching: &ldquo;{deferredSearch}&rdquo;
-              </span>
-            )}
-          </div>
+        {!loading && virtualRows.length > 0 && (
+          <p className="text-xs text-ds-gray-900 font-mono">
+            {filtered.length} messages
+            {total > filtered.length ? ` (${total} total)` : ""}
+            {deferredSearch ? ` matching "${deferredSearch}"` : ""}
+          </p>
         )}
-
-        {/* Messages list */}
-        <div key={`${channelFilter}-${dateRange}`} className="animate-crossfade-in surface-card overflow-hidden">
-          {loading ? (
-            <ul className="divide-y divide-ds-gray-400">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <li
-                  key={i}
-                  className="flex items-center gap-3 px-4 py-3"
-                >
-                  <div className="w-3 h-3 rounded-full animate-pulse bg-ds-gray-400" />
-                  <div className="w-10 h-3 animate-pulse rounded bg-ds-gray-400" />
-                  <div className="flex-1 h-3 animate-pulse rounded bg-ds-gray-400" style={{ opacity: 1 - i * 0.08 }} />
-                  <div className="w-16 h-3 animate-pulse rounded bg-ds-gray-400" />
-                </li>
-              ))}
-            </ul>
-          ) : filtered.length === 0 ? (
-            <p className="text-copy-13 text-ds-gray-900 py-3 px-4">
-              {deferredSearch || channelFilter !== "all" || dateRange !== "all"
-                ? "No messages found. Try adjusting your search or filters."
-                : "No messages found."}
-            </p>
-          ) : (
-            <>
-              <ul>
-                {groupMessagesByHour(filtered).map((group) => (
-                  <li key={group.label}>
-                    {/* Time group divider */}
-                    <div className="flex items-center gap-3 px-4 py-2 bg-ds-gray-100/60">
-                      <Clock size={11} className="text-ds-gray-900 shrink-0" />
-                      <span
-                        className="text-[11px] font-mono font-medium text-ds-gray-900 tracking-wide"
-                        suppressHydrationWarning
-                      >
-                        {group.label}
-                      </span>
-                      <div className="flex-1 h-px bg-ds-gray-400" />
-                    </div>
-                    <ul className="divide-y divide-ds-gray-400">
-                      {group.messages.map((msg) => (
-                        <MessageRow
-                          key={msg.id}
-                          msg={msg}
-                          expanded={expandedId === msg.id}
-                          onToggle={() =>
-                            setExpandedId((prev) =>
-                              prev === msg.id ? null : msg.id,
-                            )
-                          }
-                        />
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-              <PaginationControls
-                page={page}
-                pageCount={pageCount}
-                disabled={loading}
-                onPrev={() => {
-                  setPage((p) => Math.max(0, p - 1));
-                  setExpandedId(null);
-                }}
-                onNext={() => {
-                  setPage((p) => p + 1);
-                  setExpandedId(null);
-                }}
-              />
-            </>
-          )}
-        </div>
       </div>
     </PageShell>
   );

@@ -5,9 +5,11 @@ import { sanitize } from "../utils.js";
 /** Azure DevOps organization URL. */
 const ADO_ORG = "https://dev.azure.com/brownandbrowninc";
 
+const ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798";
+
 /**
  * Query Azure DevOps work items with optional filters.
- * Uses WIQL query via `az boards query` for flexible filtering.
+ * Uses WIQL via REST API (POST) to avoid az CLI quoting issues.
  */
 export async function adoWorkItems(
   config: ServiceConfig,
@@ -16,27 +18,26 @@ export async function adoWorkItems(
   type?: string,
   limit: number = 20,
 ): Promise<string> {
-  // Build WIQL WHERE clauses
+  const proj = sanitize(project ?? "Wholesale Architecture");
   const clauses: string[] = [];
-  if (project) {
-    clauses.push(`[System.TeamProject] = '${sanitize(project)}'`);
-  }
-  if (state) {
-    clauses.push(`[System.State] = '${sanitize(state)}'`);
-  }
-  if (type) {
-    clauses.push(`[System.WorkItemType] = '${sanitize(type)}'`);
-  }
+  if (project) clauses.push(`[System.TeamProject] = '${sanitize(project)}'`);
+  if (state) clauses.push(`[System.State] = '${sanitize(state)}'`);
+  if (type) clauses.push(`[System.WorkItemType] = '${sanitize(type)}'`);
 
   const where = clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "";
-  const wiql = `SELECT [System.Id], [System.Title], [System.State], [System.WorkItemType], [System.AssignedTo] FROM WorkItems${where} ORDER BY [System.ChangedDate] DESC`;
+  const wiql = `SELECT [System.Id],[System.Title],[System.State],[System.WorkItemType],[System.AssignedTo] FROM WorkItems${where} ORDER BY [System.ChangedDate] DESC`;
 
-  let cmd = `az boards query --organization ${ADO_ORG} --wiql '${wiql}'`;
-  if (project) {
-    cmd += ` --project '${sanitize(project)}'`;
-  }
-  cmd += ` -o json 2>$null`;
-  return sshAdoCommand(config.cloudpcHost, cmd);
+  // POST WIQL query via REST — avoids all quoting issues
+  const ps = [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token; 'Content-Type' = 'application/json' }`,
+    `$body = @{ query = '${wiql}' } | ConvertTo-Json`,
+    `$r = Invoke-RestMethod -Method POST -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/wit/wiql?api-version=7.0&$top=${limit}' -Headers $h -Body $body`,
+    `$r | ConvertTo-Json -Depth 10 -Compress`,
+  ].join("; ");
+
+  return sshAdoCommand(config.cloudpcHost, ps, 45_000);
 }
 
 /**
@@ -81,12 +82,14 @@ export async function adoBuildLogs(
   buildId: number,
   project?: string,
 ): Promise<string> {
-  let cmd = `az pipelines runs show --organization ${ADO_ORG} --id ${buildId}`;
-  if (project) {
-    cmd += ` --project '${sanitize(project)}'`;
-  }
-  cmd += ` -o json 2>$null`;
-  return sshAdoCommand(config.cloudpcHost, cmd);
+  const proj = sanitize(project ?? "Wholesale Architecture");
+  const ps = [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token }`,
+    `Invoke-RestMethod -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/build/builds/${buildId}?api-version=7.0' -Headers $h | ConvertTo-Json -Depth 10 -Compress`,
+  ].join("; ");
+  return sshAdoCommand(config.cloudpcHost, ps);
 }
 
 // ── Git & Release Tools ──────────────────────────────────────────────
@@ -123,12 +126,14 @@ export async function adoPipelineDefinition(
   pipelineId: number,
   project?: string,
 ): Promise<string> {
-  let cmd = `az pipelines show --organization ${ADO_ORG} --id ${pipelineId}`;
-  if (project) {
-    cmd += ` --project '${sanitize(project)}'`;
-  }
-  cmd += ` -o json 2>$null`;
-  return sshAdoCommand(config.cloudpcHost, cmd);
+  const proj = sanitize(project ?? "Wholesale Architecture");
+  const ps = [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token }`,
+    `Invoke-RestMethod -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/pipelines/${pipelineId}?api-version=7.0' -Headers $h | ConvertTo-Json -Depth 10 -Compress`,
+  ].join("; ");
+  return sshAdoCommand(config.cloudpcHost, ps);
 }
 
 /**
@@ -140,13 +145,18 @@ export async function adoPipelineUpdate(
   project: string,
   branch?: string,
 ): Promise<string> {
-  let cmd = `az pipelines update --organization ${ADO_ORG} --id ${pipelineId}`;
-  cmd += ` --project '${sanitize(project)}'`;
-  if (branch) {
-    cmd += ` --branch '${sanitize(branch)}'`;
-  }
-  cmd += ` -o json 2>$null`;
-  return sshAdoCommand(config.cloudpcHost, cmd);
+  const proj = sanitize(project);
+  // Pipeline update uses PATCH on the build definition
+  const ps = [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token; 'Content-Type' = 'application/json' }`,
+    `$def = Invoke-RestMethod -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/build/definitions/${pipelineId}?api-version=7.0' -Headers $h`,
+    branch ? `$def.repository.defaultBranch = 'refs/heads/${sanitize(branch)}'` : "",
+    `$body = $def | ConvertTo-Json -Depth 20 -Compress`,
+    `Invoke-RestMethod -Method PUT -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/build/definitions/${pipelineId}?api-version=7.0' -Headers $h -Body $body | ConvertTo-Json -Depth 10 -Compress`,
+  ].filter(Boolean).join("; ");
+  return sshAdoCommand(config.cloudpcHost, ps);
 }
 
 /**
@@ -171,13 +181,20 @@ export async function adoPipelineRun(
   project: string,
   branch?: string,
 ): Promise<string> {
-  let cmd = `az pipelines run --organization ${ADO_ORG} --id ${pipelineId}`;
-  cmd += ` --project '${sanitize(project)}'`;
-  if (branch) {
-    cmd += ` --branch '${sanitize(branch)}'`;
-  }
-  cmd += ` -o json 2>$null`;
-  return sshAdoCommand(config.cloudpcHost, cmd);
+  const proj = sanitize(project);
+  const bodyParts = [`resources = @{}`];
+  if (branch) bodyParts.push(`stagesToSkip = @()`);
+  // Use the pipelines/runs POST endpoint
+  const ps = [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token; 'Content-Type' = 'application/json' }`,
+    branch
+      ? `$body = @{ resources = @{ repositories = @{ self = @{ refName = 'refs/heads/${sanitize(branch)}' } } } } | ConvertTo-Json -Depth 10 -Compress`
+      : `$body = '{ "resources": {} }'`,
+    `Invoke-RestMethod -Method POST -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/pipelines/${pipelineId}/runs?api-version=7.0' -Headers $h -Body $body | ConvertTo-Json -Depth 10 -Compress`,
+  ].join("; ");
+  return sshAdoCommand(config.cloudpcHost, ps);
 }
 
 /**
@@ -188,12 +205,16 @@ export async function adoPipelineVariables(
   pipelineId: number,
   project?: string,
 ): Promise<string> {
-  let cmd = `az pipelines variable list --organization ${ADO_ORG} --pipeline-id ${pipelineId}`;
-  if (project) {
-    cmd += ` --project '${sanitize(project)}'`;
-  }
-  cmd += ` -o json 2>$null`;
-  return sshAdoCommand(config.cloudpcHost, cmd);
+  const proj = sanitize(project ?? "Wholesale Architecture");
+  // Get build definition which contains variables
+  const ps = [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token }`,
+    `$def = Invoke-RestMethod -Uri 'https://dev.azure.com/${ADO_ORG}/${proj}/_apis/build/definitions/${pipelineId}?api-version=7.0' -Headers $h`,
+    `$def.variables | ConvertTo-Json -Depth 5 -Compress`,
+  ].join("; ");
+  return sshAdoCommand(config.cloudpcHost, ps);
 }
 
 /**

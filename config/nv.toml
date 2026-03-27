@@ -106,3 +106,7 @@ args = ["packages/tools/graph-svc/dist/index.js", "--mcp"]
 [tools.mcp_servers.nova-meta]
 command = "node"
 args = ["packages/tools/meta-svc/dist/index.js", "--mcp"]
+
+[tools.mcp_servers.nova-azure]
+command = "node"
+args = ["packages/tools/azure-svc/dist/index.js", "--mcp"]

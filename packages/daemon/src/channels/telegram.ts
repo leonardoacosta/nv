@@ -17,6 +17,7 @@ import { buildObReply } from "../telegram/commands/ob.js";
 import { buildContactsReply } from "../telegram/commands/contacts.js";
 import { buildSoulReply } from "../telegram/commands/soul.js";
 import { buildStatusReply } from "../telegram/commands/status.js";
+import { buildAzReply } from "../telegram/commands/az.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -380,6 +381,7 @@ export class TelegramAdapter {
         { command: "contacts", description: "List contacts" },
         { command: "soul", description: "Read Nova's personality" },
         { command: "status", description: "Daemon and fleet status" },
+        { command: "az", description: "Run Azure CLI command (/az vm list)" },
       ])
       .catch((err: unknown) => {
         this.log.error({ err }, "Failed to register bot commands");
@@ -469,6 +471,13 @@ export class TelegramAdapter {
     this.bot.onText(/^\/status(@\S+)?$/, (msg) => {
       const chatId = String(msg.chat.id);
       void this.handleDirectCommand(chatId, () => buildStatusReply());
+    });
+
+    // /az [command] — run Azure CLI command
+    this.bot.onText(/^\/az(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const command = match?.[3]?.trim();
+      void this.handleDirectCommand(chatId, () => buildAzReply(command));
     });
 
     // ── Agent-routed commands (complex — go through onMessageCallback) ──────

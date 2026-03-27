@@ -5,7 +5,7 @@ export interface ServiceEntry {
   serviceName: string;
 }
 
-/** All 8 downstream services and their tool mappings. */
+/** All 9 downstream services and their tool mappings. */
 const SERVICES = {
   "memory-svc": { url: "http://127.0.0.1:4101", tools: ["read_memory", "write_memory", "search_memory"] },
   "messages-svc": { url: "http://127.0.0.1:4102", tools: ["get_recent_messages", "search_messages"] },
@@ -15,6 +15,7 @@ const SERVICES = {
   "schedule-svc": { url: "http://127.0.0.1:4106", tools: ["set_reminder", "cancel_reminder", "list_reminders", "add_schedule", "modify_schedule", "remove_schedule", "list_schedules", "start_session", "stop_session"] },
   "graph-svc": { url: "http://127.0.0.1:4107", tools: ["calendar_today", "calendar_upcoming", "calendar_next", "ado_projects", "ado_pipelines", "ado_builds"] },
   "meta-svc": { url: "http://127.0.0.1:4108", tools: ["check_services", "self_assessment_run", "update_soul"] },
+  "azure-svc": { url: "http://127.0.0.1:4109", tools: ["azure_cli"] },
 } as const satisfies Record<string, { url: string; tools: readonly string[] }>;
 
 /** Flat map: tool name -> { serviceUrl, serviceName } */

@@ -14,6 +14,7 @@ const SERVICE_REGISTRY: readonly ServiceEntry[] = [
   { name: "teams-svc", port: 4105 },
   { name: "schedule-svc", port: 4106 },
   { name: "graph-svc", port: 4107 },
+  { name: "azure-svc", port: 4109 },
 ] as const;
 
 const PROBE_TIMEOUT_MS = 3000;

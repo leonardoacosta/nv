@@ -39,6 +39,7 @@ SERVICES=(
   schedule-svc
   graph-svc
   meta-svc
+  azure-svc
 )
 
 PORTS=(
@@ -51,6 +52,7 @@ PORTS=(
   4106
   4107
   4108
+  4109
 )
 
 # ── Pre-flight checks ───────────────────────────────────────────────────────

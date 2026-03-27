@@ -4,6 +4,8 @@ import type { Pool } from "pg";
 import type { Logger } from "pino";
 import type { Config } from "../../config.js";
 import { buildMcpServers, buildAllowedTools } from "../../brain/mcp-config.js";
+import { getEntriesByDate } from "../diary/reader.js";
+import type { DiaryEntryItem } from "../diary/reader.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +16,8 @@ export interface BriefingDeps {
   gatewayKey: string;
   logger: Logger;
   config?: Config;
+  telegram?: import("../../channels/telegram.js").TelegramAdapter | null;
+  telegramChatId?: string | null;
 }
 
 interface ObligationRow {
@@ -45,6 +49,8 @@ export interface GatheredContext {
   obligations: ObligationRow[];
   memory: MemoryRow[];
   messages: MessageRow[];
+  calendar: string | null;
+  diaryEntries: DiaryEntryItem[];
   sourcesStatus: Record<string, SourceStatus>;
 }
 
@@ -76,7 +82,12 @@ const FETCH_TIMEOUT_MS = 10_000;
 export async function gatherContext(deps: BriefingDeps): Promise<GatheredContext> {
   const { pool, logger } = deps;
 
-  const [obligationsResult, memoryResult, messagesResult] = await Promise.allSettled([
+  // Yesterday's date for diary entries (overnight activity)
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  const [obligationsResult, memoryResult, messagesResult, calendarResult, diaryResult] = await Promise.allSettled([
     withTimeout(
       pool.query<ObligationRow>(
         `SELECT id, detected_action, owner, status, priority, project_code, deadline, created_at
@@ -103,6 +114,19 @@ export async function gatherContext(deps: BriefingDeps): Promise<GatheredContext
          ORDER BY created_at DESC
          LIMIT 20`,
       ),
+      FETCH_TIMEOUT_MS,
+    ),
+    withTimeout(
+      (async (): Promise<string> => {
+        const res = await fetch("http://localhost:4107/calendar/today");
+        if (!res.ok) throw new Error(`graph-svc returned ${res.status}`);
+        const data = (await res.json()) as { result: string };
+        return data.result;
+      })(),
+      FETCH_TIMEOUT_MS,
+    ),
+    withTimeout(
+      getEntriesByDate(yesterdayStr),
       FETCH_TIMEOUT_MS,
     ),
   ]);
@@ -136,7 +160,25 @@ export async function gatherContext(deps: BriefingDeps): Promise<GatheredContext
     sourcesStatus["messages"] = "unavailable";
   }
 
-  return { obligations, memory, messages, sourcesStatus };
+  let calendar: string | null = null;
+  if (calendarResult.status === "fulfilled") {
+    calendar = calendarResult.value;
+    sourcesStatus["calendar"] = calendar ? "ok" : "empty";
+  } else {
+    logger.warn({ err: calendarResult.reason }, "Failed to fetch calendar for briefing");
+    sourcesStatus["calendar"] = "unavailable";
+  }
+
+  let diaryEntries: DiaryEntryItem[] = [];
+  if (diaryResult.status === "fulfilled") {
+    diaryEntries = diaryResult.value;
+    sourcesStatus["diary"] = diaryEntries.length === 0 ? "empty" : "ok";
+  } else {
+    logger.warn({ err: diaryResult.reason }, "Failed to fetch diary entries for briefing");
+    sourcesStatus["diary"] = "unavailable";
+  }
+
+  return { obligations, memory, messages, calendar, diaryEntries, sourcesStatus };
 }
 
 // ─── Static fallback ─────────────────────────────────────────────────────────
@@ -178,15 +220,60 @@ const SYNTHESIS_TIMEOUT_MS = 30_000;
 function buildBriefingPrompt(context: GatheredContext): string {
   const sections: string[] = [];
 
+  // Messages section — grouped by channel
+  if (context.messages.length > 0) {
+    sections.push("## Recent Messages");
+    const byChannel = new Map<string, MessageRow[]>();
+    for (const msg of context.messages) {
+      const ch = msg.channel || "unknown";
+      if (!byChannel.has(ch)) byChannel.set(ch, []);
+      byChannel.get(ch)!.push(msg);
+    }
+    for (const [channel, msgs] of byChannel) {
+      sections.push(`\n### ${channel} (${msgs.length} messages)`);
+      for (const msg of msgs) {
+        const sender = msg.sender ?? "unknown";
+        const preview = msg.content.slice(0, 120);
+        sections.push(`- ${sender}: ${preview}`);
+      }
+    }
+  } else {
+    sections.push("## Recent Messages\nNone.");
+  }
+
   // Obligations section
   if (context.obligations.length > 0) {
-    sections.push("## Active Obligations");
+    sections.push("\n## Active Obligations");
     for (const o of context.obligations) {
       const deadline = o.deadline ? ` (due: ${o.deadline.toISOString().slice(0, 10)})` : "";
       sections.push(`- [${o.status}] ${o.detected_action} (owner: ${o.owner}, priority: ${o.priority})${deadline}`);
     }
   } else {
-    sections.push("## Active Obligations\nNone.");
+    sections.push("\n## Active Obligations\nNone.");
+  }
+
+  // Calendar section
+  if (context.calendar) {
+    sections.push("\n## Today's Calendar");
+    sections.push(context.calendar);
+  } else {
+    sections.push("\n## Today's Calendar\nNo calendar data available.");
+  }
+
+  // Overnight activity section (diary entries)
+  if (context.diaryEntries.length > 0) {
+    sections.push("\n## Overnight Activity");
+    const channels = new Set(context.diaryEntries.map((e) => e.channel_source));
+    const tools = new Set(context.diaryEntries.flatMap((e) => e.tools_called));
+    sections.push(`- ${context.diaryEntries.length} interactions across channels: ${[...channels].join(", ")}`);
+    if (tools.size > 0) {
+      sections.push(`- Tools used: ${[...tools].join(", ")}`);
+    }
+    for (const entry of context.diaryEntries.slice(0, 10)) {
+      sections.push(`- [${entry.channel_source}] ${entry.slug}: ${entry.result_summary.slice(0, 100)}`);
+    }
+  } else {
+    sections.push("\n## Overnight Activity\nNo overnight activity recorded.");
   }
 
   // Memory section
@@ -199,28 +286,18 @@ function buildBriefingPrompt(context: GatheredContext): string {
     sections.push("\n## Memory Entries\nNone.");
   }
 
-  // Recent messages section
-  if (context.messages.length > 0) {
-    sections.push("\n## Recent Messages");
-    for (const msg of context.messages) {
-      const sender = msg.sender ?? "unknown";
-      const preview = msg.content.slice(0, 120);
-      sections.push(`- [${msg.channel}] ${sender}: ${preview}`);
-    }
-  } else {
-    sections.push("\n## Recent Messages\nNone.");
-  }
-
   return sections.join("\n");
 }
 
 const BRIEFING_SYSTEM_PROMPT = `You are Nova's morning briefing synthesizer. Your job is to produce a clear, concise morning briefing from the context provided.
 
-Structure your response with these sections:
-1. **Obligations** — summarise the active obligations by priority. Highlight anything urgent or overdue.
-2. **Memory Highlights** — surface the most relevant memory entries for today's context.
-3. **Recent Activity** — briefly summarise recent message activity and any notable patterns.
-4. **Suggested Actions** — list 2-5 concrete actions as a JSON array at the very end of your response.
+Structure your response with these sections (use ### headers):
+1. **Messages** — summarise unread/new messages grouped by channel (telegram, teams, discord) with sender highlights.
+2. **Obligations** — summarise the active obligations by priority. Highlight anything urgent or overdue.
+3. **Calendar** — summarise today's calendar events and schedule.
+4. **Overnight Activity** — summarise overnight Nova activity (tools used, interaction count, channels active).
+5. **Memory Highlights** — surface the most relevant memory entries for today's context.
+6. **Suggested Actions** — list 2-5 concrete actions as a JSON array at the very end of your response.
 
 For the Suggested Actions, end your response with a JSON block in this exact format:
 \`\`\`json

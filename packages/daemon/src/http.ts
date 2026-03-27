@@ -8,6 +8,8 @@ import type { ConversationManager } from "./brain/conversation.js";
 import type { Config } from "./config.js";
 import type { Message } from "./types.js";
 import type { Logger } from "./logger.js";
+import type { BriefingDeps } from "./features/briefing/synthesizer.js";
+import { runMorningBriefing } from "./features/briefing/runner.js";
 
 const startedAt = Date.now();
 
@@ -16,6 +18,7 @@ export interface HttpServerDeps {
   conversationManager: ConversationManager;
   config: Config;
   logger: Logger;
+  briefingDeps?: BriefingDeps;
 }
 
 export function createHttpApp(deps: HttpServerDeps): Hono {
@@ -43,6 +46,24 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
       service: "nova-daemon",
       uptime_secs: Math.floor((Date.now() - startedAt) / 1000),
     });
+  });
+
+  // ── POST /briefing/generate ─────────────────────────────────────────────────
+  app.post("/briefing/generate", async (c) => {
+    if (!deps.briefingDeps) {
+      return c.json({ error: "Briefing system not configured" }, 503);
+    }
+
+    try {
+      const row = await runMorningBriefing(deps.briefingDeps);
+      return c.json({ id: row.id, generated_at: row.generated_at.toISOString() });
+    } catch (err) {
+      logger.error({ err }, "POST /briefing/generate failed");
+      return c.json(
+        { error: err instanceof Error ? err.message : "Briefing generation failed" },
+        500,
+      );
+    }
   });
 
   // ── POST /chat ─────────────────────────────────────────────────────────────

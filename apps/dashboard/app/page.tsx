@@ -3,36 +3,34 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   CheckSquare,
-  Layers,
   MessageSquare,
-  Terminal,
-  TrendingUp,
+  BookOpen,
   RefreshCw,
-  Cpu,
-  MemoryStick,
-  Heart,
-  ArrowRight,
   Timer,
+  AlertTriangle,
+  Info,
+  Send,
+  ArrowRight,
+  FileText,
+  Activity,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
-import StatCard, { type StatCardVariant } from "@/components/layout/StatCard";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import SessionWidget from "@/components/SessionWidget";
-import ActiveSession, {
-  type ActiveSessionData,
-} from "@/components/ActiveSession";
 import {
   useDaemonEvents,
   useDaemonStatus,
 } from "@/components/providers/DaemonEventContext";
 import type {
+  ActivityFeedEvent,
+  ActivityFeedGetResponse,
   ObligationsGetResponse,
-  ProjectsGetResponse,
-  SessionsGetResponse,
   ServerHealthGetResponse,
-  NexusSessionRaw,
+  MessagesGetResponse,
+  StoredMessage,
+  BriefingGetResponse,
 } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
@@ -40,97 +38,30 @@ import { apiFetch } from "@/lib/api-client";
 // Types
 // ---------------------------------------------------------------------------
 
-interface SummaryData {
-  obligations_count: number;
-  active_sessions: number;
-  idle_sessions: number;
-  projects_count: number;
-  messages_today: number;
-  tools_today: number;
-  cost_today_usd: number;
-}
-
-interface HealthSummary {
-  status: "ok" | "degraded" | "critical" | "down";
-  cpu_percent: number;
-  memory_used_mb: number;
-  memory_total_mb: number;
-  uptime_seconds: number;
-}
-
 interface ApiObligation {
   id: string;
   detected_action: string;
   owner?: string;
-  /** "open" | "in_progress" | "done" | "dismissed" */
   status?: string;
 }
 
-interface ActivityEvent {
+interface WsActivityEvent {
   id: string;
   type: string;
   label: string;
   ts: number;
 }
 
+interface MessageGroup {
+  sender: string;
+  channel: string;
+  timestamp: string;
+  preview: string;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function mapNexusSession(s: NexusSessionRaw): ActiveSessionData {
-  const mapStatus = (raw: string): ActiveSessionData["status"] => {
-    if (raw === "active") return "active";
-    if (raw === "idle") return "idle";
-    return "completed";
-  };
-  return {
-    id: s.id,
-    service: s.agent_name,
-    status: mapStatus(s.status),
-    messages: 0,
-    tools_executed: 0,
-    started_at: s.started_at ?? new Date().toISOString(),
-    user: s.project ?? undefined,
-    progress: s.progress?.progress_pct,
-    current_task: s.progress?.phase_label,
-  };
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ${mins % 60}m`;
-  return `${Math.floor(hrs / 24)}d ${hrs % 24}h`;
-}
-
-function healthVariant(status: HealthSummary["status"] | undefined): StatCardVariant {
-  if (!status || status === "ok") return "success";
-  if (status === "degraded") return "warning";
-  return "error";
-}
-
-function cpuVariant(pct: number): StatCardVariant {
-  if (pct >= 90) return "error";
-  if (pct >= 70) return "warning";
-  return "success";
-}
-
-function memVariant(used: number, total: number): StatCardVariant {
-  if (total === 0) return "default";
-  const pct = used / total;
-  if (pct >= 0.9) return "error";
-  if (pct >= 0.8) return "warning";
-  return "success";
-}
-
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "Good morning";
-  if (hour >= 12 && hour < 17) return "Good afternoon";
-  return "Good evening";
-}
 
 function formatSecondsAgo(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -141,119 +72,385 @@ function formatSecondsAgo(ms: number): string {
   return `${Math.floor(minutes / 60)}h ago`;
 }
 
+function formatFeedTimestamp(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const FEED_ICON: Record<string, typeof MessageSquare> = {
+  MessageSquare,
+  CheckSquare,
+  BookOpen,
+};
+
+function FeedIcon({ hint }: { hint: string }) {
+  const Icon = FEED_ICON[hint] ?? Activity;
+  return <Icon size={13} className="shrink-0 text-ds-gray-700" aria-hidden="true" />;
+}
+
 // ---------------------------------------------------------------------------
-// Activity Feed
+// PriorityBanner
 // ---------------------------------------------------------------------------
 
-function ActivityFeed({ events }: { events: ActivityEvent[] }) {
-  if (events.length === 0) {
+function PriorityBanner({
+  pendingCount,
+  briefingAvailable,
+  briefingTime,
+}: {
+  pendingCount: number;
+  briefingAvailable: boolean;
+  briefingTime: string | null;
+}) {
+  if (pendingCount > 0) {
+    return (
+      <Link
+        href="/obligations"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+        style={{ background: "rgba(245, 158, 11, 0.10)", border: "1px solid rgba(245, 158, 11, 0.25)" }}
+      >
+        <AlertTriangle size={14} className="text-amber-500 shrink-0" />
+        <span className="text-amber-200">
+          {pendingCount} obligation{pendingCount !== 1 ? "s" : ""} need{pendingCount === 1 ? "s" : ""} attention
+        </span>
+        <ArrowRight size={12} className="ml-auto text-amber-500/60" />
+      </Link>
+    );
+  }
+
+  if (briefingAvailable) {
+    return (
+      <Link
+        href="/briefing"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
+        style={{ background: "rgba(59, 130, 246, 0.10)", border: "1px solid rgba(59, 130, 246, 0.25)" }}
+      >
+        <Info size={14} className="text-blue-400 shrink-0" />
+        <span className="text-blue-300">
+          Briefing available{briefingTime ? ` — last generated ${briefingTime}` : ""}
+        </span>
+        <ArrowRight size={12} className="ml-auto text-blue-400/60" />
+      </Link>
+    );
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// ActivityFeed
+// ---------------------------------------------------------------------------
+
+function ActivityFeedSection({
+  events,
+  wsEvents,
+  loading,
+}: {
+  events: ActivityFeedEvent[];
+  wsEvents: WsActivityEvent[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-1">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-8 animate-pulse rounded bg-ds-gray-100"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Merge WS events at the top, then DB events
+  const allEvents: Array<{ id: string; time: string; icon: string; summary: string }> = [];
+
+  for (const ws of wsEvents) {
+    allEvents.push({
+      id: `ws-${ws.id}`,
+      time: new Date(ws.ts).toISOString(),
+      icon: "Activity",
+      summary: ws.label,
+    });
+  }
+
+  for (const ev of events) {
+    allEvents.push({
+      id: ev.id,
+      time: ev.timestamp,
+      icon: ev.icon_hint,
+      summary: ev.summary,
+    });
+  }
+
+  if (allEvents.length === 0) {
     return (
       <p className="text-copy-13 text-ds-gray-900 py-3">No recent events</p>
     );
   }
 
   return (
-    <ul className="space-y-1">
-      {events.map((ev) => (
-        <li
+    <div className="divide-y divide-ds-gray-400">
+      {allEvents.map((ev) => (
+        <div
           key={ev.id}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-ds-gray-100/50 transition-colors"
+          className="flex items-center gap-3 py-1.5 hover:bg-ds-gray-100/50 transition-colors"
         >
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-ds-gray-700/60 shrink-0" />
-          <span className="flex-1 min-w-0 text-sm text-ds-gray-1000 truncate">
-            {ev.label}
-          </span>
           <span
-            className="shrink-0 text-xs text-ds-gray-900 font-mono"
+            className="shrink-0 text-xs text-ds-gray-900 font-mono w-12 text-right tabular-nums"
             suppressHydrationWarning
           >
-            {new Date(ev.ts).toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
+            {formatFeedTimestamp(ev.time)}
           </span>
-        </li>
+          <FeedIcon hint={ev.icon} />
+          <span className="flex-1 min-w-0 text-sm text-ds-gray-1000 truncate">
+            {ev.summary}
+          </span>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Obligations Sidebar Panel
+// QuickActions
 // ---------------------------------------------------------------------------
 
-function ObligationsSidebar({
-  obligations,
-  loading,
+function QuickActions({
+  briefingPreview,
+  healthStatus,
+  healthLoading,
 }: {
-  obligations: ApiObligation[];
-  loading: boolean;
+  briefingPreview: string | null;
+  healthStatus: string | null;
+  healthLoading: boolean;
 }) {
-  const pending = obligations.filter(
-    (o) => !o.status || o.status === "open" || o.status === "in_progress",
-  );
-  const done = obligations.filter((o) => o.status === "done");
+  const [obligationInput, setObligationInput] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createResult, setCreateResult] = useState<"success" | "error" | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const handleCreateObligation = async () => {
+    if (!obligationInput.trim()) return;
+    setCreating(true);
+    setCreateResult(null);
+    setCreateError(null);
+    try {
+      const res = await apiFetch("/api/obligations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          detected_action: obligationInput.trim(),
+          owner: "nova",
+          status: "open",
+          priority: 2,
+          source_channel: "dashboard",
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Request failed" }));
+        throw new Error((data as { error?: string }).error ?? "Request failed");
+      }
+      setObligationInput("");
+      setCreateResult("success");
+      setTimeout(() => setCreateResult(null), 2000);
+    } catch (err) {
+      setCreateResult("error");
+      setCreateError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const healthDot = healthStatus === "healthy" || healthStatus === "ok"
+    ? "bg-emerald-500"
+    : healthStatus === "degraded"
+      ? "bg-amber-500"
+      : healthStatus === "critical" || healthStatus === "down"
+        ? "bg-red-500"
+        : "bg-ds-gray-600";
 
   return (
-    <div className="border-b border-ds-gray-400 py-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <SectionHeader label="Obligations" count={obligations.length} />
-        <Link
-          href="/obligations"
-          className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
-        >
-          View all
-          <ArrowRight size={12} />
-        </Link>
+    <div className="divide-y divide-ds-gray-400">
+      {/* Message Nova */}
+      <Link
+        href="/chat"
+        className="flex items-center gap-3 py-3 hover:bg-ds-gray-100/50 transition-colors group"
+      >
+        <MessageSquare size={16} className="text-ds-gray-700 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-ds-gray-1000 font-medium">Message Nova</p>
+          <p className="text-xs text-ds-gray-900">Open chat interface</p>
+        </div>
+        <ArrowRight size={14} className="text-ds-gray-700 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </Link>
+
+      {/* Create Obligation */}
+      <div className="py-3 space-y-2">
+        <div className="flex items-center gap-3">
+          <CheckSquare size={16} className="text-ds-gray-700 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-ds-gray-1000 font-medium">Create Obligation</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={obligationInput}
+            onChange={(e) => setObligationInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void handleCreateObligation();
+            }}
+            placeholder="What needs to be done..."
+            className="flex-1 min-w-0 px-2.5 py-1.5 text-sm rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-600 transition-colors"
+            disabled={creating}
+          />
+          <button
+            type="button"
+            onClick={() => void handleCreateObligation()}
+            disabled={creating || !obligationInput.trim()}
+            className="flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-medium border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40"
+          >
+            {creating ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </button>
+        </div>
+        {createResult === "success" && (
+          <p className="text-xs text-emerald-400">Created</p>
+        )}
+        {createResult === "error" && (
+          <p className="text-xs text-red-400">{createError}</p>
+        )}
       </div>
 
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-8 animate-pulse rounded-lg bg-ds-gray-400"
-            />
-          ))}
+      {/* View Briefing */}
+      <Link
+        href="/briefing"
+        className="flex items-center gap-3 py-3 hover:bg-ds-gray-100/50 transition-colors group"
+      >
+        <FileText size={16} className="text-ds-gray-700 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-ds-gray-1000 font-medium">View Briefing</p>
+          <p className="text-xs text-ds-gray-900 truncate">
+            {briefingPreview ?? "No briefing available"}
+          </p>
         </div>
-      ) : obligations.length === 0 ? (
-        <p className="text-xs text-ds-gray-900 py-3 text-center">
-          No obligations
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs text-ds-gray-900">
-            <span>Pending</span>
-            <span className="font-mono text-amber-400">{pending.length}</span>
-          </div>
-          <div className="flex items-center justify-between text-xs text-ds-gray-900">
-            <span>Completed</span>
-            <span className="font-mono text-emerald-400">{done.length}</span>
-          </div>
-          {/* Owner breakdown */}
-          {(() => {
-            const byOwner: Record<string, number> = {};
-            for (const o of obligations) {
-              const owner = o.owner ?? "unassigned";
-              byOwner[owner] = (byOwner[owner] ?? 0) + 1;
-            }
-            return Object.entries(byOwner)
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 4)
-              .map(([owner, count]) => (
-                <div
-                  key={owner}
-                  className="flex items-center justify-between text-xs"
-                >
-                  <span className="text-ds-gray-900 truncate max-w-[120px]">
-                    @{owner}
-                  </span>
-                  <span className="font-mono text-ds-gray-1000">{count}</span>
-                </div>
-              ));
-          })()}
+        <ArrowRight size={14} className="text-ds-gray-700 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </Link>
+
+      {/* Fleet Health */}
+      <div className="flex items-center gap-3 py-3">
+        <Activity size={16} className="text-ds-gray-700 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-ds-gray-1000 font-medium">Fleet Health</p>
         </div>
-      )}
+        <div className="flex items-center gap-2 shrink-0">
+          {healthLoading ? (
+            <span className="text-xs text-ds-gray-700">loading...</span>
+          ) : (
+            <>
+              <span className={`inline-block w-2 h-2 rounded-full ${healthDot}`} />
+              <span className="text-xs font-mono text-ds-gray-900">
+                DB: {healthStatus ?? "unknown"}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RecentConversations
+// ---------------------------------------------------------------------------
+
+function RecentConversations({
+  recentMessages,
+  loading,
+}: {
+  recentMessages: StoredMessage[];
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="space-y-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-10 animate-pulse rounded bg-ds-gray-100"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Group consecutive messages by sender
+  const groups: MessageGroup[] = [];
+  let currentGroup: { sender: string; channel: string; messages: StoredMessage[] } | null = null;
+
+  for (const msg of recentMessages) {
+    if (currentGroup && currentGroup.sender === msg.sender) {
+      currentGroup.messages.push(msg);
+    } else {
+      if (currentGroup) {
+        const first = currentGroup.messages[0]!;
+        const preview = first.content.length > 120 ? `${first.content.slice(0, 120)}...` : first.content;
+        groups.push({
+          sender: currentGroup.sender,
+          channel: currentGroup.channel,
+          timestamp: first.timestamp,
+          preview,
+        });
+      }
+      currentGroup = { sender: msg.sender, channel: msg.channel, messages: [msg] };
+    }
+  }
+  if (currentGroup) {
+    const first = currentGroup.messages[0]!;
+    const preview = first.content.length > 120 ? `${first.content.slice(0, 120)}...` : first.content;
+    groups.push({
+      sender: currentGroup.sender,
+      channel: currentGroup.channel,
+      timestamp: first.timestamp,
+      preview,
+    });
+  }
+
+  const topGroups = groups.slice(0, 5);
+
+  if (topGroups.length === 0) {
+    return (
+      <p className="text-copy-13 text-ds-gray-900 py-3">No recent conversations</p>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-ds-gray-400">
+      {topGroups.map((group, i) => (
+        <Link
+          key={i}
+          href="/messages"
+          className="flex items-center gap-3 py-2 hover:bg-ds-gray-100/50 transition-colors"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-ds-gray-1000">{group.sender}</span>
+              <span className="text-xs font-mono text-ds-gray-700 px-1.5 py-0.5 rounded bg-ds-gray-100">
+                {group.channel}
+              </span>
+              <span
+                className="text-xs text-ds-gray-700 font-mono ml-auto shrink-0"
+                suppressHydrationWarning
+              >
+                {formatFeedTimestamp(group.timestamp)}
+              </span>
+            </div>
+            <p className="text-xs text-ds-gray-900 truncate mt-0.5">{group.preview}</p>
+          </div>
+        </Link>
+      ))}
     </div>
   );
 }
@@ -263,145 +460,132 @@ function ObligationsSidebar({
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  // 1. State
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [sessions, setSessions] = useState<ActiveSessionData[]>([]);
-  const [health, setHealth] = useState<HealthSummary | null>(null);
+  // State
+  const [feedEvents, setFeedEvents] = useState<ActivityFeedEvent[]>([]);
+  const [wsEvents, setWsEvents] = useState<WsActivityEvent[]>([]);
   const [obligations, setObligations] = useState<ApiObligation[]>([]);
-  const [activityFeed, setActivityFeed] = useState<ActivityEvent[]>([]);
+  const [recentMessages, setRecentMessages] = useState<StoredMessage[]>([]);
+  const [healthStatus, setHealthStatus] = useState<string | null>(null);
+  const [briefingPreview, setBriefingPreview] = useState<string | null>(null);
+  const [briefingAvailable, setBriefingAvailable] = useState(false);
+  const [briefingTime, setBriefingTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [healthLoading, setHealthLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [briefingSummary, setBriefingSummary] = useState<string | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<number>(Date.now);
   const [, setTick] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const activityIdRef = useRef(0);
+  const wsIdRef = useRef(0);
 
   // Daemon connection status for offline overlay
   const daemonStatus = useDaemonStatus();
   const isDisconnected = daemonStatus !== "connected";
 
-  // 2. WebSocket subscription — prepend events to activity feed (capped at 10)
-  useDaemonEvents(
-    (ev) => {
-      const label =
-        typeof ev.payload === "object" &&
-        ev.payload !== null &&
-        "label" in ev.payload
-          ? String((ev.payload as { label?: unknown }).label)
-          : ev.type;
-      setActivityFeed((prev) => {
-        const next = [
-          {
-            id: String(++activityIdRef.current),
-            type: ev.type,
-            label,
-            ts: ev.ts,
-          },
-          ...prev,
-        ].slice(0, 10);
-        return next;
-      });
-    },
-  );
+  // WebSocket subscription — prepend events
+  useDaemonEvents((ev) => {
+    const label =
+      typeof ev.payload === "object" &&
+      ev.payload !== null &&
+      "label" in ev.payload
+        ? String((ev.payload as { label?: unknown }).label)
+        : ev.type;
+    setWsEvents((prev) =>
+      [
+        {
+          id: String(++wsIdRef.current),
+          type: ev.type,
+          label,
+          ts: ev.ts,
+        },
+        ...prev,
+      ].slice(0, 10),
+    );
+  });
 
-  // 3. Data fetch
+  // Data fetch
   const fetchData = useCallback(async () => {
     setError(null);
     try {
-      // 8-second timeout per call so a stalled daemon never freezes the skeleton
       const timeout = () => AbortSignal.timeout(8000);
-      const [oblRes, projRes, sessRes, healthRes] = await Promise.allSettled([
+      const [feedRes, oblRes, msgRes, healthRes, briefRes] = await Promise.allSettled([
+        apiFetch("/api/activity-feed", { signal: timeout() }),
         apiFetch("/api/obligations", { signal: timeout() }),
-        apiFetch("/api/projects", { signal: timeout() }),
-        apiFetch("/api/sessions", { signal: timeout() }),
+        apiFetch("/api/messages?limit=10", { signal: timeout() }),
         apiFetch("/api/server-health", { signal: timeout() }),
+        apiFetch("/api/briefing", { signal: timeout() }),
       ]);
 
-      // Obligations — daemon returns { obligations: [...] }
+      // Activity feed
+      if (feedRes.status === "fulfilled" && feedRes.value.ok) {
+        try {
+          const data = (await feedRes.value.json()) as ActivityFeedGetResponse;
+          setFeedEvents(data.events);
+        } catch {
+          // parse failure
+        }
+      }
+
+      // Obligations
       let oblList: ApiObligation[] = [];
       if (oblRes.status === "fulfilled" && oblRes.value.ok) {
         try {
-          const oblData = (await oblRes.value.json()) as ObligationsGetResponse;
-          oblList = oblData.obligations as ApiObligation[];
+          const data = (await oblRes.value.json()) as ObligationsGetResponse;
+          oblList = data.obligations as ApiObligation[];
         } catch {
-          // JSON parse failure — keep empty list
+          // parse failure
         }
       }
       setObligations(oblList);
 
-      // Projects
-      let projectsCount = 0;
-      if (projRes.status === "fulfilled" && projRes.value.ok) {
+      // Recent messages
+      if (msgRes.status === "fulfilled" && msgRes.value.ok) {
         try {
-          projectsCount = ((await projRes.value.json()) as ProjectsGetResponse).projects.length;
+          const data = (await msgRes.value.json()) as MessagesGetResponse;
+          setRecentMessages(data.messages);
         } catch {
-          // JSON parse failure — keep 0
+          // parse failure
         }
       }
-
-      // Sessions
-      let sessData: ActiveSessionData[] = [];
-      if (sessRes.status === "fulfilled" && sessRes.value.ok) {
-        try {
-          const raw = (await sessRes.value.json()) as SessionsGetResponse;
-          sessData = (raw.sessions ?? []).map(mapNexusSession);
-        } catch {
-          // JSON parse failure — keep empty list
-        }
-      }
-      setSessions(sessData);
 
       // Health
       if (healthRes.status === "fulfilled" && healthRes.value.ok) {
         try {
-          const hData = (await healthRes.value.json()) as ServerHealthGetResponse;
-          if (hData.latest) {
-            const mapStatus = (
-              s: ServerHealthGetResponse["status"],
-            ): HealthSummary["status"] => {
-              if (s === "healthy") return "ok";
-              if (s === "critical") return "critical";
-              return s as "degraded";
-            };
-            setHealth({
-              status: mapStatus(hData.status),
-              cpu_percent: hData.latest.cpu_percent ?? 0,
-              memory_used_mb: hData.latest.memory_used_mb ?? 0,
-              memory_total_mb: hData.latest.memory_total_mb ?? 0,
-              uptime_seconds: hData.latest.uptime_seconds ?? 0,
-            });
+          const data = (await healthRes.value.json()) as ServerHealthGetResponse;
+          setHealthStatus(data.status);
+        } catch {
+          // parse failure
+        }
+      }
+      setHealthLoading(false);
+
+      // Briefing
+      if (briefRes.status === "fulfilled" && briefRes.value.ok) {
+        try {
+          const data = (await briefRes.value.json()) as BriefingGetResponse;
+          if (data.entry) {
+            setBriefingAvailable(true);
+            const preview = data.entry.content.length > 100
+              ? `${data.entry.content.slice(0, 100)}...`
+              : data.entry.content;
+            setBriefingPreview(preview);
+            setBriefingTime(
+              new Date(data.entry.generated_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            );
+          } else {
+            setBriefingAvailable(false);
+            setBriefingPreview(null);
+            setBriefingTime(null);
           }
         } catch {
-          // JSON parse failure — health stays null
+          // parse failure
         }
       }
 
-      // Summary — always set so stat cards never remain as skeletons
-      setSummary({
-        obligations_count: oblList.length,
-        active_sessions: sessData.filter((s) => s.status === "active").length,
-        idle_sessions: sessData.filter((s) => s.status === "idle").length,
-        projects_count: projectsCount,
-        messages_today: 0,
-        tools_today: 0,
-        cost_today_usd: 0,
-      });
-
-      // Mark last-fetched timestamp for "Updated Xs ago"
       setLastFetchedAt(Date.now());
-
-      // Seed activity from sessions on first load if feed is empty
-      setActivityFeed((prev) => {
-        if (prev.length > 0) return prev;
-        return sessData.slice(0, 10).map((s, i) => ({
-          id: String(i + 1),
-          type: "session.loaded",
-          label: `Session ${s.service} — ${s.status}`,
-          ts: new Date(s.started_at).getTime(),
-        }));
-      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -409,7 +593,7 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // 4. Effects — initial load + auto-refresh interval
+  // Effects — initial load + auto-refresh
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
@@ -425,53 +609,21 @@ export default function DashboardPage() {
     };
   }, [autoRefresh, fetchData]);
 
-  // 4b. Fire-and-forget briefing fetch (never blocks render)
-  useEffect(() => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
-    apiFetch("/api/briefing", { signal: controller.signal })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { summary?: string } | null) => {
-        if (data?.summary) setBriefingSummary(data.summary);
-      })
-      .catch(() => {
-        // Silently ignore — greeting shows without summary
-      })
-      .finally(() => clearTimeout(timer));
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, []);
-
-  // 4c. 1-second tick to keep "Updated Xs ago" current
+  // 1-second tick for "Updated Xs ago"
   useEffect(() => {
     const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(tickInterval);
   }, []);
 
-  // 5. Derived
-  const topSessions = sessions.slice(0, 5);
-  const hVariant = healthVariant(health?.status);
-  const cVariant = cpuVariant(health?.cpu_percent ?? 0);
-  const mVariant = memVariant(
-    health?.memory_used_mb ?? 0,
-    health?.memory_total_mb ?? 0,
+  // Derived
+  const pendingObligations = obligations.filter(
+    (o) => !o.status || o.status === "open" || o.status === "in_progress",
   );
-  const activeSessions = sessions.filter((s) => s.status === "active");
-  const isRefreshing = loading;
-
-  // 6. Derived: greeting and last-updated display
-  const greeting = getGreeting();
-  const todayDate = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
   const updatedAgo = formatSecondsAgo(Date.now() - lastFetchedAt);
   const lastFetchedIso = new Date(lastFetchedAt).toISOString();
+  const isRefreshing = loading;
 
-  // 7. Header action — refresh toggle + last-updated timestamp
+  // Header action — refresh toggle + last-updated timestamp
   const headerAction = (
     <div className="flex items-center gap-3">
       <span
@@ -512,11 +664,10 @@ export default function DashboardPage() {
 
   return (
     <PageShell
-      title={`${greeting}, Leo`}
-      subtitle={briefingSummary ? `${todayDate} — ${briefingSummary}` : todayDate}
+      title="Command Center"
       action={headerAction}
     >
-      <div className="space-y-3 animate-fade-in-up">
+      <div className={`space-y-4 animate-fade-in-up transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
         {error && (
           <ErrorBanner
             message="Failed to load dashboard data"
@@ -525,218 +676,55 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* Stat cards — grouped into Operational + Performance rows */}
-        <div className={`space-y-3 section-stagger-1 transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
-          {loading ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-                />
-              ))}
-            </div>
-          ) : (
-            <>
-              {/* Operational row — inline border-separated stats */}
-              <div>
-                <p className="text-label-12 text-ds-gray-900 mb-1 uppercase tracking-wider">
-                  Operational
-                </p>
-                <div className="flex flex-wrap border-b border-ds-gray-400">
-                  <StatCard
-                    icon={<CheckSquare size={14} />}
-                    label="Obligations"
-                    value={summary?.obligations_count ?? 0}
-                    inline
-                  />
-                  <StatCard
-                    icon={<Layers size={14} />}
-                    label="Active"
-                    value={summary?.active_sessions ?? 0}
-                    variant="success"
-                    inline
-                  />
-                  <StatCard
-                    icon={<Heart size={14} />}
-                    label="Health"
-                    value={health?.status ?? "—"}
-                    variant={hVariant}
-                    inline
-                  />
-                </div>
-              </div>
+        {/* Priority Banner */}
+        <PriorityBanner
+          pendingCount={pendingObligations.length}
+          briefingAvailable={briefingAvailable}
+          briefingTime={briefingTime}
+        />
 
-              {/* Performance row — inline border-separated stats */}
-              <div>
-                <p className="text-label-12 text-ds-gray-900 mb-1 uppercase tracking-wider">
-                  Performance
-                </p>
-                <div className="flex flex-wrap border-b border-ds-gray-400">
-                  <StatCard
-                    icon={<TrendingUp size={14} />}
-                    label="Projects"
-                    value={summary?.projects_count ?? 0}
-                    inline
-                  />
-                  <StatCard
-                    icon={<Cpu size={14} />}
-                    label="CPU"
-                    value={
-                      health ? `${health.cpu_percent.toFixed(1)}%` : "—"
-                    }
-                    variant={cVariant}
-                    inline
-                  />
-                  <StatCard
-                    icon={<MemoryStick size={14} />}
-                    label="Memory"
-                    value={
-                      health && health.memory_total_mb > 0
-                        ? `${((health.memory_used_mb / health.memory_total_mb) * 100).toFixed(0)}%`
-                        : "—"
-                    }
-                    variant={mVariant}
-                    sublabel={
-                      health?.uptime_seconds
-                        ? `up ${formatUptime(health.uptime_seconds)}`
-                        : undefined
-                    }
-                    inline
-                  />
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Two-column layout — 2/3 main + 1/3 sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Main column — sessions + activity */}
-          <div className="lg:col-span-2 space-y-3">
-            {/* CC Session widget */}
-            <div className="space-y-2 section-stagger-2">
-              <SectionHeader label="CC Session" statusDot="muted" />
-              <SessionWidget />
-            </div>
-
-            {/* Active sessions summary */}
-            <div className="space-y-2 section-stagger-3">
-              <div className="flex items-center justify-between">
-                <SectionHeader
-                  label="Active Sessions"
-                  count={activeSessions.length}
-                  statusDot={activeSessions.length > 0 ? "green" : "muted"}
-                />
-                <Link
-                  href="/sessions"
-                  className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
-                >
-                  All sessions
-                  <ArrowRight size={12} />
-                </Link>
-              </div>
-
-              {loading ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-                    />
-                  ))}
-                </div>
-              ) : topSessions.length === 0 ? (
-                <p className="text-copy-13 text-ds-gray-900 py-3">No sessions</p>
-              ) : (
-                <div className="space-y-2">
-                  {topSessions.map((s) => (
-                    <ActiveSession key={s.id} session={s} />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Recent activity feed */}
-            <div className="space-y-2 section-stagger-4">
-              <SectionHeader
-                label="Recent Activity"
-                count={activityFeed.length}
-              />
-              <div className="border-b border-ds-gray-400 py-1">
-                <ActivityFeed events={activityFeed} />
-              </div>
-            </div>
-          </div>
-
-          {/* Sidebar column — obligations + metrics */}
-          <div className="space-y-0">
-            <ObligationsSidebar
-              obligations={obligations}
+        {/* Two-column layout: 60% feed + 40% quick actions */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* Activity Feed (left 3/5) */}
+          <div className="lg:col-span-3 space-y-2">
+            <SectionHeader
+              label="Activity Feed"
+              count={feedEvents.length + wsEvents.length}
+            />
+            <ActivityFeedSection
+              events={feedEvents}
+              wsEvents={wsEvents}
               loading={loading}
             />
-
-            {/* Quick session stats */}
-            <div className="border-b border-ds-gray-400 py-3 space-y-3">
-              <SectionHeader label="Session Breakdown" />
-              {[
-                {
-                  label: "Active",
-                  value: sessions.filter((s) => s.status === "active").length,
-                  color: "text-emerald-400",
-                },
-                {
-                  label: "Idle",
-                  value: sessions.filter((s) => s.status === "idle").length,
-                  color: "text-amber-400",
-                },
-                {
-                  label: "Completed",
-                  value: sessions.filter((s) => s.status === "completed").length,
-                  color: "text-ds-gray-900",
-                },
-                {
-                  label: "Total",
-                  value: sessions.length,
-                  color: "text-ds-gray-1000",
-                },
-              ].map(({ label, value, color }) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="text-ds-gray-900">{label}</span>
-                  <span className={`font-mono font-semibold ${color}`}>
-                    {value}
-                  </span>
-                </div>
-              ))}
-              <div className="pt-2 border-t border-ds-gray-400">
-                <Link
-                  href="/sessions"
-                  className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
-                >
-                  <MessageSquare size={12} />
-                  View Sessions
-                </Link>
-              </div>
-            </div>
-
-            {/* Messages link */}
-            <div className="border-b border-ds-gray-400 py-3 space-y-3">
-              <SectionHeader label="Messages" />
-              <p className="text-xs text-ds-gray-900">
-                View channel messages, search history, and filter by date.
-              </p>
-              <Link
-                href="/messages"
-                className="flex items-center justify-center gap-1.5 w-full py-1.5 rounded-lg text-xs text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
-              >
-                <Terminal size={12} />
-                Browse Messages
-              </Link>
-            </div>
           </div>
+
+          {/* Quick Actions (right 2/5) */}
+          <div className="lg:col-span-2 space-y-2">
+            <SectionHeader label="Quick Actions" />
+            <QuickActions
+              briefingPreview={briefingPreview}
+              healthStatus={healthStatus}
+              healthLoading={healthLoading}
+            />
+          </div>
+        </div>
+
+        {/* Recent Conversations — full width */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <SectionHeader
+              label="Recent Conversations"
+              count={recentMessages.length}
+            />
+            <Link
+              href="/messages"
+              className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
+            >
+              All messages
+              <ArrowRight size={12} />
+            </Link>
+          </div>
+          <RecentConversations recentMessages={recentMessages} loading={loading} />
         </div>
       </div>
     </PageShell>

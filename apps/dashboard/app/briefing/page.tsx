@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Sun,
   RefreshCw,
+  Zap,
+  Loader2,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { parseBriefingSections } from "@/lib/briefing";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import ErrorBoundary from "@/components/layout/ErrorBoundary";
@@ -67,6 +70,12 @@ function sourceStatusColor(status: string): string {
   return "bg-ds-gray-500";
 }
 
+function getNextBriefingTime(): string {
+  const now = new Date();
+  if (now.getHours() < 7) return "Today at 7:00 AM";
+  return "Tomorrow at 7:00 AM";
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function BriefingSectionCard({
@@ -81,9 +90,9 @@ function BriefingSectionCard({
       <h3 className="text-label-12 text-ds-gray-700">
         {title}
       </h3>
-      <p className="text-copy-14 text-ds-gray-1000 leading-relaxed whitespace-pre-wrap">
-        {body}
-      </p>
+      <div className="prose prose-sm prose-invert max-w-none text-copy-14 text-ds-gray-1000 leading-relaxed">
+        <ReactMarkdown>{body}</ReactMarkdown>
+      </div>
     </div>
   );
 }
@@ -111,6 +120,7 @@ export default function BriefingPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [updateBanner, setUpdateBanner] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   // Ref for cleanup
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -209,6 +219,26 @@ export default function BriefingPage() {
     void loadAll();
   };
 
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/briefing/generate", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setSelectedId(null);
+      await loadAll();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to generate briefing",
+      );
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const handleSelectHistory = (id: string) => {
     setSelectedId(id === selectedId ? null : id);
   };
@@ -227,16 +257,34 @@ export default function BriefingPage() {
               ? formatGeneratedAt(displayEntry.generated_at)
               : "Nova generates a briefing each morning at 7am"}
           </p>
+          <p className="mt-0.5 text-copy-13 text-ds-gray-700">
+            Next briefing: {getNextBriefingTime()}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={handleRefresh}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleGenerate()}
+            disabled={generating || loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          >
+            {generating ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Zap size={14} />
+            )}
+            Generate Now
+          </button>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Update banner */}

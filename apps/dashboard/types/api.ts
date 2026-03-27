@@ -277,6 +277,22 @@ export interface ChatSSEError {
 
 export type ChatSSEEvent = ChatSSEChunk | ChatSSEDone | ChatSSEError;
 
+// ── GET /api/activity-feed ────────────────────────────────────────────────
+
+/** A single event in the unified activity feed (messages + obligations + diary). */
+export interface ActivityFeedEvent {
+  id: string;
+  type: "message" | "obligation" | "diary";
+  timestamp: string;
+  icon_hint: string;
+  summary: string;
+}
+
+/** Response from GET /api/activity-feed. */
+export interface ActivityFeedGetResponse {
+  events: ActivityFeedEvent[];
+}
+
 // ── GET /stats ─────────────────────────────────────────────────────────────
 
 /** Per-tool breakdown entry. Source: meta-svc fleet service. */

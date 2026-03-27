@@ -106,13 +106,19 @@ export async function main(): Promise<void> {
 
   let stopBriefingScheduler: (() => void) | null = null;
 
-  if (config.vercelGatewayKey) {
-    stopBriefingScheduler = startBriefingScheduler({
-      pool,
-      gatewayKey: config.vercelGatewayKey,
-      logger: log,
-      config,
-    });
+  const briefingDeps = config.vercelGatewayKey
+    ? {
+        pool,
+        gatewayKey: config.vercelGatewayKey,
+        logger: log,
+        config,
+        telegram,
+        telegramChatId: config.telegramChatId ?? null,
+      }
+    : null;
+
+  if (briefingDeps) {
+    stopBriefingScheduler = startBriefingScheduler(briefingDeps);
     log.info({ service: "nova-daemon" }, "Morning briefing scheduler started");
   } else {
     log.warn(
@@ -136,6 +142,7 @@ export async function main(): Promise<void> {
     conversationManager,
     config,
     logger: log,
+    briefingDeps: briefingDeps ?? undefined,
   });
 
   let httpServer: ServerType | null = null;

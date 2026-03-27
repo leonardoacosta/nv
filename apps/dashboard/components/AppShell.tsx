@@ -14,7 +14,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <DaemonEventProvider>
-      <div className="flex min-h-dvh bg-ds-bg-100">
+      <div className="flex h-dvh overflow-hidden bg-ds-bg-100">
         <Sidebar />
         <main className="flex-1 overflow-auto pt-16 sm:pt-0">{children}</main>
       </div>

@@ -228,22 +228,34 @@ export async function main(): Promise<void> {
             );
           });
 
-          // Send as plain text — agent responses may contain raw angle-bracket
-          // tags that Telegram rejects when parse_mode is HTML.
+          // Try Markdown first (agent responses use **bold**, *italic*, `code`).
+          // Fall back to plain text if Telegram rejects the formatting.
           try {
-            await telegram!.sendMessage(msg.chatId, response.text);
-          } catch (sendErr: unknown) {
-            // Telegram rejected the message (e.g. malformed entities). Retry
-            // by stripping the text down to a safe truncated notice so the
-            // user always gets some feedback.
-            log.warn(
-              { service: "nova-daemon", chatId: msg.chatId, err: sendErr },
-              "sendMessage failed — retrying without message body",
-            );
-            await telegram!.sendMessage(
-              msg.chatId,
-              "(Response could not be delivered — contains unsupported formatting.)",
-            );
+            await telegram!.sendMessage(msg.chatId, response.text, {
+              parseMode: "Markdown",
+              disablePreview: true,
+            });
+          } catch {
+            // Markdown parse failed — strip formatting and send plain text
+            try {
+              const plain = response.text
+                .replace(/\*\*(.+?)\*\*/g, "$1")   // **bold** → bold
+                .replace(/\*(.+?)\*/g, "$1")         // *italic* → italic
+                .replace(/`([^`]+)`/g, "$1")          // `code` → code
+                .replace(/```[\s\S]*?```/g, (m) =>    // ```block``` → block
+                  m.replace(/```\w*\n?/g, "").replace(/```/g, ""),
+                );
+              await telegram!.sendMessage(msg.chatId, plain);
+            } catch (sendErr: unknown) {
+              log.warn(
+                { service: "nova-daemon", chatId: msg.chatId, err: sendErr },
+                "sendMessage failed — both Markdown and plain text rejected",
+              );
+              await telegram!.sendMessage(
+                msg.chatId,
+                "(Response could not be delivered — contains unsupported formatting.)",
+              );
+            }
           }
 
           log.info(

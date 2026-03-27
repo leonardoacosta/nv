@@ -31,7 +31,7 @@
 
 ## E2E Batch
 
-- [ ] [5.1] [beads:nv-4i1k] Verify dashboard builds cleanly: `pnpm typecheck` passes with all new/modified files. [owner:e2e-engineer]
+- [x] [5.1] [beads:nv-4i1k] Verify dashboard builds cleanly: `pnpm typecheck` passes with all new/modified files. [owner:e2e-engineer]
 - [ ] [5.2] [beads:nv-os6q] Verify `GET /api/automations/settings` returns 200. Verify `PUT /api/automations/settings` with valid key returns 200, with invalid key returns 400. [owner:e2e-engineer] [user]
 - [ ] [5.3] [beads:nv-n56f] Verify `POST /api/automations/reminders` with valid body returns 201, with empty message returns 400, with past date returns 400. [owner:e2e-engineer] [user]
 - [ ] [5.4] [beads:nv-iowp] Verify `/sessions?command=proactive-followup` filters session list and shows dismissible chip. [owner:e2e-engineer] [user]

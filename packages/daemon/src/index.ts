@@ -185,6 +185,17 @@ export async function main(): Promise<void> {
       }
 
       // Route regular messages to the agent loop
+      log.info(
+        {
+          service: "nova-daemon",
+          chatId: msg.chatId,
+          type: msg.type,
+          contentLength: msg.content.length,
+          contentPreview: msg.content.slice(0, 80),
+        },
+        "Message received",
+      );
+
       void (async () => {
         try {
           void telegram!.sendChatAction(msg.chatId, "typing");

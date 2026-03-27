@@ -228,11 +228,25 @@ export class TelegramAdapter {
 
     // Handle plain text messages (non-command)
     this.bot.on("message", (msg) => {
+      const text = msg.text ?? "";
+      this.log.info(
+        {
+          chatId: msg.chat.id,
+          messageId: msg.message_id,
+          textLength: text.length,
+          textPreview: text.slice(0, 60),
+          hasEntities: (msg.entities?.length ?? 0) > 0,
+        },
+        "Telegram raw message received",
+      );
+
       // Skip messages that are Telegram bot commands — handled by onText handlers.
       // A command is a single slash-word like /start or /diary, NOT a file path
       // like /home/user/... or a message that merely begins with /.
-      const text = msg.text ?? "";
-      if (/^\/[a-z_]+(\s|$|@)/i.test(text)) return;
+      if (/^\/[a-z_]+(\s|$|@)/i.test(text)) {
+        this.log.debug({ text: text.slice(0, 30) }, "Skipped — matched command pattern");
+        return;
+      }
 
       void this.handleInboundMessage(msg);
     });

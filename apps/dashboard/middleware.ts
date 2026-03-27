@@ -1,10 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
-
-const AUTH_COOKIE_NAME = "dashboard_token";
+import { getSessionCookie } from "better-auth/cookies";
 
 /**
  * Constant-time comparison using Web Crypto (Edge Runtime compatible).
- * Falls back to byte-by-byte with constant-time accumulation.
+ * Used for legacy DASHBOARD_TOKEN fallback during migration period.
  */
 function timingSafeCompare(a: string, b: string): boolean {
   const encA = new TextEncoder().encode(a);
@@ -26,24 +25,61 @@ function timingSafeCompare(a: string, b: string): boolean {
   return result === 0;
 }
 
-function getTokenFromEnv(): string | undefined {
-  return process.env.DASHBOARD_TOKEN;
-}
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
 
+/** Auth is enabled when BETTER_AUTH_SECRET is set (production) or DASHBOARD_TOKEN is set (legacy). */
 function isAuthEnabled(): boolean {
-  const token = getTokenFromEnv();
-  return typeof token === "string" && token.length > 0;
+  const secret = process.env.BETTER_AUTH_SECRET;
+  const legacyToken = process.env.DASHBOARD_TOKEN;
+  return (
+    (typeof secret === "string" && secret.length > 0) ||
+    (typeof legacyToken === "string" && legacyToken.length > 0)
+  );
 }
 
-function verifyTokenValue(candidate: string): boolean {
-  const token = getTokenFromEnv();
-  if (!token) return false;
-  return timingSafeCompare(candidate, token);
+/** Check if the request has a valid Better Auth session cookie. */
+function hasBetterAuthSession(request: NextRequest): boolean {
+  const token = getSessionCookie(request);
+  return token !== null;
 }
+
+/** Check if the request has a valid legacy DASHBOARD_TOKEN cookie. */
+function hasLegacySession(request: NextRequest): boolean {
+  const legacyToken = process.env.DASHBOARD_TOKEN;
+  if (!legacyToken) return false;
+  const cookieValue = request.cookies.get("dashboard_token")?.value;
+  if (!cookieValue) return false;
+  return timingSafeCompare(cookieValue, legacyToken);
+}
+
+/** Check if the request has a valid legacy Bearer token in Authorization header. */
+function hasLegacyBearerToken(request: NextRequest): boolean {
+  const legacyToken = process.env.DASHBOARD_TOKEN;
+  if (!legacyToken) return false;
+  const authHeader = request.headers.get("authorization");
+  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  if (!token) return false;
+  return timingSafeCompare(token, legacyToken);
+}
+
+/** Returns true if the request is authenticated via either Better Auth or legacy token. */
+function isAuthenticated(request: NextRequest): boolean {
+  return (
+    hasBetterAuthSession(request) ||
+    hasLegacySession(request) ||
+    hasLegacyBearerToken(request)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CORS
+// ---------------------------------------------------------------------------
 
 function addCorsHeaders(
   response: NextResponse,
-  request: NextRequest,
+  _request: NextRequest,
 ): NextResponse {
   const corsOrigin = process.env.DASHBOARD_CORS_ORIGIN;
   if (corsOrigin) {
@@ -60,6 +96,10 @@ function addCorsHeaders(
   return response;
 }
 
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -69,16 +109,21 @@ export function middleware(request: NextRequest) {
     return addCorsHeaders(response, request);
   }
 
-  // Dev-mode: no auth when DASHBOARD_TOKEN is unset
+  // Dev-mode: no auth when neither BETTER_AUTH_SECRET nor DASHBOARD_TOKEN is set
   if (!isAuthEnabled()) {
     const response = NextResponse.next();
     return addCorsHeaders(response, request);
   }
 
-  // WebSocket upgrade requests: check token query param
+  // Pass through Better Auth API routes (sign-in, sign-up, sign-out, etc.)
+  if (pathname.startsWith("/api/auth/")) {
+    const response = NextResponse.next();
+    return addCorsHeaders(response, request);
+  }
+
+  // WebSocket upgrade requests: session cookie authenticates automatically
   if (pathname.startsWith("/ws/")) {
-    const token = request.nextUrl.searchParams.get("token");
-    if (!token || !verifyTokenValue(token)) {
+    if (!isAuthenticated(request)) {
       return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },
@@ -88,24 +133,15 @@ export function middleware(request: NextRequest) {
     return addCorsHeaders(response, request);
   }
 
-  // API requests: check Authorization header
+  // API requests: check session cookie or Bearer token
   if (pathname.startsWith("/api/")) {
-    // Allow auth endpoints without token (both REST and tRPC auth)
-    if (
-      pathname === "/api/auth/verify" ||
-      pathname === "/api/auth/logout" ||
-      pathname.startsWith("/api/trpc/auth.")
-    ) {
+    // Allow tRPC auth procedures without authentication
+    if (pathname.startsWith("/api/trpc/auth.")) {
       const response = NextResponse.next();
       return addCorsHeaders(response, request);
     }
 
-    const authHeader = request.headers.get("authorization");
-    const token = authHeader?.startsWith("Bearer ")
-      ? authHeader.slice(7)
-      : null;
-
-    if (!token || !verifyTokenValue(token)) {
+    if (!isAuthenticated(request)) {
       const response = new NextResponse(
         JSON.stringify({ error: "Unauthorized" }),
         { status: 401, headers: { "Content-Type": "application/json" } },
@@ -117,9 +153,8 @@ export function middleware(request: NextRequest) {
     return addCorsHeaders(response, request);
   }
 
-  // Page requests: check cookie
-  const cookieToken = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  if (!cookieToken || !verifyTokenValue(cookieToken)) {
+  // Page requests: check session cookie (Better Auth or legacy)
+  if (!hasBetterAuthSession(request) && !hasLegacySession(request)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     return NextResponse.redirect(loginUrl);

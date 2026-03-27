@@ -88,16 +88,8 @@ export function DaemonEventProvider({ children }: { children: ReactNode }) {
       if (typeof window === "undefined") return null;
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
       const host = process.env.NEXT_PUBLIC_DAEMON_WS_HOST ?? window.location.host;
-      let url = `${proto}://${host}/ws/events`;
-      // Append auth token from cookie for WebSocket authentication
-      const tokenMatch = document.cookie
-        .split("; ")
-        .find((row) => row.startsWith("dashboard_token="));
-      if (tokenMatch) {
-        const token = decodeURIComponent(tokenMatch.split("=")[1] ?? "");
-        if (token) url += `?token=${encodeURIComponent(token)}`;
-      }
-      return url;
+      // Session cookie is sent automatically on the WebSocket upgrade request
+      return `${proto}://${host}/ws/events`;
     })();
 
     if (!wsUrl) return;

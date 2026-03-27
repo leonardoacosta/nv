@@ -2,44 +2,62 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, Mail, User } from "lucide-react";
+import { authClient } from "@nova/auth/client";
 import NovaMark from "@/components/NovaMark";
 
-const AUTH_COOKIE_NAME = "dashboard_token";
-const AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+type AuthMode = "sign-in" | "sign-up";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [token, setToken] = useState("");
+  const [mode, setMode] = useState<AuthMode>("sign-in");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!token.trim()) return;
+    if (!email.trim() || !password.trim()) return;
+    if (mode === "sign-up" && !name.trim()) return;
 
     setLoading(true);
     setError(null);
 
-    try {
-      const res = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+    if (mode === "sign-in") {
+      const { error: signInError } = await authClient.signIn.email({
+        email: email.trim(),
+        password,
       });
 
-      if (res.ok) {
-        // Set cookie (not httpOnly so JS can read for WebSocket token)
-        document.cookie = `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}; path=/; max-age=${AUTH_COOKIE_MAX_AGE}; samesite=strict`;
-        router.push("/");
-      } else {
-        setError("Invalid token");
+      if (signInError) {
+        setError(signInError.message ?? "Invalid credentials");
+        setLoading(false);
+        return;
       }
-    } catch {
-      setError("Connection failed");
-    } finally {
-      setLoading(false);
+
+      router.push("/");
+    } else {
+      const { error: signUpError } = await authClient.signUp.email({
+        email: email.trim(),
+        password,
+        name: name.trim(),
+      });
+
+      if (signUpError) {
+        setError(signUpError.message ?? "Sign-up failed");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/");
     }
+  };
+
+  const toggleMode = () => {
+    setMode((m) => (m === "sign-in" ? "sign-up" : "sign-in"));
+    setError(null);
   };
 
   return (
@@ -48,7 +66,7 @@ export default function LoginPage() {
         {/* Branding */}
         <div className="flex flex-col items-center gap-4 mb-8">
           <div
-            className="flex items-center justify-center w-16 h-16 rounded-2xl"
+            className="flex items-center justify-center size-16 rounded-2xl"
             style={{ background: "var(--ds-gray-alpha-200)" }}
           >
             <NovaMark size={40} />
@@ -56,13 +74,51 @@ export default function LoginPage() {
           <div className="text-center">
             <h1 className="text-heading-24 text-ds-gray-1000">Nova</h1>
             <p className="text-copy-13 text-ds-gray-900 mt-1">
-              Enter your dashboard token to continue
+              {mode === "sign-in"
+                ? "Sign in to your dashboard"
+                : "Create your account"}
             </p>
           </div>
         </div>
 
-        {/* Login form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Auth form */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Name field (sign-up only) */}
+          {mode === "sign-up" && (
+            <div className="relative">
+              <User
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
+              />
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Full name"
+                autoComplete="name"
+                className="w-full pl-9 pr-4 py-3 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
+              />
+            </div>
+          )}
+
+          {/* Email field */}
+          <div className="relative">
+            <Mail
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
+            />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email address"
+              autoFocus
+              autoComplete="email"
+              className="w-full pl-9 pr-4 py-3 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
+            />
+          </div>
+
+          {/* Password field */}
           <div className="relative">
             <Lock
               size={14}
@@ -70,11 +126,10 @@ export default function LoginPage() {
             />
             <input
               type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Dashboard token"
-              autoFocus
-              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
               className="w-full pl-9 pr-4 py-3 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
             />
           </div>
@@ -85,12 +140,45 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading || !token.trim()}
+            disabled={loading || !email.trim() || !password.trim() || (mode === "sign-up" && !name.trim())}
             className="w-full py-3 rounded-lg text-button-14 font-medium bg-ds-gray-1000 text-ds-bg-100 hover:bg-ds-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Verifying..." : "Sign in"}
+            {loading
+              ? mode === "sign-in"
+                ? "Signing in..."
+                : "Creating account..."
+              : mode === "sign-in"
+                ? "Sign in"
+                : "Create account"}
           </button>
         </form>
+
+        {/* Mode toggle */}
+        <p className="text-copy-13 text-ds-gray-900 text-center mt-6">
+          {mode === "sign-in" ? (
+            <>
+              No account?{" "}
+              <button
+                type="button"
+                onClick={toggleMode}
+                className="text-ds-gray-1000 hover:underline"
+              >
+                Create one
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <button
+                type="button"
+                onClick={toggleMode}
+                className="text-ds-gray-1000 hover:underline"
+              >
+                Sign in
+              </button>
+            </>
+          )}
+        </p>
       </div>
     </div>
   );

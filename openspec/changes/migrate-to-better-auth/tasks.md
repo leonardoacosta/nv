@@ -21,19 +21,19 @@
 
 ## UI Batch
 
-- [ ] [3.1] [P-1] Rewrite apps/dashboard/middleware.ts -- replace bearer token check with getSessionCookie() from better-auth/cookies, pass through /api/auth/* routes, keep CORS handling, keep dev-mode fallback (check BETTER_AUTH_SECRET instead of DASHBOARD_TOKEN), add legacy DASHBOARD_TOKEN fallback for migration period [owner:ui-engineer] [beads:nv-0aq7]
-- [ ] [3.2] [P-1] Rewrite apps/dashboard/app/login/page.tsx -- replace token input with email/password form using authClient.signIn.email(), add sign-up toggle with name field using authClient.signUp.email(), preserve NovaMark branding and dark theme styling [owner:ui-engineer] [beads:nv-1y7j]
-- [ ] [3.3] [P-1] Rewrite apps/dashboard/lib/auth.ts -- re-export auth server instance and helpers from @nova/auth instead of custom token utils [owner:ui-engineer] [beads:nv-i9to]
-- [ ] [3.4] [P-1] Simplify apps/dashboard/lib/api-client.ts -- remove cookie parsing and Bearer header injection (session cookie sent automatically), keep only 401-redirect-to-login behavior [owner:ui-engineer] [beads:nv-3j1u]
-- [ ] [3.5] [P-2] Update apps/dashboard/components/providers/DaemonEventContext.tsx -- remove ?token= query parameter from WebSocket URL (session cookie authenticates upgrade automatically) [owner:ui-engineer] [beads:nv-bom8]
-- [ ] [3.6] [P-2] Update apps/dashboard/server.ts -- replace token query param validation on WS upgrade with auth.api.getSession({ headers: req.headers }) check, accept API key in Authorization header as fallback [owner:ui-engineer] [beads:nv-bbn5]
-- [ ] [3.7] [P-2] Update apps/dashboard/components/Sidebar.tsx -- replace POST /api/auth/logout with authClient.signOut(), redirect to /login on success [owner:ui-engineer] [beads:nv-r02l]
+- [x] [3.1] [P-1] Rewrite apps/dashboard/middleware.ts -- replace bearer token check with getSessionCookie() from better-auth/cookies, pass through /api/auth/* routes, keep CORS handling, keep dev-mode fallback (check BETTER_AUTH_SECRET instead of DASHBOARD_TOKEN), add legacy DASHBOARD_TOKEN fallback for migration period [owner:ui-engineer] [beads:nv-0aq7]
+- [x] [3.2] [P-1] Rewrite apps/dashboard/app/login/page.tsx -- replace token input with email/password form using authClient.signIn.email(), add sign-up toggle with name field using authClient.signUp.email(), preserve NovaMark branding and dark theme styling [owner:ui-engineer] [beads:nv-1y7j]
+- [x] [3.3] [P-1] Rewrite apps/dashboard/lib/auth.ts -- re-export auth server instance and helpers from @nova/auth instead of custom token utils [owner:ui-engineer] [beads:nv-i9to]
+- [x] [3.4] [P-1] Simplify apps/dashboard/lib/api-client.ts -- remove cookie parsing and Bearer header injection (session cookie sent automatically), keep only 401-redirect-to-login behavior [owner:ui-engineer] [beads:nv-3j1u]
+- [x] [3.5] [P-2] Update apps/dashboard/components/providers/DaemonEventContext.tsx -- remove ?token= query parameter from WebSocket URL (session cookie authenticates upgrade automatically) [owner:ui-engineer] [beads:nv-bom8]
+- [x] [3.6] [P-2] Update apps/dashboard/server.ts -- replace token query param validation on WS upgrade with auth.api.getSession({ headers: req.headers }) check, accept API key in Authorization header as fallback [owner:ui-engineer] [beads:nv-bbn5]
+- [x] [3.7] [P-2] Update apps/dashboard/components/Sidebar.tsx -- replace POST /api/auth/logout with authClient.signOut(), redirect to /login on success [owner:ui-engineer] [beads:nv-r02l]
 
 ## E2E Batch
 
-- [ ] [4.1] Build verification -- run `pnpm build` from apps/dashboard to confirm no type errors or build failures after all changes [owner:ui-engineer] [beads:nv-9ol2]
-- [ ] [4.2] Manual test -- start dashboard with BETTER_AUTH_SECRET set, verify /login shows email/password form, sign up creates user, sign in establishes session, all pages accessible [owner:user] [beads:nv-mwwu]
-- [ ] [4.3] Manual test -- verify WebSocket connects with session cookie (no ?token= in URL), events stream normally [owner:user] [beads:nv-4at8]
-- [ ] [4.4] Manual test -- verify logout clears session, redirects to /login, subsequent page requests redirect to /login [owner:user] [beads:nv-mxuy]
-- [ ] [4.5] Manual test -- run seed script, verify API key authenticates requests via Authorization: Bearer header [owner:user] [beads:nv-slpe]
-- [ ] [4.6] Manual test -- verify dev mode (no BETTER_AUTH_SECRET) allows all requests without auth [owner:user] [beads:nv-834r]
+- [x] [4.1] Build verification -- run `pnpm build` from apps/dashboard to confirm no type errors or build failures after all changes [owner:ui-engineer] [beads:nv-9ol2]
+- [ ] [4.2] [user] Manual test -- start dashboard with BETTER_AUTH_SECRET set, verify /login shows email/password form, sign up creates user, sign in establishes session, all pages accessible [owner:user] [beads:nv-mwwu]
+- [ ] [4.3] [user] Manual test -- verify WebSocket connects with session cookie (no ?token= in URL), events stream normally [owner:user] [beads:nv-4at8]
+- [ ] [4.4] [user] Manual test -- verify logout clears session, redirects to /login, subsequent page requests redirect to /login [owner:user] [beads:nv-mxuy]
+- [ ] [4.5] [user] Manual test -- run seed script, verify API key authenticates requests via Authorization: Bearer header [owner:user] [beads:nv-slpe]
+- [ ] [4.6] [user] Manual test -- verify dev mode (no BETTER_AUTH_SECRET) allows all requests without auth [owner:user] [beads:nv-834r]

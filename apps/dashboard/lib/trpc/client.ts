@@ -1,24 +1,13 @@
 /**
  * tRPC client configuration with httpBatchLink.
  *
- * Uses the dashboard_token cookie for bearer auth.
+ * Uses Better Auth session cookies (sent automatically).
  * Redirects to /login on 401 responses.
  */
 
 import { createTRPCClient, httpBatchLink, loggerLink } from "@trpc/client";
 import superjson from "superjson";
-import type { DashboardRouter } from "@/app/api/trpc/[trpc]/route";
-
-const AUTH_COOKIE_NAME = "dashboard_token";
-
-function getTokenFromCookie(): string | null {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(`${AUTH_COOKIE_NAME}=`));
-  if (!match) return null;
-  return decodeURIComponent(match.split("=")[1] ?? "");
-}
+import type { DashboardRouter } from "@/lib/trpc/router";
 
 function getBaseUrl() {
   if (typeof window !== "undefined") return "";
@@ -40,21 +29,12 @@ export const trpcClient = createTRPCClient<DashboardRouter>({
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      headers() {
-        const token = getTokenFromCookie();
-        const headers: Record<string, string> = {};
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-        return headers;
-      },
       fetch(url, options) {
         return fetch(url, {
           ...options,
           credentials: "include",
         }).then((response) => {
           if (response.status === 401 && typeof window !== "undefined") {
-            document.cookie = `${AUTH_COOKIE_NAME}=; path=/; max-age=0; samesite=strict`;
             window.location.href = "/login";
           }
           return response;

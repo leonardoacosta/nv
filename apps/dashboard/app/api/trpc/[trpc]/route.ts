@@ -1,23 +1,13 @@
 /**
  * Catch-all tRPC API route handler.
  *
- * Merges the @nova/api appRouter with dashboard-local routers
- * (cc-session, resolve) that depend on Docker/entity-resolution.
+ * Router definition lives in @/lib/trpc/router to avoid exporting
+ * non-route symbols from a Next.js route file.
  */
 
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
-import { appRouter, createTRPCContext } from "@nova/api";
-import { mergeRouters } from "@nova/api";
-import { ccSessionRouter } from "@/lib/routers/cc-session";
-import { resolveRouter } from "@/lib/routers/resolve";
-
-export const dashboardRouter = mergeRouters(
-  appRouter,
-  ccSessionRouter,
-  resolveRouter,
-);
-
-export type DashboardRouter = typeof dashboardRouter;
+import { createTRPCContext } from "@nova/api";
+import { dashboardRouter } from "@/lib/trpc/router";
 
 function handler(req: Request) {
   return fetchRequestHandler({

@@ -33,6 +33,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
 import { trpcClient } from "@/lib/trpc/client";
+import { authClient } from "@nova/auth/client";
 
 // ---------------------------------------------------------------------------
 // WebSocket status footer
@@ -346,13 +347,13 @@ export default function Sidebar() {
   const drawerRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = useCallback(async () => {
-    try {
-      await trpcClient.auth.logout.mutate();
-    } catch {
-      // Clear cookie manually on failure
-    }
-    document.cookie = "dashboard_token=; path=/; max-age=0; samesite=strict";
-    router.push("/login");
+    await authClient.signOut({
+      fetchOptions: {
+        onSuccess: () => {
+          router.push("/login");
+        },
+      },
+    });
   }, [router]);
 
   // Close mobile drawer on route change

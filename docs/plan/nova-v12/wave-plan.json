@@ -151,17 +151,21 @@
       "specs": [
         {
           "name": "geist-token-standardization",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
           "pr_url": null,
           "pr_state": null,
-          "gates_passed": [],
+          "gates_passed": [
+            "UI_typecheck",
+            "UI_build",
+            "deploy"
+          ],
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-27T08:18:45.842138"
         }
       ]
     }
@@ -234,15 +238,16 @@
       ]
     }
   ],
-  "status": "in_progress",
+  "status": "completed",
   "current_wave": 5,
   "started_at": "2026-03-27T01:19:58.504122",
-  "completed_at": null,
+  "completed_at": "2026-03-27T08:18:45.842146",
   "completed_waves": [
     1,
     2,
     3,
-    4
+    4,
+    5
   ],
   "completed_specs": [
     "entity-resolution-layer",
@@ -250,7 +255,8 @@
     "automations-ux-overhaul",
     "messages-dense-view",
     "sessions-resilience",
-    "dashboard-density-pass"
+    "dashboard-density-pass",
+    "geist-token-standardization"
   ],
   "failed_specs": [],
   "pre_audit_sha": "372d13e",

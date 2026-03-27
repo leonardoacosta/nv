@@ -1,93 +1,97 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plug, AlertCircle, RefreshCw } from "lucide-react";
-import IntegrationCard, {
-  type Integration,
-} from "@/components/IntegrationCard";
-import ConfigureModal from "@/components/ConfigureModal";
-import type { PutConfigRequest } from "@/types/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Activity, AlertCircle, Database, RefreshCw, Server, Radio } from "lucide-react";
+import ChannelRow from "@/components/ChannelRow";
+import ServiceRow from "@/components/ServiceRow";
 import { apiFetch } from "@/lib/api-client";
+import type {
+  FleetHealthResponse,
+  ServerHealthGetResponse,
+} from "@/types/api";
 
-const CATEGORY_LABELS: Record<Integration["category"], string> = {
-  channels: "Channels",
-  tools: "Tools",
-  services: "Services",
-};
+/** Auto-refresh interval in milliseconds (30s). */
+const POLL_INTERVAL_MS = 30_000;
 
-export default function IntegrationsPage() {
-  const [integrations, setIntegrations] = useState<Integration[]>([]);
+export default function StatusPage() {
+  const [fleetData, setFleetData] = useState<FleetHealthResponse | null>(null);
+  const [infraData, setInfraData] = useState<ServerHealthGetResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [configuring, setConfiguring] = useState<Integration | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchIntegrations = async () => {
-    setLoading(true);
+  const fetchStatus = useCallback(async () => {
     setError(null);
     try {
-      const res = await apiFetch("/api/config");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = (await res.json()) as Record<string, unknown>;
+      const [fleetRes, healthRes] = await Promise.all([
+        apiFetch("/api/fleet-status"),
+        apiFetch("/api/server-health"),
+      ]);
 
-      // Transform config into integration list if no dedicated endpoint
-      const items: Integration[] = raw.integrations
-        ? (raw.integrations as Integration[])
-        : buildFromConfig(raw);
-      setIntegrations(items);
+      if (!fleetRes.ok) throw new Error(`Fleet status: HTTP ${fleetRes.status}`);
+      if (!healthRes.ok) throw new Error(`Server health: HTTP ${healthRes.status}`);
+
+      const fleet = (await fleetRes.json()) as FleetHealthResponse;
+      const health = (await healthRes.json()) as ServerHealthGetResponse;
+
+      setFleetData(fleet);
+      setInfraData(health);
+      setLastChecked(new Date());
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load integrations"
-      );
+      setError(err instanceof Error ? err.message : "Failed to load status");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void fetchIntegrations();
   }, []);
 
-  const handleSave = async (
-    _id: string,
-    config: Record<string, string>
-  ): Promise<void> => {
-    const res = await apiFetch(`/api/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fields: config } satisfies PutConfigRequest),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    void fetchIntegrations();
-  };
+  // Initial fetch + auto-refresh with cleanup
+  useEffect(() => {
+    void fetchStatus();
 
-  const grouped = Object.entries(CATEGORY_LABELS).map(([cat, label]) => ({
-    key: cat as Integration["category"],
-    label,
-    items: integrations.filter((i) => i.category === cat),
-  }));
+    intervalRef.current = setInterval(() => {
+      void fetchStatus();
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchStatus]);
+
+  const dbStatus = infraData?.status ?? "unknown";
 
   return (
     <div className="p-4 space-y-3 w-full animate-fade-in-up">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-heading-20 text-ds-gray-1000">
-            Integrations
-          </h1>
+          <h1 className="text-heading-20 text-ds-gray-1000">Status</h1>
           <p className="mt-0.5 text-copy-13 text-ds-gray-900">
-            Connected channels, tools, and services
+            Service health and channel connectivity
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void fetchIntegrations()}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {lastChecked && (
+            <span className="text-label-12 text-ds-gray-700 font-mono">
+              <LastCheckedLabel date={lastChecked} />
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              void fetchStatus();
+            }}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
       </div>
 
+      {/* Error banner */}
       {error && (
         <div
           className="flex items-start gap-3 p-4 rounded-md"
@@ -101,143 +105,167 @@ export default function IntegrationsPage() {
         </div>
       )}
 
-      {loading ? (
+      {/* Loading skeleton */}
+      {loading && !fleetData ? (
         <div className="space-y-6">
           {Array.from({ length: 3 }).map((_, g) => (
             <div key={g} className="space-y-2">
-              <div className="h-3 w-20 animate-pulse rounded bg-ds-gray-300" />
+              <div className="h-3 w-24 animate-pulse rounded bg-ds-gray-300" />
               {Array.from({ length: 3 }).map((_, i) => (
                 <div
                   key={i}
-                  className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-alpha-400"
+                  className="h-9 animate-pulse rounded-md bg-ds-gray-100 border border-ds-gray-alpha-400"
                 />
               ))}
             </div>
           ))}
         </div>
-      ) : integrations.length === 0 ? (
-        <p className="text-copy-13 text-ds-gray-900 py-3">No integrations configured</p>
       ) : (
         <div className="space-y-4">
-          {grouped.map(({ key, label, items }) => (
-            <section key={key}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-label-12 text-ds-gray-700">{label}</h2>
-                <span className="px-1.5 py-0.5 rounded-full bg-ds-gray-alpha-200 text-label-12 text-ds-gray-900 font-mono normal-case tracking-normal">
-                  {items.length}
+          {/* ── Channels ─────────────────────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Radio size={12} className="text-ds-gray-700" />
+              <h2 className="text-label-12 text-ds-gray-700">Channels</h2>
+              <span className="px-1.5 py-0.5 rounded-full bg-ds-gray-alpha-200 text-label-12 text-ds-gray-900 font-mono">
+                {fleetData?.channels.length ?? 0}
+              </span>
+            </div>
+            {fleetData?.channels.length === 0 ? (
+              <p className="text-copy-13 text-ds-gray-900 py-2 pl-1 italic">
+                No channels configured.
+              </p>
+            ) : (
+              <div className="space-y-0.5">
+                {fleetData?.channels.map((ch) => (
+                  <ChannelRow key={ch.name} channel={ch} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ── Fleet Services ────────────────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Server size={12} className="text-ds-gray-700" />
+              <h2 className="text-label-12 text-ds-gray-700">Fleet Services</h2>
+              <span className="px-1.5 py-0.5 rounded-full bg-ds-gray-alpha-200 text-label-12 text-ds-gray-900 font-mono">
+                {fleetData?.fleet.total_count ?? 0}
+              </span>
+            </div>
+            {/* Aggregate status line */}
+            {fleetData && (
+              <div className="flex items-center gap-2 px-3 py-1.5 mb-1">
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                    fleetData.fleet.status === "healthy"
+                      ? "bg-green-700"
+                      : fleetData.fleet.status === "unknown"
+                        ? "bg-ds-gray-500"
+                        : "bg-red-700"
+                  }`}
+                />
+                <span className="text-copy-13 text-ds-gray-900 font-mono">
+                  {fleetData.fleet.status === "unknown"
+                    ? `${fleetData.fleet.total_count} services configured (status unknown -- host network only)`
+                    : fleetData.fleet.healthy_count === fleetData.fleet.total_count
+                      ? `${fleetData.fleet.healthy_count}/${fleetData.fleet.total_count} healthy`
+                      : `${fleetData.fleet.healthy_count}/${fleetData.fleet.total_count} healthy (${fleetData.fleet.total_count - fleetData.fleet.healthy_count} unreachable)`}
                 </span>
               </div>
-              {items.length === 0 ? (
-                <p className="text-copy-13 text-ds-gray-900 py-2 pl-1 italic">
-                  No integrations configured.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {items.map((integration) => (
-                    <IntegrationCard
-                      key={integration.id}
-                      integration={integration}
-                      onConfigure={setConfiguring}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-          ))}
+            )}
+            <div className="space-y-0.5">
+              {fleetData?.fleet.services.map((svc) => (
+                <ServiceRow
+                  key={svc.name}
+                  service={svc}
+                  lastChecked={lastChecked}
+                />
+              ))}
+            </div>
+          </section>
+
+          {/* ── Infrastructure ────────────────────────────────── */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Database size={12} className="text-ds-gray-700" />
+              <h2 className="text-label-12 text-ds-gray-700">Infrastructure</h2>
+            </div>
+            <div className="space-y-0.5">
+              {/* Postgres */}
+              <div className="flex items-center gap-3 px-3 py-2 min-h-9 rounded-md hover:bg-ds-gray-alpha-100 transition-colors">
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                    dbStatus === "healthy"
+                      ? "bg-green-700"
+                      : dbStatus === "degraded"
+                        ? "bg-amber-700"
+                        : dbStatus === "critical"
+                          ? "bg-red-700"
+                          : "bg-ds-gray-500"
+                  }`}
+                />
+                <span className="text-label-14 text-ds-gray-1000 flex-1">
+                  Postgres
+                </span>
+                <span className="text-label-12 text-ds-gray-700 font-mono">
+                  {dbStatus}
+                </span>
+              </div>
+
+              {/* Daemon */}
+              <div className="flex items-center gap-3 px-3 py-2 min-h-9 rounded-md hover:bg-ds-gray-alpha-100 transition-colors">
+                <span
+                  className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                    infraData?.latest?.uptime_seconds != null
+                      ? "bg-green-700"
+                      : "bg-ds-gray-500"
+                  }`}
+                />
+                <span className="text-label-14 text-ds-gray-1000 flex-1">
+                  Daemon
+                </span>
+                {infraData?.latest?.uptime_seconds != null && (
+                  <span className="text-label-12 text-ds-gray-900 font-mono">
+                    uptime {formatUptime(infraData.latest.uptime_seconds)}
+                  </span>
+                )}
+                <span className="text-label-12 text-ds-gray-700 font-mono">
+                  {infraData?.latest?.uptime_seconds != null
+                    ? "healthy"
+                    : "no data"}
+                </span>
+              </div>
+            </div>
+          </section>
         </div>
       )}
-
-      <ConfigureModal
-        integration={configuring}
-        onClose={() => setConfiguring(null)}
-        onSave={handleSave}
-      />
     </div>
   );
 }
 
-// Known integration key → category mapping.
-const KNOWN_INTEGRATIONS: Record<
-  string,
-  { category: Integration["category"]; displayName: string }
-> = {
-  telegram: { category: "channels", displayName: "Telegram" },
-  discord: { category: "channels", displayName: "Discord" },
-  slack: { category: "channels", displayName: "Slack" },
-  teams: { category: "channels", displayName: "Microsoft Teams" },
-  github: { category: "tools", displayName: "GitHub" },
-  linear: { category: "tools", displayName: "Linear" },
-  notion: { category: "tools", displayName: "Notion" },
-  openai: { category: "services", displayName: "OpenAI" },
-  anthropic: { category: "services", displayName: "Anthropic" },
-  stripe: { category: "services", displayName: "Stripe" },
-  resend: { category: "services", displayName: "Resend" },
-  sentry: { category: "services", displayName: "Sentry" },
-  posthog: { category: "services", displayName: "PostHog" },
-};
+// ── Helpers ──────────────────────────────────────────────────────────────
 
-/** Determine integration status from a config value. */
-function inferStatus(value: unknown): Integration["status"] {
-  if (!value) return "disconnected";
-  if (typeof value === "object" && value !== null) {
-    if ("enabled" in value) {
-      return (value as { enabled: boolean }).enabled ? "connected" : "disconnected";
-    }
-    // Has nested values — check if any key looks like a credential
-    const obj = value as Record<string, unknown>;
-    const hasCredential = Object.entries(obj).some(
-      ([k, v]) =>
-        (k.includes("token") || k.includes("key") || k.includes("secret")) &&
-        Boolean(v),
-    );
-    return hasCredential ? "connected" : "disconnected";
-  }
-  return "connected";
+function formatUptime(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
-/** Fallback: build integration list from raw config object. */
-function buildFromConfig(raw: Record<string, unknown>): Integration[] {
-  const items: Integration[] = [];
+/** Self-updating "Last checked: Xs ago" label. */
+function LastCheckedLabel({ date }: { date: Date }) {
+  const [, setTick] = useState(0);
 
-  for (const [key, value] of Object.entries(raw)) {
-    const lower = key.toLowerCase();
-    const known = KNOWN_INTEGRATIONS[lower];
+  useEffect(() => {
+    const timer = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-    if (known) {
-      items.push({
-        id: key,
-        name: known.displayName,
-        status: inferStatus(value),
-        category: known.category,
-        config:
-          typeof value === "object" && value !== null
-            ? (value as Record<string, string | number | boolean>)
-            : undefined,
-      });
-    } else {
-      // Unknown key — derive category heuristically
-      const channelKeys = ["channel", "chat", "message"];
-      const toolKeys = ["tool", "git", "issue", "tracker"];
-      const category: Integration["category"] = channelKeys.some((c) =>
-        lower.includes(c),
-      )
-        ? "channels"
-        : toolKeys.some((t) => lower.includes(t))
-          ? "tools"
-          : "services";
-
-      items.push({
-        id: key,
-        name: key.charAt(0).toUpperCase() + key.slice(1),
-        status: inferStatus(value),
-        category,
-        config:
-          typeof value === "object" && value !== null
-            ? (value as Record<string, string | number | boolean>)
-            : undefined,
-      });
-    }
-  }
-
-  return items;
+  const diffSecs = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (diffSecs < 60) return <>Last checked: {diffSecs}s ago</>;
+  const mins = Math.floor(diffSecs / 60);
+  return <>Last checked: {mins}m ago</>;
 }

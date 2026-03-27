@@ -177,6 +177,32 @@ else
     RESULTS+=("dashboard: skip (no changes)")
 fi
 
+# ── Post-Deploy Health Check ──────────────────────────────────────────────
+
+echo ""
+echo "=== Post-Deploy Health Check ==="
+
+# Wait for services to stabilize after restart
+sleep 8
+
+# Check fleet health via nv CLI (if available)
+NV_CLI="${HOME}/dev/nv/packages/cli/dist/index.js"
+if [[ -f "$NV_CLI" ]]; then
+    NV_STATUS=$(node "$NV_CLI" status 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' || echo "nv status: unavailable")
+    echo "    $NV_STATUS"
+    RESULTS+=("health: $NV_STATUS")
+else
+    # Fallback: manual fleet probe
+    FLEET_OK=0
+    FLEET_TOTAL=0
+    for port in 4100 4101 4102 4103 4104 4105 4106 4107 4108 4109; do
+        FLEET_TOTAL=$((FLEET_TOTAL + 1))
+        curl -sf --max-time 2 "http://127.0.0.1:${port}/health" > /dev/null 2>&1 && FLEET_OK=$((FLEET_OK + 1))
+    done
+    echo "    Fleet: ${FLEET_OK}/${FLEET_TOTAL} healthy"
+    RESULTS+=("health: fleet ${FLEET_OK}/${FLEET_TOTAL}")
+fi
+
 # ── Summary + TTS ──────────────────────────────────────────────────────────
 
 echo ""

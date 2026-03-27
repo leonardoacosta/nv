@@ -43,15 +43,15 @@ nova-ts.service (slim daemon)
 └── Callback routing (watcher, obligation)
 
 nova-tools.target (fleet)
-├── tool-router.service      :4000  — central dispatch + health aggregation
-├── memory-svc.service        :4001  — read/write/search memory (Postgres + fs)
-├── messages-svc.service      :4002  — recent messages, search (Postgres)
-├── channels-svc.service      :4003  — list channels, send to channel
-├── discord-svc.service       :4004  — guilds, channels, messages (Bot API)
-├── teams-svc.service         :4005  — chats, channels, presence, send (SSH→CloudPC)
-├── schedule-svc.service      :4006  — reminders, schedules, sessions (Postgres)
-├── graph-svc.service         :4007  — calendar, ADO (SSH→CloudPC PowerShell)
-└── meta-svc.service          :4008  — check_services, self_assessment, update_soul
+├── tool-router.service      :4100  — central dispatch + health aggregation
+├── memory-svc.service        :4101  — read/write/search memory (Postgres + fs)
+├── messages-svc.service      :4102  — recent messages, search (Postgres)
+├── channels-svc.service      :4103  — list channels, send to channel
+├── discord-svc.service       :4104  — guilds, channels, messages (Bot API)
+├── teams-svc.service         :4105  — chats, channels, presence, send (SSH→CloudPC)
+├── schedule-svc.service      :4106  — reminders, schedules, sessions (Postgres)
+├── graph-svc.service         :4107  — calendar, ADO (SSH→CloudPC PowerShell)
+└── meta-svc.service          :4108  — check_services, self_assessment, update_soul
 ```
 
 ### Dual HTTP + MCP

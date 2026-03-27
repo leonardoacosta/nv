@@ -14,7 +14,7 @@ export function loadConfig(): ServiceConfig {
 
   return {
     serviceName: process.env["SERVICE_NAME"] ?? "messages-svc",
-    servicePort: parseInt(process.env["SERVICE_PORT"] ?? "4002", 10),
+    servicePort: parseInt(process.env["SERVICE_PORT"] ?? "4102", 10),
     logLevel: process.env["LOG_LEVEL"] ?? "info",
     corsOrigin:
       process.env["CORS_ORIGIN"] ?? "https://nova.leonardoacosta.dev",

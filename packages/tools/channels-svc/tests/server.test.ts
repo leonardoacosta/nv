@@ -39,7 +39,7 @@ describe("HTTP Server", () => {
     registry.register(createMockAdapter("email", "outbound", "connected"));
     app = createHttpApp(
       registry,
-      { serviceName: "channels-svc", servicePort: 4003, corsOrigin: "*" },
+      { serviceName: "channels-svc", servicePort: 4103, corsOrigin: "*" },
       logger,
     );
   });
@@ -52,7 +52,7 @@ describe("HTTP Server", () => {
       const body = await res.json();
       assert.equal(body.status, "ok");
       assert.equal(body.service, "channels-svc");
-      assert.equal(body.port, 4003);
+      assert.equal(body.port, 4103);
       assert.equal(typeof body.uptime_secs, "number");
     });
   });
@@ -136,7 +136,7 @@ describe("HTTP Server", () => {
       );
       const failApp = createHttpApp(
         failingRegistry,
-        { serviceName: "channels-svc", servicePort: 4003, corsOrigin: "*" },
+        { serviceName: "channels-svc", servicePort: 4103, corsOrigin: "*" },
         logger,
       );
 

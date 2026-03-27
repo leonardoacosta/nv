@@ -6,14 +6,14 @@ interface ServiceEntry {
 }
 
 const SERVICE_REGISTRY: readonly ServiceEntry[] = [
-  { name: "tool-router", port: 4000 },
-  { name: "memory-svc", port: 4001 },
-  { name: "messages-svc", port: 4002 },
-  { name: "channels-svc", port: 4003 },
-  { name: "discord-svc", port: 4004 },
-  { name: "teams-svc", port: 4005 },
-  { name: "schedule-svc", port: 4006 },
-  { name: "graph-svc", port: 4007 },
+  { name: "tool-router", port: 4100 },
+  { name: "memory-svc", port: 4101 },
+  { name: "messages-svc", port: 4102 },
+  { name: "channels-svc", port: 4103 },
+  { name: "discord-svc", port: 4104 },
+  { name: "teams-svc", port: 4105 },
+  { name: "schedule-svc", port: 4106 },
+  { name: "graph-svc", port: 4107 },
 ] as const;
 
 const PROBE_TIMEOUT_MS = 3000;

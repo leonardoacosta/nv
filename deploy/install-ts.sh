@@ -140,7 +140,7 @@ fi
 
 # Note: slim-daemon (v10) removed the Hono API server. The daemon no longer
 # exposes an HTTP health endpoint. systemctl is-active (above) is sufficient.
-# Tool fleet health is checked by install-tools.sh via tool-router :4000/health.
+# Tool fleet health is checked by install-tools.sh via tool-router :4100/health.
 echo "    nova-ts.service: active (systemd)"
 
 # ── Tool Fleet Deploy ────────────────────────────────────────────────────────

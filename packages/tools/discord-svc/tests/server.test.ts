@@ -37,7 +37,7 @@ describe("HTTP Server", () => {
       return c.json({
         status: "ok",
         service: "discord-svc",
-        port: 4004,
+        port: 4104,
       });
     });
   });
@@ -54,7 +54,7 @@ describe("HTTP Server", () => {
       const body = await res.json();
       assert.equal(body.status, "ok");
       assert.equal(body.service, "discord-svc");
-      assert.equal(body.port, 4004);
+      assert.equal(body.port, 4104);
     });
 
     it("does not include uptime or version (spec: only status, service, port)", async () => {

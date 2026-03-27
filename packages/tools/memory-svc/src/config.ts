@@ -19,7 +19,7 @@ export function loadConfig(): MemorySvcConfig {
 
   return {
     serviceName: "memory-svc",
-    port: parseInt(process.env["PORT"] ?? "4001", 10),
+    port: parseInt(process.env["PORT"] ?? "4101", 10),
     databaseUrl,
     openaiApiKey: process.env["OPENAI_API_KEY"] ?? undefined,
     memoryDir:

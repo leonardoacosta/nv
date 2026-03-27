@@ -45,7 +45,7 @@ const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proact
   logLevel: "info",
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
-  toolRouterUrl: "http://localhost:4000",
+  toolRouterUrl: "http://localhost:4100",
   mcpServers: {},
   conversationHistoryDepth: 20,
 };

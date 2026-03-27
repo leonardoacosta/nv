@@ -11,7 +11,7 @@ import { listChannels } from "./tools/channels.js";
 import { readMessages } from "./tools/messages.js";
 
 const SERVICE_NAME = "discord-svc";
-const DEFAULT_PORT = 4004;
+const DEFAULT_PORT = 4104;
 
 // Require bot token
 const botToken = process.env["DISCORD_BOT_TOKEN"];

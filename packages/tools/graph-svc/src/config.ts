@@ -10,7 +10,7 @@ export interface ServiceConfig {
 export function loadConfig(): ServiceConfig {
   return {
     serviceName: process.env["SERVICE_NAME"] ?? "graph-svc",
-    servicePort: parseInt(process.env["SERVICE_PORT"] ?? "4007", 10),
+    servicePort: parseInt(process.env["SERVICE_PORT"] ?? "4107", 10),
     logLevel: process.env["LOG_LEVEL"] ?? "info",
     corsOrigin:
       process.env["CORS_ORIGIN"] ?? "https://nova.leonardoacosta.dev",

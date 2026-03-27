@@ -17,15 +17,15 @@ to independent services under nova-tools.target.
 
 | Service | Port | Tools | Transport |
 |---------|------|-------|-----------|
-| tool-router | :4000 | dispatch(tool_name, input) | HTTP only |
-| memory-svc | :4001 | read_memory, write_memory, search_memory | HTTP + MCP |
-| messages-svc | :4002 | get_recent_messages, search_messages | HTTP + MCP |
-| channels-svc | :4003 | list_channels, send_to_channel | HTTP + MCP |
-| discord-svc | :4004 | discord_list_guilds, discord_list_channels, discord_read_messages | HTTP + MCP |
-| teams-svc | :4005 | teams_*, 6 tools | HTTP + MCP |
-| schedule-svc | :4006 | reminders (3) + schedules (4) + sessions (2) | HTTP + MCP |
-| graph-svc | :4007 | calendar (3) + ado (3) | HTTP + MCP |
-| meta-svc | :4008 | check_services, self_assessment_run, update_soul | HTTP + MCP |
+| tool-router | :4100 | dispatch(tool_name, input) | HTTP only |
+| memory-svc | :4101 | read_memory, write_memory, search_memory | HTTP + MCP |
+| messages-svc | :4102 | get_recent_messages, search_messages | HTTP + MCP |
+| channels-svc | :4103 | list_channels, send_to_channel | HTTP + MCP |
+| discord-svc | :4104 | discord_list_guilds, discord_list_channels, discord_read_messages | HTTP + MCP |
+| teams-svc | :4105 | teams_*, 6 tools | HTTP + MCP |
+| schedule-svc | :4106 | reminders (3) + schedules (4) + sessions (2) | HTTP + MCP |
+| graph-svc | :4107 | calendar (3) + ado (3) | HTTP + MCP |
+| meta-svc | :4108 | check_services, self_assessment_run, update_soul | HTTP + MCP |
 
 ### MS Graph: SSH to CloudPC (Primary)
 

@@ -56,15 +56,15 @@ describe("POST /dispatch", () => {
   });
 
   it("returns 502 when downstream service is unreachable", async () => {
-    // calendar_today maps to graph-svc on port 4007.
-    // Port 4007 should not have a service running in the test environment.
+    // calendar_today maps to graph-svc on port 4107.
+    // Port 4107 should not have a service running in the test environment.
     const app = createTestApp();
     const res = await app.request("/dispatch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tool: "calendar_today", input: {} }),
     });
-    // If port 4007 happens to be running, the test still validates the dispatch path
+    // If port 4107 happens to be running, the test still validates the dispatch path
     assert.ok(
       res.status === 502 || res.status === 200,
       `Expected 502 (unreachable) or 200 (service running), got ${res.status}`,
@@ -129,7 +129,7 @@ describe("GET /registry", () => {
 
     // Spot-check a few mappings
     assert.equal(body["read_memory"].serviceName, "memory-svc");
-    assert.equal(body["read_memory"].serviceUrl, "http://127.0.0.1:4001");
+    assert.equal(body["read_memory"].serviceUrl, "http://127.0.0.1:4101");
     assert.equal(body["discord_list_guilds"].serviceName, "discord-svc");
     assert.equal(body["calendar_today"].serviceName, "graph-svc");
     assert.equal(body["update_soul"].serviceName, "meta-svc");

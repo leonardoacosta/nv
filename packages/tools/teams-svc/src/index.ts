@@ -16,7 +16,7 @@ import {
 } from "./tools/index.js";
 
 const SERVICE_NAME = "teams-svc";
-const DEFAULT_PORT = 4005;
+const DEFAULT_PORT = 4105;
 
 const isMcpMode = process.argv.includes("--mcp");
 const servicePort = parseInt(process.env["PORT"] ?? String(DEFAULT_PORT), 10);

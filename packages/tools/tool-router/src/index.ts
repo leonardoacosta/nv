@@ -8,7 +8,7 @@ import { dispatchRoute } from "./routes/dispatch.js";
 import { healthRoute } from "./routes/health.js";
 import { registryRoute } from "./routes/registry.js";
 
-const PORT = parseInt(process.env["PORT"] ?? "4000", 10);
+const PORT = parseInt(process.env["PORT"] ?? "4100", 10);
 const isDev = process.env["NODE_ENV"] !== "production";
 
 const logger = pino({

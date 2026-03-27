@@ -34,7 +34,7 @@ async function fetchMemoryTopics(): Promise<{
 }> {
   try {
     const response = await fetchWithTimeout(
-      "http://localhost:4001/api/memory",
+      "http://localhost:4101/api/memory",
       FETCH_TIMEOUT_MS,
     );
     if (!response.ok) {
@@ -61,7 +61,7 @@ async function fetchRecentMessages(): Promise<{
 }> {
   try {
     const response = await fetchWithTimeout(
-      "http://localhost:4002/api/messages?per_page=20",
+      "http://localhost:4102/api/messages?per_page=20",
       FETCH_TIMEOUT_MS,
     );
     if (!response.ok) {

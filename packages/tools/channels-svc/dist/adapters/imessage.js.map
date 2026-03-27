@@ -1,0 +1,1 @@
+{"version":3,"file":"imessage.js","sourceRoot":"","sources":["../../src/adapters/imessage.ts"],"names":[],"mappings":"AAGA,MAAM,OAAO,eAAe;IACjB,IAAI,GAAgB,UAAU,CAAC;IAC/B,SAAS,GAAqB,eAAe,CAAC;IAEvD,MAAM;QACJ,OAAO,cAAc,CAAC;IACxB,CAAC;IAED,KAAK,CAAC,IAAI,CAAC,OAAe,EAAE,QAAgB;QAC1C,MAAM,IAAI,KAAK,CAAC,sCAAsC,CAAC,CAAC;IAC1D,CAAC;CACF"}

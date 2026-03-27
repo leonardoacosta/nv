@@ -107,3 +107,53 @@ export async function outlookFolder(
     `-Action Folder -FolderId '${sanitize(folderId)}' -Count ${limit}`,
   );
 }
+
+/**
+ * Flag an email for follow-up in Outlook.
+ * @param messageId The Outlook message ID to flag
+ */
+export async function outlookFlag(
+  config: ServiceConfig,
+  messageId: string,
+): Promise<string> {
+  return sshCloudPC(
+    config.cloudpcHost,
+    config.cloudpcUserPath,
+    OUTLOOK_SCRIPT,
+    `-Action Flag -MessageId '${sanitize(messageId)}'`,
+  );
+}
+
+/**
+ * Move an email to a different Outlook folder.
+ * @param messageId The Outlook message ID to move
+ * @param destinationFolder Target folder name (Archive, Deleted Items, etc.)
+ */
+export async function outlookMove(
+  config: ServiceConfig,
+  messageId: string,
+  destinationFolder: string,
+): Promise<string> {
+  return sshCloudPC(
+    config.cloudpcHost,
+    config.cloudpcUserPath,
+    OUTLOOK_SCRIPT,
+    `-Action Move -MessageId '${sanitize(messageId)}' -DestinationFolder '${sanitize(destinationFolder)}'`,
+  );
+}
+
+/**
+ * Get unread emails only.
+ * @param limit Number of unread emails to return (1-50, default 10)
+ */
+export async function outlookUnread(
+  config: ServiceConfig,
+  limit: number = 10,
+): Promise<string> {
+  return sshCloudPC(
+    config.cloudpcHost,
+    config.cloudpcUserPath,
+    OUTLOOK_SCRIPT,
+    `-Action Unread -Count ${limit}`,
+  );
+}

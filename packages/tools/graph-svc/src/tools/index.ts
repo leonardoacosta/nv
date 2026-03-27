@@ -2,7 +2,9 @@ import type { ToolDefinition } from "../tools.js";
 import type { ServiceConfig } from "../config.js";
 import { calendarToday, calendarUpcoming, calendarNext } from "./calendar.js";
 import { adoProjects, adoPipelines, adoBuilds } from "./ado.js";
-import { outlookInbox, outlookRead, outlookSearch, outlookFolders, outlookSent, outlookFolder } from "./mail.js";
+import { adoWorkItems, adoRepos, adoPullRequests, adoBuildLogs } from "./ado-extended.js";
+import { outlookInbox, outlookRead, outlookSearch, outlookFolders, outlookSent, outlookFolder, outlookFlag, outlookMove, outlookUnread } from "./mail.js";
+import { pimStatus, pimActivate, pimActivateAll } from "./pim.js";
 
 export function registerGraphTools(
   config: ServiceConfig,
@@ -131,6 +133,207 @@ export function registerGraphTools(
         const limit =
           typeof input["limit"] === "number" ? input["limit"] : 10;
         return adoBuilds(config, project, pipeline, limit);
+      },
+    },
+
+    // ── PIM Tools ──────────────────────────────────────────────────
+    {
+      name: "pim_status",
+      description:
+        "List all PIM-eligible Azure roles with activation status. Shows both direct and group-based assignments.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async () => pimStatus(config),
+    },
+    {
+      name: "pim_activate",
+      description:
+        "Activate a specific PIM role by number. Run pim_status first to see available roles. Requires operator confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          role_number: {
+            type: "integer",
+            description: "The role number from pim_status output.",
+          },
+          justification: {
+            type: "string",
+            description: "Optional justification for the activation.",
+          },
+        },
+        required: ["role_number"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const roleNumber = input["role_number"];
+        if (typeof roleNumber !== "number") {
+          throw new Error("role_number is required and must be a number");
+        }
+        const justification =
+          typeof input["justification"] === "string"
+            ? input["justification"]
+            : undefined;
+        return pimActivate(config, roleNumber, justification);
+      },
+    },
+    {
+      name: "pim_activate_all",
+      description:
+        "Activate all PIM-eligible Azure roles at once. Requires operator confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          justification: {
+            type: "string",
+            description: "Optional justification for the activation.",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const justification =
+          typeof input["justification"] === "string"
+            ? input["justification"]
+            : undefined;
+        return pimActivateAll(config, justification);
+      },
+    },
+
+    // ── ADO Extended Tools ──────────────────────────────────────────
+    {
+      name: "ado_work_items",
+      description:
+        "Query Azure DevOps work items. Filter by project, state (Active/New/Closed), and type (Bug/Task/User Story).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project: {
+            type: "string",
+            description: "Project name to filter by.",
+          },
+          state: {
+            type: "string",
+            description:
+              "Work item state filter (Active, New, Closed, etc.).",
+          },
+          type: {
+            type: "string",
+            description:
+              "Work item type filter (Bug, Task, User Story, etc.).",
+          },
+          limit: {
+            type: "integer",
+            description:
+              "Maximum number of results to return (1-50, default 20).",
+            minimum: 1,
+            maximum: 50,
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const project =
+          typeof input["project"] === "string"
+            ? input["project"]
+            : undefined;
+        const state =
+          typeof input["state"] === "string" ? input["state"] : undefined;
+        const type =
+          typeof input["type"] === "string" ? input["type"] : undefined;
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : 20;
+        return adoWorkItems(config, project, state, type, limit);
+      },
+    },
+    {
+      name: "ado_repos",
+      description: "List Azure DevOps repositories in a project.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project: {
+            type: "string",
+            description: "Project name to filter by.",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const project =
+          typeof input["project"] === "string"
+            ? input["project"]
+            : undefined;
+        return adoRepos(config, project);
+      },
+    },
+    {
+      name: "ado_pull_requests",
+      description:
+        "List Azure DevOps pull requests. Filter by status (active/completed/abandoned).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          project: {
+            type: "string",
+            description: "Project name to filter by.",
+          },
+          status: {
+            type: "string",
+            description:
+              "PR status filter (active, completed, abandoned).",
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const project =
+          typeof input["project"] === "string"
+            ? input["project"]
+            : undefined;
+        const status =
+          typeof input["status"] === "string"
+            ? input["status"]
+            : undefined;
+        return adoPullRequests(config, project, status);
+      },
+    },
+    {
+      name: "ado_build_logs",
+      description:
+        "Get details and logs for a specific Azure DevOps build run.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          build_id: {
+            type: "integer",
+            description: "The build ID to look up.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+        },
+        required: ["build_id"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const buildId = input["build_id"];
+        if (typeof buildId !== "number") {
+          throw new Error("build_id is required and must be a number");
+        }
+        const project =
+          typeof input["project"] === "string"
+            ? input["project"]
+            : undefined;
+        return adoBuildLogs(config, buildId, project);
       },
     },
 
@@ -280,6 +483,84 @@ export function registerGraphTools(
         const limit =
           typeof input["limit"] === "number" ? input["limit"] : 10;
         return outlookFolder(config, folderId, limit);
+      },
+    },
+    {
+      name: "outlook_flag",
+      description: "Flag an email for follow-up in Outlook.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          message_id: {
+            type: "string",
+            description: "The Outlook message ID to flag.",
+          },
+        },
+        required: ["message_id"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const messageId = input["message_id"];
+        if (typeof messageId !== "string" || !messageId) {
+          throw new Error("message_id is required");
+        }
+        return outlookFlag(config, messageId);
+      },
+    },
+    {
+      name: "outlook_move",
+      description:
+        "Move an email to a different Outlook folder (Archive, Deleted Items, etc.).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          message_id: {
+            type: "string",
+            description: "The Outlook message ID to move.",
+          },
+          destination_folder: {
+            type: "string",
+            description:
+              "Target folder name (Archive, Deleted Items, etc.).",
+          },
+        },
+        required: ["message_id", "destination_folder"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const messageId = input["message_id"];
+        if (typeof messageId !== "string" || !messageId) {
+          throw new Error("message_id is required");
+        }
+        const destinationFolder = input["destination_folder"];
+        if (typeof destinationFolder !== "string" || !destinationFolder) {
+          throw new Error("destination_folder is required");
+        }
+        return outlookMove(config, messageId, destinationFolder);
+      },
+    },
+    {
+      name: "outlook_unread",
+      description:
+        "Get unread emails only. Returns subject, sender, date, and preview.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            description:
+              "Number of unread emails to return (1-50, default 10).",
+            minimum: 1,
+            maximum: 50,
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : 10;
+        return outlookUnread(config, limit);
       },
     },
   ];

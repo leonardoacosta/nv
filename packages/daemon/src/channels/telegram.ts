@@ -19,6 +19,8 @@ import { buildSoulReply } from "../telegram/commands/soul.js";
 import { buildStatusReply } from "../telegram/commands/status.js";
 import { buildAzReply } from "../telegram/commands/az.js";
 import { buildMailReply } from "../telegram/commands/mail.js";
+import { buildPimReply } from "../telegram/commands/pim.js";
+import { buildAdoReply } from "../telegram/commands/ado.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -384,6 +386,8 @@ export class TelegramAdapter {
         { command: "status", description: "Daemon and fleet status" },
         { command: "az", description: "Run Azure CLI command (/az vm list)" },
         { command: "mail", description: "Read Outlook email (/mail, /mail read ID, /mail search query)" },
+        { command: "pim", description: "PIM role status and activation" },
+        { command: "ado", description: "Azure DevOps: work items, PRs, repos" },
       ])
       .catch((err: unknown) => {
         this.log.error({ err }, "Failed to register bot commands");
@@ -498,6 +502,31 @@ export class TelegramAdapter {
         }
       }
       void this.handleDirectCommand(chatId, () => buildMailReply(subcommand, arg));
+    });
+
+    // /pim [args] — PIM role status and activation
+    this.bot.onText(/^\/pim(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const argsText = match?.[3]?.trim();
+      void this.handleDirectCommand(chatId, () => buildPimReply(argsText));
+    });
+
+    // /ado [subcommand] [arg] — Azure DevOps
+    this.bot.onText(/^\/ado(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const argsText = match?.[3]?.trim();
+      let subcommand: string | undefined;
+      let arg: string | undefined;
+      if (argsText) {
+        const spaceIdx = argsText.indexOf(" ");
+        if (spaceIdx === -1) {
+          subcommand = argsText;
+        } else {
+          subcommand = argsText.slice(0, spaceIdx);
+          arg = argsText.slice(spaceIdx + 1).trim();
+        }
+      }
+      void this.handleDirectCommand(chatId, () => buildAdoReply(subcommand, arg));
     });
 
     // ── Agent-routed commands (complex — go through onMessageCallback) ──────

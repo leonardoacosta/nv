@@ -34,6 +34,7 @@ export function sshCloudPC(
   userPath: string,
   script: string,
   args: string,
+  timeoutMs: number = 30_000,
 ): Promise<string> {
   const cmd = `powershell -ExecutionPolicy Bypass -Command "& { . ${userPath}\\${script} ${args} }"`;
 
@@ -41,14 +42,14 @@ export function sshCloudPC(
     const child = execFile(
       "ssh",
       ["-o", "ConnectTimeout=10", host, cmd],
-      { timeout: 30_000 },
+      { timeout: timeoutMs },
       (error, stdout, stderr) => {
         if (error) {
           // Timeout: child_process sets error.killed when the process was killed by timeout
           if (error.killed || error.code === "ETIMEDOUT") {
             return reject(
               new SshError(
-                "CloudPC SSH timed out after 30 seconds",
+                `CloudPC SSH timed out after ${Math.round(timeoutMs / 1000)} seconds`,
                 504,
               ),
             );

@@ -126,7 +126,7 @@
             "UI": 10,
             "E2E": 3
           },
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -136,7 +136,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-27T16:10:36.840911",
-          "merged_at": null
+          "merged_at": "2026-03-27T16:32:42.255985"
         },
         {
           "name": "add-shadcn-ui-package",
@@ -151,7 +151,7 @@
             "UI": 17,
             "E2E": 2
           },
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -161,7 +161,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-27T16:10:36.840913",
-          "merged_at": null
+          "merged_at": "2026-03-27T16:32:42.255987"
         }
       ],
       "total_tasks": 41
@@ -229,23 +229,27 @@
       "total_tasks": 24
     }
   ],
-  "current_wave": 2,
+  "current_wave": 3,
   "started_at": "2026-03-27T15:40:51.911657",
   "completed_at": null,
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
     "add-turborepo",
     "extract-shared-validators",
-    "upgrade-tailwind-v4"
+    "upgrade-tailwind-v4",
+    "add-tanstack-query",
+    "add-shadcn-ui-package"
   ],
   "failed_specs": [],
   "mega_batch_state": {
-    "current_phase": "E2E",
+    "current_phase": null,
     "phases_completed": [
       "API_wave2",
-      "UI_wave2"
+      "UI_wave2",
+      "E2E_wave2"
     ],
     "task_results": {
       "add-turborepo": {},
@@ -271,7 +275,8 @@
       "UI_wave1": "2026-03-27T16:01:46.263665",
       "E2E_wave1": "2026-03-27T16:09:00.124730",
       "API_wave2": "2026-03-27T16:15:05.543136",
-      "UI_wave2": "2026-03-27T16:30:08.962547"
+      "UI_wave2": "2026-03-27T16:30:08.962547",
+      "E2E_wave2": "2026-03-27T16:32:42.255978"
     }
   }
 }

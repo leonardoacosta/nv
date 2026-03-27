@@ -41,9 +41,9 @@ export async function GET() {
       .execute<{ count: number }>(
         sql`SELECT COUNT(*)::int AS count FROM ${messages}`,
       )
-      .then((r) => r.rows[0]?.count ?? 0);
+      .then((r) => (r as unknown as { count: number }[])[0]?.count ?? 0);
 
-    const mapped = rows.rows.map((r) => ({
+    const mapped = (rows as unknown as { sender: string; message_count: number; channels: string; first_seen: string; last_seen: string; contact_id: string | null; relationship_type: string | null; notes: string | null }[]).map((r) => ({
       name: r.sender,
       channels: r.channels ? r.channels.split(",") : [],
       message_count: r.message_count,
@@ -52,7 +52,7 @@ export async function GET() {
       contact_id: r.contact_id,
       relationship_type: r.relationship_type,
       notes: r.notes,
-      channel_ids: r.channel_ids,
+      channel_ids: null,
     }));
 
     const response: DiscoveredContactsResponse = {

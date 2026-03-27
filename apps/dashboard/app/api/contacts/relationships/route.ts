@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     `);
 
     const response: RelationshipsResponse = {
-      relationships: rows.rows.map((r) => ({
+      relationships: (rows as unknown as { person_a: string; person_b: string; shared_channel: string; co_occurrence_count: number }[]).map((r) => ({
         person_a: r.person_a,
         person_b: r.person_b,
         shared_channel: r.shared_channel,

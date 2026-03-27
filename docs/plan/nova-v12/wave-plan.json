@@ -46,31 +46,39 @@
       "specs": [
         {
           "name": "obligations-kanban-board",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
           "pr_url": null,
           "pr_state": null,
-          "gates_passed": [],
+          "gates_passed": [
+            "API_typecheck",
+            "UI_build",
+            "E2E_typecheck"
+          ],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-27T01:36:26.398177",
+          "merged_at": "2026-03-27T02:28:25.467848"
         },
         {
           "name": "automations-ux-overhaul",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
           "pr_url": null,
           "pr_state": null,
-          "gates_passed": [],
+          "gates_passed": [
+            "API_typecheck",
+            "UI_build",
+            "E2E_typecheck"
+          ],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-27T01:36:26.398179",
+          "merged_at": "2026-03-27T02:28:25.467850"
         }
       ]
     },
@@ -218,14 +226,17 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 2,
+  "current_wave": 3,
   "started_at": "2026-03-27T01:19:58.504122",
   "completed_at": null,
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
-    "entity-resolution-layer"
+    "entity-resolution-layer",
+    "obligations-kanban-board",
+    "automations-ux-overhaul"
   ],
   "failed_specs": [],
   "pre_audit_sha": "372d13e",
@@ -244,12 +255,14 @@
     },
     "phase_started_at": {
       "DB": "2026-03-27T01:20:36.106203",
-      "API": "2026-03-27T01:24:13.042516"
+      "API": "2026-03-27T01:36:26.398168",
+      "UI": "2026-03-27T01:38:31.449982"
     },
     "phase_completed_at": {
       "DB": "2026-03-27T01:23:57.749848",
-      "API": "2026-03-27T01:30:47.454166",
-      "E2E": "2026-03-27T01:30:59.499310"
+      "API": "2026-03-27T01:38:31.449991",
+      "E2E": "2026-03-27T02:28:25.467846",
+      "UI": "2026-03-27T02:28:25.467838"
     }
   }
 }

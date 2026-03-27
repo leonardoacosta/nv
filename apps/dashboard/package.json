@@ -11,15 +11,15 @@
     "docker:push": "docker tag nova-cc-session:latest ${REGISTRY:-ghcr.io/nyaptor}/nova-cc-session:latest && docker push ${REGISTRY:-ghcr.io/nyaptor}/nova-cc-session:latest"
   },
   "dependencies": {
+    "@nova/db": "workspace:*",
+    "drizzle-orm": "^0.39.3",
     "geist": "^1.3.1",
-    "http-proxy": "^1.18.1",
     "lucide-react": "^0.469.0",
     "next": "^15.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@types/http-proxy": "^1.17.15",
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",

@@ -1,9 +1,10 @@
 /**
- * Canonical TypeScript response types for the NV daemon API.
+ * Canonical TypeScript response types for the Nova dashboard API.
  *
- * All types are derived from the Axum handler definitions in
- * `crates/nv-daemon/src/dashboard.rs` and `crates/nv-daemon/src/http.rs`.
- * Do not guess shapes — read the backend before adding types here.
+ * Data sources:
+ * - DB-backed routes: Drizzle queries against @nova/db schemas
+ * - Fleet-backed routes: HTTP calls to fleet microservices (tool-router, memory-svc, messages-svc, meta-svc)
+ * - Static routes: Environment variables / config
  */
 
 // ── GET /api/memory ────────────────────────────────────────────────────────
@@ -35,7 +36,6 @@ export interface PutMemoryResponse {
 
 /**
  * A single note on an obligation (from obligation_notes table).
- * Matches `ObligationNote` struct in nv-daemon.
  */
 export interface ObligationNote {
   id: string;
@@ -47,8 +47,7 @@ export interface ObligationNote {
 }
 
 /**
- * A single activity event from the obligation activity ring buffer.
- * Matches `ObligationActivityEvent` in nv-daemon/src/http.rs.
+ * A single activity event derived from obligation update history.
  */
 export interface ObligationActivity {
   id: string;
@@ -61,7 +60,7 @@ export interface ObligationActivity {
 
 /**
  * Stats summary returned by GET /api/obligations/stats.
- * Matches `ObligationStats` in nv-daemon/src/obligation_store.rs.
+ * Computed via Drizzle aggregation queries on the obligations table.
  */
 export interface ObligationStats {
   open_nova: number;
@@ -73,7 +72,8 @@ export interface ObligationStats {
 
 /**
  * A single obligation returned by GET /api/obligations.
- * Field names match the Rust `Obligation` struct in nv-core/src/types.rs.
+ * Field names use snake_case to match the original API contract.
+ * Source: Drizzle query on obligations table.
  */
 export interface DaemonObligation {
   id: string;
@@ -136,7 +136,7 @@ export interface NexusSessionRaw {
   };
 }
 
-/** Both the Nexus path and the fallback channel-proxy path return this wrapper. */
+/** Session list response from Drizzle query on sessions table. */
 export interface SessionsGetResponse {
   sessions: NexusSessionRaw[];
   uptime_secs?: number;
@@ -147,8 +147,8 @@ export interface SessionsGetResponse {
 // ── GET /api/cc-sessions ───────────────────────────────────────────────────
 
 /**
- * Summary of a CC subprocess session managed by CcSessionManager.
- * Matches `CcSessionSummary` in `crates/nv-daemon/src/cc_sessions.rs`.
+ * Summary of a CC session.
+ * Source: Drizzle query on sessions table filtered by command pattern.
  */
 export interface CcSessionSummary {
   id: string;
@@ -167,7 +167,7 @@ export interface CcSessionsGetResponse {
 
 // ── GET /api/config ────────────────────────────────────────────────────────
 
-/** The config endpoint returns the raw config JSON — shape varies by project. */
+/** The config endpoint returns environment-derived configuration. */
 export type ConfigGetResponse = Record<string, unknown>;
 
 // ── PUT /api/config ────────────────────────────────────────────────────────
@@ -183,10 +183,10 @@ export interface PutConfigResponse {
 
 // ── GET /api/server-health ────────────────────────────────────────────────
 
-/** Backend `HealthStatus` enum serializes as snake_case strings. */
+/** Health status enum. */
 export type BackendHealthStatus = "healthy" | "degraded" | "critical";
 
-/** A single server health snapshot (from `ServerHealthSnapshot` in Rust). */
+/** A single server health snapshot. */
 export interface ServerHealthSnapshot {
   id: number;
   timestamp: string;
@@ -235,7 +235,7 @@ export interface BriefingHistoryGetResponse {
 
 // ── GET /api/messages ──────────────────────────────────────────────────────
 
-/** A single stored message from the daemon message store. */
+/** A single stored message. Source: messages-svc fleet service. */
 export interface StoredMessage {
   id: number;
   timestamp: string;
@@ -256,7 +256,7 @@ export interface MessagesGetResponse {
 
 // ── GET /stats ─────────────────────────────────────────────────────────────
 
-/** Per-tool breakdown entry from `ToolBreakdown` in Rust. */
+/** Per-tool breakdown entry. Source: meta-svc fleet service. */
 export interface ToolBreakdown {
   name: string;
   count: number;
@@ -264,14 +264,14 @@ export interface ToolBreakdown {
   avg_duration_ms: number | null;
 }
 
-/** Aggregated tool usage from `ToolStatsReport` in Rust. */
+/** Aggregated tool usage from meta-svc. */
 export interface ToolStatsReport {
   total_invocations: number;
   invocations_today: number;
   per_tool: ToolBreakdown[];
 }
 
-/** The `/stats` endpoint merges message stats, tool_usage, claude_usage, and budget. */
+/** The `/stats` endpoint returns tool usage stats from the fleet. */
 export interface StatsGetResponse {
   tool_usage: ToolStatsReport;
   [key: string]: unknown;
@@ -280,9 +280,7 @@ export interface StatsGetResponse {
 // ── GET /api/contacts ──────────────────────────────────────────────────────
 
 /**
- * A single contact returned by GET /api/contacts.
- * Field names match the Rust `Contact` struct in crates/nv-daemon/src/contact_store.rs.
- * The GET /api/contacts handler returns Vec<Contact> as a plain JSON array.
+ * A single contact. Source: Drizzle query on contacts table.
  */
 export interface Contact {
   id: string;
@@ -301,7 +299,7 @@ export interface Contact {
 
 // ── GET /api/diary ─────────────────────────────────────────────────────────
 
-/** A single diary entry returned by GET /api/diary. */
+/** A single diary entry. Source: Drizzle query on diary table. */
 export interface DiaryEntryItem {
   time: string;
   trigger_type: string;

@@ -6,7 +6,11 @@ services:
     expose:
       - "3000"
     environment:
-      - DAEMON_URL=http://host.docker.internal:8400
+      - DATABASE_URL=postgresql://cortex:cortexdev@host.docker.internal:5436/nova
+      - TOOL_ROUTER_URL=http://host.docker.internal:4100
+      - MEMORY_SVC_URL=http://host.docker.internal:4101
+      - MESSAGES_SVC_URL=http://host.docker.internal:4102
+      - META_SVC_URL=http://host.docker.internal:4108
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

@@ -1,0 +1,23 @@
+/**
+ * Entity resolution library barrel export.
+ *
+ * Functions:
+ *  - parsePeopleMemory  — parse memory `people` topic into PersonProfile[]
+ *  - resolveContacts    — build sender -> displayName map from contacts + memory
+ *  - enrichProjects     — enrich ApiProject[] with DB counts + memory context
+ *
+ * Types:
+ *  - PersonProfile
+ *  - ContactRow
+ *  - ApiProject
+ *  - EnrichedProject
+ */
+
+export { parsePeopleMemory } from "./people-parser.js";
+export type { PersonProfile } from "./people-parser.js";
+
+export { resolveContacts } from "./contact-resolver.js";
+export type { ContactRow } from "./contact-resolver.js";
+
+export { enrichProjects } from "./project-enrichment.js";
+export type { ApiProject, EnrichedProject } from "./project-enrichment.js";

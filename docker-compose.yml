@@ -3,13 +3,19 @@ services:
     build:
       context: .
       dockerfile: apps/dashboard/Dockerfile
-    network_mode: host
+    expose:
+      - "3000"
     environment:
-      - DATABASE_URL=postgresql://cortex:cortexdev@localhost:5436/nova
-      - TOOL_ROUTER_URL=http://localhost:4100
-      - MEMORY_SVC_URL=http://localhost:4101
-      - MESSAGES_SVC_URL=http://localhost:4102
-      - META_SVC_URL=http://localhost:4108
+      # Postgres reachable via Docker network (homelab-postgres container)
+      - DATABASE_URL=postgresql://cortex:cortexdev@172.20.0.140:5432/nova
+      # Fleet services on host — not reachable from Docker bridge (ufw blocks).
+      # Fleet-backed routes (/api/messages, /api/memory, /api/server-health,
+      # /api/latency, /api/stats) will return errors until firewall is fixed.
+      # DB-backed routes work fine.
+      - TOOL_ROUTER_URL=http://172.20.0.1:4100
+      - MEMORY_SVC_URL=http://172.20.0.1:4101
+      - MESSAGES_SVC_URL=http://172.20.0.1:4102
+      - META_SVC_URL=http://172.20.0.1:4108
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -19,3 +25,9 @@ services:
       - "traefik.http.routers.nova-dashboard.tls.certresolver=cloudflare"
       - "traefik.http.routers.nova-dashboard.middlewares=homelab-webapp@file"
       - "traefik.http.services.nova-dashboard.loadbalancer.server.port=3000"
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    external: true

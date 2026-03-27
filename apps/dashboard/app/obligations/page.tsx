@@ -27,7 +27,7 @@ import {
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import ObligationSummaryBar from "@/components/ObligationSummaryBar";
-import ActivityFeed from "@/components/ActivityFeed";
+// ActivityFeed retained in codebase for other pages; removed from Active tab layout
 import ApprovalQueueItem from "@/components/approvals/ApprovalQueueItem";
 import BatchActionBar from "@/components/approvals/BatchActionBar";
 import QueueClearCelebration from "@/components/approvals/QueueClearCelebration";
@@ -40,6 +40,8 @@ import type {
   ObligationsGetResponse,
 } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
+import KanbanBoard from "@/components/obligations/KanbanBoard";
+import { useKanbanKeyboard } from "@/hooks/useKanbanKeyboard";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1077,6 +1079,110 @@ function ApprovalsTabContent() {
 }
 
 // ---------------------------------------------------------------------------
+// KanbanBoardWithKeyboard — wraps KanbanBoard with keyboard navigation
+// ---------------------------------------------------------------------------
+
+interface KanbanBoardWithKeyboardProps {
+  obligations: DaemonObligation[];
+  onRefresh: () => void;
+  approachingDeadlineHours: number;
+  loading: boolean;
+}
+
+function KanbanBoardWithKeyboard({
+  obligations,
+  onRefresh,
+  approachingDeadlineHours,
+  loading,
+}: KanbanBoardWithKeyboardProps) {
+  const [keyboardExpandedId, setKeyboardExpandedId] = useState<string | null>(null);
+
+  const handleKeyboardDone = useCallback(
+    async (id: string) => {
+      try {
+        await apiFetch(`/api/obligations/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "done" }),
+        });
+        onRefresh();
+      } catch {
+        // ignore
+      }
+    },
+    [onRefresh],
+  );
+
+  const handleKeyboardDismiss = useCallback(
+    async (id: string) => {
+      try {
+        await apiFetch(`/api/obligations/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "dismissed" }),
+        });
+        onRefresh();
+      } catch {
+        // ignore
+      }
+    },
+    [onRefresh],
+  );
+
+  const handleKeyboardReassign = useCallback(
+    async (id: string) => {
+      const obl = obligations.find((o) => o.id === id);
+      if (!obl) return;
+      const newOwner = obl.owner === "nova" ? "leo" : "nova";
+      try {
+        await apiFetch(`/api/obligations/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ owner: newOwner }),
+        });
+        onRefresh();
+      } catch {
+        // ignore
+      }
+    },
+    [obligations, onRefresh],
+  );
+
+  useKanbanKeyboard({
+    obligations,
+    expandedId: keyboardExpandedId,
+    onExpand: (id) => setKeyboardExpandedId((prev) => (prev === id ? null : id)),
+    onDone: (id) => void handleKeyboardDone(id),
+    onDismiss: (id) => void handleKeyboardDismiss(id),
+    onReassign: (id) => void handleKeyboardReassign(id),
+    active: true,
+  });
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[0, 1].map((col) => (
+          <div key={col} className="space-y-2">
+            <div className="h-6 w-24 animate-pulse rounded bg-ds-gray-100" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-16 animate-pulse rounded-lg bg-ds-gray-100 border border-ds-gray-400" />
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <KanbanBoard
+      obligations={obligations}
+      onRefresh={onRefresh}
+      approachingDeadlineHours={approachingDeadlineHours}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page (with Suspense for useSearchParams)
 // ---------------------------------------------------------------------------
 
@@ -1158,15 +1264,6 @@ function ObligationsPage() {
     }
   }, [obligations, initialExpandDone]);
 
-  const scrollToObligation = useCallback((id: string) => {
-    const el = document.getElementById(`obligation-${id}`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-      el.classList.add("ring-2", "ring-ds-gray-700");
-      setTimeout(() => el.classList.remove("ring-2", "ring-ds-gray-700"), 2000);
-    }
-  }, []);
-
   const sortByPriority = (items: DaemonObligation[]) =>
     [...items].sort((a, b) => a.priority - b.priority);
 
@@ -1174,12 +1271,6 @@ function ObligationsPage() {
   const open = obligations.filter((o) => activeStatuses.includes(o.status));
   const history = obligations.filter(
     (o) => o.status === "done" || o.status === "dismissed",
-  );
-
-  const nova = sortByPriority(open.filter((o) => o.owner === "nova"));
-  const leo = sortByPriority(open.filter((o) => o.owner === "leo"));
-  const other = sortByPriority(
-    open.filter((o) => o.owner !== "nova" && o.owner !== "leo"),
   );
 
   return (
@@ -1249,140 +1340,50 @@ function ObligationsPage() {
       {/* Tab content */}
       {tab === "approvals" ? (
         <ApprovalsTabContent />
+      ) : tab === "open" ? (
+        <div className="section-stagger-3">
+          {/* Kanban board — replaces flat Nova/Leo sections + ActivityFeed sidebar */}
+          <KanbanBoardWithKeyboard
+            obligations={open}
+            onRefresh={fetchObligations}
+            approachingDeadlineHours={approachingDeadlineHours}
+            loading={loading}
+          />
+        </div>
       ) : (
-        /* Two-column layout: list (2/3) + activity feed (1/3) */
-        <div className="flex flex-col lg:flex-row gap-4 section-stagger-3">
-          {/* Obligations list */}
-          <div ref={listRef} className="flex-1 lg:w-2/3 min-w-0">
-            {loading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
+        /* History tab */
+        <div ref={listRef} className="section-stagger-3">
+          {loading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+                />
+              ))}
+            </div>
+          ) : (
+            <div key="history" className="animate-crossfade-in space-y-3">
+              {history.length === 0 ? (
+                <p className="text-copy-13 text-ds-gray-900 py-3">No history yet</p>
+              ) : (
+                sortByPriority(history).map((o, idx) => (
                   <div
-                    key={i}
-                    className="h-28 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-                  />
-                ))}
-              </div>
-            ) : tab === "open" ? (
-              <div key="open" className="animate-crossfade-in space-y-6">
-                {/* Nova */}
-                <section>
-                  <SectionHeading
-                    label="Nova"
-                    count={nova.length}
-                    initial="N"
-                    colorClass="bg-ds-gray-700/30 text-ds-gray-1000"
-                  />
-                  {nova.length === 0 ? (
-                    <p className="text-copy-13 text-ds-gray-900 py-3 pl-2">
-                      No obligations assigned to Nova
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {nova.map((o, idx) => (
-                        <div
-                          key={o.id}
-                          className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-                        >
-                          <ObligationCard
-                            obligation={o}
-                            onRefresh={fetchObligations}
-                            approachingDeadlineHours={approachingDeadlineHours}
-                            isExpanded={expandedIds.has(o.id)}
-                            onToggleExpand={() => toggleExpand(o.id)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                {/* Leo */}
-                <section>
-                  <SectionHeading
-                    label="Leo"
-                    count={leo.length}
-                    initial="L"
-                    colorClass="bg-red-700/30 text-red-700"
-                  />
-                  {leo.length === 0 ? (
-                    <p className="text-copy-13 text-ds-gray-900 py-3 pl-2">
-                      No obligations assigned to Leo
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {leo.map((o, idx) => (
-                        <div
-                          key={o.id}
-                          className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-                        >
-                          <ObligationCard
-                            obligation={o}
-                            onRefresh={fetchObligations}
-                            approachingDeadlineHours={approachingDeadlineHours}
-                            isExpanded={expandedIds.has(o.id)}
-                            onToggleExpand={() => toggleExpand(o.id)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
-                {/* Other */}
-                {other.length > 0 && (
-                  <section>
-                    <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide mb-2">
-                      Other
-                    </h2>
-                    <div className="space-y-3">
-                      {other.map((o) => (
-                        <ObligationCard
-                          key={o.id}
-                          obligation={o}
-                          onRefresh={fetchObligations}
-                          approachingDeadlineHours={approachingDeadlineHours}
-                          isExpanded={expandedIds.has(o.id)}
-                          onToggleExpand={() => toggleExpand(o.id)}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {open.length === 0 && (
-                  <p className="text-copy-13 text-ds-gray-900 py-3">No active obligations</p>
-                )}
-              </div>
-            ) : (
-              // History tab
-              <div key="history" className="animate-crossfade-in space-y-3">
-                {history.length === 0 ? (
-                  <p className="text-copy-13 text-ds-gray-900 py-3">No history yet</p>
-                ) : (
-                  sortByPriority(history).map((o, idx) => (
-                    <div
-                      key={o.id}
-                      className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-                    >
-                      <ObligationCard
-                        obligation={o}
-                        onRefresh={fetchObligations}
-                        approachingDeadlineHours={approachingDeadlineHours}
-                        isExpanded={expandedIds.has(o.id)}
-                        onToggleExpand={() => toggleExpand(o.id)}
-                      />
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Activity feed sidebar */}
-          <div className="w-full lg:w-1/3 shrink-0">
-            <ActivityFeed onObligationClick={scrollToObligation} />
-          </div>
+                    key={o.id}
+                    className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
+                  >
+                    <ObligationCard
+                      obligation={o}
+                      onRefresh={fetchObligations}
+                      approachingDeadlineHours={approachingDeadlineHours}
+                      isExpanded={expandedIds.has(o.id)}
+                      onToggleExpand={() => toggleExpand(o.id)}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

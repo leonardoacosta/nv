@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-03-27T03:25:00.000Z",
+  "generated_by": "apply:all",
+  "project": "nv",
+  "stack": "typescript",
+  "git_sha": "def61e3",
+  "plan_dir": "docs/plan/nova-v11",
+  "execution_mode": "consolidated",
+  "spec_names": [
+    "global-density-pass",
+    "redesign-dashboard-home",
+    "add-briefing-cron",
+    "add-automations-page",
+    "redesign-integrations-status",
+    "redesign-contacts-graph"
+  ],
+  "waves": [
+    {"number": 1, "label": "Wave 1 — Density Foundation", "specs": [{"name": "global-density-pass"}]},
+    {"number": 2, "label": "Wave 2 — Home + Briefing", "specs": [{"name": "redesign-dashboard-home"}, {"name": "add-briefing-cron"}]},
+    {"number": 3, "label": "Wave 3 — Automations + Status", "specs": [{"name": "add-automations-page"}, {"name": "redesign-integrations-status"}]},
+    {"number": 4, "label": "Wave 4 — Contacts Graph", "specs": [{"name": "redesign-contacts-graph"}]}
+  ],
+  "decisions": [
+    {"date": "2026-03-26", "decision": "global-density-pass must be Wave 1 — touches all pages", "rationale": "Every other spec builds on the density layout changes", "source": "system"},
+    {"date": "2026-03-26", "decision": "Execute all 4 waves in single session", "rationale": "User chose to run all tonight rather than split across sessions", "source": "user"},
+    {"date": "2026-03-26", "decision": "redesign-contacts-graph runs solo in Wave 4", "rationale": "34 tasks, too large to pair. Single-spec guardrail overridden.", "source": "guardrail"}
+  ]
+}

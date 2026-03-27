@@ -130,12 +130,15 @@ async function checkGraphTokens(): Promise<TokenResult[]> {
 
   const results = await Promise.allSettled(
     tokens.map(async (t): Promise<TokenResult> => {
+      // CloudPC is Windows — use PowerShell to read token files from $env:USERPROFILE
+      const filePath = `$env:USERPROFILE\\${t.file}`;
+      const psCmd = `if (Test-Path '${filePath}') { Get-Content '${filePath}' -Raw } else { Write-Output 'MISSING' }`;
       const { stdout, exitCode } = await exec(
         "ssh",
-        ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", "cloudpc", "cat", `~/${t.file}`],
+        ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", "cloudpc", "powershell", "-NoProfile", "-Command", psCmd],
         15_000,
       );
-      if (exitCode !== 0 || !stdout) {
+      if (exitCode !== 0 || !stdout || stdout.trim() === "MISSING") {
         return { name: t.name, file: t.file, valid: false, expiresIn: null, error: "file not found" };
       }
       try {

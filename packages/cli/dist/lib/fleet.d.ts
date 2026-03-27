@@ -32,5 +32,5 @@ export declare const FLEET_SERVICES: ServiceDef[];
 export declare function checkFleet(timeoutMs?: number): Promise<HealthResult[]>;
 /** Fetch channel statuses from channels-svc. */
 export declare function getChannels(timeoutMs?: number): Promise<ChannelInfo[]>;
-/** Deep-check all fleet services for meaningful data. 15s per-check timeout. */
+/** Deep-check all fleet services for meaningful data. */
 export declare function checkFleetDeep(timeoutMs?: number): Promise<DeepCheckResult[]>;

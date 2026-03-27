@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle, XCircle } from "lucide-react";
+import { Button } from "@nova/ui";
 
 interface BatchActionBarProps {
   /** Number of items currently checked. */
@@ -31,32 +32,36 @@ export default function BatchActionBar({
       </span>
 
       <div className="ml-auto flex items-center gap-2">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onClearSelection}
           disabled={busy}
-          className="px-3 py-2 min-h-9 rounded-lg text-xs font-medium text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           Clear
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={onDismissAll}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg text-xs font-semibold bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
+          className="hover:bg-red-700/20 hover:text-red-700 hover:border-red-700/40"
         >
           <XCircle size={14} />
           Dismiss All Selected
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          size="sm"
           onClick={onApproveAll}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+          className="bg-emerald-600 hover:bg-emerald-500 text-white"
         >
           <CheckCircle size={14} />
           Approve All Selected
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -15,8 +15,9 @@ import {
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
+import QuerySkeleton from "@/components/layout/QuerySkeleton";
 import type { SessionListResponse, SessionTimelineItem } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { useApiQuery } from "@/lib/hooks/use-api-query";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -71,7 +72,7 @@ const TRIGGER_BADGE: Record<string, { bg: string; text: string }> = {
 };
 
 // ---------------------------------------------------------------------------
-// SessionRow (task 3.2)
+// SessionRow
 // ---------------------------------------------------------------------------
 
 function SessionRow({ session }: { session: SessionTimelineItem }) {
@@ -163,11 +164,7 @@ function SessionsPage() {
   const initialCommand = searchParams.get("command") ?? "";
 
   // 2. Local State
-  const [sessions, setSessions] = useState<SessionTimelineItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(initialPage);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState(initialProject);
   const [triggerFilter, setTriggerFilter] = useState<TriggerFilter>(initialTrigger);
   const [dateFrom, setDateFrom] = useState(initialDateFrom);
@@ -177,70 +174,38 @@ function SessionsPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commandFilter, setCommandFilter] = useState(initialCommand);
 
-  // Extract distinct projects from fetched data
-  const [distinctProjects, setDistinctProjects] = useState<string[]>([]);
+  // Build query params for useApiQuery
+  const apiParams: Record<string, string> = {
+    page: String(page),
+    limit: "25",
+  };
+  if (projectFilter !== "all") apiParams.project = projectFilter;
+  if (triggerFilter !== "all") apiParams.trigger_type = triggerFilter;
+  if (dateFrom) apiParams.date_from = dateFrom;
+  if (dateTo) apiParams.date_to = dateTo;
 
-  // 3. Fetch sessions
-  const fetchSessions = useCallback(
-    async (pageNum: number) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams();
-        params.set("page", String(pageNum));
-        params.set("limit", "25");
-        if (projectFilter !== "all") params.set("project", projectFilter);
-        if (triggerFilter !== "all") params.set("trigger_type", triggerFilter);
-        if (dateFrom) params.set("date_from", dateFrom);
-        if (dateTo) params.set("date_to", dateTo);
-
-        const res = await apiFetch(`/api/sessions?${params.toString()}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as SessionListResponse;
-        setSessions(data.sessions);
-        setTotal(data.total);
-        setPage(data.page);
-
-        // Collect distinct projects for dropdown
-        const allProjects = data.sessions.map((s) => s.project);
-        setDistinctProjects((prev) => {
-          const merged = new Set([...prev, ...allProjects]);
-          return Array.from(merged).sort();
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load sessions");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [projectFilter, triggerFilter, dateFrom, dateTo],
+  // 3. Query — sessions list
+  const { data, isLoading, error, refetch } = useApiQuery<SessionListResponse>(
+    "/api/sessions",
+    { params: apiParams },
   );
 
-  // 4. Effects
-  useEffect(() => {
-    void fetchSessions(1);
-  }, [fetchSessions]);
+  const sessions = data?.sessions ?? [];
+  const total = data?.total ?? 0;
 
-  // Initial distinct projects load (unfiltered)
-  useEffect(() => {
-    const loadProjects = async () => {
-      try {
-        const res = await apiFetch("/api/sessions?page=1&limit=100");
-        if (res.ok) {
-          const data = (await res.json()) as SessionListResponse;
-          const projects = Array.from(
-            new Set(data.sessions.map((s) => s.project)),
-          ).sort();
-          setDistinctProjects(projects);
-        }
-      } catch {
-        // Non-critical — dropdown just stays empty
-      }
-    };
-    void loadProjects();
-  }, []);
+  // 4. Distinct projects query (unfiltered, for dropdown)
+  const { data: allSessionsData } = useApiQuery<SessionListResponse>(
+    "/api/sessions",
+    { params: { page: "1", limit: "100" } },
+  );
+  const distinctProjects = Array.from(
+    new Set([
+      ...(allSessionsData?.sessions ?? []).map((s) => s.project),
+      ...sessions.map((s) => s.project),
+    ]),
+  ).sort();
 
-  // Debounced search
+  // 5. Debounced search
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -249,7 +214,7 @@ function SessionsPage() {
     }, 300);
   };
 
-  // 5. Update URL search params
+  // 6. Update URL search params
   useEffect(() => {
     const params = new URLSearchParams();
     if (projectFilter !== "all") params.set("project", projectFilter);
@@ -265,9 +230,9 @@ function SessionsPage() {
     router.replace(newUrl, { scroll: false });
   }, [projectFilter, triggerFilter, dateFrom, dateTo, debouncedSearch, commandFilter, page, router]);
 
-  // 6. Derived — client-side text search + command filtering
+  // 7. Derived — client-side text search + command filtering
   const filtered = sessions.filter((s) => {
-    // Command filter (task 3.5)
+    // Command filter
     if (commandFilter && s.command !== commandFilter) return false;
     // Text search
     if (debouncedSearch) {
@@ -282,7 +247,7 @@ function SessionsPage() {
     return true;
   });
 
-  // 7. Handlers
+  // 8. Handlers
   const handleClearFilters = () => {
     setProjectFilter("all");
     setTriggerFilter("all");
@@ -291,6 +256,7 @@ function SessionsPage() {
     setSearchInput("");
     setDebouncedSearch("");
     setCommandFilter("");
+    setPage(1);
   };
 
   const hasFilters =
@@ -303,32 +269,32 @@ function SessionsPage() {
 
   const totalPages = Math.ceil(total / 25);
 
-  // 8. Header action
+  // 9. Header action
   const headerAction = (
     <button
       type="button"
-      onClick={() => void fetchSessions(page)}
-      disabled={loading}
+      onClick={() => void refetch()}
+      disabled={isLoading}
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
     >
-      <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+      <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
       Refresh
     </button>
   );
 
-  // 9. Render
+  // 10. Render
   return (
     <PageShell
       title="Sessions"
       subtitle={
-        loading
+        isLoading
           ? "Loading..."
           : `${total} session${total !== 1 ? "s" : ""} total`
       }
       action={headerAction}
     >
       <div className="flex flex-col gap-3">
-        {/* Filter bar (task 3.3) */}
+        {/* Filter bar */}
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           {/* Search */}
           <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -361,7 +327,7 @@ function SessionsPage() {
           {/* Project dropdown */}
           <select
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            onChange={(e) => { setProjectFilter(e.target.value); setPage(1); }}
             className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
           >
             <option value="all">All projects</option>
@@ -379,7 +345,7 @@ function SessionsPage() {
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setTriggerFilter(t)}
+                  onClick={() => { setTriggerFilter(t); setPage(1); }}
                   className={[
                     "px-3 py-1 rounded-md text-label-13 transition-colors capitalize",
                     triggerFilter === t
@@ -398,7 +364,7 @@ function SessionsPage() {
             <input
               type="date"
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
               aria-label="Date from"
             />
@@ -406,14 +372,14 @@ function SessionsPage() {
             <input
               type="date"
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
               className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
               aria-label="Date to"
             />
           </div>
         </div>
 
-        {/* Command filter chip (task 3.5) */}
+        {/* Command filter chip */}
         {commandFilter && (
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ds-gray-alpha-200 text-label-13 text-ds-gray-1000">
@@ -432,7 +398,7 @@ function SessionsPage() {
         )}
 
         {/* Results count */}
-        {!loading && (
+        {!isLoading && (
           <div className="flex items-center justify-between">
             <p className="text-copy-13 text-ds-gray-900">
               {filtered.length} session{filtered.length !== 1 ? "s" : ""}
@@ -454,21 +420,14 @@ function SessionsPage() {
         {error && (
           <ErrorBanner
             message="Failed to load sessions"
-            detail={error}
-            onRetry={() => void fetchSessions(page)}
+            detail={error.message}
+            onRetry={() => void refetch()}
           />
         )}
 
         {/* Loading skeleton */}
-        {loading && sessions.length === 0 ? (
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-              />
-            ))}
-          </div>
+        {isLoading && sessions.length === 0 ? (
+          <QuerySkeleton rows={8} height="h-16" />
         ) : filtered.length === 0 ? (
           /* Empty state */
           <div className="flex flex-col items-center gap-3 py-16">
@@ -514,12 +473,12 @@ function SessionsPage() {
           </div>
         )}
 
-        {/* Pagination (inline basic — P-2 adds full control) */}
-        {totalPages > 1 && !loading && (
+        {/* Pagination */}
+        {totalPages > 1 && !isLoading && (
           <div className="flex items-center justify-center gap-2 py-2">
             <button
               type="button"
-              onClick={() => void fetchSessions(page - 1)}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
               className="px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
             >
@@ -530,7 +489,7 @@ function SessionsPage() {
             </span>
             <button
               type="button"
-              onClick={() => void fetchSessions(page + 1)}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               className="px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
             >

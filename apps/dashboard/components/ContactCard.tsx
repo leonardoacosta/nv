@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@nova/ui";
 import type { DiscoveredContact } from "@/types/api";
 import { getPlatformColor } from "@/lib/brand-colors";
 
@@ -9,12 +10,12 @@ import { getPlatformColor } from "@/lib/brand-colors";
 
 const RELATIONSHIP_BADGE: Record<
   string,
-  { bg: string; text: string; label: string }
+  { variant: "default" | "destructive" | "warning" | "success" | "outline"; label: string }
 > = {
-  work: { bg: "bg-ds-gray-alpha-200", text: "text-ds-gray-1000", label: "Work" },
-  "personal-client": { bg: "bg-red-700/20", text: "text-red-700", label: "Personal" },
-  contributor: { bg: "bg-amber-700/20", text: "text-amber-700", label: "Contributor" },
-  social: { bg: "bg-green-700/20", text: "text-green-700", label: "Social" },
+  work: { variant: "default", label: "Work" },
+  "personal-client": { variant: "destructive", label: "Personal" },
+  contributor: { variant: "warning", label: "Contributor" },
+  social: { variant: "success", label: "Social" },
 };
 
 function relativeTime(iso: string): string {
@@ -67,7 +68,7 @@ export default function ContactCard({
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left bg-ds-bg-100 border border-ds-gray-400 rounded-xl p-4 hover:border-ds-gray-1000/40 transition-colors space-y-2"
+      className="w-full text-left bg-ds-bg-100 border border-ds-gray-400 rounded-xl p-4 hover:border-ds-gray-1000/40 transition-colors flex flex-col gap-2"
     >
       {/* Name + relationship badge */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -75,15 +76,9 @@ export default function ContactCard({
           {contact.name}
         </span>
         {badge ? (
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium ${badge.bg} ${badge.text}`}
-          >
-            {badge.label}
-          </span>
+          <Badge variant={badge.variant}>{badge.label}</Badge>
         ) : (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium bg-ds-gray-100 text-ds-gray-900">
-            Untagged
-          </span>
+          <Badge variant="outline">Untagged</Badge>
         )}
       </div>
 
@@ -105,7 +100,7 @@ export default function ContactCard({
       {/* Message count + last seen */}
       <p className="text-copy-13 text-ds-gray-900">
         {contact.message_count.toLocaleString()} messages
-        {" · "}
+        {" \u00B7 "}
         last seen {relativeTime(contact.last_seen)}
       </p>
 

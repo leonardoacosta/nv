@@ -8,6 +8,8 @@ import {
   Terminal,
   HelpCircle,
 } from "lucide-react";
+import { Badge } from "@nova/ui";
+import { Button } from "@nova/ui";
 import type { Approval, ApprovalActionType } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ export default function ApprovalQueueItem({
         className="flex items-start gap-3 flex-1 min-w-0 text-left"
       >
         {/* Action type icon */}
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ds-gray-100 border border-ds-gray-400 shrink-0 mt-0.5">
+        <div className="flex items-center justify-center size-8 rounded-lg bg-ds-gray-100 border border-ds-gray-400 shrink-0 mt-0.5">
           <ActionIcon size={14} className="text-ds-gray-900" />
         </div>
 
@@ -123,12 +125,17 @@ export default function ApprovalQueueItem({
             <span className="text-copy-14 font-medium text-ds-gray-1000 truncate">
               {approval.title}
             </span>
-            {/* Urgency dot */}
-            <span
-              className={`inline-block w-2 h-2 rounded-full shrink-0 ${urg.dot}`}
-              aria-label={`Urgency: ${urg.label}`}
-              title={`Urgency: ${urg.label}`}
-            />
+            {/* Urgency badge */}
+            <Badge
+              variant={
+                approval.urgency === "critical" ? "destructive" :
+                approval.urgency === "high" || approval.urgency === "medium" ? "warning" :
+                "outline"
+              }
+              className="text-[10px] px-1.5 py-0"
+            >
+              {urg.label}
+            </Badge>
           </div>
 
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">

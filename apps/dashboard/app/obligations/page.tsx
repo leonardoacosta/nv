@@ -24,8 +24,10 @@ import {
   Terminal,
   HelpCircle,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
+import QuerySkeleton from "@/components/layout/QuerySkeleton";
 import ObligationSummaryBar from "@/components/ObligationSummaryBar";
 // ActivityFeed retained in codebase for other pages; removed from Active tab layout
 import ApprovalQueueItem from "@/components/approvals/ApprovalQueueItem";
@@ -40,6 +42,8 @@ import type {
   ObligationsGetResponse,
 } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
+import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api-query";
+import { queryKeys } from "@/lib/query-keys";
 import KanbanBoard from "@/components/obligations/KanbanBoard";
 import { useKanbanKeyboard } from "@/hooks/useKanbanKeyboard";
 
@@ -1199,10 +1203,8 @@ type TabKey = "open" | "history" | "approvals";
 function ObligationsPage() {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as TabKey) ?? "open";
+  const queryClient = useQueryClient();
 
-  const [obligations, setObligations] = useState<DaemonObligation[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>(
     initialTab === "approvals" ? "approvals" : initialTab === "history" ? "history" : "open",
   );
@@ -1212,6 +1214,27 @@ function ObligationsPage() {
     DEFAULT_APPROACHING_DEADLINE_HOURS,
   );
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Query: obligations list
+  const oblQuery = useApiQuery<ObligationsGetResponse>("/api/obligations");
+  const obligations = oblQuery.data?.obligations ?? [];
+  const loading = oblQuery.isLoading;
+  const error = oblQuery.error;
+
+  // Query: config for deadline threshold
+  const configQuery = useApiQuery<Record<string, unknown>>("/api/config");
+  useEffect(() => {
+    if (configQuery.data) {
+      const hours = configQuery.data.approaching_deadline_hours;
+      if (typeof hours === "number" && hours > 0) {
+        setApproachingDeadlineHours(hours);
+      }
+    }
+  }, [configQuery.data]);
+
+  const fetchObligations = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/obligations") });
+  }, [queryClient]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -1224,37 +1247,6 @@ function ObligationsPage() {
       return next;
     });
   }, []);
-
-  const fetchObligations = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [oblRes, configRes] = await Promise.all([
-        apiFetch("/api/obligations"),
-        apiFetch("/api/config"),
-      ]);
-      if (!oblRes.ok) throw new Error(`HTTP ${oblRes.status}`);
-      const data = (await oblRes.json()) as ObligationsGetResponse;
-      setObligations(data.obligations ?? []);
-      if (configRes.ok) {
-        const configData = (await configRes.json()) as Record<string, unknown>;
-        const hours = configData.approaching_deadline_hours;
-        if (typeof hours === "number" && hours > 0) {
-          setApproachingDeadlineHours(hours);
-        }
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load obligations",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchObligations();
-  }, [fetchObligations]);
 
   // Expand first item by default on initial load
   useEffect(() => {
@@ -1285,11 +1277,11 @@ function ObligationsPage() {
         </div>
         <button
           type="button"
-          onClick={() => void fetchObligations()}
+          onClick={fetchObligations}
           disabled={loading}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={14} className={oblQuery.isFetching ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
@@ -1332,8 +1324,8 @@ function ObligationsPage() {
       {error && (
         <ErrorBanner
           message="Failed to load obligations"
-          detail={error}
-          onRetry={() => void fetchObligations()}
+          detail={error.message}
+          onRetry={fetchObligations}
         />
       )}
 

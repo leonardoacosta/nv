@@ -27,6 +27,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import { channelAccentColor } from "@/lib/channel-colors";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
+import { useApiQuery } from "@/lib/hooks/use-api-query";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -557,9 +558,7 @@ export default function MessagesPage() {
   // 1. State
   const [allMessages, setAllMessages] = useState<StoredMessage[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [searchInput, setSearchInput] = useState("");
@@ -577,61 +576,67 @@ export default function MessagesPage() {
   const loadingMoreRef = useRef(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2. Contact resolver
+  // 2. Query params for initial load
+  const initialParams: Record<string, string> = {
+    limit: String(PAGE_SIZE),
+    offset: "0",
+    sort: sort === "oldest" ? "asc" : "desc",
+  };
+  if (deferredSearch) initialParams.search = deferredSearch;
+  if (channelFilter !== "all") initialParams.channel = channelFilter;
+
+  const initialQuery = useApiQuery<MessagesGetResponse>("/api/messages", {
+    params: initialParams,
+  });
+
+  const loading = initialQuery.isLoading;
+  const error = initialQuery.error;
+
+  // Sync query data into local state for infinite scroll append
+  useEffect(() => {
+    if (initialQuery.data) {
+      const fetched = initialQuery.data.messages ?? [];
+      setAllMessages(fetched);
+      setOffset(fetched.length);
+      setTotal(initialQuery.data.total ?? fetched.length);
+      setHasMore(fetched.length === PAGE_SIZE);
+    }
+  }, [initialQuery.data]);
+
+  // 3. Contact resolver
   const resolveContact = useContactResolver(allMessages);
 
-  // 3. Fetch messages
-  const fetchMessages = useCallback(
-    async (reset: boolean, search: string, channel: string, sortMode: SortMode) => {
-      if (reset) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-      setError(null);
+  // 4. Load more (append) — uses raw apiFetch since it appends to local state
+  const fetchMoreMessages = useCallback(
+    async () => {
+      setLoadingMore(true);
       try {
-        const currentOffset = reset ? 0 : offset;
         const params = new URLSearchParams({
           limit: String(PAGE_SIZE),
-          offset: String(currentOffset),
-          sort: sortMode === "oldest" ? "asc" : "desc",
+          offset: String(offset),
+          sort: sort === "oldest" ? "asc" : "desc",
         });
-        if (search) params.set("search", search);
-        if (channel !== "all") params.set("channel", channel);
+        if (deferredSearch) params.set("search", deferredSearch);
+        if (channelFilter !== "all") params.set("channel", channelFilter);
 
         const res = await apiFetch(`/api/messages?${params.toString()}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as MessagesGetResponse;
         const fetched = data.messages ?? [];
 
-        if (reset) {
-          setAllMessages(fetched);
-          setOffset(fetched.length);
-        } else {
-          setAllMessages((prev) => [...prev, ...fetched]);
-          setOffset((prev) => prev + fetched.length);
-        }
-
+        setAllMessages((prev) => [...prev, ...fetched]);
+        setOffset((prev) => prev + fetched.length);
         setTotal(data.total ?? fetched.length);
         setHasMore(fetched.length === PAGE_SIZE);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load messages");
+      } catch {
+        // Non-critical load-more failure
       } finally {
-        setLoading(false);
         setLoadingMore(false);
         loadingMoreRef.current = false;
       }
     },
-    [offset],
+    [offset, sort, deferredSearch, channelFilter],
   );
-
-  // 4. Effects — reset on filter/search change
-  useEffect(() => {
-    setOffset(0);
-    setHasMore(true);
-    void fetchMessages(true, deferredSearch, channelFilter, sort);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deferredSearch, channelFilter, sort]);
 
   // 5. Search debounce
   const handleSearchChange = (value: string) => {
@@ -713,7 +718,7 @@ export default function MessagesPage() {
       !loadingMoreRef.current
     ) {
       loadingMoreRef.current = true;
-      void fetchMessages(false, deferredSearch, channelFilter, sort);
+      void fetchMoreMessages();
     }
   }, [
     rowVirtualizer.getVirtualItems(),
@@ -721,10 +726,7 @@ export default function MessagesPage() {
     hasMore,
     loading,
     loadingMore,
-    deferredSearch,
-    channelFilter,
-    sort,
-    fetchMessages,
+    fetchMoreMessages,
   ]);
 
   // 9. Scroll to top button visibility
@@ -801,8 +803,8 @@ export default function MessagesPage() {
         {error && (
           <ErrorBanner
             message="Failed to load messages"
-            detail={error}
-            onRetry={() => void fetchMessages(true, deferredSearch, channelFilter, sort)}
+            detail={error.message}
+            onRetry={() => void initialQuery.refetch()}
           />
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckSquare,
   MessageSquare,
@@ -24,6 +25,7 @@ import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
+import QuerySkeleton from "@/components/layout/QuerySkeleton";
 import StatStrip from "@/components/StatStrip";
 import {
   useDaemonEvents,
@@ -41,6 +43,8 @@ import type {
   FleetHealthResponse,
   SessionsGetResponse,
 } from "@/types/api";
+import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api-query";
+import { queryKeys } from "@/lib/query-keys";
 import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -191,44 +195,48 @@ function PriorityBanner({
 
 function ObligationBar() {
   const [input, setInput] = useState("");
-  const [creating, setCreating] = useState(false);
   const [result, setResult] = useState<"success" | "error" | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const handleCreate = async () => {
-    if (!input.trim()) return;
-    setCreating(true);
-    setResult(null);
-    setErrorMsg(null);
-    try {
-      const res = await apiFetch("/api/obligations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          detected_action: input.trim(),
-          owner: "nova",
-          status: "open",
-          priority: 2,
-          source_channel: "dashboard",
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Request failed" }));
-        throw new Error((data as { error?: string }).error ?? "Request failed");
-      }
+  const { mutate: createObligation, isPending: creating } = useApiMutation<
+    unknown,
+    {
+      detected_action: string;
+      owner: string;
+      status: string;
+      priority: number;
+      source_channel: string;
+    }
+  >("/api/obligations", {
+    onSuccess: () => {
       setInput("");
       setResult("success");
       setTimeout(() => setResult(null), 2000);
-    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/obligations") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/activity-feed") });
+    },
+    onError: (err) => {
       setResult("error");
-      setErrorMsg(err instanceof Error ? err.message : "Failed");
-    } finally {
-      setCreating(false);
-    }
+      setErrorMsg(err.message);
+    },
+  });
+
+  const handleCreate = () => {
+    if (!input.trim()) return;
+    setResult(null);
+    setErrorMsg(null);
+    createObligation({
+      detected_action: input.trim(),
+      owner: "nova",
+      status: "open",
+      priority: 2,
+      source_channel: "dashboard",
+    });
   };
 
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2 border border-ds-gray-400 rounded-lg px-3 py-1.5">
         <CheckSquare size={14} className="text-ds-gray-700 shrink-0" />
         <input
@@ -236,7 +244,7 @@ function ObligationBar() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") void handleCreate();
+            if (e.key === "Enter") handleCreate();
           }}
           placeholder="Add obligation..."
           className="flex-1 min-w-0 bg-transparent text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden"
@@ -244,7 +252,7 @@ function ObligationBar() {
         />
         <button
           type="button"
-          onClick={() => void handleCreate()}
+          onClick={handleCreate}
           disabled={creating || !input.trim()}
           className="flex items-center justify-center px-2 py-0.5 rounded text-label-12 border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40"
         >
@@ -347,7 +355,7 @@ function ActivityFeedSection({
 
   if (loading) {
     return (
-      <div className="space-y-px">
+      <div className="flex flex-col gap-px">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="h-7 animate-pulse rounded bg-ds-gray-100" />
         ))}
@@ -429,7 +437,7 @@ function ActivityFeedSection({
 
             {/* Expandable detail panel */}
             {isExpanded && (
-              <div className="px-4 py-2 bg-ds-gray-alpha-100 border-t border-ds-gray-400 space-y-1.5">
+              <div className="px-4 py-2 bg-ds-gray-alpha-100 border-t border-ds-gray-400 flex flex-col gap-1.5">
                 <p className="text-copy-13 text-ds-gray-1000 leading-snug">{ev.summary}</p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-label-12 px-1.5 py-0.5 rounded bg-ds-gray-200 text-ds-gray-900 border border-ds-gray-400">
@@ -471,7 +479,7 @@ function RecentConversations({
 }) {
   if (loading) {
     return (
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-10 animate-pulse rounded bg-ds-gray-100" />
         ))}
@@ -549,35 +557,15 @@ function RecentConversations({
 }
 
 // ---------------------------------------------------------------------------
-// CcSessionsWidget — compact card for the home page (task 3.8)
+// CcSessionsWidget — compact card for the home page
 // ---------------------------------------------------------------------------
 
 function CcSessionsWidget() {
-  const [sessions, setSessions] = useState<CcSessionSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useApiQuery<CcSessionsGetResponse>("/api/cc-sessions");
+  const sessions = data?.sessions ?? [];
+  const running = sessions.filter((s) => s.state === "running").length;
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await apiFetch("/api/cc-sessions");
-        if (res.ok) {
-          const data = (await res.json()) as CcSessionsGetResponse;
-          setSessions(data.sessions ?? []);
-        }
-      } catch {
-        // Non-critical widget — fail silently
-      } finally {
-        setLoading(false);
-      }
-    };
-    void load();
-  }, []);
-
-  const running = sessions.filter(
-    (s) => s.state === "running",
-  ).length;
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
     );
@@ -617,27 +605,13 @@ function CcSessionsWidget() {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
-  // --- 1. State ---
-  const [feedEvents, setFeedEvents] = useState<ActivityFeedEvent[]>([]);
+  // --- 1. Local state ---
   const [wsEvents, setWsEvents] = useState<WsActivityEvent[]>([]);
-  const [obligations, setObligations] = useState<ApiObligation[]>([]);
-  const [recentMessages, setRecentMessages] = useState<StoredMessage[]>([]);
-  const [allMessages, setAllMessages] = useState<StoredMessage[]>([]);
-  const [briefingAvailable, setBriefingAvailable] = useState(false);
-  const [briefingTime, setBriefingTime] = useState<string | null>(null);
-  const [briefingHasNext, setBriefingHasNext] = useState(false);
-  const [fleetHealthy, setFleetHealthy] = useState<number | null>(null);
-  const [fleetTotal, setFleetTotal] = useState<number | null>(null);
-  const [fleetStatus, setFleetStatus] = useState<string | null>(null);
-  const [activeSessions, setActiveSessions] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastFetchedAt, setLastFetchedAt] = useState<number>(Date.now);
   const [, setTick] = useState(0);
   const [feedCategory, setFeedCategory] = useState<FeedCategory>("all");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsIdRef = useRef(0);
+  const queryClient = useQueryClient();
 
   // --- 2. Context/routing ---
   const daemonStatus = useDaemonStatus();
@@ -664,120 +638,55 @@ export default function DashboardPage() {
     );
   });
 
-  // --- 4. Data fetch ---
-  const fetchData = useCallback(async () => {
-    setError(null);
-    try {
-      const timeout = () => AbortSignal.timeout(8000);
-      const [feedRes, oblRes, msgRes, briefRes, fleetRes, sessionsRes] =
-        await Promise.allSettled([
-          apiFetch("/api/activity-feed", { signal: timeout() }),
-          apiFetch("/api/obligations", { signal: timeout() }),
-          apiFetch("/api/messages?limit=50", { signal: timeout() }),
-          apiFetch("/api/briefing", { signal: timeout() }),
-          apiFetch("/api/fleet-status", { signal: timeout() }),
-          apiFetch("/api/sessions", { signal: timeout() }),
-        ]);
+  // --- 4. Queries (replace Promise.allSettled + 15 useState calls) ---
+  const feedQuery = useApiQuery<ActivityFeedGetResponse>("/api/activity-feed", {
+    refetchInterval: autoRefresh ? 10_000 : false,
+  });
+  const oblQuery = useApiQuery<ObligationsGetResponse>("/api/obligations", {
+    refetchInterval: autoRefresh ? 10_000 : false,
+  });
+  const msgQuery = useApiQuery<MessagesGetResponse>("/api/messages", {
+    params: { limit: "50" },
+    refetchInterval: autoRefresh ? 10_000 : false,
+  });
+  const briefQuery = useApiQuery<BriefingGetResponse>("/api/briefing", {
+    refetchInterval: autoRefresh ? 10_000 : false,
+  });
+  const fleetQuery = useApiQuery<FleetHealthResponse>("/api/fleet-status", {
+    refetchInterval: autoRefresh ? 10_000 : false,
+  });
+  const sessionsQuery = useApiQuery<SessionsGetResponse>("/api/sessions", {
+    refetchInterval: autoRefresh ? 10_000 : false,
+  });
 
-      // Activity feed
-      if (feedRes.status === "fulfilled" && feedRes.value.ok) {
-        try {
-          const data = (await feedRes.value.json()) as ActivityFeedGetResponse;
-          setFeedEvents(data.events);
-        } catch { /* parse failure */ }
-      }
+  // --- 5. Derived values from queries ---
+  const feedEvents = feedQuery.data?.events ?? [];
+  const obligations = (oblQuery.data?.obligations ?? []) as ApiObligation[];
+  const recentMessages = (msgQuery.data?.messages ?? []).slice(0, 10);
+  const allMessages = msgQuery.data?.messages ?? [];
 
-      // Obligations
-      let oblList: ApiObligation[] = [];
-      if (oblRes.status === "fulfilled" && oblRes.value.ok) {
-        try {
-          const data = (await oblRes.value.json()) as ObligationsGetResponse;
-          oblList = data.obligations as ApiObligation[];
-        } catch { /* parse failure */ }
-      }
-      setObligations(oblList);
+  const briefingEntry = briefQuery.data?.entry;
+  const briefingAvailable = !!briefingEntry;
+  const briefingTime = briefingEntry
+    ? new Date(briefingEntry.generated_at).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
 
-      // Messages — split between recent conversations and stat count
-      if (msgRes.status === "fulfilled" && msgRes.value.ok) {
-        try {
-          const data = (await msgRes.value.json()) as MessagesGetResponse;
-          setRecentMessages(data.messages.slice(0, 10));
-          setAllMessages(data.messages);
-        } catch { /* parse failure */ }
-      }
+  const fleetData = fleetQuery.data?.fleet;
+  const fleetHealthy = fleetData?.healthy_count ?? null;
+  const fleetTotal = fleetData?.total_count ?? null;
+  const fleetStatus = fleetData?.status ?? null;
 
-      // Briefing
-      if (briefRes.status === "fulfilled" && briefRes.value.ok) {
-        try {
-          const data = (await briefRes.value.json()) as BriefingGetResponse;
-          if (data.entry) {
-            setBriefingAvailable(true);
-            setBriefingHasNext(false);
-            setBriefingTime(
-              new Date(data.entry.generated_at).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-            );
-          } else {
-            setBriefingAvailable(false);
-            setBriefingHasNext(false);
-            setBriefingTime(null);
-          }
-        } catch { /* parse failure */ }
-      }
+  const sessionsList = sessionsQuery.data?.sessions ?? [];
+  const activeSessions = sessionsList.filter(
+    (s) => s.status === "running" || s.status === "active",
+  ).length;
 
-      // Fleet status
-      if (fleetRes.status === "fulfilled" && fleetRes.value.ok) {
-        try {
-          const data = (await fleetRes.value.json()) as FleetHealthResponse;
-          setFleetHealthy(data.fleet.healthy_count);
-          setFleetTotal(data.fleet.total_count);
-          setFleetStatus(data.fleet.status);
-        } catch { /* parse failure */ }
-      }
+  const loading = feedQuery.isLoading && oblQuery.isLoading && msgQuery.isLoading;
+  const error = feedQuery.error ?? oblQuery.error ?? null;
 
-      // Sessions
-      if (sessionsRes.status === "fulfilled" && sessionsRes.value.ok) {
-        try {
-          const data = (await sessionsRes.value.json()) as SessionsGetResponse;
-          const running = data.sessions.filter(
-            (s) => s.status === "running" || s.status === "active",
-          ).length;
-          setActiveSessions(running);
-        } catch { /* parse failure */ }
-      }
-
-      setLastFetchedAt(Date.now());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // --- 5. Effects ---
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    if (autoRefresh) {
-      intervalRef.current = setInterval(() => void fetchData(), 10_000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [autoRefresh, fetchData]);
-
-  useEffect(() => {
-    const tickInterval = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(tickInterval);
-  }, []);
-
-  // --- 6. Derived values ---
   const pendingObligations = obligations.filter(
     (o) => !o.status || o.status === "open" || o.status === "in_progress",
   );
@@ -808,11 +717,17 @@ export default function DashboardPage() {
           : "bg-ds-gray-600";
 
   // Next briefing label
-  const nextBriefingLabel = briefingAvailable ? "Available" : briefingHasNext ? "Scheduled" : "No schedule";
+  const nextBriefingLabel = briefingAvailable ? "Available" : "No schedule";
 
+  const lastFetchedAt = feedQuery.dataUpdatedAt || Date.now();
   const updatedAgo = formatSecondsAgo(Date.now() - lastFetchedAt);
   const lastFetchedIso = new Date(lastFetchedAt).toISOString();
-  const isRefreshing = loading;
+  const isRefreshing = feedQuery.isFetching;
+
+  // --- 6. Refresh all ---
+  const handleRefreshAll = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.all });
+  };
 
   // --- 7. Stat strip cells ---
   const statCells = [
@@ -832,14 +747,14 @@ export default function DashboardPage() {
       icon: (
         <span className="flex items-center gap-1">
           <Server size={14} />
-          <span className={`inline-block w-2 h-2 rounded-full ${fleetDot}`} />
+          <span className={`inline-block size-2 rounded-full ${fleetDot}`} />
         </span>
       ),
       label: "Fleet Health",
       value:
         fleetHealthy !== null && fleetTotal !== null
           ? `${fleetHealthy}/${fleetTotal} up`
-          : "—",
+          : "\u2014",
     },
     {
       icon: <MonitorPlay size={14} />,
@@ -883,7 +798,7 @@ export default function DashboardPage() {
       </button>
       <button
         type="button"
-        onClick={() => void fetchData()}
+        onClick={handleRefreshAll}
         disabled={isRefreshing || isDisconnected}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
@@ -896,12 +811,12 @@ export default function DashboardPage() {
   // --- 9. Render ---
   return (
     <PageShell title="Command Center" action={headerAction}>
-      <div className={`space-y-4 animate-fade-in-up transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
+      <div className={`flex flex-col gap-4 animate-fade-in-up transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
         {error && (
           <ErrorBanner
             message="Failed to load dashboard data"
-            detail={error}
-            onRetry={() => void fetchData()}
+            detail={error.message}
+            onRetry={handleRefreshAll}
           />
         )}
 
@@ -919,7 +834,7 @@ export default function DashboardPage() {
         <CcSessionsWidget />
 
         {/* Activity Feed — full width */}
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <SectionHeader
             label="Activity Feed"
             count={feedEvents.length + wsEvents.length}
@@ -943,7 +858,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Recent Conversations — full width */}
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <SectionHeader
               label="Recent Conversations"

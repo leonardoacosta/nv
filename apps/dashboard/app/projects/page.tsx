@@ -1,175 +1,273 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FolderOpen, RefreshCw, Search } from "lucide-react";
-import ProjectAccordion, {
-  type Project,
-  type ProjectError,
-} from "@/components/ProjectAccordion";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FolderOpen, Plus, RefreshCw, Search } from "lucide-react";
+import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import type { ApiProject, ProjectsGetResponse } from "@/types/api";
+import ProjectCategoryTree from "@/components/ProjectCategoryTree";
+import ProjectDetailPanel from "@/components/ProjectDetailPanel";
+import CreateProjectDialog from "@/components/CreateProjectDialog";
+import type {
+  ProjectCategory,
+  ProjectEntity,
+  ProjectsListResponse,
+  UpdateProjectRequest,
+} from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
-/** Map daemon ApiProject ({ code, path }) to the component Project interface. */
-function mapApiProject(p: ApiProject): Project {
-  return {
-    id: p.code,
-    name: p.code,
-    path: p.path,
-    status: "unknown",
-    errors: [],
-  };
-}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type FilterTab = "all" | "work" | "personal" | "open_source" | "archived";
+
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "work", label: "Work" },
+  { key: "personal", label: "Personal" },
+  { key: "open_source", label: "Open Source" },
+  { key: "archived", label: "Archived" },
+];
+
+// ---------------------------------------------------------------------------
+// ProjectsPage
+// ---------------------------------------------------------------------------
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  // 1. Local State
+  const [projects, setProjects] = useState<ProjectEntity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [solveStatus, setSolveStatus] = useState<string | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filterTab, setFilterTab] = useState<FilterTab>("all");
+  const [selectedProject, setSelectedProject] = useState<ProjectEntity | null>(
+    null,
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchProjects = async () => {
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 2. Fetch projects
+  const fetchProjects = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await apiFetch("/api/projects");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ProjectsGetResponse;
-      setProjects((data.projects ?? []).map(mapApiProject));
+      const data = (await res.json()) as ProjectsListResponse;
+      setProjects(data.projects ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load projects");
+      setError(
+        err instanceof Error ? err.message : "Failed to load projects",
+      );
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void fetchProjects();
   }, []);
 
-  const handleSolveWithNexus = async (projectId: string, errorId: string) => {
-    const project = projects.find((p) => p.id === projectId);
-    const err = project?.errors?.find((e: ProjectError) => e.id === errorId);
-    if (!project || !err) return;
+  // 3. Initial load
+  useEffect(() => {
+    void fetchProjects();
+  }, [fetchProjects]);
 
-    setSolveStatus("Starting Nexus session...");
+  // 4. Search debounce
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+    }, 300);
+  };
+
+  // 5. Refresh handler — extract then re-fetch
+  const handleRefresh = async () => {
+    setRefreshing(true);
     try {
-      const res = await apiFetch("/api/solve", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          project: project.id,
-          error: err.message,
-          context: err.file ? `${err.file}${err.line ? `:${err.line}` : ""}` : undefined,
-        }),
-      });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        setSolveStatus(data.error ?? `HTTP ${res.status}`);
-      } else {
-        const data = (await res.json()) as { session_id: string };
-        setSolveStatus(`Session started: ${data.session_id.slice(0, 8)}...`);
-      }
-    } catch (e) {
-      setSolveStatus(e instanceof Error ? e.message : "Failed to start session");
+      await apiFetch("/api/projects/extract", { method: "POST" });
+      await fetchProjects();
+    } catch {
+      // fetchProjects handles its own error
     } finally {
-      setTimeout(() => setSolveStatus(null), 4000);
+      setRefreshing(false);
     }
   };
 
-  const filtered = projects.filter(
-    (p) =>
-      search === "" ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.path?.toLowerCase().includes(search.toLowerCase())
-  );
+  // 6. Update handler
+  const handleUpdate = async (code: string, data: UpdateProjectRequest) => {
+    try {
+      const res = await apiFetch(`/api/projects/${code}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const updated = (await res.json()) as ProjectEntity;
 
-  const errorCount = projects.reduce(
-    (acc, p) => acc + (p.errors?.length ?? 0),
-    0
-  );
+      // Update local state
+      setProjects((prev) =>
+        prev.map((p) => (p.code === code ? updated : p)),
+      );
+      setSelectedProject(updated);
+    } catch {
+      // Error handled in detail panel
+    }
+  };
 
-  return (
-    <div className="p-4 space-y-3 w-full animate-fade-in-up">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-heading-20 text-ds-gray-1000">
-            Projects
-          </h1>
-          <p className="mt-0.5 text-copy-13 text-ds-gray-900">
-            {loading
-              ? "Loading..."
-              : `${projects.length} projects · ${errorCount} issues`}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void fetchProjects()}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          Refresh
-        </button>
-      </div>
+  // 7. Select handler
+  const handleSelectProject = (code: string) => {
+    const project = projects.find((p) => p.code === code) ?? null;
+    setSelectedProject(project);
+  };
 
-      {/* Search */}
-      <div className="relative">
-        <Search
-          size={14}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900"
+  // 8. Derived values
+  const filtered = projects.filter((p) => {
+    // Filter by tab
+    if (filterTab !== "all" && p.category !== filterTab) return false;
+
+    // Filter by search
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      const matchesName = p.name.toLowerCase().includes(q);
+      const matchesCode = p.code.toLowerCase().includes(q);
+      const matchesDesc = p.description?.toLowerCase().includes(q) ?? false;
+      if (!matchesName && !matchesCode && !matchesDesc) return false;
+    }
+
+    return true;
+  });
+
+  const distinctCategories = new Set(projects.map((p) => p.category));
+
+  // 9. Header action
+  const headerAction = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void handleRefresh()}
+        disabled={refreshing || loading}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+      >
+        <RefreshCw
+          size={12}
+          className={refreshing ? "animate-spin" : ""}
         />
-        <input
-          type="text"
-          placeholder="Search projects..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
-        />
-      </div>
-
-      {solveStatus && (
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000">
-          <span className="text-copy-13">{solveStatus}</span>
-        </div>
-      )}
-
-      {error && (
-        <ErrorBanner
-          message="Failed to load projects"
-          detail={error}
-          onRetry={() => void fetchProjects()}
-        />
-      )}
-
-      {loading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-14 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
-            />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <p className="text-copy-13 text-ds-gray-900 py-3">
-          {search ? "No projects match your search" : "No projects found"}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((project, idx) => (
-            <div
-              key={project.id}
-              className={`animate-fade-in-up ${idx < 10 ? `stagger-${Math.min(idx + 1, 10)}` : ""}`}
-            >
-              <ProjectAccordion
-                project={project}
-                onSolveWithNexus={handleSolveWithNexus}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+        Refresh
+      </button>
+      <button
+        type="button"
+        onClick={() => setCreateOpen(true)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-1000 bg-ds-gray-alpha-200 hover:bg-ds-gray-700/30 transition-colors"
+      >
+        <Plus size={12} />
+        Create
+      </button>
     </div>
+  );
+
+  // 10. Render
+  return (
+    <>
+      <PageShell
+        title="Projects"
+        subtitle={
+          loading
+            ? "Loading..."
+            : `${projects.length} projects across ${distinctCategories.size} categories`
+        }
+        action={headerAction}
+      >
+        <div className="flex flex-col gap-3">
+          {/* Filter tabs */}
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {FILTER_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setFilterTab(tab.key)}
+                className={[
+                  "px-3 py-1.5 rounded-full text-label-13 whitespace-nowrap transition-colors",
+                  filterTab === tab.key
+                    ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
+                    : "text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-100/40",
+                ].join(" ")}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search */}
+          <div className="relative max-w-sm">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-gray-900 pointer-events-none"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search projects..."
+              className="w-full pl-9 pr-4 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+            />
+          </div>
+
+          {error && (
+            <ErrorBanner
+              message="Failed to load projects"
+              detail={error}
+              onRetry={() => void fetchProjects()}
+            />
+          )}
+
+          {/* Loading skeleton */}
+          {loading ? (
+            <div className="flex flex-col gap-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-20 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400"
+                />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            /* Empty state */
+            <div className="flex flex-col items-center gap-3 py-16">
+              <FolderOpen size={28} className="text-ds-gray-600" />
+              <p className="text-copy-13 text-ds-gray-900 text-center">
+                {debouncedSearch || filterTab !== "all"
+                  ? "No projects match your filters"
+                  : "No projects found"}
+              </p>
+            </div>
+          ) : (
+            /* Project tree */
+            <ProjectCategoryTree
+              projects={filtered}
+              onSelectProject={handleSelectProject}
+            />
+          )}
+        </div>
+      </PageShell>
+
+      {/* Detail panel */}
+      {selectedProject && (
+        <ProjectDetailPanel
+          project={selectedProject}
+          onClose={() => setSelectedProject(null)}
+          onUpdate={(code, data) => void handleUpdate(code, data)}
+        />
+      )}
+
+      {/* Create dialog */}
+      <CreateProjectDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(project) => {
+          setProjects((prev) => [...prev, project]);
+        }}
+      />
+    </>
   );
 }

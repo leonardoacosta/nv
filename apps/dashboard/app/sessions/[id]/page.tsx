@@ -1,70 +1,57 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   ArrowLeft,
-  MessageSquare,
-  Terminal,
   Clock,
-  Activity,
-  RefreshCw,
   Layers,
+  MessageSquare,
+  RefreshCw,
+  Terminal,
+  Zap,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
+import SessionTimelineEvent from "@/components/SessionTimelineEvent";
+import type {
+  SessionDetail,
+  SessionEventItem,
+  SessionEventsResponse,
+} from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
-import { getPlatformColor } from "@/lib/brand-colors";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface SessionDetail {
-  id: string;
-  service: string;
-  status: "active" | "idle" | "completed";
-  messages: number;
-  tools_executed: number;
-  started_at: string;
-  ended_at?: string;
-  user?: string;
-  project?: string;
-  cost_usd?: number;
-  model?: string;
-  input_tokens?: number;
-  output_tokens?: number;
-  recent_messages?: Array<{
-    id: string;
-    role: "user" | "assistant";
-    content: string;
-    ts: string;
-  }>;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const STATUS_CONFIG: Record<
-  SessionDetail["status"],
-  { label: string; dot: string; text: string }
-> = {
-  active: { label: "Active", dot: "bg-green-700 animate-pulse", text: "text-green-700" },
-  idle: { label: "Idle", dot: "bg-amber-700", text: "text-amber-700" },
-  completed: { label: "Completed", dot: "bg-ds-gray-600", text: "text-ds-gray-900" },
-};
-
-function elapsed(startIso: string, endIso?: string): string {
+function elapsed(startIso: string, endIso?: string | null): string {
   const start = new Date(startIso).getTime();
   const end = endIso ? new Date(endIso).getTime() : Date.now();
   const diffMs = end - start;
   const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "<1m";
   if (diffMin < 60) return `${diffMin}m`;
   const h = Math.floor(diffMin / 60);
   return `${h}h ${diffMin % 60}m`;
 }
+
+const STATUS_DOT: Record<string, string> = {
+  running: "bg-green-700 animate-pulse",
+  active: "bg-green-700 animate-pulse",
+  completed: "bg-ds-gray-600",
+  stopped: "bg-amber-700",
+  idle: "bg-amber-700",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  running: "Running",
+  active: "Active",
+  completed: "Completed",
+  stopped: "Stopped",
+  idle: "Idle",
+};
 
 // ---------------------------------------------------------------------------
 // StatTile
@@ -74,70 +61,21 @@ function StatTile({
   icon: Icon,
   label,
   value,
-  accent,
 }: {
   icon: React.ElementType;
   label: string;
   value: string | number;
-  accent?: string;
 }) {
   return (
     <div className="flex items-center gap-3 p-4 rounded-xl bg-ds-gray-100 border border-ds-gray-400">
-      <div
-        className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${accent ?? "bg-ds-gray-alpha-200"}`}
-      >
-        <Icon
-          size={18}
-          className={accent ? "text-red-700" : "text-ds-gray-1000"}
-        />
+      <div className="flex items-center justify-center size-9 rounded-lg shrink-0 bg-ds-gray-alpha-200">
+        <Icon size={18} className="text-ds-gray-1000" />
       </div>
       <div className="min-w-0">
         <p className="text-label-12 text-ds-gray-900 uppercase tracking-wide truncate">
           {label}
         </p>
-        <p className="text-heading-16 font-mono text-ds-gray-1000">
-          {value}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// MessageRow
-// ---------------------------------------------------------------------------
-
-function MessageRow({
-  msg,
-}: {
-  msg: NonNullable<SessionDetail["recent_messages"]>[number];
-}) {
-  const isUser = msg.role === "user";
-  return (
-    <div
-      className={`flex gap-3 py-3 px-4 ${
-        isUser ? "bg-ds-gray-100/50" : ""
-      }`}
-    >
-      <div
-        className={`flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-copy-13 font-bold font-mono mt-0.5 ${
-          isUser
-            ? "bg-red-700/20 text-red-700"
-            : "bg-ds-gray-alpha-200 text-ds-gray-1000"
-        }`}
-      >
-        {isUser ? "U" : "N"}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-copy-13 text-ds-gray-1000 leading-relaxed whitespace-pre-wrap break-words">
-          {msg.content}
-        </p>
-        <p
-          className="text-copy-13 text-ds-gray-900 mt-1 font-mono"
-          suppressHydrationWarning
-        >
-          {new Date(msg.ts).toLocaleTimeString()}
-        </p>
+        <p className="text-heading-16 font-mono text-ds-gray-1000">{value}</p>
       </div>
     </div>
   );
@@ -149,63 +87,69 @@ function MessageRow({
 
 export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
+  const searchParams = useSearchParams();
   const sessionId = params.id;
 
   // 1. State
   const [session, setSession] = useState<SessionDetail | null>(null);
+  const [events, setEvents] = useState<SessionEventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 2. Fetch
-  const fetchSession = async () => {
+  // 2. Fetch session + events in parallel
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/sessions/${sessionId}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as SessionDetail;
-      setSession(data);
+      const [sessionRes, eventsRes] = await Promise.all([
+        apiFetch(`/api/sessions/${sessionId}`),
+        apiFetch(`/api/sessions/${sessionId}/events`),
+      ]);
+
+      if (!sessionRes.ok) throw new Error(`Session: HTTP ${sessionRes.status}`);
+      const sessionData = (await sessionRes.json()) as SessionDetail;
+      setSession(sessionData);
+
+      if (eventsRes.ok) {
+        const eventsData = (await eventsRes.json()) as SessionEventsResponse;
+        setEvents(eventsData.events);
+      } else {
+        setEvents([]);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load session");
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId]);
 
   // 3. Initial load
   useEffect(() => {
-    void fetchSession();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+    void fetchData();
+  }, [fetchData]);
 
-  // 4. Real-time updates for active sessions
-  useDaemonEvents(
-    (ev) => {
-      if (
-        session?.status === "active" &&
-        (ev.type === "session.message" || ev.type === "session.update")
-      ) {
-        void fetchSession();
-      }
-    },
-    "session",
-  );
+  // 4. Build "Back to Sessions" link preserving filter state (task 3.9)
+  const backParams = new URLSearchParams();
+  for (const [key, value] of searchParams.entries()) {
+    if (key !== "id") backParams.set(key, value);
+  }
+  // Preserve original filter params from the sessions list page
+  const backUrl =
+    backParams.toString() ? `/sessions?${backParams.toString()}` : "/sessions";
 
   // 5. Action slot
   const action = (
     <div className="flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => router.back()}
+      <Link
+        href={backUrl}
         className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
       >
         <ArrowLeft size={14} />
-        <span className="hidden sm:inline">Back</span>
-      </button>
+        <span className="hidden sm:inline">Back to Sessions</span>
+      </Link>
       <button
         type="button"
-        onClick={() => void fetchSession()}
+        onClick={() => void fetchData()}
         disabled={loading}
         className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
@@ -214,12 +158,12 @@ export default function SessionDetailPage() {
     </div>
   );
 
-  // 6. Early returns
+  // 6. Loading skeleton
   if (loading) {
     return (
       <PageShell title="Session" action={action}>
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
@@ -233,14 +177,16 @@ export default function SessionDetailPage() {
     );
   }
 
+  // 7. Error state
   if (error) {
     return (
       <PageShell title="Session" action={action}>
-        <ErrorBanner message={error} onRetry={() => void fetchSession()} />
+        <ErrorBanner message={error} onRetry={() => void fetchData()} />
       </PageShell>
     );
   }
 
+  // 8. Not found
   if (!session) {
     return (
       <PageShell title="Session" action={action}>
@@ -252,114 +198,82 @@ export default function SessionDetailPage() {
     );
   }
 
-  const statusCfg = STATUS_CONFIG[session.status];
-  const platformColor = getPlatformColor(session.service);
-  const serviceColor = `${platformColor.bg} ${platformColor.text}`;
+  const statusDot = STATUS_DOT[session.status] ?? "bg-ds-gray-600";
+  const statusLabel = STATUS_LABEL[session.status] ?? session.status;
 
   return (
     <PageShell
-      title={`Session`}
+      title="Session"
       subtitle={session.id}
       action={action}
     >
       {/* Status row */}
       <div className="flex items-center gap-3 mb-3 flex-wrap">
-        <span
-          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-label-13 font-mono ${serviceColor}`}
-        >
-          {session.service}
-        </span>
         <span className="flex items-center gap-1.5 text-copy-13">
-          <span
-            className={`inline-block w-2 h-2 rounded-full shrink-0 ${statusCfg.dot}`}
-          />
-          <span className={`text-label-13 ${statusCfg.text}`}>
-            {statusCfg.label}
-          </span>
+          <span className={`inline-block size-2 rounded-full shrink-0 ${statusDot}`} />
+          <span className="text-label-13 text-ds-gray-1000">{statusLabel}</span>
         </span>
-        {session.user && (
-          <span className="text-copy-13 text-ds-gray-900">@{session.user}</span>
-        )}
-        {session.project && (
-          <span className="text-copy-13 font-mono px-2 py-0.5 rounded bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900">
-            {session.project}
+        <span className="text-copy-13 font-mono px-2 py-0.5 rounded bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900">
+          {session.project}
+        </span>
+        {session.trigger_type && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium capitalize bg-ds-gray-alpha-200 text-ds-gray-1000">
+            {session.trigger_type}
           </span>
         )}
       </div>
 
-      {/* Stat tiles — 2-col on mobile, 4-col on desktop */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+      {/* Stat tiles */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <StatTile
           icon={MessageSquare}
           label="Messages"
-          value={session.messages}
+          value={session.message_count}
         />
         <StatTile
           icon={Terminal}
           label="Tools"
-          value={session.tools_executed}
+          value={session.tool_count}
         />
         <StatTile
           icon={Clock}
           label="Duration"
           value={elapsed(session.started_at, session.ended_at)}
-          accent="bg-red-700/20"
         />
         <StatTile
-          icon={Activity}
-          label="Model"
-          value={session.model ?? "—"}
-          accent="bg-red-700/20"
+          icon={Zap}
+          label="Service"
+          value={session.service}
         />
       </div>
 
-      {/* Token / cost details */}
-      {(session.input_tokens ?? session.output_tokens ?? session.cost_usd) && (
-        <div className="grid grid-cols-3 gap-3 mb-3">
-          {session.input_tokens !== undefined && (
-            <StatTile
-              icon={MessageSquare}
-              label="Input tokens"
-              value={session.input_tokens.toLocaleString()}
-            />
-          )}
-          {session.output_tokens !== undefined && (
-            <StatTile
-              icon={MessageSquare}
-              label="Output tokens"
-              value={session.output_tokens.toLocaleString()}
-            />
-          )}
-          {session.cost_usd !== undefined && (
-            <StatTile
-              icon={Activity}
-              label="Cost"
-              value={`$${session.cost_usd.toFixed(4)}`}
-              accent="bg-red-700/20"
-            />
-          )}
+      {/* Timeline of events */}
+      <div className="flex flex-col gap-0">
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="text-label-14 font-semibold text-ds-gray-1000">
+            Timeline
+          </h2>
+          <span className="inline-flex items-center justify-center px-1.5 py-0.5 min-w-[1.25rem] rounded text-xs font-mono font-medium text-ds-gray-900 bg-ds-gray-alpha-200">
+            {events.length}
+          </span>
         </div>
-      )}
 
-      {/* Recent messages */}
-      {session.recent_messages && session.recent_messages.length > 0 && (
-        <div className="rounded-xl border border-ds-gray-400 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-ds-gray-400 bg-ds-gray-100 shrink-0">
-            <MessageSquare size={14} className="text-ds-gray-900" />
-            <span className="text-label-12 font-semibold text-ds-gray-900 uppercase tracking-widest">
-              Recent Messages
-            </span>
-            <span className="ml-auto text-copy-13 font-mono text-ds-gray-900">
-              {session.recent_messages.length}
-            </span>
+        {events.length === 0 ? (
+          /* Empty state (task 3.7) */
+          <div className="flex flex-col items-center gap-3 py-12 text-ds-gray-900">
+            <Layers size={28} className="text-ds-gray-600" />
+            <p className="text-copy-13">
+              No interactions recorded for this session
+            </p>
           </div>
-          <div className="divide-y divide-ds-gray-400">
-            {session.recent_messages.map((msg) => (
-              <MessageRow key={msg.id} msg={msg} />
+        ) : (
+          <div className="pl-1">
+            {events.map((event) => (
+              <SessionTimelineEvent key={event.id} event={event} />
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </PageShell>
   );
 }

@@ -18,15 +18,15 @@
 
 ## UI Batch
 
-- [ ] [3.1] [P-1] Rewrite `apps/dashboard/app/sessions/page.tsx` -- remove all WebSocket/daemon logic (useDaemonEvents, useDaemonStatus, DaemonOfflineBanner, sessionMapRef, real-time merge), remove CCSessionPanel import and toggle, remove SessionDetailDrawer, remove active/idle/completed grouping; replace with paginated reverse-chronological session list fetched from `GET /api/sessions` with query params [owner:ui-engineer] [beads:nv-vsx5]
-- [ ] [3.2] [P-1] Build session row component showing: project name, duration (computed from started_at/stopped_at), message_count, tool_count, status badge, trigger_type badge, relative timestamp -- each row links to `/sessions/[id]` [owner:ui-engineer] [beads:nv-8bbw]
-- [ ] [3.3] [P-1] Build filter bar with project dropdown (populated from `GET /api/sessions` distinct projects or a dedicated endpoint), date range picker (two native date inputs), trigger type selector (all/manual/watcher/briefing), and retain existing text search -- filters update URL search params and refetch [owner:ui-engineer] [beads:nv-0vy3]
-- [ ] [3.4] [P-2] Add pagination control (load more button or page numbers) that fetches next page from API and appends results [owner:ui-engineer] [beads:nv-cpdy]
-- [ ] [3.5] [P-1] Rewrite `apps/dashboard/app/sessions/[id]/page.tsx` -- remove daemon real-time subscription, fetch session metadata from `GET /api/sessions/[id]` and events from `GET /api/sessions/[id]/events`; render session header with stat tiles (project, status, duration, trigger, model, tokens, cost) and vertical timeline of events below [owner:ui-engineer] [beads:nv-58bt]
-- [ ] [3.6] [P-1] Build timeline event components: MessageEvent (direction arrow + content), ToolCallEvent (tool name + truncated inputs + expand/collapse for full I/O), ApiRequestEvent (method + endpoint + status code badge with color coding) [owner:ui-engineer] [beads:nv-i6jj]
-- [ ] [3.7] [P-2] Add empty state for session detail when no events exist ("No interactions recorded for this session") [owner:ui-engineer] [beads:nv-fgdq]
-- [ ] [3.8] [P-2] Add CC Sessions summary widget to `apps/dashboard/app/page.tsx` -- compact card showing running session count, status dot, and "View all" link; fetch from `GET /api/cc-sessions` [owner:ui-engineer] [beads:nv-pkxr]
-- [ ] [3.9] [P-2] Add "Back to Sessions" link in session detail header that preserves filter state via URL search params [owner:ui-engineer] [beads:nv-xbjs]
+- [x] [3.1] [P-1] Rewrite `apps/dashboard/app/sessions/page.tsx` -- remove all WebSocket/daemon logic (useDaemonEvents, useDaemonStatus, DaemonOfflineBanner, sessionMapRef, real-time merge), remove CCSessionPanel import and toggle, remove SessionDetailDrawer, remove active/idle/completed grouping; replace with paginated reverse-chronological session list fetched from `GET /api/sessions` with query params [owner:ui-engineer] [beads:nv-vsx5]
+- [x] [3.2] [P-1] Build session row component showing: project name, duration (computed from started_at/stopped_at), message_count, tool_count, status badge, trigger_type badge, relative timestamp -- each row links to `/sessions/[id]` [owner:ui-engineer] [beads:nv-8bbw]
+- [x] [3.3] [P-1] Build filter bar with project dropdown (populated from `GET /api/sessions` distinct projects or a dedicated endpoint), date range picker (two native date inputs), trigger type selector (all/manual/watcher/briefing), and retain existing text search -- filters update URL search params and refetch [owner:ui-engineer] [beads:nv-0vy3]
+- [x] [3.4] [P-2] Add pagination control (load more button or page numbers) that fetches next page from API and appends results [owner:ui-engineer] [beads:nv-cpdy]
+- [x] [3.5] [P-1] Rewrite `apps/dashboard/app/sessions/[id]/page.tsx` -- remove daemon real-time subscription, fetch session metadata from `GET /api/sessions/[id]` and events from `GET /api/sessions/[id]/events`; render session header with stat tiles (project, status, duration, trigger, model, tokens, cost) and vertical timeline of events below [owner:ui-engineer] [beads:nv-58bt]
+- [x] [3.6] [P-1] Build timeline event components: MessageEvent (direction arrow + content), ToolCallEvent (tool name + truncated inputs + expand/collapse for full I/O), ApiRequestEvent (method + endpoint + status code badge with color coding) [owner:ui-engineer] [beads:nv-i6jj]
+- [x] [3.7] [P-2] Add empty state for session detail when no events exist ("No interactions recorded for this session") [owner:ui-engineer] [beads:nv-fgdq]
+- [x] [3.8] [P-2] Add CC Sessions summary widget to `apps/dashboard/app/page.tsx` -- compact card showing running session count, status dot, and "View all" link; fetch from `GET /api/cc-sessions` [owner:ui-engineer] [beads:nv-pkxr]
+- [x] [3.9] [P-2] Add "Back to Sessions" link in session detail header that preserves filter state via URL search params [owner:ui-engineer] [beads:nv-xbjs]
 
 ## E2E Batch
 

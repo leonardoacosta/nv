@@ -18,6 +18,7 @@ import {
   MonitorPlay,
   Clock,
   ExternalLink,
+  Terminal,
 } from "lucide-react";
 import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
@@ -31,6 +32,8 @@ import {
 import type {
   ActivityFeedEvent,
   ActivityFeedGetResponse,
+  CcSessionSummary,
+  CcSessionsGetResponse,
   ObligationsGetResponse,
   MessagesGetResponse,
   StoredMessage,
@@ -546,6 +549,70 @@ function RecentConversations({
 }
 
 // ---------------------------------------------------------------------------
+// CcSessionsWidget — compact card for the home page (task 3.8)
+// ---------------------------------------------------------------------------
+
+function CcSessionsWidget() {
+  const [sessions, setSessions] = useState<CcSessionSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await apiFetch("/api/cc-sessions");
+        if (res.ok) {
+          const data = (await res.json()) as CcSessionsGetResponse;
+          setSessions(data.sessions ?? []);
+        }
+      } catch {
+        // Non-critical widget — fail silently
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
+  }, []);
+
+  const running = sessions.filter(
+    (s) => s.state === "running",
+  ).length;
+
+  if (loading) {
+    return (
+      <div className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
+    );
+  }
+
+  if (sessions.length === 0) return null;
+
+  return (
+    <Link
+      href="/sessions"
+      className="flex items-center gap-3 px-4 py-3 rounded-xl surface-card hover:border-ds-gray-1000/40 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        <Terminal size={14} className="text-ds-gray-1000" />
+        <span className="text-label-14 font-medium text-ds-gray-1000">
+          CC Sessions
+        </span>
+      </div>
+      <div className="flex items-center gap-2 ml-auto">
+        {running > 0 && (
+          <span className="flex items-center gap-1.5 text-copy-13 text-green-700">
+            <span className="inline-block size-2 rounded-full bg-green-700 animate-pulse" />
+            {running} running
+          </span>
+        )}
+        <span className="text-copy-13 text-ds-gray-900">
+          {sessions.length} total
+        </span>
+        <ArrowRight size={12} className="text-ds-gray-700" />
+      </div>
+    </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Dashboard Page
 // ---------------------------------------------------------------------------
 
@@ -847,6 +914,9 @@ export default function DashboardPage() {
 
         {/* Stat Strip — full width */}
         <StatStrip cells={statCells} />
+
+        {/* CC Sessions Widget */}
+        <CcSessionsWidget />
 
         {/* Activity Feed — full width */}
         <div className="space-y-2">

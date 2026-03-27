@@ -106,13 +106,17 @@ export interface ObligationActivityGetResponse {
   events: ObligationActivity[];
 }
 
-// ── GET /api/projects ──────────────────────────────────────────────────────
+// ── GET /api/projects (legacy) ────────────────────────────────────────────
+// ApiProject and ProjectsGetResponse are superseded by ProjectEntity and
+// ProjectsListResponse (see bottom of file). Kept only for backward
+// compatibility with entity-resolution and ProjectRelatedResponse.
 
 export interface ApiProject {
   code: string;
   path: string;
 }
 
+/** @deprecated Use ProjectsListResponse instead. */
 export interface ProjectsGetResponse {
   projects: ApiProject[];
 }
@@ -442,8 +446,8 @@ export interface SenderResolutionResponse {
 }
 
 /**
- * An ApiProject enriched with live DB counts and memory context.
- * Returned by GET /api/projects (replaces the bare ApiProject[] response).
+ * @deprecated Replaced by ProjectEntity. Kept for entity-resolution backward
+ * compatibility only. Use ProjectEntity for all new code.
  */
 export interface EnrichedProject extends ApiProject {
   description: string | null;

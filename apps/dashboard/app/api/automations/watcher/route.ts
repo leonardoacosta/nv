@@ -17,7 +17,7 @@ const watcherOverrides: Partial<{
 }> = {};
 
 /** Read the current watcher state, merging env defaults with in-memory overrides. */
-export function getWatcherState(): AutomationWatcher {
+function getWatcherState(): AutomationWatcher {
   return {
     enabled:
       watcherOverrides.enabled ??

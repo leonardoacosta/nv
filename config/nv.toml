@@ -77,6 +77,15 @@ size_threshold_kb = 60
 debounce_hours = 12
 topic_max_kb = 4
 
+[digest]
+enabled = true
+quiet_start = "22:00"
+quiet_end = "07:00"
+tier1_hours = [7, 12, 17]
+tier2_day = 1
+tier2_hour = 9
+realtime_interval_ms = 300000
+
 [telegram]
 chat_id = 7380462766
 

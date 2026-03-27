@@ -11,6 +11,34 @@ import type { DreamSchedulerConfig } from "./features/dream/types.js";
 
 export type { ProactiveWatcherConfig, DreamSchedulerConfig };
 
+export interface DigestConfig {
+  enabled: boolean;
+  quietStart: string;
+  quietEnd: string;
+  tier1Hours: number[];
+  tier2Day: number;
+  tier2Hour: number;
+  realtimeIntervalMs: number;
+  p0CooldownMs: number;
+  p1CooldownMs: number;
+  p2CooldownMs: number;
+  hashTtlMs: number;
+}
+
+export const defaultDigestConfig: DigestConfig = {
+  enabled: true,
+  quietStart: "22:00",
+  quietEnd: "07:00",
+  tier1Hours: [7, 12, 17],
+  tier2Day: 1,
+  tier2Hour: 9,
+  realtimeIntervalMs: 300_000,
+  p0CooldownMs: 1_800_000,
+  p1CooldownMs: 14_400_000,
+  p2CooldownMs: 43_200_000,
+  hashTtlMs: 172_800_000,
+};
+
 export interface AutonomyConfig {
   enabled: boolean;
   timeoutMs: number;
@@ -38,12 +66,13 @@ export interface Config {
   autonomy?: AutonomyConfig;
   proactiveWatcher: ProactiveWatcherConfig;
   dream: DreamSchedulerConfig;
+  digest: DigestConfig;
   conversationHistoryDepth: number;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
 
-const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "dream" | "vercelGatewayKey"> = {
+const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "dream" | "digest" | "vercelGatewayKey"> = {
   logLevel: "info",
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
@@ -85,6 +114,19 @@ interface TomlConfig {
     size_threshold_kb?: number;
     debounce_hours?: number;
     topic_max_kb?: number;
+  };
+  digest?: {
+    enabled?: boolean;
+    quiet_start?: string;
+    quiet_end?: string;
+    tier1_hours?: number[];
+    tier2_day?: number;
+    tier2_hour?: number;
+    realtime_interval_ms?: number;
+    p0_cooldown_ms?: number;
+    p1_cooldown_ms?: number;
+    p2_cooldown_ms?: number;
+    hash_ttl_ms?: number;
   };
   conversation?: {
     history_depth?: number;
@@ -193,6 +235,20 @@ export async function loadConfig(
     topicMaxKb: toml.dream?.topic_max_kb ?? 4,
   };
 
+  const digest: DigestConfig = {
+    enabled: toml.digest?.enabled ?? defaultDigestConfig.enabled,
+    quietStart: toml.digest?.quiet_start ?? defaultDigestConfig.quietStart,
+    quietEnd: toml.digest?.quiet_end ?? defaultDigestConfig.quietEnd,
+    tier1Hours: toml.digest?.tier1_hours ?? defaultDigestConfig.tier1Hours,
+    tier2Day: toml.digest?.tier2_day ?? defaultDigestConfig.tier2Day,
+    tier2Hour: toml.digest?.tier2_hour ?? defaultDigestConfig.tier2Hour,
+    realtimeIntervalMs: toml.digest?.realtime_interval_ms ?? defaultDigestConfig.realtimeIntervalMs,
+    p0CooldownMs: toml.digest?.p0_cooldown_ms ?? defaultDigestConfig.p0CooldownMs,
+    p1CooldownMs: toml.digest?.p1_cooldown_ms ?? defaultDigestConfig.p1CooldownMs,
+    p2CooldownMs: toml.digest?.p2_cooldown_ms ?? defaultDigestConfig.p2CooldownMs,
+    hashTtlMs: toml.digest?.hash_ttl_ms ?? defaultDigestConfig.hashTtlMs,
+  };
+
   const historyDepthRaw = process.env["NV_HISTORY_DEPTH"];
   const conversationHistoryDepth = historyDepthRaw
     ? parseInt(historyDepthRaw, 10)
@@ -224,6 +280,7 @@ export async function loadConfig(
     autonomy,
     proactiveWatcher,
     dream,
+    digest,
     conversationHistoryDepth,
   };
 }

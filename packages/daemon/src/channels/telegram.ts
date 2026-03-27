@@ -23,6 +23,7 @@ import { buildPimReply } from "../telegram/commands/pim.js";
 import { buildAdoReply } from "../telegram/commands/ado.js";
 import { buildDreamReply, buildDreamStatusReply } from "../telegram/commands/dream.js";
 import { buildBriefReply } from "../telegram/commands/brief.js";
+import { buildDigestReply } from "../telegram/commands/digest.js";
 import { buildStartKeyboard } from "../telegram/commands/start.js";
 import { buildToolsKeyboard } from "../telegram/commands/tools.js";
 
@@ -421,6 +422,8 @@ export class TelegramAdapter {
           return void this.handleDirectCommand(chatId, () => buildPimReply(argsText));
         case "dream":
           return void this.handleDirectCommand(chatId, () => buildDreamReply());
+        case "digest":
+          return void this.handleDirectCommand(chatId, () => buildDigestReply(argsText));
         case "az":
           return void this.handleDirectCommand(chatId, () => buildAzReply(argsText));
         case "discord":
@@ -613,6 +616,13 @@ export class TelegramAdapter {
     this.bot.onText(/^\/brief(@\S+)?$/, (msg) => {
       const chatId = String(msg.chat.id);
       void this.handleDirectCommand(chatId, () => buildBriefReply());
+    });
+
+    // /digest [weekly] — proactive digest
+    this.bot.onText(/^\/digest(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const subcommand = match?.[3]?.trim();
+      void this.handleDirectCommand(chatId, () => buildDigestReply(subcommand));
     });
 
     // /tools — tool keyboard menu

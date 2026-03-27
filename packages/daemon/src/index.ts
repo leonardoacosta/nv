@@ -9,8 +9,15 @@ import { TelegramAdapter } from "./channels/telegram.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
 import { DreamScheduler } from "./features/dream/index.js";
+import { startDigestScheduler } from "./features/digest/index.js";
+import { setDigestDeps } from "./telegram/commands/digest.js";
 import { NovaAgent } from "./brain/agent.js";
 import { ConversationManager } from "./brain/conversation.js";
+import { KeywordRouter } from "./brain/keyword-router.js";
+import { EmbeddingRouter } from "./brain/embedding-router.js";
+import { MessageRouter, formatToolResponse } from "./brain/router.js";
+import { fleetPost } from "./fleet-client.js";
+import { writeEntry } from "./features/diary/writer.js";
 import {
   ObligationStore,
   handleObligationConfirm,
@@ -55,6 +62,28 @@ export async function main(): Promise<void> {
   // ── Fleet client initialization ───────────────────────────────────────────
 
   initFleetClient(config.toolRouterUrl);
+
+  // ── Smart message router (Tier 1: keyword, Tier 2: embedding) ───────────
+
+  const keywordRouter = new KeywordRouter();
+  let embeddingRouter: EmbeddingRouter | null = null;
+
+  try {
+    embeddingRouter = await EmbeddingRouter.create();
+    if (embeddingRouter) {
+      log.info({ service: "nova-daemon" }, "Embedding router (Tier 2) ready");
+    } else {
+      log.warn({ service: "nova-daemon" }, "Embedding router disabled — Tier 2 unavailable");
+    }
+  } catch (err: unknown) {
+    log.warn(
+      { service: "nova-daemon", err: err instanceof Error ? err.message : String(err) },
+      "Embedding router failed to initialize — Tier 2 disabled",
+    );
+  }
+
+  const messageRouter = new MessageRouter(keywordRouter, embeddingRouter);
+  log.info({ service: "nova-daemon" }, "Smart message router initialized");
 
   // ── Database pool ──────────────────────────────────────────────────────────
 
@@ -128,6 +157,39 @@ export async function main(): Promise<void> {
     );
   }
 
+  // ── Digest scheduler ──────────────────────────────────────────────────────
+
+  let stopDigestScheduler: (() => void) | null = null;
+
+  if (config.digest.enabled && telegram !== null) {
+    const digestDeps = {
+      pool,
+      logger: log,
+      telegram,
+      telegramChatId: config.telegramChatId ?? null,
+      config,
+    };
+
+    stopDigestScheduler = startDigestScheduler(digestDeps);
+    setDigestDeps(digestDeps);
+
+    log.info(
+      {
+        service: "nova-daemon",
+        tier1Hours: config.digest.tier1Hours,
+        realtimeIntervalMs: config.digest.realtimeIntervalMs,
+        quietStart: config.digest.quietStart,
+        quietEnd: config.digest.quietEnd,
+      },
+      "Digest scheduler started",
+    );
+  } else {
+    log.info(
+      { service: "nova-daemon", enabled: config.digest.enabled, hasTelegram: telegram !== null },
+      "Digest scheduler not started",
+    );
+  }
+
   // ── NovaAgent ──────────────────────────────────────────────────────────────
 
   const agent = await NovaAgent.create(config);
@@ -184,6 +246,13 @@ export async function main(): Promise<void> {
   if (telegram !== null) {
     telegram.onMessage((msg) => {
       const data = msg.text ?? "";
+
+      // Route digest inline keyboard callbacks (log + acknowledge for now)
+      if (data.startsWith("digest:")) {
+        log.info({ service: "nova-daemon", action: data }, "Digest callback received");
+        // Callbacks are out-of-scope — acknowledge and log
+        return;
+      }
 
       // Route watcher inline keyboard callbacks
       if (data.startsWith("watcher:")) {
@@ -263,6 +332,95 @@ export async function main(): Promise<void> {
         }, 4000);
 
         try {
+          // ── Smart routing: try Tier 1/2 before Agent SDK ───────────────
+          const routeStart = Date.now();
+          const route = await messageRouter.route(data);
+
+          if (route.tier === 1 || route.tier === 2) {
+            log.info(
+              {
+                service: "nova-daemon",
+                chatId: msg.chatId,
+                tier: route.tier,
+                tool: route.tool,
+                confidence: route.confidence,
+              },
+              "Smart route matched — bypassing Agent SDK",
+            );
+
+            let responseText: string;
+            try {
+              const toolResult = await fleetPost(route.port!, "/execute", {
+                tool: route.tool,
+                params: route.params ?? {},
+              });
+              responseText = formatToolResponse(toolResult);
+            } catch (fleetErr: unknown) {
+              log.warn(
+                {
+                  service: "nova-daemon",
+                  tool: route.tool,
+                  err: fleetErr instanceof Error ? fleetErr.message : String(fleetErr),
+                },
+                "Fleet tool call failed — falling through to Agent SDK",
+              );
+              // Fall through to agent on fleet failure
+              responseText = "";
+            }
+
+            if (responseText) {
+              const elapsed = Date.now() - routeStart;
+
+              // Send response to Telegram
+              try {
+                await telegram!.sendMessage(msg.chatId, responseText, {
+                  parseMode: "Markdown",
+                  disablePreview: true,
+                });
+              } catch {
+                // Markdown failed — send plain text
+                const plain = responseText
+                  .replace(/\*\*(.+?)\*\*/g, "$1")
+                  .replace(/\*(.+?)\*/g, "$1")
+                  .replace(/`([^`]+)`/g, "$1")
+                  .replace(/```[\s\S]*?```/g, (m) =>
+                    m.replace(/```\w*\n?/g, "").replace(/```/g, ""),
+                  );
+                await telegram!.sendMessage(msg.chatId, plain);
+              }
+
+              // Log to diary (fire-and-forget)
+              void writeEntry({
+                triggerType: "message",
+                triggerSource: msg.senderId,
+                channel: msg.channel,
+                slug: msg.content.slice(0, 50),
+                content: responseText,
+                toolsUsed: route.tool ? [route.tool] : [],
+                responseLatencyMs: elapsed,
+                routingTier: route.tier,
+                routingConfidence: route.confidence,
+              });
+
+              log.info(
+                {
+                  service: "nova-daemon",
+                  chatId: msg.chatId,
+                  tier: route.tier,
+                  tool: route.tool,
+                  confidence: route.confidence,
+                  latencyMs: elapsed,
+                },
+                "Smart-routed response sent",
+              );
+
+              clearInterval(typingInterval);
+              return;
+            }
+          }
+
+          // ── Tier 3: Full Agent SDK ─────────────────────────────────────
+
           // Load conversation history for this chat
           const channelKey = `telegram:${msg.chatId}`;
           const history = await conversationManager.loadHistory(
@@ -358,6 +516,10 @@ export async function main(): Promise<void> {
 
     if (stopBriefingScheduler !== null) {
       stopBriefingScheduler();
+    }
+
+    if (stopDigestScheduler !== null) {
+      stopDigestScheduler();
     }
 
     if (dreamScheduler !== null) {

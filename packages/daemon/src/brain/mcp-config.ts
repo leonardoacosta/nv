@@ -43,10 +43,13 @@ export function buildMcpServers(
       args[0] = resolve(installDir, args[0]);
     }
 
+    // Pass the daemon's env to MCP-spawned processes so they inherit
+    // Doppler-injected secrets (DISCORD_BOT_TOKEN, TELEGRAM_BOT_TOKEN,
+    // DATABASE_URL, etc.). Per-server env overrides take precedence.
     result[name] = {
       command: entry.command,
       args,
-      ...(entry.env ? { env: entry.env } : {}),
+      env: { ...process.env, ...(entry.env ?? {}) } as Record<string, string>,
     };
 
     logger.debug(

@@ -387,6 +387,43 @@ export interface Contact {
   updated_at: string;
 }
 
+// ── GET /api/contacts/discovered ──────────────────────────────────────────
+
+/** A contact auto-discovered from message history, optionally enriched. */
+export interface DiscoveredContact {
+  name: string;
+  channels: string[];
+  message_count: number;
+  first_seen: string;
+  last_seen: string;
+  contact_id: string | null;
+  relationship_type: string | null;
+  notes: string | null;
+  channel_ids: Record<string, string> | null;
+}
+
+/** Response from GET /api/contacts/discovered. */
+export interface DiscoveredContactsResponse {
+  contacts: DiscoveredContact[];
+  total_senders: number;
+  total_messages_scanned: number;
+}
+
+// ── GET /api/contacts/relationships ──────────────────────────────────────
+
+/** A relationship edge inferred from message co-occurrence. */
+export interface ContactRelationship {
+  person_a: string;
+  person_b: string;
+  shared_channel: string;
+  co_occurrence_count: number;
+}
+
+/** Response from GET /api/contacts/relationships. */
+export interface RelationshipsResponse {
+  relationships: ContactRelationship[];
+}
+
 // ── GET /api/diary ─────────────────────────────────────────────────────────
 
 /** A single diary entry. Source: Drizzle query on diary table. */

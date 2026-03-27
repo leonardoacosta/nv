@@ -5,6 +5,46 @@ use rusqlite::{params, Connection};
 use rusqlite_migration::{Migrations, M};
 use serde::Serialize;
 
+// ── Discovered Contact Types ──────────────────────────────────────
+
+/// A contact auto-discovered from message history, optionally enriched
+/// with stored contact metadata.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveredContact {
+    pub name: String,
+    pub channels: Vec<String>,
+    pub message_count: i64,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub contact_id: Option<String>,
+    pub relationship_type: Option<String>,
+    pub notes: Option<String>,
+    pub channel_ids: Option<serde_json::Value>,
+}
+
+/// Response envelope for GET /api/contacts/discovered.
+#[derive(Debug, Clone, Serialize)]
+pub struct DiscoveredContactsResponse {
+    pub contacts: Vec<DiscoveredContact>,
+    pub total_senders: i64,
+    pub total_messages_scanned: i64,
+}
+
+/// A relationship edge between two contacts inferred from co-occurrence.
+#[derive(Debug, Clone, Serialize)]
+pub struct ContactRelationship {
+    pub person_a: String,
+    pub person_b: String,
+    pub shared_channel: String,
+    pub co_occurrence_count: i64,
+}
+
+/// Response envelope for GET /api/contacts/relationships.
+#[derive(Debug, Clone, Serialize)]
+pub struct RelationshipsResponse {
+    pub relationships: Vec<ContactRelationship>,
+}
+
 // ── Stored Message ─────────────────────────────────────────────────
 
 /// A single message stored in the SQLite database.
@@ -320,6 +360,7 @@ impl MessageStore {
             CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp);
             CREATE INDEX IF NOT EXISTS idx_messages_direction ON messages(direction);
             CREATE INDEX IF NOT EXISTS idx_messages_timestamp_desc ON messages(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_messages_sender_direction ON messages(sender, direction);
 
             CREATE TABLE IF NOT EXISTS tool_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1231,6 +1272,107 @@ impl MessageStore {
             [],
         )?;
         Ok(())
+    }
+
+    // ── Contact Discovery ─────────────────────────────────────────────
+
+    /// Discover contacts from message history by aggregating unique inbound
+    /// senders, enriched with stored contact metadata via LEFT JOIN.
+    pub fn discover_contacts(&self) -> Result<DiscoveredContactsResponse> {
+        let total_messages_scanned: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM messages WHERE direction = 'inbound' AND sender IS NOT NULL AND sender != '' AND sender != 'nova'",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                m.sender AS name,
+                GROUP_CONCAT(DISTINCT m.channel) AS channels,
+                COUNT(*) AS message_count,
+                MIN(m.timestamp) AS first_seen,
+                MAX(m.timestamp) AS last_seen,
+                c.id AS contact_id,
+                c.relationship_type,
+                c.notes,
+                c.channel_ids
+            FROM messages m
+            LEFT JOIN contacts c ON m.contact_id = c.id
+            WHERE m.direction = 'inbound'
+              AND m.sender IS NOT NULL
+              AND m.sender != ''
+              AND m.sender != 'nova'
+            GROUP BY m.sender
+            ORDER BY last_seen DESC",
+        )?;
+
+        let contacts = stmt
+            .query_map([], |row| {
+                let channels_str: String = row.get(1)?;
+                let channels: Vec<String> = channels_str
+                    .split(',')
+                    .map(|s| s.to_string())
+                    .collect();
+                let channel_ids_str: Option<String> = row.get(8)?;
+                let channel_ids = channel_ids_str.and_then(|s| serde_json::from_str(&s).ok());
+
+                Ok(DiscoveredContact {
+                    name: row.get(0)?,
+                    channels,
+                    message_count: row.get(2)?,
+                    first_seen: row.get(3)?,
+                    last_seen: row.get(4)?,
+                    contact_id: row.get(5)?,
+                    relationship_type: row.get(6)?,
+                    notes: row.get(7)?,
+                    channel_ids,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        let total_senders = contacts.len() as i64;
+
+        Ok(DiscoveredContactsResponse {
+            contacts,
+            total_senders,
+            total_messages_scanned,
+        })
+    }
+
+    /// Discover relationships between contacts by finding co-occurrences:
+    /// people who message on the same channel on the same day.
+    pub fn discover_relationships(&self, min_count: i64) -> Result<RelationshipsResponse> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                a.sender AS person_a,
+                b.sender AS person_b,
+                a.channel AS shared_channel,
+                COUNT(*) AS co_occurrence_count
+            FROM messages a
+            JOIN messages b ON a.channel = b.channel
+              AND date(a.timestamp) = date(b.timestamp)
+              AND a.sender < b.sender
+            WHERE a.direction = 'inbound'
+              AND b.direction = 'inbound'
+              AND a.sender IS NOT NULL AND a.sender != '' AND a.sender != 'nova'
+              AND b.sender IS NOT NULL AND b.sender != '' AND b.sender != 'nova'
+            GROUP BY a.sender, b.sender, a.channel
+            HAVING co_occurrence_count >= ?1
+            ORDER BY co_occurrence_count DESC",
+        )?;
+
+        let relationships = stmt
+            .query_map(params![min_count], |row| {
+                Ok(ContactRelationship {
+                    person_a: row.get(0)?,
+                    person_b: row.get(1)?,
+                    shared_channel: row.get(2)?,
+                    co_occurrence_count: row.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(RelationshipsResponse { relationships })
     }
 }
 

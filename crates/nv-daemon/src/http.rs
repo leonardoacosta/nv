@@ -268,6 +268,9 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/api/solve", post(post_solve_handler))
         .route("/api/approvals/{id}/approve", post(approve_obligation_handler))
         .route("/api/cc-sessions", get(get_cc_sessions_handler))
+        // Contact discovery (must be before /api/contacts/{id} to avoid path conflicts)
+        .route("/api/contacts/discovered", get(discovered_contacts_handler))
+        .route("/api/contacts/relationships", get(relationships_handler))
         // Contact CRUD
         .route("/api/contacts", get(list_contacts_handler).post(create_contact_handler))
         .route(
@@ -1804,7 +1807,66 @@ async fn get_cc_sessions_handler(State(state): State<Arc<HttpState>>) -> impl In
     )
 }
 
-// ── Contact API ──────────────────────────────────────────────────────
+// ── Contact Discovery API ────────────────────────────────────────────
+
+/// Query parameters for GET /api/contacts/relationships.
+#[derive(Debug, Deserialize, Default)]
+pub struct RelationshipsQuery {
+    /// Minimum co-occurrence count to include an edge (default 3).
+    pub min_count: Option<i64>,
+}
+
+/// GET /api/contacts/discovered — auto-discover contacts from message history.
+async fn discovered_contacts_handler(
+    State(state): State<Arc<HttpState>>,
+) -> impl IntoResponse {
+    match MessageStore::init(&state.stats_db_path) {
+        Ok(store) => match store.discover_contacts() {
+            Ok(response) => (
+                StatusCode::OK,
+                Json(serde_json::to_value(response).unwrap_or_default()),
+            ).into_response(),
+            Err(e) => {
+                let msg = format!("{e}");
+                tracing::warn!(error = %msg, "discover_contacts failed");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": msg }))).into_response()
+            }
+        },
+        Err(e) => {
+            let msg = format!("{e}");
+            tracing::error!(error = %msg, "failed to open message store");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+/// GET /api/contacts/relationships — co-occurrence relationship edges.
+async fn relationships_handler(
+    State(state): State<Arc<HttpState>>,
+    Query(query): Query<RelationshipsQuery>,
+) -> impl IntoResponse {
+    let min_count = query.min_count.unwrap_or(3);
+    match MessageStore::init(&state.stats_db_path) {
+        Ok(store) => match store.discover_relationships(min_count) {
+            Ok(response) => (
+                StatusCode::OK,
+                Json(serde_json::to_value(response).unwrap_or_default()),
+            ).into_response(),
+            Err(e) => {
+                let msg = format!("{e}");
+                tracing::warn!(error = %msg, "discover_relationships failed");
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": msg }))).into_response()
+            }
+        },
+        Err(e) => {
+            let msg = format!("{e}");
+            tracing::error!(error = %msg, "failed to open message store");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": msg }))).into_response()
+        }
+    }
+}
+
+// ── Contact CRUD API ────────────────────────────────────────────────
 
 /// Query params for GET /api/contacts.
 #[derive(Debug, Deserialize, Default)]

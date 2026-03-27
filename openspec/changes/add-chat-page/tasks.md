@@ -2,21 +2,21 @@
 
 ## API Batch: Daemon HTTP Server
 
-- [ ] [1.1] [P-1] Add `hono` and `@hono/node-server` dependencies to `packages/daemon/package.json` [owner:api-engineer]
-- [ ] [1.2] [P-1] Add `"dashboard"` to the `Channel` union type in `packages/daemon/src/types.ts` [owner:api-engineer]
-- [ ] [1.3] [P-1] Create `packages/daemon/src/http.ts` — export `createHttpServer()` function that creates a Hono app with `cors()` and `secureHeaders()` middleware, following the pattern in `packages/tools/channels-svc/src/server.ts` [owner:api-engineer]
-- [ ] [1.4] [P-1] Add `GET /health` route in `http.ts` — returns `{ status: "ok", service: "nova-daemon", uptime_secs: number }` [owner:api-engineer]
-- [ ] [1.5] [P-1] Add `POST /chat` route in `http.ts` — accepts `{ message: string }` JSON body, returns `Content-Type: text/event-stream` SSE response; constructs a `Message` object with `channel: "dashboard"`, `chatId: "dashboard:web"`, `senderId: "dashboard-user"`; loads conversation history via `ConversationManager.loadHistory("dashboard:web", config.conversationHistoryDepth)`; iterates `processMessageStream()` async generator; emits `{"type":"chunk","text":"..."}` for each text chunk; emits `{"type":"done","full_text":"..."}` on completion; saves exchange via `ConversationManager.saveExchange()` [owner:api-engineer]
-- [ ] [1.6] [P-1] Add `processMessageStream()` async generator method to `NovaAgent` in `packages/daemon/src/brain/agent.ts` — yields `{ type: "chunk", text: string }` events from assistant message text blocks as they arrive from `query()` `AsyncIterable<SDKMessage>`, yields `{ type: "done", response: AgentResponse }` on result; handles tool calls and token counting same as existing `processMessage()`; fires diary entry on completion [owner:api-engineer]
-- [ ] [1.7] [P-2] Wire Hono server startup in `packages/daemon/src/index.ts` — call `createHttpServer()` passing `agent`, `conversationManager`, and `config`; start listening on `config.daemonPort` (7700); add server close to the `shutdown()` function [owner:api-engineer]
-- [ ] [1.8] [P-2] Add SSE error handling in `POST /chat` — on agent processing error, emit `{"type":"error","message":"..."}` event and close stream; add 120s overall timeout; add 30s inactivity timeout (no chunks emitted) [owner:api-engineer]
-- [ ] [1.9] [P-3] Add request logging in `POST /chat` — log message receipt (content length, content preview) and completion (stop reason, tool call count, latency) using existing `createLogger` [owner:api-engineer]
+- [x] [1.1] [P-1] Add `hono` and `@hono/node-server` dependencies to `packages/daemon/package.json` [owner:api-engineer]
+- [x] [1.2] [P-1] Add `"dashboard"` to the `Channel` union type in `packages/daemon/src/types.ts` [owner:api-engineer]
+- [x] [1.3] [P-1] Create `packages/daemon/src/http.ts` — export `createHttpServer()` function that creates a Hono app with `cors()` and `secureHeaders()` middleware, following the pattern in `packages/tools/channels-svc/src/server.ts` [owner:api-engineer]
+- [x] [1.4] [P-1] Add `GET /health` route in `http.ts` — returns `{ status: "ok", service: "nova-daemon", uptime_secs: number }` [owner:api-engineer]
+- [x] [1.5] [P-1] Add `POST /chat` route in `http.ts` — accepts `{ message: string }` JSON body, returns `Content-Type: text/event-stream` SSE response; constructs a `Message` object with `channel: "dashboard"`, `chatId: "dashboard:web"`, `senderId: "dashboard-user"`; loads conversation history via `ConversationManager.loadHistory("dashboard:web", config.conversationHistoryDepth)`; iterates `processMessageStream()` async generator; emits `{"type":"chunk","text":"..."}` for each text chunk; emits `{"type":"done","full_text":"..."}` on completion; saves exchange via `ConversationManager.saveExchange()` [owner:api-engineer]
+- [x] [1.6] [P-1] Add `processMessageStream()` async generator method to `NovaAgent` in `packages/daemon/src/brain/agent.ts` — yields `{ type: "chunk", text: string }` events from assistant message text blocks as they arrive from `query()` `AsyncIterable<SDKMessage>`, yields `{ type: "done", response: AgentResponse }` on result; handles tool calls and token counting same as existing `processMessage()`; fires diary entry on completion [owner:api-engineer]
+- [x] [1.7] [P-2] Wire Hono server startup in `packages/daemon/src/index.ts` — call `createHttpServer()` passing `agent`, `conversationManager`, and `config`; start listening on `config.daemonPort` (7700); add server close to the `shutdown()` function [owner:api-engineer]
+- [x] [1.8] [P-2] Add SSE error handling in `POST /chat` — on agent processing error, emit `{"type":"error","message":"..."}` event and close stream; add 120s overall timeout; add 30s inactivity timeout (no chunks emitted) [owner:api-engineer]
+- [x] [1.9] [P-3] Add request logging in `POST /chat` — log message receipt (content length, content preview) and completion (stop reason, tool call count, latency) using existing `createLogger` [owner:api-engineer]
 
 ## API Batch: Dashboard API Routes
 
-- [ ] [2.1] [P-1] Create `apps/dashboard/app/api/chat/send/route.ts` — POST handler that reads `DAEMON_URL` from env (default `http://localhost:7700`), proxies request body to `${DAEMON_URL}/chat`, streams SSE response back to client; on daemon failure (connection refused, 503, timeout >10s), returns 503 with `{ error: "daemon_unavailable", fallback: "telegram" }` [owner:api-engineer]
-- [ ] [2.2] [P-1] Create `apps/dashboard/app/api/chat/history/route.ts` — GET handler that queries messages table via Drizzle with `limit=50`, ordered by `createdAt DESC`, returns all channels (no filter); maps rows to `StoredMessage` shape matching existing `/api/messages` contract [owner:api-engineer]
-- [ ] [2.3] [P-1] Add chat-related types to `apps/dashboard/types/api.ts` — `ChatSendRequest` (`message: string`), `ChatSSEChunk` (`type: "chunk"`, `text: string`), `ChatSSEDone` (`type: "done"`, `full_text: string`), `ChatSSEError` (`type: "error"`, `message: string`), `ChatSSEEvent` (union of the three) [owner:api-engineer]
+- [x] [2.1] [P-1] Create `apps/dashboard/app/api/chat/send/route.ts` — POST handler that reads `DAEMON_URL` from env (default `http://localhost:7700`), proxies request body to `${DAEMON_URL}/chat`, streams SSE response back to client; on daemon failure (connection refused, 503, timeout >10s), returns 503 with `{ error: "daemon_unavailable", fallback: "telegram" }` [owner:api-engineer]
+- [x] [2.2] [P-1] Create `apps/dashboard/app/api/chat/history/route.ts` — GET handler that queries messages table via Drizzle with `limit=50`, ordered by `createdAt DESC`, returns all channels (no filter); maps rows to `StoredMessage` shape matching existing `/api/messages` contract [owner:api-engineer]
+- [x] [2.3] [P-1] Add chat-related types to `apps/dashboard/types/api.ts` — `ChatSendRequest` (`message: string`), `ChatSSEChunk` (`type: "chunk"`, `text: string`), `ChatSSEDone` (`type: "done"`, `full_text: string`), `ChatSSEError` (`type: "error"`, `message: string`), `ChatSSEEvent` (union of the three) [owner:api-engineer]
 
 ## UI Batch: Chat Page + Sidebar
 
@@ -35,8 +35,8 @@
 
 ## E2E Batch: Verification
 
-- [ ] [4.1] TypeScript compilation: `pnpm --filter @nova/daemon typecheck` passes with no errors [owner:api-engineer]
-- [ ] [4.2] TypeScript compilation: `pnpm --filter dashboard typecheck` passes with no errors [owner:ui-engineer]
+- [x] [4.1] TypeScript compilation: `pnpm --filter @nova/daemon typecheck` passes with no errors [owner:api-engineer]
+- [x] [4.2] TypeScript compilation: `pnpm --filter nova-dashboard typecheck` passes with no errors [owner:ui-engineer]
 - [ ] [4.3] Dashboard build: `pnpm --filter dashboard build` completes successfully [owner:ui-engineer]
 - [ ] [4.4] [user] Manual smoke: start daemon, navigate to `/chat`, verify message history loads from all channels with channel badges
 - [ ] [4.5] [user] Manual smoke: send a message via the chat input, verify SSE streaming renders chunks in real-time in a Nova bubble with typing indicator

@@ -254,6 +254,29 @@ export interface MessagesGetResponse {
   offset: number;
 }
 
+// ── POST /api/chat/send ───────────────────────────────────────────────────
+
+export interface ChatSendRequest {
+  message: string;
+}
+
+export interface ChatSSEChunk {
+  type: "chunk";
+  text: string;
+}
+
+export interface ChatSSEDone {
+  type: "done";
+  full_text: string;
+}
+
+export interface ChatSSEError {
+  type: "error";
+  message: string;
+}
+
+export type ChatSSEEvent = ChatSSEChunk | ChatSSEDone | ChatSSEError;
+
 // ── GET /stats ─────────────────────────────────────────────────────────────
 
 /** Per-tool breakdown entry. Source: meta-svc fleet service. */

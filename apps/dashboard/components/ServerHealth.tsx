@@ -50,20 +50,20 @@ function MetricBar({
   const isCrit = pct >= 90;
 
   const barColor = isCrit
-    ? "bg-[#EF4444]"
+    ? "bg-red-700"
     : isWarn
-      ? "bg-[#F97316]"
+      ? "bg-amber-700"
       : "bg-ds-gray-700";
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs text-ds-gray-900">
+        <div className="flex items-center gap-1.5 text-copy-13 text-ds-gray-900">
           <Icon size={12} />
           <span>{label}</span>
         </div>
         <span
-          className={`text-xs font-mono ${isCrit ? "text-[#EF4444]" : isWarn ? "text-[#F97316]" : "text-ds-gray-1000"}`}
+          className={`text-copy-13 font-mono ${isCrit ? "text-red-700" : isWarn ? "text-amber-700" : "text-ds-gray-1000"}`}
         >
           {value.toFixed(1)}
           {unit}
@@ -107,7 +107,7 @@ export default function ServerHealth({
     return (
       <div className="p-5 rounded-xl border border-red-700/30 bg-red-700/10 flex items-center gap-3 text-red-700">
         <AlertCircle size={16} />
-        <span className="text-sm">{error ?? "No metrics available"}</span>
+        <span className="text-copy-13">{error ?? "No metrics available"}</span>
       </div>
     );
   }
@@ -141,23 +141,23 @@ export default function ServerHealth({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           {metrics.status === "ok" || metrics.status === "healthy" ? (
-            <Wifi size={16} className="text-emerald-400" />
+            <Wifi size={16} className="text-green-700" />
           ) : metrics.status === "degraded" ? (
-            <Wifi size={16} className="text-[#F97316]" />
+            <Wifi size={16} className="text-amber-700" />
           ) : (
-            <WifiOff size={16} className="text-[#EF4444]" />
+            <WifiOff size={16} className="text-red-700" />
           )}
-          <span className="text-sm font-medium text-ds-gray-1000">
+          <span className="text-copy-14 font-medium text-ds-gray-1000">
             Daemon Health
           </span>
         </div>
         <span
-          className={`text-xs px-2 py-0.5 rounded font-mono ${
+          className={`text-label-12 px-2 py-0.5 rounded font-mono ${
             metrics.status === "ok" || metrics.status === "healthy"
-              ? "bg-emerald-500/20 text-emerald-400"
+              ? "bg-green-700/20 text-green-700"
               : metrics.status === "degraded"
-                ? "bg-[#F97316]/20 text-[#F97316]"
-                : "bg-[#EF4444]/20 text-[#EF4444]"
+                ? "bg-amber-700/20 text-amber-700"
+                : "bg-red-700/20 text-red-700"
           }`}
         >
           {metrics.status}
@@ -240,11 +240,11 @@ export default function ServerHealth({
 
       {/* Info row */}
       <div className="flex items-center justify-between pt-2 border-t border-ds-gray-400">
-        <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center gap-1.5 text-copy-13 text-ds-gray-900 font-mono">
           <Clock size={12} />
           <span>{formatUptime(metrics.uptime_seconds)}</span>
         </div>
-        <div className="text-xs text-ds-gray-900 font-mono">
+        <div className="text-copy-13 text-ds-gray-900 font-mono">
           {metrics.memory_used_mb.toFixed(0)} /{" "}
           {metrics.memory_total_mb.toFixed(0)} MB ({memPct.toFixed(0)}%)
         </div>
@@ -252,7 +252,7 @@ export default function ServerHealth({
 
       {/* Load average row */}
       {(metrics.load_avg_1m != null || metrics.load_avg_5m != null) && (
-        <div className="flex items-center gap-4 text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center gap-4 text-copy-13 text-ds-gray-900 font-mono">
           <div className="flex items-center gap-1.5">
             <Activity size={12} />
             <span>Load</span>
@@ -272,7 +272,7 @@ export default function ServerHealth({
 
       {/* Disk usage summary */}
       {hasDisk && (
-        <div className="flex items-center justify-between text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center justify-between text-copy-13 text-ds-gray-900 font-mono">
           <div className="flex items-center gap-1.5">
             <HardDrive size={12} />
             <span>Disk</span>
@@ -286,7 +286,7 @@ export default function ServerHealth({
 
       {/* Version / PID */}
       {(metrics.version ?? metrics.pid) && (
-        <div className="flex items-center justify-between text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center justify-between text-copy-13 text-ds-gray-900 font-mono">
           {metrics.version && <span>v{metrics.version}</span>}
           {metrics.pid && <span>PID {metrics.pid}</span>}
         </div>

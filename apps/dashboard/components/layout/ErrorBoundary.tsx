@@ -62,7 +62,7 @@ export default class ErrorBoundary extends Component<
     const { error, showDetails } = this.state;
 
     return (
-      <div className="flex flex-col items-center justify-center gap-4 py-16 px-6 text-center animate-fade-in-up">
+      <div className="flex flex-col items-center justify-center gap-3 py-8 px-6 text-center animate-fade-in-up">
         {/* Icon */}
         <div
           className="flex items-center justify-center w-10 h-10 rounded-full"

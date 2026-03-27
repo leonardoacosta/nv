@@ -29,16 +29,16 @@ type EventIconConfig = { icon: React.ReactNode; color: string };
 
 function getEventConfig(eventType: string): EventIconConfig {
   if (eventType === "obligation.execution_completed" || eventType === "obligation.confirmed") {
-    return { icon: <CheckCircle size={14} aria-hidden="true" />, color: "text-green-600" };
+    return { icon: <CheckCircle size={14} aria-hidden="true" />, color: "text-green-700" };
   }
   if (eventType === "obligation.tool_called") {
-    return { icon: <Zap size={14} aria-hidden="true" />, color: "text-amber-500" };
+    return { icon: <Zap size={14} aria-hidden="true" />, color: "text-amber-700" };
   }
   if (eventType === "obligation.execution_failed" || eventType === "obligation.dismissed") {
-    return { icon: <XCircle size={14} aria-hidden="true" />, color: "text-red-500" };
+    return { icon: <XCircle size={14} aria-hidden="true" />, color: "text-red-700" };
   }
   if (eventType === "obligation.detected") {
-    return { icon: <Plus size={14} aria-hidden="true" />, color: "text-blue-500" };
+    return { icon: <Plus size={14} aria-hidden="true" />, color: "text-blue-700" };
   }
   // execution_started, reopened, or any other obligation event
   return { icon: <Play size={14} aria-hidden="true" />, color: "text-ds-gray-700" };
@@ -137,7 +137,7 @@ export default function ActivityFeed({ onObligationClick }: ActivityFeedProps) {
         <span className="text-label-13 font-semibold text-ds-gray-1000">Activity</span>
         <div className="flex items-center gap-1.5">
           {wsActive ? (
-            <Wifi size={12} className="text-green-600" aria-label="Live" />
+            <Wifi size={12} className="text-green-700" aria-label="Live" />
           ) : (
             <WifiOff size={12} className="text-ds-gray-700" aria-label="Polling" />
           )}

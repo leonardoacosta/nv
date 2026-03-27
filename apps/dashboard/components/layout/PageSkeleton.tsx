@@ -22,7 +22,7 @@ export default function PageSkeleton({ variant = "stat-grid" }: PageSkeletonProp
       </div>
 
       {/* Content skeleton */}
-      <div className="flex-1 overflow-hidden px-6 py-6">
+      <div className="flex-1 overflow-hidden px-6 py-4">
         <div className="max-w-6xl mx-auto w-full space-y-4">
 
           {variant === "stat-grid" && (

@@ -2,41 +2,41 @@
 
 ## UI Batch 1 -- Shared Utilities + Layout Components
 
-- [ ] [1.1] [P-1] Create `apps/dashboard/lib/brand-colors.ts` -- export a `PLATFORM_BRAND` const map with keys `telegram`, `discord`, `slack`, `cli`, `api`; each value has `{ bg, text, border, dot }` Tailwind class strings using the platform's official hex colors; export a `getPlatformColor(channel: string)` helper that returns the brand entry or a neutral ds-gray fallback [owner:ui-engineer]
-- [ ] [1.2] [P-1] Update `apps/dashboard/components/layout/EmptyState.tsx` -- verify it supports the compact pattern: single line text-copy-13 text-ds-gray-900 + optional action button using text-button-14 + optional help link; max py-4; no icons above 20px; if the component already supports this from global-density-pass, no changes needed [owner:ui-engineer]
-- [ ] [1.3] [P-2] Update `apps/dashboard/components/layout/SectionHeader.tsx` -- replace any raw text-sm or text-xs classes with text-label-12 or text-label-14 from the type scale [owner:ui-engineer]
-- [ ] [1.4] [P-2] Update `apps/dashboard/components/layout/ErrorBoundary.tsx` -- tighten spacing (reduce py-6/py-8 to py-3/py-4); replace any raw text sizing with type scale classes [owner:ui-engineer]
-- [ ] [1.5] [P-2] Update `apps/dashboard/components/layout/PageSkeleton.tsx` -- tighten spacing (reduce py-6/gap-6 to py-3/gap-3) [owner:ui-engineer]
-- [ ] [1.6] [P-3] Update `apps/dashboard/lib/markdown.tsx` -- replace raw text-sm/text-xs with type scale equivalents (text-copy-13, text-copy-14) [owner:ui-engineer]
+- [x] [1.1] [P-1] Create `apps/dashboard/lib/brand-colors.ts` -- export a `PLATFORM_BRAND` const map with keys `telegram`, `discord`, `slack`, `cli`, `api`; each value has `{ bg, text, border, dot }` Tailwind class strings using the platform's official hex colors; export a `getPlatformColor(channel: string)` helper that returns the brand entry or a neutral ds-gray fallback [owner:ui-engineer]
+- [x] [1.2] [P-1] Update `apps/dashboard/components/layout/EmptyState.tsx` -- verify it supports the compact pattern: single line text-copy-13 text-ds-gray-900 + optional action button using text-button-14 + optional help link; max py-4; no icons above 20px; if the component already supports this from global-density-pass, no changes needed [owner:ui-engineer]
+- [x] [1.3] [P-2] Update `apps/dashboard/components/layout/SectionHeader.tsx` -- replace any raw text-sm or text-xs classes with text-label-12 or text-label-14 from the type scale [owner:ui-engineer]
+- [x] [1.4] [P-2] Update `apps/dashboard/components/layout/ErrorBoundary.tsx` -- tighten spacing (reduce py-6/py-8 to py-3/py-4); replace any raw text sizing with type scale classes [owner:ui-engineer]
+- [x] [1.5] [P-2] Update `apps/dashboard/components/layout/PageSkeleton.tsx` -- tighten spacing (reduce py-6/gap-6 to py-3/gap-3) [owner:ui-engineer]
+- [x] [1.6] [P-3] Update `apps/dashboard/lib/markdown.tsx` -- replace raw text-sm/text-xs with type scale equivalents (text-copy-13, text-copy-14) [owner:ui-engineer]
 
 ## UI Batch 2 -- Status Color Standardization (Components)
 
-- [ ] [2.1] [P-1] Update `apps/dashboard/components/ObligationItem.tsx` -- replace all bg-[#EF4444], bg-[#F97316], bg-[#6B7280], bg-[#374151] and their /10 /20 /30 variants with ds-* status tokens (bg-red-700, bg-amber-700, bg-ds-gray-600, bg-ds-gray-500); replace border-[#hex] with border-red-700/30 or border-ds-gray-alpha-400; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [2.2] [P-1] Update `apps/dashboard/components/approvals/ApprovalQueueItem.tsx` -- replace bg-[#EF4444], bg-[#F97316] status dots with bg-red-700, bg-amber-700; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [2.3] [P-1] Update `apps/dashboard/components/ServerHealth.tsx` -- replace bg-[#EF4444], bg-[#F97316] and their /20 text variants with bg-red-700, bg-amber-700, text-red-700, text-amber-700; replace raw text-sm/text-xs with type scale [owner:ui-engineer]
-- [ ] [2.4] [P-1] Update `apps/dashboard/components/ProjectAccordion.tsx` -- replace bg-[#EF4444], bg-[#F97316] and text-[#hex] variants with ds-* status tokens; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [2.5] [P-2] Update `apps/dashboard/components/ServiceRow.tsx` -- replace bg-green-700 (already correct as Tailwind maps to ds-green), verify bg-red-700 matches; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [2.6] [P-2] Update `apps/dashboard/components/Sidebar.tsx` -- replace bg-green-700, bg-amber-700, bg-red-700 WS status dots (verify these already map to ds-* via tailwind.config); replace bg-amber-700/20 text-amber-700 update badge colors; replace raw text-sm with type scale [owner:ui-engineer]
+- [x] [2.1] [P-1] Update `apps/dashboard/components/ObligationItem.tsx` -- replace all bg-[#EF4444], bg-[#F97316], bg-[#6B7280], bg-[#374151] and their /10 /20 /30 variants with ds-* status tokens (bg-red-700, bg-amber-700, bg-ds-gray-600, bg-ds-gray-500); replace border-[#hex] with border-red-700/30 or border-ds-gray-alpha-400; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [2.2] [P-1] Update `apps/dashboard/components/approvals/ApprovalQueueItem.tsx` -- replace bg-[#EF4444], bg-[#F97316] status dots with bg-red-700, bg-amber-700; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [2.3] [P-1] Update `apps/dashboard/components/ServerHealth.tsx` -- replace bg-[#EF4444], bg-[#F97316] and their /20 text variants with bg-red-700, bg-amber-700, text-red-700, text-amber-700; replace raw text-sm/text-xs with type scale [owner:ui-engineer]
+- [x] [2.4] [P-1] Update `apps/dashboard/components/ProjectAccordion.tsx` -- replace bg-[#EF4444], bg-[#F97316] and text-[#hex] variants with ds-* status tokens; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [2.5] [P-2] Update `apps/dashboard/components/ServiceRow.tsx` -- replace bg-green-700 (already correct as Tailwind maps to ds-green), verify bg-red-700 matches; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [2.6] [P-2] Update `apps/dashboard/components/Sidebar.tsx` -- replace bg-green-700, bg-amber-700, bg-red-700 WS status dots (verify these already map to ds-* via tailwind.config); replace bg-amber-700/20 text-amber-700 update badge colors; replace raw text-sm with type scale [owner:ui-engineer]
 
 ## UI Batch 3 -- Platform Brand Color Consolidation (Components)
 
-- [ ] [3.1] [P-1] Update `apps/dashboard/components/SessionCard.tsx` -- remove local CHANNEL_COLOR map; import from brand-colors.ts; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [3.2] [P-1] Update `apps/dashboard/components/ActiveSession.tsx` -- remove local CHANNEL_COLOR map; import from brand-colors.ts; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [3.3] [P-2] Update `apps/dashboard/components/DiaryEntry.tsx` -- replace hardcoded bg-[#229ED9]/20 text-[#229ED9] border-[#229ED9]/30 with brand-colors.ts import for telegram; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [3.4] [P-2] Update `apps/dashboard/components/ContactCard.tsx` -- replace raw text sizes with type scale; standardize contact type colors (bg-red-700/20 text-red-700, bg-amber-700/20 text-amber-700) [owner:ui-engineer]
-- [ ] [3.5] [P-2] Update `apps/dashboard/components/ContactDetailPanel.tsx` -- replace raw text sizes with type scale; standardize contact type colors; tighten spacing (py-6 to py-3) [owner:ui-engineer]
+- [x] [3.1] [P-1] Update `apps/dashboard/components/SessionCard.tsx` -- remove local CHANNEL_COLOR map; import from brand-colors.ts; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [3.2] [P-1] Update `apps/dashboard/components/ActiveSession.tsx` -- remove local CHANNEL_COLOR map; import from brand-colors.ts; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [3.3] [P-2] Update `apps/dashboard/components/DiaryEntry.tsx` -- replace hardcoded bg-[#229ED9]/20 text-[#229ED9] border-[#229ED9]/30 with brand-colors.ts import for telegram; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [3.4] [P-2] Update `apps/dashboard/components/ContactCard.tsx` -- replace raw text sizes with type scale; standardize contact type colors (bg-red-700/20 text-red-700, bg-amber-700/20 text-amber-700) [owner:ui-engineer]
+- [x] [3.5] [P-2] Update `apps/dashboard/components/ContactDetailPanel.tsx` -- replace raw text sizes with type scale; standardize contact type colors; tighten spacing (py-6 to py-3) [owner:ui-engineer]
 
 ## UI Batch 4 -- Typography + Spacing (Shared Components)
 
-- [ ] [4.1] [P-2] Update `apps/dashboard/components/NovaBadge.tsx` -- replace raw text-xs with text-label-12 [owner:ui-engineer]
-- [ ] [4.2] [P-2] Update `apps/dashboard/components/LeoBadge.tsx` -- replace raw text-xs with text-label-12 [owner:ui-engineer]
-- [ ] [4.3] [P-2] Update `apps/dashboard/components/SessionWidget.tsx` -- replace raw text-sm/text-xs with type scale (text-copy-13, text-label-12) [owner:ui-engineer]
-- [ ] [4.4] [P-2] Update `apps/dashboard/components/SessionDashboard.tsx` -- replace raw text sizes with type scale; tighten spacing (space-y-6/gap-6 to space-y-3/gap-3) [owner:ui-engineer]
-- [ ] [4.5] [P-2] Update `apps/dashboard/components/LatencyChart.tsx` -- replace raw text-sm/text-xs with type scale [owner:ui-engineer]
-- [ ] [4.6] [P-2] Update `apps/dashboard/components/MemoryPreview.tsx` -- replace raw text-sm/text-xs with type scale [owner:ui-engineer]
-- [ ] [4.7] [P-2] Update `apps/dashboard/components/ObligationSummaryBar.tsx` -- replace raw text-sm with type scale [owner:ui-engineer]
-- [ ] [4.8] [P-3] Update `apps/dashboard/components/ColdStartsPanel.tsx` -- tighten spacing; replace raw text sizes if any [owner:ui-engineer]
-- [ ] [4.9] [P-3] Update `apps/dashboard/components/ActivityFeed.tsx` -- tighten spacing; replace raw text sizes if any [owner:ui-engineer]
+- [x] [4.1] [P-2] Update `apps/dashboard/components/NovaBadge.tsx` -- replace raw text-xs with text-label-12 [owner:ui-engineer]
+- [x] [4.2] [P-2] Update `apps/dashboard/components/LeoBadge.tsx` -- replace raw text-xs with text-label-12 [owner:ui-engineer]
+- [x] [4.3] [P-2] Update `apps/dashboard/components/SessionWidget.tsx` -- replace raw text-sm/text-xs with type scale (text-copy-13, text-label-12) [owner:ui-engineer]
+- [x] [4.4] [P-2] Update `apps/dashboard/components/SessionDashboard.tsx` -- replace raw text sizes with type scale; tighten spacing (space-y-6/gap-6 to space-y-3/gap-3) [owner:ui-engineer]
+- [x] [4.5] [P-2] Update `apps/dashboard/components/LatencyChart.tsx` -- replace raw text-sm/text-xs with type scale [owner:ui-engineer]
+- [x] [4.6] [P-2] Update `apps/dashboard/components/MemoryPreview.tsx` -- replace raw text-sm/text-xs with type scale [owner:ui-engineer]
+- [x] [4.7] [P-2] Update `apps/dashboard/components/ObligationSummaryBar.tsx` -- replace raw text-sm with type scale [owner:ui-engineer]
+- [x] [4.8] [P-3] Update `apps/dashboard/components/ColdStartsPanel.tsx` -- tighten spacing; replace raw text sizes if any [owner:ui-engineer]
+- [x] [4.9] [P-3] Update `apps/dashboard/components/ActivityFeed.tsx` -- tighten spacing; replace raw text sizes if any [owner:ui-engineer]
 
 ## UI Batch 5 -- Page-Level Token Standardization (Core Pages)
 

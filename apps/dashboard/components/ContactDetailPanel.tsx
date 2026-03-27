@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { X, Copy, Check } from "lucide-react";
 import type { DiscoveredContact, ContactRelationship } from "@/types/api";
+import { getPlatformColor } from "@/lib/brand-colors";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,20 +41,14 @@ function formatDate(iso: string): string {
   }
 }
 
-const CHANNEL_COLORS: Record<string, { bg: string; text: string }> = {
-  telegram: { bg: "bg-sky-500/20", text: "text-sky-400" },
-  discord: { bg: "bg-indigo-500/20", text: "text-indigo-400" },
-  teams: { bg: "bg-violet-500/20", text: "text-violet-400" },
-};
-
 const RELATIONSHIP_BADGE: Record<
   string,
   { bg: string; text: string; label: string }
 > = {
   work: { bg: "bg-ds-gray-alpha-200", text: "text-ds-gray-1000", label: "Work" },
   "personal-client": { bg: "bg-red-700/20", text: "text-red-700", label: "Personal" },
-  contributor: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Contributor" },
-  social: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Social" },
+  contributor: { bg: "bg-amber-700/20", text: "text-amber-700", label: "Contributor" },
+  social: { bg: "bg-green-700/20", text: "text-green-700", label: "Social" },
 };
 
 // ---------------------------------------------------------------------------
@@ -170,20 +165,20 @@ export default function ContactDetailPanel({
           <X size={16} />
         </button>
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 space-y-4">
           {/* Header */}
           <div className="space-y-2 pr-8">
-            <h2 className="text-lg font-semibold text-ds-gray-1000">
+            <h2 className="text-heading-16 text-ds-gray-1000">
               {contact.name}
             </h2>
             {badge ? (
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium ${badge.bg} ${badge.text}`}
               >
                 {badge.label}
               </span>
             ) : (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-ds-gray-100 text-ds-gray-900">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium bg-ds-gray-100 text-ds-gray-900">
                 Untagged
               </span>
             )}
@@ -191,15 +186,12 @@ export default function ContactDetailPanel({
 
           {/* Channels */}
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-ds-gray-900 uppercase tracking-wider">
+            <h3 className="text-label-12 text-ds-gray-900">
               Channels
             </h3>
             <div className="space-y-1.5">
               {contact.channels.map((ch) => {
-                const colors = CHANNEL_COLORS[ch] ?? {
-                  bg: "bg-ds-gray-100",
-                  text: "text-ds-gray-900",
-                };
+                const brand = getPlatformColor(ch);
                 const identifier = channelEntries.find(
                   ([k]) => k === ch,
                 )?.[1];
@@ -210,12 +202,12 @@ export default function ContactDetailPanel({
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize shrink-0 ${colors.bg} ${colors.text}`}
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium capitalize shrink-0 ${brand.bg} ${brand.text}`}
                       >
                         {ch}
                       </span>
                       {identifier && (
-                        <span className="text-xs text-ds-gray-1000 truncate">
+                        <span className="text-copy-13 text-ds-gray-1000 truncate">
                           {identifier}
                         </span>
                       )}
@@ -229,31 +221,31 @@ export default function ContactDetailPanel({
 
           {/* Activity */}
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-ds-gray-900 uppercase tracking-wider">
+            <h3 className="text-label-12 text-ds-gray-900">
               Activity
             </h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-ds-gray-100 rounded-lg p-3">
-                <p className="text-xs text-ds-gray-900">Messages</p>
-                <p className="text-sm font-medium text-ds-gray-1000">
+                <p className="text-copy-13 text-ds-gray-900">Messages</p>
+                <p className="text-copy-14 font-medium text-ds-gray-1000">
                   {contact.message_count.toLocaleString()}
                 </p>
               </div>
               <div className="bg-ds-gray-100 rounded-lg p-3">
-                <p className="text-xs text-ds-gray-900">Last Seen</p>
-                <p className="text-sm font-medium text-ds-gray-1000">
+                <p className="text-copy-13 text-ds-gray-900">Last Seen</p>
+                <p className="text-copy-14 font-medium text-ds-gray-1000">
                   {relativeTime(contact.last_seen)}
                 </p>
               </div>
               <div className="bg-ds-gray-100 rounded-lg p-3">
-                <p className="text-xs text-ds-gray-900">First Seen</p>
-                <p className="text-sm font-medium text-ds-gray-1000">
+                <p className="text-copy-13 text-ds-gray-900">First Seen</p>
+                <p className="text-copy-14 font-medium text-ds-gray-1000">
                   {formatDate(contact.first_seen)}
                 </p>
               </div>
               <div className="bg-ds-gray-100 rounded-lg p-3">
-                <p className="text-xs text-ds-gray-900">Last Seen</p>
-                <p className="text-sm font-medium text-ds-gray-1000">
+                <p className="text-copy-13 text-ds-gray-900">Last Seen</p>
+                <p className="text-copy-14 font-medium text-ds-gray-1000">
                   {formatDate(contact.last_seen)}
                 </p>
               </div>
@@ -262,10 +254,10 @@ export default function ContactDetailPanel({
 
           {/* Notes */}
           <div className="space-y-2">
-            <h3 className="text-xs font-medium text-ds-gray-900 uppercase tracking-wider">
+            <h3 className="text-label-12 text-ds-gray-900">
               Notes
             </h3>
-            <p className="text-sm text-ds-gray-1000">
+            <p className="text-copy-14 text-ds-gray-1000">
               {contact.notes ?? "No notes"}
             </p>
           </div>
@@ -273,31 +265,28 @@ export default function ContactDetailPanel({
           {/* Related People */}
           {relatedPeople.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-xs font-medium text-ds-gray-900 uppercase tracking-wider">
+              <h3 className="text-label-12 text-ds-gray-900">
                 Related People
               </h3>
               <div className="space-y-2">
                 {relatedPeople.map((person) => {
-                  const colors = CHANNEL_COLORS[person.channel] ?? {
-                    bg: "bg-ds-gray-100",
-                    text: "text-ds-gray-900",
-                  };
+                  const personBrand = getPlatformColor(person.channel);
                   return (
                     <div
                       key={`${person.name}-${person.channel}`}
                       className="flex items-center justify-between gap-2"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-sm text-ds-gray-1000">
+                        <span className="text-copy-14 text-ds-gray-1000">
                           {person.name}
                         </span>
                         <span
-                          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs capitalize ${colors.bg} ${colors.text}`}
+                          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-label-12 capitalize ${personBrand.bg} ${personBrand.text}`}
                         >
                           {person.channel}
                         </span>
                       </div>
-                      <span className="text-xs text-ds-gray-900 shrink-0">
+                      <span className="text-copy-13 text-ds-gray-900 shrink-0">
                         {person.count} co-occurrences
                       </span>
                     </div>

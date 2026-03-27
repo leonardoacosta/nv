@@ -220,7 +220,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
           : "bg-ds-gray-600";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Status card — surface-card with accent bar */}
       <div className="surface-card relative p-6 space-y-5 overflow-hidden">
         {/* Left accent bar */}
@@ -326,7 +326,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
 
       {/* Action error */}
       {actionError && (
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700 text-sm">
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700 text-copy-14">
           <AlertCircle size={15} />
           {actionError}
         </div>
@@ -352,7 +352,7 @@ export default function SessionDashboard({ initialStatus }: SessionDashboardProp
       )}
 
       {/* Log viewer */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Terminal size={14} className="text-ds-gray-700" />
           <span className="text-label-12 text-ds-gray-700">Container Logs</span>

@@ -1,5 +1,6 @@
 import { Clock, Terminal, Radio } from "lucide-react";
 import type { DiaryEntryItem } from "@/types/api";
+import { PLATFORM_BRAND } from "@/lib/brand-colors";
 
 interface DiaryEntryProps {
   entry: DiaryEntryItem;
@@ -7,16 +8,16 @@ interface DiaryEntryProps {
 
 function TriggerTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
-    message: "bg-[#229ED9]/20 text-[#229ED9] border-[#229ED9]/30",
-    cron: "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/30",
-    nexus: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-    cli: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+    message: `${PLATFORM_BRAND.telegram.bg} ${PLATFORM_BRAND.telegram.text} ${PLATFORM_BRAND.telegram.border}`,
+    cron: "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-alpha-400",
+    nexus: "bg-green-700/20 text-green-700 border-green-700/30",
+    cli: "bg-amber-700/20 text-amber-700 border-amber-700/30",
     research: "bg-red-700/20 text-red-700 border-red-700/30",
   };
-  const cls = colors[type] ?? "bg-ds-gray-alpha-200 text-ds-gray-900 border-ds-gray-400";
+  const cls = colors[type] ?? "bg-ds-gray-alpha-200 text-ds-gray-900 border-ds-gray-alpha-400";
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono border ${cls}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded text-label-12 font-medium font-mono border ${cls}`}
     >
       {type}
     </span>
@@ -41,12 +42,12 @@ export default function DiaryEntry({ entry }: DiaryEntryProps) {
           {entry.time}
         </span>
         <TriggerTypeBadge type={entry.trigger_type} />
-        <span className="flex items-center gap-1 text-xs text-ds-gray-900">
+        <span className="flex items-center gap-1 text-copy-13 text-ds-gray-900">
           <Radio size={11} className="shrink-0" />
           {entry.channel_source || entry.trigger_source}
         </span>
-        <span className="text-xs text-ds-gray-900">&middot;</span>
-        <span className="text-xs font-mono text-ds-gray-1000 truncate max-w-xs">
+        <span className="text-copy-13 text-ds-gray-900">&middot;</span>
+        <span className="text-copy-13 font-mono text-ds-gray-1000 truncate max-w-xs">
           {entry.slug}
         </span>
       </div>
@@ -62,18 +63,18 @@ export default function DiaryEntry({ entry }: DiaryEntryProps) {
 
       {/* Result summary */}
       {entry.result_summary && (
-        <p className="text-sm text-ds-gray-1000 mb-2 leading-snug">
+        <p className="text-copy-14 text-ds-gray-1000 mb-2 leading-snug">
           {entry.result_summary}
         </p>
       )}
 
       {/* Metadata row: latency + token cost */}
       <div className="flex items-center gap-4 flex-wrap mt-1">
-        <span className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+        <span className="flex items-center gap-1 text-copy-13 text-ds-gray-900 font-mono">
           <Clock size={11} className="shrink-0" />
           {entry.response_latency_ms.toLocaleString()}ms
         </span>
-        <span className="text-xs text-ds-gray-900 font-mono">
+        <span className="text-copy-13 text-ds-gray-900 font-mono">
           {entry.tokens_in.toLocaleString()} in + {entry.tokens_out.toLocaleString()} out
         </span>
       </div>

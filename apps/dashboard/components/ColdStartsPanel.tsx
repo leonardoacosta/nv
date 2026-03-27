@@ -275,7 +275,7 @@ export default function ColdStartsPanel() {
   const avgTokensOut = avg(visibleEvents.map((e) => e.tokens_out));
 
   return (
-    <div className="space-y-8 animate-fade-in-up">
+    <div className="space-y-4 animate-fade-in-up">
       {/* Refresh button */}
       <div className="flex justify-end">
         <button
@@ -408,7 +408,7 @@ export default function ColdStartsPanel() {
       </div>
 
       {/* Pipeline Latency Chart */}
-      <div className="mt-6">
+      <div className="mt-3">
         <PipelineLatencyChart />
       </div>
     </div>

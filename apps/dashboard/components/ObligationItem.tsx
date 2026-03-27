@@ -22,15 +22,15 @@ const PRIORITY_CONFIG: Record<
 > = {
   0: {
     label: "P0",
-    color: "text-[#EF4444]",
-    bar: "bg-[#EF4444]",
-    bg: "bg-[#EF4444]/10 border-[#EF4444]/30",
+    color: "text-red-700",
+    bar: "bg-red-700",
+    bg: "bg-red-700/10 border-red-700/30",
   },
   1: {
     label: "P1",
-    color: "text-[#F97316]",
-    bar: "bg-[#F97316]",
-    bg: "bg-[#F97316]/10 border-[#F97316]/30",
+    color: "text-amber-700",
+    bar: "bg-amber-700",
+    bg: "bg-amber-700/10 border-amber-700/30",
   },
   2: {
     label: "P2",
@@ -40,15 +40,15 @@ const PRIORITY_CONFIG: Record<
   },
   3: {
     label: "P3",
-    color: "text-[#6B7280]",
-    bar: "bg-[#6B7280]",
-    bg: "bg-[#6B7280]/10 border-[#6B7280]/20",
+    color: "text-ds-gray-700",
+    bar: "bg-ds-gray-600",
+    bg: "bg-ds-gray-alpha-200 border-ds-gray-alpha-400",
   },
   4: {
     label: "P4",
-    color: "text-[#374151]",
-    bar: "bg-[#374151]",
-    bg: "bg-[#374151]/10 border-[#374151]/20",
+    color: "text-ds-gray-700",
+    bar: "bg-ds-gray-500",
+    bg: "bg-ds-gray-alpha-100 border-ds-gray-alpha-200",
   },
 };
 
@@ -70,18 +70,18 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <span
-              className={`text-xs font-mono font-bold uppercase ${p.color}`}
+              className={`text-label-12 font-mono font-bold ${p.color}`}
             >
               {p.label}
             </span>
-            <span className="text-sm font-medium text-ds-gray-1000">
+            <span className="text-copy-14 font-medium text-ds-gray-1000">
               {obligation.title}
             </span>
           </div>
           <span
-            className={`text-xs px-2 py-0.5 rounded font-mono shrink-0 ${
+            className={`text-label-12 px-2 py-0.5 rounded font-mono shrink-0 ${
               obligation.status === "in_progress"
-                ? "bg-amber-500/20 text-amber-400"
+                ? "bg-amber-700/20 text-amber-700"
                 : obligation.status === "open"
                   ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
                   : "bg-ds-gray-alpha-200 text-ds-gray-900"
@@ -92,36 +92,36 @@ export default function ObligationItem({ obligation }: ObligationItemProps) {
         </div>
 
         {obligation.description && (
-          <p className="mt-1 text-xs text-ds-gray-900 line-clamp-2">
+          <p className="mt-1 text-copy-13 text-ds-gray-900 line-clamp-2">
             {obligation.description}
           </p>
         )}
 
         <div className="flex items-center gap-4 mt-2 flex-wrap">
-          <div className="flex items-center gap-1 text-xs text-ds-gray-900">
+          <div className="flex items-center gap-1 text-copy-13 text-ds-gray-900">
             <User size={11} />
             <span className="capitalize">{obligation.owner}</span>
           </div>
           {obligation.project_code && (
-            <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+            <div className="flex items-center gap-1 text-copy-13 text-ds-gray-900 font-mono">
               <FolderOpen size={11} />
               <span>{obligation.project_code}</span>
             </div>
           )}
           {obligation.source_channel && (
-            <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+            <div className="flex items-center gap-1 text-copy-13 text-ds-gray-900 font-mono">
               <Radio size={11} />
               <span>{obligation.source_channel}</span>
             </div>
           )}
-          <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono">
+          <div className="flex items-center gap-1 text-copy-13 text-ds-gray-900 font-mono">
             <Clock size={11} />
             <span suppressHydrationWarning>
               {new Date(obligation.created_at).toLocaleDateString()}
             </span>
           </div>
           {obligation.due_at && (
-            <div className="flex items-center gap-1 text-xs text-amber-400 font-mono">
+            <div className="flex items-center gap-1 text-copy-13 text-amber-700 font-mono">
               <Clock size={11} />
               <span suppressHydrationWarning>
                 due {new Date(obligation.due_at).toLocaleDateString()}

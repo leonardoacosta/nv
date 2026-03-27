@@ -17,20 +17,20 @@ const STATUS_CONFIG: {
   {
     key: "in_progress",
     label: "In Progress",
-    dotClass: "bg-amber-500",
-    badgeClass: "bg-amber-500/20 text-amber-500",
+    dotClass: "bg-amber-700",
+    badgeClass: "bg-amber-700/20 text-amber-700",
   },
   {
     key: "proposed_done",
     label: "Proposed Done",
-    dotClass: "bg-blue-500",
-    badgeClass: "bg-blue-500/20 text-blue-400",
+    dotClass: "bg-blue-700",
+    badgeClass: "bg-blue-700/20 text-blue-700",
   },
   {
     key: "done",
     label: "Done",
     dotClass: "bg-green-700",
-    badgeClass: "bg-green-700/20 text-green-600",
+    badgeClass: "bg-green-700/20 text-green-700",
   },
   {
     key: "dismissed",
@@ -69,10 +69,10 @@ export default function ObligationSummaryBar({
               className={`w-1.5 h-1.5 rounded-full ${dotClass}`}
               aria-hidden="true"
             />
-            <span className={`text-xs font-mono px-1.5 py-0.5 rounded ${badgeClass}`}>
+            <span className={`text-label-12 font-mono px-1.5 py-0.5 rounded ${badgeClass}`}>
               {count}
             </span>
-            <span className="text-xs text-ds-gray-900">{label}</span>
+            <span className="text-copy-13 text-ds-gray-900">{label}</span>
           </div>
         );
       })}

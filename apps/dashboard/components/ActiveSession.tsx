@@ -1,4 +1,5 @@
 import { MessageSquare, Terminal, Clock, User } from "lucide-react";
+import { getPlatformColor } from "@/lib/brand-colors";
 
 export interface ActiveSessionData {
   id: string;
@@ -12,18 +13,9 @@ export interface ActiveSessionData {
   current_task?: string;
 }
 
-const SERVICE_BADGE: Record<string, string> = {
-  Telegram: "bg-[#229ED9]/20 text-[#229ED9]",
-  Discord: "bg-[#5865F2]/20 text-[#5865F2]",
-  Slack: "bg-[#4A154B]/20 text-[#E01E5A]",
-  CLI: "bg-ds-gray-alpha-200 text-ds-gray-1000",
-  API: "bg-red-700/20 text-red-700",
-  Web: "bg-emerald-500/20 text-emerald-400",
-};
-
 const STATUS_DOT: Record<string, string> = {
-  active: "bg-emerald-500",
-  idle: "bg-amber-500",
+  active: "bg-green-700",
+  idle: "bg-amber-700",
   completed: "bg-ds-gray-600",
 };
 
@@ -39,8 +31,8 @@ function elapsed(startedAt: string): string {
 }
 
 export default function ActiveSession({ session }: ActiveSessionProps) {
-  const badge =
-    SERVICE_BADGE[session.service] ?? "bg-ds-gray-alpha-200 text-ds-gray-900";
+  const brand = getPlatformColor(session.service);
+  const badge = `${brand.bg} ${brand.text}`;
   const dot = STATUS_DOT[session.status] ?? "bg-ds-gray-600";
   const progress = session.progress ?? 0;
 
@@ -51,18 +43,18 @@ export default function ActiveSession({ session }: ActiveSessionProps) {
         <div className="flex items-center gap-2 flex-wrap">
           <div className={`w-2 h-2 rounded-full shrink-0 ${dot} ${session.status === "active" ? "animate-pulse" : ""}`} />
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium font-mono ${badge}`}
+            className={`inline-flex items-center px-2 py-0.5 rounded text-label-12 font-medium font-mono ${badge}`}
           >
             {session.service}
           </span>
           {session.user && (
-            <div className="flex items-center gap-1 text-xs text-ds-gray-900">
+            <div className="flex items-center gap-1 text-copy-13 text-ds-gray-900">
               <User size={11} />
               <span>@{session.user}</span>
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 text-xs text-ds-gray-900 font-mono shrink-0">
+        <div className="flex items-center gap-1 text-copy-13 text-ds-gray-900 font-mono shrink-0">
           <Clock size={11} />
           <span suppressHydrationWarning>{elapsed(session.started_at)}</span>
         </div>
@@ -70,7 +62,7 @@ export default function ActiveSession({ session }: ActiveSessionProps) {
 
       {/* Current task */}
       {session.current_task && (
-        <p className="text-xs text-ds-gray-900 truncate pl-4">
+        <p className="text-copy-13 text-ds-gray-900 truncate pl-4">
           {session.current_task}
         </p>
       )}
@@ -84,7 +76,7 @@ export default function ActiveSession({ session }: ActiveSessionProps) {
               style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
             />
           </div>
-          <p className="text-xs text-ds-gray-900 font-mono text-right">
+          <p className="text-copy-13 text-ds-gray-900 font-mono text-right">
             {progress}%
           </p>
         </div>
@@ -92,16 +84,16 @@ export default function ActiveSession({ session }: ActiveSessionProps) {
 
       {/* Stats */}
       <div className="flex items-center gap-4 pt-1 border-t border-ds-gray-400">
-        <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center gap-1.5 text-copy-13 text-ds-gray-900 font-mono">
           <MessageSquare size={12} />
           <span>{session.messages} msgs</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center gap-1.5 text-copy-13 text-ds-gray-900 font-mono">
           <Terminal size={12} />
           <span>{session.tools_executed} tools</span>
         </div>
         <div className="ml-auto">
-          <p className="text-xs text-ds-gray-900 font-mono truncate max-w-32">
+          <p className="text-copy-13 text-ds-gray-900 font-mono truncate max-w-32">
             {session.id.slice(0, 8)}...
           </p>
         </div>

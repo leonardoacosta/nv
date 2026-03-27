@@ -34,14 +34,14 @@ const STATUS_CONFIG: Record<
 > = {
   healthy: {
     label: "Healthy",
-    dot: "bg-emerald-500",
-    text: "text-emerald-400",
+    dot: "bg-green-700",
+    text: "text-green-700",
   },
-  errors: { label: "Errors", dot: "bg-[#EF4444]", text: "text-[#EF4444]" },
+  errors: { label: "Errors", dot: "bg-red-700", text: "text-red-700" },
   warnings: {
     label: "Warnings",
-    dot: "bg-[#F97316]",
-    text: "text-[#F97316]",
+    dot: "bg-amber-700",
+    text: "text-amber-700",
   },
   unknown: {
     label: "Unknown",
@@ -51,8 +51,8 @@ const STATUS_CONFIG: Record<
 };
 
 const SEVERITY_COLORS = {
-  error: "text-[#EF4444] bg-[#EF4444]/10",
-  warning: "text-[#F97316] bg-[#F97316]/10",
+  error: "text-red-700 bg-red-700/10",
+  warning: "text-amber-700 bg-amber-700/10",
   info: "text-ds-gray-1000 bg-ds-gray-alpha-100",
 };
 
@@ -86,11 +86,11 @@ export default function ProjectAccordion({
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-ds-gray-1000 truncate">
+          <p className="text-copy-14 font-medium text-ds-gray-1000 truncate">
             {project.name}
           </p>
           {project.path && (
-            <p className="text-xs text-ds-gray-900 font-mono truncate">
+            <p className="text-copy-13 text-ds-gray-900 font-mono truncate">
               {project.path}
             </p>
           )}
@@ -98,14 +98,14 @@ export default function ProjectAccordion({
 
         <div className="flex items-center gap-3 shrink-0">
           {errorCount > 0 && (
-            <span className="flex items-center gap-1 text-xs font-mono text-[#EF4444]">
+            <span className="flex items-center gap-1 text-copy-13 font-mono text-red-700">
               <AlertCircle size={12} />
               {errorCount}
             </span>
           )}
           <div className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-            <span className={`text-xs font-medium ${cfg.text}`}>
+            <span className={`text-label-12 font-medium ${cfg.text}`}>
               {cfg.label}
             </span>
           </div>
@@ -123,7 +123,7 @@ export default function ProjectAccordion({
                   N
                 </span>
               </div>
-              <p className="text-xs text-ds-gray-900 leading-relaxed">
+              <p className="text-copy-13 text-ds-gray-900 leading-relaxed">
                 {project.nova_notes}
               </p>
             </div>
@@ -131,7 +131,7 @@ export default function ProjectAccordion({
 
           {/* Errors list */}
           {errorCount === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-ds-gray-900">
+            <div className="px-4 py-6 text-center text-copy-13 text-ds-gray-900">
               No issues detected
             </div>
           ) : (
@@ -139,14 +139,14 @@ export default function ProjectAccordion({
               {project.errors!.map((err) => (
                 <div key={err.id} className="flex items-start gap-3 px-4 py-3">
                   <div
-                    className={`mt-0.5 px-1.5 py-0.5 rounded text-xs font-mono font-medium ${SEVERITY_COLORS[err.severity]}`}
+                    className={`mt-0.5 px-1.5 py-0.5 rounded text-label-12 font-mono font-medium ${SEVERITY_COLORS[err.severity]}`}
                   >
                     {err.severity}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-ds-gray-1000">{err.message}</p>
+                    <p className="text-copy-13 text-ds-gray-1000">{err.message}</p>
                     {err.file && (
-                      <p className="text-xs text-ds-gray-900 font-mono mt-0.5">
+                      <p className="text-copy-13 text-ds-gray-900 font-mono mt-0.5">
                         {err.file}
                         {err.line ? `:${err.line}` : ""}
                       </p>

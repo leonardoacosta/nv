@@ -25,23 +25,23 @@ function StateBadge({ state }: { state: SessionState }) {
   const config: Record<SessionState, { label: string; classes: string; dotClass: string }> = {
     active: {
       label: "Active",
-      classes: "bg-emerald-500/20 text-emerald-400",
-      dotClass: "bg-emerald-400",
+      classes: "bg-green-700/20 text-green-700",
+      dotClass: "bg-green-700",
     },
     idle: {
       label: "Idle",
-      classes: "bg-amber-500/20 text-amber-400",
-      dotClass: "bg-amber-400",
+      classes: "bg-amber-700/20 text-amber-700",
+      dotClass: "bg-amber-700",
     },
     starting: {
       label: "Starting",
-      classes: "bg-amber-500/20 text-amber-400",
-      dotClass: "bg-amber-400 animate-pulse",
+      classes: "bg-amber-700/20 text-amber-700",
+      dotClass: "bg-amber-700 animate-pulse",
     },
     stopping: {
       label: "Stopping",
-      classes: "bg-amber-500/20 text-amber-400",
-      dotClass: "bg-amber-400 animate-pulse",
+      classes: "bg-amber-700/20 text-amber-700",
+      dotClass: "bg-amber-700 animate-pulse",
     },
     stopped: {
       label: "Stopped",
@@ -136,8 +136,8 @@ export default function SessionWidget() {
             <Terminal size={16} className="text-ds-gray-1000" />
           </div>
           <div>
-            <p className="text-sm font-medium text-ds-gray-1000">CC Session</p>
-            <p className="text-xs text-ds-gray-900 font-mono">nova-cc-session</p>
+            <p className="text-copy-14 font-medium text-ds-gray-1000">CC Session</p>
+            <p className="text-copy-13 text-ds-gray-900 font-mono">nova-cc-session</p>
           </div>
         </div>
         <StateBadge state={state} />
@@ -145,14 +145,14 @@ export default function SessionWidget() {
 
       {/* Error message */}
       {state === "error" && status?.error_message && (
-        <div className="flex items-start gap-2 mb-4 p-2.5 rounded-lg bg-red-700/10 border border-red-700/20 text-xs text-red-700 font-mono">
+        <div className="flex items-start gap-2 mb-4 p-2.5 rounded-lg bg-red-700/10 border border-red-700/20 text-copy-13 text-red-700 font-mono">
           <AlertCircle size={11} className="mt-0.5 shrink-0" />
           <span className="break-all">{status.error_message}</span>
         </div>
       )}
 
       {/* Stats */}
-      <div className="flex items-center gap-4 text-xs text-ds-gray-900 font-mono mb-4">
+      <div className="flex items-center gap-4 text-copy-13 text-ds-gray-900 font-mono mb-4">
         <div className="flex items-center gap-1.5">
           <MessageSquare size={11} />
           <span>{status?.message_count ?? 0} msgs</span>
@@ -169,7 +169,7 @@ export default function SessionWidget() {
           type="button"
           onClick={() => void handleRestart()}
           disabled={!canRestart || restarting}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30 hover:bg-ds-gray-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-button-14 font-medium bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30 hover:bg-ds-gray-700/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <RotateCcw size={11} className={restarting ? "animate-spin" : ""} />
           Restart
@@ -177,7 +177,7 @@ export default function SessionWidget() {
 
         <Link
           href="/session"
-          className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
+          className="flex items-center gap-1 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
         >
           Manage
           <ArrowRight size={12} />

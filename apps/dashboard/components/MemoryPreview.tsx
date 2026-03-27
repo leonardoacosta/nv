@@ -51,7 +51,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
         result.push(
           <h1
             key={i}
-            className="text-sm font-semibold text-ds-gray-1000 mt-3 mb-1"
+            className="text-copy-14 font-semibold text-ds-gray-1000 mt-3 mb-1"
           >
             {text}
           </h1>,
@@ -60,7 +60,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
         result.push(
           <h2
             key={i}
-            className="text-xs font-semibold text-ds-gray-1000 mt-2.5 mb-1"
+            className="text-copy-13 font-semibold text-ds-gray-1000 mt-2.5 mb-1"
           >
             {text}
           </h2>,
@@ -69,7 +69,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
         result.push(
           <h3
             key={i}
-            className="text-xs font-medium text-ds-gray-1000 mt-2 mb-0.5"
+            className="text-copy-13 font-medium text-ds-gray-1000 mt-2 mb-0.5"
           >
             {text}
           </h3>,
@@ -219,8 +219,8 @@ export default function MemoryPreview({
   if (!file) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 text-ds-gray-900">
-        <FileText size={36} />
-        <p className="text-sm">Select a file to preview</p>
+        <FileText size={20} />
+        <p className="text-copy-13">Select a file to preview</p>
       </div>
     );
   }
@@ -257,10 +257,10 @@ export default function MemoryPreview({
         <div className="flex items-center gap-2 min-w-0">
           <FileText size={14} className="text-ds-gray-1000 shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-ds-gray-1000 truncate">
+            <p className="text-copy-14 font-medium text-ds-gray-1000 truncate">
               {file.name}
             </p>
-            <p className="text-xs text-ds-gray-900 font-mono truncate">
+            <p className="text-copy-13 text-ds-gray-900 font-mono truncate">
               {file.path}
             </p>
           </div>
@@ -270,7 +270,7 @@ export default function MemoryPreview({
             <button
               type="button"
               onClick={handleEdit}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
             >
               <Edit2 size={12} />
               Edit
@@ -281,7 +281,7 @@ export default function MemoryPreview({
               <button
                 type="button"
                 onClick={handleCancel}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 transition-colors"
               >
                 <X size={12} />
                 Cancel
@@ -290,7 +290,7 @@ export default function MemoryPreview({
                 type="button"
                 onClick={() => void handleSave()}
                 disabled={saving}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-ds-gray-700 text-white hover:bg-ds-gray-700/80 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-button-14 font-medium bg-ds-gray-700 text-white hover:bg-ds-gray-700/80 transition-colors disabled:opacity-50"
               >
                 <Save size={12} />
                 {saving ? "Saving..." : "Save"}

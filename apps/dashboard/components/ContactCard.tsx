@@ -1,16 +1,11 @@
 "use client";
 
 import type { DiscoveredContact } from "@/types/api";
+import { getPlatformColor } from "@/lib/brand-colors";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-const CHANNEL_COLORS: Record<string, { bg: string; text: string }> = {
-  telegram: { bg: "bg-sky-500/20", text: "text-sky-400" },
-  discord: { bg: "bg-indigo-500/20", text: "text-indigo-400" },
-  teams: { bg: "bg-violet-500/20", text: "text-violet-400" },
-};
 
 const RELATIONSHIP_BADGE: Record<
   string,
@@ -18,8 +13,8 @@ const RELATIONSHIP_BADGE: Record<
 > = {
   work: { bg: "bg-ds-gray-alpha-200", text: "text-ds-gray-1000", label: "Work" },
   "personal-client": { bg: "bg-red-700/20", text: "text-red-700", label: "Personal" },
-  contributor: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Contributor" },
-  social: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Social" },
+  contributor: { bg: "bg-amber-700/20", text: "text-amber-700", label: "Contributor" },
+  social: { bg: "bg-green-700/20", text: "text-green-700", label: "Social" },
 };
 
 function relativeTime(iso: string): string {
@@ -76,17 +71,17 @@ export default function ContactCard({
     >
       {/* Name + relationship badge */}
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-sm font-medium text-ds-gray-1000">
+        <span className="text-copy-14 font-medium text-ds-gray-1000">
           {contact.name}
         </span>
         {badge ? (
           <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${badge.bg} ${badge.text}`}
+            className={`inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium ${badge.bg} ${badge.text}`}
           >
             {badge.label}
           </span>
         ) : (
-          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-ds-gray-100 text-ds-gray-900">
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium bg-ds-gray-100 text-ds-gray-900">
             Untagged
           </span>
         )}
@@ -95,14 +90,11 @@ export default function ContactCard({
       {/* Channel badges */}
       <div className="flex items-center gap-1.5 flex-wrap">
         {contact.channels.map((ch) => {
-          const colors = CHANNEL_COLORS[ch] ?? {
-            bg: "bg-ds-gray-100",
-            text: "text-ds-gray-900",
-          };
+          const brand = getPlatformColor(ch);
           return (
             <span
               key={ch}
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${colors.bg} ${colors.text}`}
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-label-12 font-medium capitalize ${brand.bg} ${brand.text}`}
             >
               {ch}
             </span>
@@ -111,7 +103,7 @@ export default function ContactCard({
       </div>
 
       {/* Message count + last seen */}
-      <p className="text-xs text-ds-gray-900">
+      <p className="text-copy-13 text-ds-gray-900">
         {contact.message_count.toLocaleString()} messages
         {" · "}
         last seen {relativeTime(contact.last_seen)}
@@ -119,12 +111,12 @@ export default function ContactCard({
 
       {/* Notes preview */}
       {notesPreview && (
-        <p className="text-xs text-ds-gray-900 italic">{notesPreview}</p>
+        <p className="text-copy-13 text-ds-gray-900 italic">{notesPreview}</p>
       )}
 
       {/* Related people */}
       {relatedPeople.length > 0 && (
-        <p className="text-xs text-ds-gray-900">
+        <p className="text-copy-13 text-ds-gray-900">
           Also talks with:{" "}
           {relatedPeople.slice(0, 3).join(", ")}
           {relatedPeople.length > 3 && ` +${relatedPeople.length - 3} more`}

@@ -133,7 +133,7 @@ export function MarkdownContent({ content }: { content: string }) {
   const blocks = parseBlocks(content);
 
   return (
-    <div className="space-y-2 text-sm leading-relaxed">
+    <div className="space-y-2 text-copy-14 leading-relaxed">
       {blocks.map((block, idx) => {
         if (block.type === "code") {
           return (

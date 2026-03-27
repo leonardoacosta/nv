@@ -15,7 +15,7 @@ import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import type { ServerHealthGetResponse } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -170,6 +170,7 @@ function DaemonStatusBadge({ status }: { status: string }) {
 // ---------------------------------------------------------------------------
 
 export default function NexusPage() {
+  const trpc = useTRPC();
   const [data, setData] = useState<ServerHealthGetResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

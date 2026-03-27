@@ -18,7 +18,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import QuerySkeleton from "@/components/layout/QuerySkeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SessionTimelineItem } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -151,6 +151,7 @@ function SessionRow({ session }: { session: SessionTimelineItem }) {
 // ---------------------------------------------------------------------------
 
 function SessionsPage() {
+  const trpc = useTRPC();
   // 1. Context/Routing
   const searchParams = useSearchParams();
   const router = useRouter();

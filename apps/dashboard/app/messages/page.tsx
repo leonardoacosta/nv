@@ -27,7 +27,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import { channelAccentColor } from "@/lib/channel-colors";
 import { useQuery } from "@tanstack/react-query";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 import { trpcClient } from "@/lib/trpc/client";
 // apiFetch retained for infinite scroll append (append-to-state pattern)
 import { apiFetch } from "@/lib/api-client";
@@ -554,6 +554,7 @@ function FacetedFilterBar({
 // ---------------------------------------------------------------------------
 
 export default function MessagesPage() {
+  const trpc = useTRPC();
   // 1. State
   const [allMessages, setAllMessages] = useState<StoredMessage[]>([]);
   const [total, setTotal] = useState(0);

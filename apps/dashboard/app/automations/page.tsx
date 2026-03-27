@@ -29,7 +29,7 @@ import type {
   AutomationSettingsResponse,
 } from "@/types/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 // apiFetch retained for reminder creation (no tRPC procedure exists yet)
 import { apiFetch } from "@/lib/api-client";
 
@@ -384,6 +384,7 @@ function BriefingCard({
   onPromptSave,
   onHourSave,
 }: BriefingCardProps) {
+  const trpc = useTRPC();
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -930,6 +931,7 @@ function SchedulesTab({
 type ScheduledTab = "reminders" | "schedules";
 
 export default function AutomationsPage() {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [scheduledTab, setScheduledTab] = useState<ScheduledTab>("reminders");

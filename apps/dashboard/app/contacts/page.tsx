@@ -7,7 +7,7 @@ import type {
   DiscoveredContact,
   ContactRelationship,
 } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 import ContactCard from "@/components/ContactCard";
 import ContactDetailPanel from "@/components/ContactDetailPanel";
 
@@ -58,6 +58,7 @@ function getRelatedPeople(
 // ---------------------------------------------------------------------------
 
 export default function ContactsPage() {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   // State

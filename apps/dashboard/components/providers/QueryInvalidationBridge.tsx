@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 /**
  * QueryInvalidationBridge -- listens to WebSocket events from the daemon
@@ -17,6 +17,7 @@ import { trpc } from "@/lib/trpc/react";
 /** Map event type prefixes to tRPC router-level query key prefixes. */
 function invalidateForEvent(
   queryClient: ReturnType<typeof useQueryClient>,
+  trpc: ReturnType<typeof useTRPC>,
   eventType: string,
 ) {
   switch (eventType) {
@@ -86,10 +87,11 @@ function invalidateForEvent(
 }
 
 export default function QueryInvalidationBridge() {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   useDaemonEvents((event) => {
-    invalidateForEvent(queryClient, event.type);
+    invalidateForEvent(queryClient, trpc, event.type);
   });
 
   return null;

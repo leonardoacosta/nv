@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonObligation } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 import KanbanColumn from "@/components/obligations/KanbanColumn";
 import EmptyState from "@/components/layout/EmptyState";
 import { LayoutGrid } from "lucide-react";
@@ -19,6 +19,7 @@ export default function KanbanBoard({
   onRefresh,
   approachingDeadlineHours = 24,
 }: KanbanBoardProps) {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);

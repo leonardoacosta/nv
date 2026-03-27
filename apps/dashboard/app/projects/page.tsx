@@ -14,7 +14,7 @@ import type {
   UpdateProjectRequest,
 } from "@/types/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 // apiFetch retained for project update (no tRPC procedure exists yet)
 import { apiFetch } from "@/lib/api-client";
 
@@ -37,6 +37,7 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
 // ---------------------------------------------------------------------------
 
 export default function ProjectsPage() {
+  const trpc = useTRPC();
   // 1. Local State
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");

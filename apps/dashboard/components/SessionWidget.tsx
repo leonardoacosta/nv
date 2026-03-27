@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Terminal, RotateCcw, MessageSquare, ArrowRight, AlertCircle } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SessionStatus, SessionState } from "@/lib/session-manager";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,6 +73,7 @@ function StateBadge({ state }: { state: SessionState }) {
 // ---------------------------------------------------------------------------
 
 export default function SessionWidget() {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [restarting, setRestarting] = useState(false);
 

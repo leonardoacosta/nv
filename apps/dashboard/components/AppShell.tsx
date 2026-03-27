@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import { DaemonEventProvider } from "@/components/providers/DaemonEventContext";
-import { TRPCProvider } from "@/lib/trpc/react";
+import { TRPCReactProvider } from "@/lib/trpc/react";
 import QueryInvalidationBridge from "@/components/providers/QueryInvalidationBridge";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -15,7 +15,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <TRPCProvider>
+    <TRPCReactProvider>
       <DaemonEventProvider>
         <QueryInvalidationBridge />
         <div className="flex h-dvh overflow-hidden bg-ds-bg-100">
@@ -23,6 +23,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <main className="flex-1 overflow-auto pt-16 sm:pt-0">{children}</main>
         </div>
       </DaemonEventProvider>
-    </TRPCProvider>
+    </TRPCReactProvider>
   );
 }

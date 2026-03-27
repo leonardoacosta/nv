@@ -17,7 +17,7 @@ import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import SessionTimelineEvent from "@/components/SessionTimelineEvent";
 import type { SessionEventItem } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,6 +83,7 @@ function StatTile({
 // ---------------------------------------------------------------------------
 
 export default function SessionDetailPage() {
+  const trpc = useTRPC();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();

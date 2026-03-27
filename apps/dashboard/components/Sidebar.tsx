@@ -31,7 +31,7 @@ import {
   type WsStatus,
 } from "@/components/providers/DaemonEventContext";
 import { useQuery } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 import { trpcClient } from "@/lib/trpc/client";
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,7 @@ interface Obligation {
 }
 
 function useApprovalCount(): number {
+  const trpc = useTRPC();
   const { data } = useQuery(
     trpc.obligation.list.queryOptions({ owner: "leo", status: "open" }),
   );

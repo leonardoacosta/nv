@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 export interface InlineCreateProps {
   owner: "nova" | "leo";
@@ -11,6 +11,7 @@ export interface InlineCreateProps {
 }
 
 export default function InlineCreate({ owner, onCreated, onCancel }: InlineCreateProps) {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);

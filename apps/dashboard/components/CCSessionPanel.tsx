@@ -3,9 +3,10 @@
 import { useQuery } from "@tanstack/react-query";
 import SessionDashboard from "@/components/SessionDashboard";
 import type { SessionStatus } from "@/lib/session-manager";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 export default function CCSessionPanel() {
+  const trpc = useTRPC();
   const { data, isLoading, error } = useQuery(
     trpc.ccSession.status.queryOptions(),
   );

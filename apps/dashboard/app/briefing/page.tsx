@@ -17,7 +17,7 @@ import type {
   BriefingHistoryGetResponse,
 } from "@/types/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,7 @@ function LoadingSkeleton() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function BriefingPage() {
+  const trpc = useTRPC();
   // 1. State
   const [entry, setEntry] = useState<BriefingEntry | null>(null);
   const [history, setHistory] = useState<BriefingEntry[]>([]);

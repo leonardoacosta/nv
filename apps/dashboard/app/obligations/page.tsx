@@ -40,7 +40,7 @@ import type {
   ObligationNote,
   ObligationsGetResponse,
 } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 import KanbanBoard from "@/components/obligations/KanbanBoard";
 import { useKanbanKeyboard } from "@/hooks/useKanbanKeyboard";
 
@@ -216,6 +216,7 @@ function ObligationCard({
   isExpanded,
   onToggleExpand,
 }: ObligationCardProps) {
+  const trpc = useTRPC();
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [actionPending, setActionPending] = useState(false);
 
@@ -812,6 +813,7 @@ function DetailPanel({
 // ---------------------------------------------------------------------------
 
 function ApprovalsTabContent() {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1104,6 +1106,7 @@ function KanbanBoardWithKeyboard({
   approachingDeadlineHours,
   loading,
 }: KanbanBoardWithKeyboardProps) {
+  const trpc = useTRPC();
   const [keyboardExpandedId, setKeyboardExpandedId] = useState<string | null>(null);
 
   const kbUpdateMutation = useMutation(
@@ -1197,6 +1200,7 @@ export default function ObligationsPageWrapper() {
 type TabKey = "open" | "history" | "approvals";
 
 function ObligationsPage() {
+  const trpc = useTRPC();
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as TabKey) ?? "open";
   const queryClient = useQueryClient();

@@ -15,7 +15,7 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import StatCard from "@/components/layout/StatCard";
 import type { DiaryGetResponse } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +79,7 @@ function dayLabel(dateStr: string): string {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DiaryPage() {
+  const trpc = useTRPC();
   const [dateStr, setDateStr] = useState<string>(toDateString(new Date()));
 
   const diaryQuery = useQuery(

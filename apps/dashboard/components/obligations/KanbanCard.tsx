@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonObligation } from "@/types/api";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ── Shared constants (replicate from obligations page to keep components independent) ──
 
@@ -99,6 +99,7 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
 // ── Activity section ──────────────────────────────────────────────────────────
 
 function CardActivity({ obligationId }: { obligationId: string }) {
+  const trpc = useTRPC();
   const { data, isLoading } = useQuery(
     trpc.obligation.activity.queryOptions({ id: obligationId }),
   );
@@ -156,6 +157,7 @@ export default function KanbanCard({
   isDragging = false,
   onDragStart,
 }: KanbanCardProps) {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState(false);
   const [isHovered, setIsHovered] = useState(false);

@@ -44,6 +44,9 @@ importers:
       '@trpc/server':
         specifier: ^11.15.1
         version: 11.15.1(typescript@5.9.3)
+      '@trpc/tanstack-react-query':
+        specifier: 11.15.1
+        version: 11.15.1(@tanstack/react-query@5.95.2(react@19.2.4))(@trpc/client@11.15.1(@trpc/server@11.15.1(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.15.1(typescript@5.9.3))(react@19.2.4)(typescript@5.9.3)
       drizzle-orm:
         specifier: ^0.39.3
         version: 0.39.3(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8)
@@ -2187,6 +2190,16 @@ packages:
     resolution: {integrity: sha512-0A1fIBU0zDLXaSOhuHOChqM4mCCCi233FcPdPNXJ+FIVMd5VEGe33u6cehUavZMquIi6uIec9xymac2P4LgqMA==}
     hasBin: true
     peerDependencies:
+      typescript: '>=5.7.2'
+
+  '@trpc/tanstack-react-query@11.15.1':
+    resolution: {integrity: sha512-VKNGQVedAXpTb0f1K7E6q2FhlhrWw+Z0v75I9sQH9UfX4Vcd6pS70WH+xr41Epb8FrkLbDuNtZTVhBA0sPSWuw==}
+    hasBin: true
+    peerDependencies:
+      '@tanstack/react-query': ^5.80.3
+      '@trpc/client': 11.15.1
+      '@trpc/server': 11.15.1
+      react: '>=18.2.0'
       typescript: '>=5.7.2'
 
   '@turbo/darwin-64@2.8.20':
@@ -5573,6 +5586,14 @@ snapshots:
 
   '@trpc/server@11.15.1(typescript@5.9.3)':
     dependencies:
+      typescript: 5.9.3
+
+  '@trpc/tanstack-react-query@11.15.1(@tanstack/react-query@5.95.2(react@19.2.4))(@trpc/client@11.15.1(@trpc/server@11.15.1(typescript@5.9.3))(typescript@5.9.3))(@trpc/server@11.15.1(typescript@5.9.3))(react@19.2.4)(typescript@5.9.3)':
+    dependencies:
+      '@tanstack/react-query': 5.95.2(react@19.2.4)
+      '@trpc/client': 11.15.1(@trpc/server@11.15.1(typescript@5.9.3))(typescript@5.9.3)
+      '@trpc/server': 11.15.1(typescript@5.9.3)
+      react: 19.2.4
       typescript: 5.9.3
 
   '@turbo/darwin-64@2.8.20':

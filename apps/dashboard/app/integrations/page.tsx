@@ -5,7 +5,7 @@ import { Activity, AlertCircle, Database, RefreshCw, Server, Radio } from "lucid
 import ChannelRow from "@/components/ChannelRow";
 import ServiceRow from "@/components/ServiceRow";
 import { useQuery } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 import type {
   FleetHealthResponse,
   ServerHealthGetResponse,
@@ -15,6 +15,7 @@ import type {
 const POLL_INTERVAL_MS = 30_000;
 
 export default function StatusPage() {
+  const trpc = useTRPC();
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
   const fleetQuery = useQuery(

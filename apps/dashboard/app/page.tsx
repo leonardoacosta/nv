@@ -44,7 +44,7 @@ import type {
   SessionsGetResponse,
 } from "@/types/api";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,6 +193,7 @@ function PriorityBanner({
 // ---------------------------------------------------------------------------
 
 function ObligationBar() {
+  const trpc = useTRPC();
   const [input, setInput] = useState("");
   const [result, setResult] = useState<"success" | "error" | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -553,6 +554,7 @@ function RecentConversations({
 // ---------------------------------------------------------------------------
 
 function CcSessionsWidget() {
+  const trpc = useTRPC();
   const { data, isLoading } = useQuery(trpc.session.ccSessions.queryOptions());
   const sessions = data?.sessions ?? [];
   const running = sessions.filter((s) => s.state === "running").length;
@@ -597,6 +599,7 @@ function CcSessionsWidget() {
 // ---------------------------------------------------------------------------
 
 export default function DashboardPage() {
+  const trpc = useTRPC();
   // --- 1. Local state ---
   const [wsEvents, setWsEvents] = useState<WsActivityEvent[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);

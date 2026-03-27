@@ -21,7 +21,7 @@ import SectionHeader from "@/components/layout/SectionHeader";
 import ColdStartsPanel from "@/components/ColdStartsPanel";
 import type { StatsGetResponse } from "@/types/api";
 import { useQuery } from "@tanstack/react-query";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 type UsageTab = "cost" | "performance";
 
@@ -82,6 +82,7 @@ export default function UsagePageWrapper() {
 }
 
 function UsagePage() {
+  const trpc = useTRPC();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "performance" ? "performance" : "cost";
   const [activeTab, setActiveTab] = useState<UsageTab>(initialTab);

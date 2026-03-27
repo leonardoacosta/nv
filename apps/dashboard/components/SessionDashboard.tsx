@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SessionStatus, SessionState } from "@/lib/session-manager";
-import { trpc } from "@/lib/trpc/react";
+import { useTRPC } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,6 +101,7 @@ function StateBadge({ state }: { state: SessionState }) {
 // ---------------------------------------------------------------------------
 
 function LogViewer() {
+  const trpc = useTRPC();
   const { data, error: logsQueryError } = useQuery(
     trpc.ccSession.logs.queryOptions(
       { lines: 50 },
@@ -150,6 +151,7 @@ function LogViewer() {
 // ---------------------------------------------------------------------------
 
 export default function SessionDashboard({ initialStatus }: SessionDashboardProps) {
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState<"start" | "stop" | "restart" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);

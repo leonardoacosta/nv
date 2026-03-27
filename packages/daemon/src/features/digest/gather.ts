@@ -232,11 +232,11 @@ export async function gatherDigest(deps: GatherDeps): Promise<GatherResult> {
 
   const [emailResult, teamsResult, calendarResult, pimResult, adoResult, obResult] =
     await Promise.allSettled([
-      fleetGet(4107, "/outlook/unread"),
-      fleetGet(4105, "/teams/chats"),
+      fleetGet(4107, "/mail/unread"),
+      fleetGet(4105, "/chats"),
       fleetGet(4107, "/calendar/today"),
-      fleetGet(4107, "/pim/roles"),
-      fleetGet(4107, "/ado/builds"),
+      fleetGet(4107, "/pim/status", 30000),
+      fleetGet(4107, "/ado/builds", 30000),
       pool.query<ObligationRow>(
         `SELECT id, detected_action, owner, status, priority, project_code, deadline, created_at
          FROM obligations
@@ -337,8 +337,8 @@ export async function gatherP0Only(deps: GatherDeps): Promise<Pick<GatherResult,
   const { logger } = deps;
 
   const [pimResult, adoResult] = await Promise.allSettled([
-    fleetGet(4107, "/pim/roles"),
-    fleetGet(4107, "/ado/builds"),
+    fleetGet(4107, "/pim/status", 30000),
+    fleetGet(4107, "/ado/builds", 30000),
   ]);
 
   const sourcesStatus: Record<string, SourceStatus> = {};

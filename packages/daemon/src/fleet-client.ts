@@ -41,10 +41,10 @@ export function initFleetClient(toolRouterUrl: string): void {
 /**
  * GET request to a fleet service.
  */
-export async function fleetGet(port: number, path: string): Promise<unknown> {
+export async function fleetGet(port: number, path: string, timeoutMs?: number): Promise<unknown> {
   const url = `${_baseUrl}:${port}${path}`;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs ?? TIMEOUT_MS);
 
   try {
     const res = await fetch(url, {

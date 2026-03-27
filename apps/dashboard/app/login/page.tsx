@@ -55,7 +55,7 @@ export default function LoginPage() {
           </div>
           <div className="text-center">
             <h1 className="text-heading-24 text-ds-gray-1000">Nova</h1>
-            <p className="text-sm text-ds-gray-900 mt-1">
+            <p className="text-copy-13 text-ds-gray-900 mt-1">
               Enter your dashboard token to continue
             </p>
           </div>
@@ -80,7 +80,7 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 text-center">{error}</p>
+            <p className="text-copy-13 text-red-700 text-center">{error}</p>
           )}
 
           <button

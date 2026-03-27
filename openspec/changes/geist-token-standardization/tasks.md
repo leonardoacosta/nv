@@ -40,34 +40,34 @@
 
 ## UI Batch 5 -- Page-Level Token Standardization (Core Pages)
 
-- [ ] [5.1] [P-1] Update `apps/dashboard/app/page.tsx` -- replace text-amber-500, text-amber-200, text-blue-400, text-blue-300, bg-amber-500, bg-red-500 with ds-* status tokens; replace raw text-sm/text-xs with type scale; tighten any remaining generous spacing [owner:ui-engineer]
-- [ ] [5.2] [P-1] Update `apps/dashboard/app/obligations/page.tsx` -- replace bg-[#EF4444], bg-[#F97316], bg-[#6B7280], bg-[#374151] priority dot map with ds-* status tokens; replace text-[#F97316] with text-amber-700; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [5.3] [P-1] Update `apps/dashboard/app/chat/page.tsx` -- replace bg-green-500, bg-[#229ED9], bg-blue-900/20, text-blue-400 with ds-* tokens or brand-colors import; replace raw text sizes with type scale; tighten spacing [owner:ui-engineer]
-- [ ] [5.4] [P-2] Update `apps/dashboard/app/sessions/page.tsx` -- replace raw text-sm/text-xs (38 occurrences) with type scale classes [owner:ui-engineer]
-- [ ] [5.5] [P-2] Update `apps/dashboard/app/sessions/[id]/page.tsx` -- remove local CHANNEL_COLOR map; import from brand-colors.ts; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [5.1] [P-1] Update `apps/dashboard/app/page.tsx` -- replace text-amber-500, text-amber-200, text-blue-400, text-blue-300, bg-amber-500, bg-red-500 with ds-* status tokens; replace raw text-sm/text-xs with type scale; tighten any remaining generous spacing [owner:ui-engineer]
+- [x] [5.2] [P-1] Update `apps/dashboard/app/obligations/page.tsx` -- replace bg-[#EF4444], bg-[#F97316], bg-[#6B7280], bg-[#374151] priority dot map with ds-* status tokens; replace text-[#F97316] with text-amber-700; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [5.3] [P-1] Update `apps/dashboard/app/chat/page.tsx` -- replace bg-green-500, bg-[#229ED9], bg-blue-900/20, text-blue-400 with ds-* tokens or brand-colors import; replace raw text sizes with type scale; tighten spacing [owner:ui-engineer]
+- [x] [5.4] [P-2] Update `apps/dashboard/app/sessions/page.tsx` -- replace raw text-sm/text-xs (38 occurrences) with type scale classes [owner:ui-engineer]
+- [x] [5.5] [P-2] Update `apps/dashboard/app/sessions/[id]/page.tsx` -- remove local CHANNEL_COLOR map; import from brand-colors.ts; replace raw text sizes with type scale [owner:ui-engineer]
 
 ## UI Batch 6 -- Page-Level Token Standardization (Secondary Pages)
 
-- [ ] [6.1] [P-2] Update `apps/dashboard/app/contacts/page.tsx` -- replace raw text sizes with type scale; tighten spacing [owner:ui-engineer]
-- [ ] [6.2] [P-2] Update `apps/dashboard/app/messages/page.tsx` -- replace raw text sizes (19 occurrences) with type scale; replace any remaining hex colors [owner:ui-engineer]
-- [ ] [6.3] [P-2] Update `apps/dashboard/app/diary/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [6.4] [P-2] Update `apps/dashboard/app/automations/page.tsx` -- replace bg-amber-700/20, bg-green-700/20, text-red-700, text-green-700 (verify these already use correct ds-* mapped values via tailwind.config); replace raw text sizes with type scale; tighten spacing [owner:ui-engineer]
-- [ ] [6.5] [P-3] Update `apps/dashboard/app/briefing/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [6.6] [P-3] Update `apps/dashboard/app/usage/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [6.7] [P-3] Update `apps/dashboard/app/nexus/page.tsx` -- tighten spacing; replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [6.8] [P-3] Update `apps/dashboard/app/integrations/page.tsx` -- tighten spacing [owner:ui-engineer]
-- [ ] [6.9] [P-3] Update `apps/dashboard/app/memory/page.tsx` -- replace raw text sizes if any [owner:ui-engineer]
-- [ ] [6.10] [P-3] Update `apps/dashboard/app/login/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [6.11] [P-3] Update `apps/dashboard/app/projects/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [6.1] [P-2] Update `apps/dashboard/app/contacts/page.tsx` -- replace raw text sizes with type scale; tighten spacing [owner:ui-engineer]
+- [x] [6.2] [P-2] Update `apps/dashboard/app/messages/page.tsx` -- replace raw text sizes (19 occurrences) with type scale; replace any remaining hex colors [owner:ui-engineer]
+- [x] [6.3] [P-2] Update `apps/dashboard/app/diary/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [6.4] [P-2] Update `apps/dashboard/app/automations/page.tsx` -- replace bg-amber-700/20, bg-green-700/20, text-red-700, text-green-700 (verify these already use correct ds-* mapped values via tailwind.config); replace raw text sizes with type scale; tighten spacing [owner:ui-engineer]
+- [x] [6.5] [P-3] Update `apps/dashboard/app/briefing/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [6.6] [P-3] Update `apps/dashboard/app/usage/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [6.7] [P-3] Update `apps/dashboard/app/nexus/page.tsx` -- tighten spacing; replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [6.8] [P-3] Update `apps/dashboard/app/integrations/page.tsx` -- tighten spacing [owner:ui-engineer]
+- [x] [6.9] [P-3] Update `apps/dashboard/app/memory/page.tsx` -- replace raw text sizes if any [owner:ui-engineer]
+- [x] [6.10] [P-3] Update `apps/dashboard/app/login/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [6.11] [P-3] Update `apps/dashboard/app/projects/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
 
 ## UI Batch 7 -- Settings + Approvals Subcomponents
 
-- [ ] [7.1] [P-3] Update `apps/dashboard/app/settings/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [7.2] [P-3] Update `apps/dashboard/app/settings/components/SaveRestartBar.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [7.3] [P-3] Update `apps/dashboard/app/settings/components/SettingsSection.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [7.4] [P-3] Update `apps/dashboard/app/approvals/components/ApprovalQueueItem.tsx` -- replace hex status colors with ds-* tokens (mirror changes from 2.2 for the duplicate component) [owner:ui-engineer]
-- [ ] [7.5] [P-3] Update `apps/dashboard/app/approvals/components/BatchActionBar.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
-- [ ] [7.6] [P-3] Update `apps/dashboard/app/approvals/components/QueueClearCelebration.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [7.1] [P-3] Update `apps/dashboard/app/settings/page.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [7.2] [P-3] Update `apps/dashboard/app/settings/components/SaveRestartBar.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [7.3] [P-3] Update `apps/dashboard/app/settings/components/SettingsSection.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [7.4] [P-3] Update `apps/dashboard/app/approvals/components/ApprovalQueueItem.tsx` -- replace hex status colors with ds-* tokens (mirror changes from 2.2 for the duplicate component) [owner:ui-engineer]
+- [x] [7.5] [P-3] Update `apps/dashboard/app/approvals/components/BatchActionBar.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
+- [x] [7.6] [P-3] Update `apps/dashboard/app/approvals/components/QueueClearCelebration.tsx` -- replace raw text sizes with type scale [owner:ui-engineer]
 
 ## Verify
 

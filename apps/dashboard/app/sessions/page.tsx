@@ -152,16 +152,16 @@ function DaemonOfflineBanner({ status, onRetry }: DaemonOfflineBannerProps) {
       className={[
         "flex items-start gap-3 px-4 py-3 rounded-lg border",
         isReconnecting
-          ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+          ? "bg-amber-700/10 border-amber-700/30 text-amber-700"
           : "bg-ds-gray-200 border-ds-gray-400 text-ds-gray-900",
       ].join(" ")}
     >
       <WifiOff size={15} className="shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">
+        <p className="text-copy-14 font-medium">
           {isReconnecting ? "Daemon reconnecting…" : "Daemon offline"}
         </p>
-        <p className="text-xs mt-0.5 opacity-80">
+        <p className="text-copy-13 mt-0.5 opacity-80">
           Showing historical sessions. Live updates paused.
         </p>
       </div>
@@ -169,9 +169,9 @@ function DaemonOfflineBanner({ status, onRetry }: DaemonOfflineBannerProps) {
         type="button"
         onClick={onRetry}
         className={[
-          "shrink-0 px-2.5 py-1 rounded text-xs font-medium border transition-colors",
+          "shrink-0 px-2.5 py-1 rounded text-label-13 border transition-colors",
           isReconnecting
-            ? "border-amber-500/40 hover:border-amber-500/70 text-amber-400"
+            ? "border-amber-700/40 hover:border-amber-700/70 text-amber-700"
             : "border-ds-gray-500 hover:border-ds-gray-600 text-ds-gray-900 hover:text-ds-gray-1000",
         ].join(" ")}
       >
@@ -225,7 +225,7 @@ function ProjectBreakdownChart({
     <div className="space-y-2">
       {data.map((row) => (
         <div key={row.project} className="flex items-center gap-2">
-          <span className="text-xs text-ds-gray-900 font-mono w-32 truncate shrink-0">
+          <span className="text-copy-13 text-ds-gray-900 font-mono w-32 truncate shrink-0">
             {row.project}
           </span>
           <div className="flex-1 h-2 rounded-full bg-ds-gray-300 overflow-hidden">
@@ -234,7 +234,7 @@ function ProjectBreakdownChart({
               style={{ width: `${Math.max(2, (row.count / max) * 100)}%` }}
             />
           </div>
-          <span className="text-xs text-ds-gray-900 font-mono w-6 text-right shrink-0">
+          <span className="text-copy-13 text-ds-gray-900 font-mono w-6 text-right shrink-0">
             {row.count}
           </span>
         </div>
@@ -285,7 +285,7 @@ function SessionAnalytics() {
 
   if (error || !data) {
     return (
-      <p className="text-xs text-destructive">Analytics unavailable: {error}</p>
+      <p className="text-copy-13 text-destructive">Analytics unavailable: {error}</p>
     );
   }
 
@@ -357,24 +357,24 @@ function EnhancedSessionCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-          <span className="text-sm font-medium text-ds-gray-1000 truncate">
+          <span className="text-copy-14 font-medium text-ds-gray-1000 truncate">
             {session.project}
           </span>
-          <span className={`text-xs font-medium ${statusText}`}>{label}</span>
+          <span className={`text-copy-13 font-medium ${statusText}`}>{label}</span>
           {showHistoricalLabel && (
             <span className="text-[10px] text-ds-gray-700 font-mono px-1.5 py-0.5 rounded bg-ds-gray-alpha-200">
               historical
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0 text-xs text-ds-gray-900 font-mono">
+        <div className="flex items-center gap-1 shrink-0 text-copy-13 text-ds-gray-900 font-mono">
           <Clock size={11} />
           <span suppressHydrationWarning>{elapsed(session.started_at)}</span>
         </div>
       </div>
 
       {/* Slug + branch */}
-      <div className="flex items-center gap-3 text-xs text-ds-gray-900 font-mono">
+      <div className="flex items-center gap-3 text-copy-13 text-ds-gray-900 font-mono">
         <span className="text-ds-gray-1000/80">{session.slug}…</span>
         {session.branch && (
           <span className="flex items-center gap-1">
@@ -391,7 +391,7 @@ function EnhancedSessionCard({
 
       {/* Phase label */}
       {session.phase_label && (
-        <p className="text-xs text-ds-gray-900 truncate pl-4">
+        <p className="text-copy-13 text-ds-gray-900 truncate pl-4">
           {session.phase_label}
         </p>
       )}
@@ -413,7 +413,7 @@ function EnhancedSessionCard({
 
       {/* Footer */}
       <div className="flex items-center justify-between pt-1 border-t border-ds-gray-400">
-        <span className="text-xs text-ds-gray-900 font-mono">{session.agent_name}</span>
+        <span className="text-copy-13 text-ds-gray-900 font-mono">{session.agent_name}</span>
         <ChevronRight size={14} className="text-ds-gray-900" />
       </div>
     </button>
@@ -452,7 +452,7 @@ function SessionDetailDrawer({
         <div className="flex items-center justify-between gap-2 px-5 py-4 border-b border-ds-gray-400">
           <div className="flex items-center gap-2 min-w-0">
             <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-            <span className="text-sm font-semibold text-ds-gray-1000 truncate">
+            <span className="text-copy-14 font-semibold text-ds-gray-1000 truncate">
               {session.project}
             </span>
           </div>
@@ -470,36 +470,36 @@ function SessionDetailDrawer({
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {/* Status */}
           <section className="space-y-2">
-            <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
+            <p className="text-label-12 text-ds-gray-900">
               Status
             </p>
-            <span className={`text-sm font-medium ${statusText}`}>
+            <span className={`text-label-14 ${statusText}`}>
               {STATUS_LABEL[session.status]}
             </span>
           </section>
 
           {/* Identifiers */}
           <section className="space-y-3">
-            <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
+            <p className="text-label-12 text-ds-gray-900">
               Identifiers
             </p>
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-ds-gray-900">Session ID</span>
-                <span className="text-xs font-mono text-ds-gray-1000 break-all text-right max-w-[200px]">
+                <span className="text-copy-13 text-ds-gray-900">Session ID</span>
+                <span className="text-copy-13 font-mono text-ds-gray-1000 break-all text-right max-w-[200px]">
                   {session.id}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-ds-gray-900">Agent</span>
-                <span className="text-xs font-mono text-ds-gray-1000">
+                <span className="text-copy-13 text-ds-gray-900">Agent</span>
+                <span className="text-copy-13 font-mono text-ds-gray-1000">
                   {session.agent_name}
                 </span>
               </div>
               {session.branch && (
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs text-ds-gray-900">Branch</span>
-                  <span className="flex items-center gap-1 text-xs font-mono text-ds-gray-1000">
+                  <span className="text-copy-13 text-ds-gray-900">Branch</span>
+                  <span className="flex items-center gap-1 text-copy-13 font-mono text-ds-gray-1000">
                     <GitBranch size={10} />
                     {session.branch}
                   </span>
@@ -507,8 +507,8 @@ function SessionDetailDrawer({
               )}
               {session.spec && (
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-xs text-ds-gray-900">Spec</span>
-                  <span className="text-xs font-mono text-ds-gray-1000">
+                  <span className="text-copy-13 text-ds-gray-900">Spec</span>
+                  <span className="text-copy-13 font-mono text-ds-gray-1000">
                     {session.spec}
                   </span>
                 </div>
@@ -518,29 +518,29 @@ function SessionDetailDrawer({
 
           {/* Timing */}
           <section className="space-y-3">
-            <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
+            <p className="text-label-12 text-ds-gray-900">
               Timing
             </p>
             <div className="space-y-2">
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-ds-gray-900">Started</span>
+                <span className="text-copy-13 text-ds-gray-900">Started</span>
                 <span
-                  className="text-xs font-mono text-ds-gray-1000"
+                  className="text-copy-13 font-mono text-ds-gray-1000"
                   suppressHydrationWarning
                 >
                   {new Date(session.started_at).toLocaleString()}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-ds-gray-900">Duration</span>
-                <span className="text-xs font-mono text-ds-gray-1000">
+                <span className="text-copy-13 text-ds-gray-900">Duration</span>
+                <span className="text-copy-13 font-mono text-ds-gray-1000">
                   {session.duration_display}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-2">
-                <span className="text-xs text-ds-gray-900">Elapsed</span>
+                <span className="text-copy-13 text-ds-gray-900">Elapsed</span>
                 <span
-                  className="text-xs font-mono text-ds-gray-1000"
+                  className="text-copy-13 font-mono text-ds-gray-1000"
                   suppressHydrationWarning
                 >
                   {elapsed(session.started_at)}
@@ -552,11 +552,11 @@ function SessionDetailDrawer({
           {/* Progress */}
           {session.status === "active" && (
             <section className="space-y-3">
-              <p className="text-xs text-ds-gray-900 uppercase tracking-widest font-semibold">
+              <p className="text-label-12 text-ds-gray-900">
                 Progress
               </p>
               {session.phase_label && (
-                <p className="text-xs text-ds-gray-1000">{session.phase_label}</p>
+                <p className="text-copy-13 text-ds-gray-1000">{session.phase_label}</p>
               )}
               <div className="space-y-1">
                 <div className="h-2 rounded-full bg-ds-bg-100 overflow-hidden">
@@ -567,7 +567,7 @@ function SessionDetailDrawer({
                     }}
                   />
                 </div>
-                <p className="text-xs font-mono text-ds-gray-900 text-right">
+                <p className="text-copy-13 font-mono text-ds-gray-900 text-right">
                   {session.progress ?? 0}%
                 </p>
               </div>
@@ -650,7 +650,7 @@ function ProjectSessionsTable({
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="space-y-0.5">
-          <h3 className="text-sm font-semibold text-ds-gray-1000 flex items-center gap-2">
+          <h3 className="text-label-14 font-semibold text-ds-gray-1000 flex items-center gap-2">
             <Terminal size={14} className="text-ds-gray-1000" />
             CC Sessions
           </h3>
@@ -664,7 +664,7 @@ function ProjectSessionsTable({
           type="button"
           onClick={() => void fetchCcSessions()}
           disabled={loading}
-          className="text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors disabled:opacity-50"
+          className="text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors disabled:opacity-50"
           aria-label="Refresh CC sessions"
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -672,7 +672,7 @@ function ProjectSessionsTable({
       </div>
 
       {error && (
-        <p className="text-xs text-destructive">
+        <p className="text-copy-13 text-destructive">
           Failed to load CC sessions: {error}
         </p>
       )}
@@ -687,10 +687,10 @@ function ProjectSessionsTable({
           ))}
         </div>
       ) : sessions.length === 0 ? (
-        <p className="text-xs text-ds-gray-900 py-2">No CC sessions.</p>
+        <p className="text-copy-13 text-ds-gray-900 py-2">No CC sessions.</p>
       ) : (
         <div className="rounded-xl border border-ds-gray-400 overflow-hidden">
-          <table className="w-full text-xs">
+          <table className="w-full text-copy-13">
             <thead>
               <tr className="border-b border-ds-gray-400 bg-ds-gray-100/60">
                 <th className="px-3 py-2 text-left font-medium text-ds-gray-900">ID</th>
@@ -763,13 +763,13 @@ function SessionEmptyState({
     return (
       <div className="flex flex-col items-center gap-3 py-10">
         <Search size={28} className="text-ds-gray-600" />
-        <p className="text-sm text-ds-gray-900 text-center">
+        <p className="text-copy-13 text-ds-gray-900 text-center">
           No sessions match your filters.
         </p>
         <button
           type="button"
           onClick={onClearFilters}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+          className="px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
         >
           Clear filters
         </button>
@@ -782,15 +782,15 @@ function SessionEmptyState({
       <div className="flex flex-col items-center gap-3 py-10">
         <WifiOff size={28} className="text-ds-gray-600" />
         <div className="text-center space-y-1">
-          <p className="text-sm text-ds-gray-900">No sessions found.</p>
-          <p className="text-xs text-ds-gray-700">
+          <p className="text-copy-13 text-ds-gray-900">No sessions found.</p>
+          <p className="text-copy-13 text-ds-gray-700">
             The daemon is offline — sessions will sync when connectivity is restored.
           </p>
         </div>
         <button
           type="button"
           onClick={onRetry}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+          className="px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
         >
           Retry
         </button>
@@ -802,8 +802,8 @@ function SessionEmptyState({
     <div className="flex flex-col items-center gap-3 py-10">
       <Layers size={28} className="text-ds-gray-600" />
       <div className="text-center space-y-1">
-        <p className="text-sm text-ds-gray-900">No sessions recorded yet.</p>
-        <p className="text-xs text-ds-gray-700">
+        <p className="text-copy-13 text-ds-gray-900">No sessions recorded yet.</p>
+        <p className="text-copy-13 text-ds-gray-700">
           Sessions will appear automatically when agent commands run.
         </p>
       </div>
@@ -976,7 +976,7 @@ function SessionsPage() {
       {/* Connection indicator */}
       <span
         className={[
-          "flex items-center gap-1.5 text-xs font-medium",
+          "flex items-center gap-1.5 text-label-13",
           daemonConnected ? "text-green-700" : "text-ds-gray-700",
         ].join(" ")}
       >
@@ -997,7 +997,7 @@ function SessionsPage() {
         type="button"
         onClick={handleRefresh}
         disabled={loading}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
         Refresh
@@ -1019,7 +1019,7 @@ function SessionsPage() {
               type="button"
               onClick={() => setCcPanelOpen((prev) => !prev)}
               className={[
-                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                "flex items-center gap-2 px-3 py-1.5 rounded-lg text-label-13 border transition-colors",
                 ccPanelOpen
                   ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/30"
                   : "text-ds-gray-900 border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500",
@@ -1067,7 +1067,7 @@ function SessionsPage() {
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Search by ID, project, agent…"
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
               />
               {searchInput && (
                 <button
@@ -1085,7 +1085,7 @@ function SessionsPage() {
             <select
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-sm text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
             >
               <option value="all">All projects</option>
               {projects.map((p) => (
@@ -1104,7 +1104,7 @@ function SessionsPage() {
                     type="button"
                     onClick={() => setStatusFilter(s)}
                     className={[
-                      "px-3 py-1 rounded-md text-xs font-medium transition-colors capitalize",
+                      "px-3 py-1 rounded-md text-label-13 transition-colors capitalize",
                       statusFilter === s
                         ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
                         : "text-ds-gray-900 hover:text-ds-gray-1000",
@@ -1119,7 +1119,7 @@ function SessionsPage() {
 
           {/* Results count */}
           {!loading && sessions.length > 0 && (
-            <p className="text-xs text-ds-gray-900 section-stagger-2">
+            <p className="text-copy-13 text-ds-gray-900 section-stagger-2">
               {filtered.length} session{filtered.length !== 1 ? "s" : ""}
               {deferredSearch ? ` matching "${deferredSearch}"` : ""}
             </p>

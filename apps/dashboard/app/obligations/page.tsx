@@ -69,9 +69,9 @@ function truncate(text: string, max: number): string {
 
 const STATUS_BADGE: Record<string, string> = {
   open: "bg-ds-gray-alpha-200 text-ds-gray-1000",
-  in_progress: "bg-amber-500/20 text-amber-500",
-  proposed_done: "bg-blue-500/20 text-blue-400",
-  done: "bg-green-700/20 text-green-600",
+  in_progress: "bg-amber-700/20 text-amber-700",
+  proposed_done: "bg-blue-700/20 text-blue-700",
+  done: "bg-green-700/20 text-green-700",
   dismissed: "bg-ds-gray-alpha-100 text-ds-gray-700",
 };
 
@@ -88,19 +88,19 @@ const STATUS_LABEL: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 const PRIORITY_BAR: Record<number, string> = {
-  0: "bg-[#EF4444]",
-  1: "bg-[#F97316]",
+  0: "bg-red-700",
+  1: "bg-amber-700",
   2: "bg-ds-gray-700",
-  3: "bg-[#6B7280]",
-  4: "bg-[#374151]",
+  3: "bg-ds-gray-600",
+  4: "bg-ds-gray-500",
 };
 
 const PRIORITY_TEXT: Record<number, string> = {
-  0: "text-[#EF4444]",
-  1: "text-[#F97316]",
+  0: "text-red-700",
+  1: "text-amber-700",
   2: "text-ds-gray-1000",
-  3: "text-[#6B7280]",
-  4: "text-[#374151]",
+  3: "text-ds-gray-700",
+  4: "text-ds-gray-600",
 };
 
 // ---------------------------------------------------------------------------
@@ -110,20 +110,20 @@ const PRIORITY_TEXT: Record<number, string> = {
 function OwnerBadge({ owner }: { owner: string }) {
   if (owner === "nova") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-ds-gray-700/30 text-ds-gray-1000">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-copy-13 font-mono bg-ds-gray-700/30 text-ds-gray-1000">
         <span className="font-bold">N</span> Nova
       </span>
     );
   }
   if (owner === "leo") {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono bg-red-700/20 text-red-600">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-copy-13 font-mono bg-red-700/20 text-red-700">
         <span className="font-bold">L</span> Leo
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-ds-gray-alpha-100 text-ds-gray-900">
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-copy-13 font-mono bg-ds-gray-alpha-100 text-ds-gray-900">
       {owner}
     </span>
   );
@@ -136,7 +136,7 @@ function OwnerBadge({ owner }: { owner: string }) {
 function NoteRow({ note, expanded }: { note: ObligationNote; expanded: boolean }) {
   const [open, setOpen] = useState(expanded);
   return (
-    <div className="flex gap-2 text-xs">
+    <div className="flex gap-2 text-copy-13">
       <div className="w-1 bg-ds-gray-400 rounded-full shrink-0 self-stretch mt-1" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -278,25 +278,25 @@ function ObligationCard({
           onClick={onToggleExpand}
           className="flex items-start gap-2 flex-wrap w-full text-left"
         >
-          <span className={`text-xs font-mono font-bold ${priorityText} shrink-0`}>
+          <span className={`text-label-12 font-mono font-bold ${priorityText} shrink-0`}>
             P{obligation.priority}
           </span>
-          <span className="text-sm font-semibold text-ds-gray-1000 flex-1 min-w-0">
+          <span className="text-copy-14 font-semibold text-ds-gray-1000 flex-1 min-w-0">
             {obligation.detected_action}
           </span>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             {/* Deadline proximity indicator */}
             {deadlineProximity === "overdue" && (
-              <span className="text-[10px] font-mono font-bold text-red-500 uppercase px-1.5 py-0.5 rounded bg-red-700/20">
+              <span className="text-label-12 font-mono font-bold text-red-700 uppercase px-1.5 py-0.5 rounded bg-red-700/20">
                 Overdue
               </span>
             )}
             {deadlineProximity === "approaching" && (
-              <span className="text-[10px] font-mono font-bold text-amber-500 uppercase px-1.5 py-0.5 rounded bg-amber-500/20">
+              <span className="text-label-12 font-mono font-bold text-amber-700 uppercase px-1.5 py-0.5 rounded bg-amber-700/20">
                 Due Soon
               </span>
             )}
-            <span className={`text-xs px-2 py-0.5 rounded font-mono ${statusBadge}`}>
+            <span className={`text-copy-13 px-2 py-0.5 rounded font-mono ${statusBadge}`}>
               {statusLabel}
             </span>
             <OwnerBadge owner={obligation.owner} />
@@ -308,7 +308,7 @@ function ObligationCard({
         </button>
 
         {/* Compact meta — always visible */}
-        <div className="flex items-center gap-3 flex-wrap text-xs text-ds-gray-900">
+        <div className="flex items-center gap-3 flex-wrap text-copy-13 text-ds-gray-900">
           {obligation.project_code && (
             <span className="flex items-center gap-1 font-mono">
               <FolderOpen size={11} />
@@ -323,9 +323,9 @@ function ObligationCard({
             <span
               className={`flex items-center gap-1 font-mono ${
                 deadlineProximity === "overdue"
-                  ? "text-red-500"
+                  ? "text-red-700"
                   : deadlineProximity === "approaching"
-                    ? "text-amber-500"
+                    ? "text-amber-700"
                     : ""
               }`}
               suppressHydrationWarning
@@ -380,7 +380,7 @@ function ObligationCard({
                       <button
                         type="button"
                         onClick={() => setNotesExpanded((v) => !v)}
-                        className="flex items-center gap-1 text-xs text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
+                        className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
                       >
                         {notesExpanded ? (
                           <>
@@ -420,7 +420,7 @@ function SourceContext({
   const needsExpand = message && message.length > 200;
 
   return (
-    <div className="flex gap-2 text-xs text-ds-gray-900 bg-ds-gray-alpha-100 rounded-lg px-3 py-2">
+    <div className="flex gap-2 text-copy-13 text-ds-gray-900 bg-ds-gray-alpha-100 rounded-lg px-3 py-2">
       <Radio size={12} className="shrink-0 mt-0.5 text-ds-gray-700" />
       <div className="flex-1 min-w-0">
         <span className="font-mono text-ds-gray-700 uppercase text-[10px]">{channel}</span>
@@ -551,7 +551,7 @@ const ACTION_VARIANT_CLASSES: Record<string, string> = {
   default:
     "bg-ds-gray-alpha-200 text-ds-gray-1000 hover:bg-ds-gray-alpha-400 border-ds-gray-400",
   success:
-    "bg-green-700/20 text-green-600 hover:bg-green-700/30 border-green-700/30",
+    "bg-green-700/20 text-green-700 hover:bg-green-700/30 border-green-700/30",
   danger:
     "bg-ds-gray-alpha-100 text-ds-gray-900 hover:bg-ds-gray-alpha-200 border-ds-gray-400",
 };
@@ -609,12 +609,12 @@ function SectionHeading({
       <div
         className={`w-6 h-6 rounded flex items-center justify-center ${colorClass}`}
       >
-        <span className="text-xs font-bold font-mono">{initial}</span>
+        <span className="text-label-12 font-bold font-mono">{initial}</span>
       </div>
-      <h2 className="text-sm font-semibold text-ds-gray-1000 uppercase tracking-wide">
+      <h2 className="text-heading-16 text-ds-gray-1000 uppercase tracking-wide">
         {label}
       </h2>
-      <span className="text-xs font-mono text-ds-gray-900">{count}</span>
+      <span className="text-copy-13 font-mono text-ds-gray-900">{count}</span>
     </div>
   );
 }
@@ -638,14 +638,14 @@ const URGENCY_CONFIG: Record<
 > = {
   critical: {
     label: "Critical",
-    dot: "bg-[#EF4444]",
-    text: "text-[#EF4444]",
+    dot: "bg-red-700",
+    text: "text-red-700",
   },
-  high: { label: "High", dot: "bg-[#F97316]", text: "text-[#F97316]" },
+  high: { label: "High", dot: "bg-amber-700", text: "text-amber-700" },
   medium: {
     label: "Medium",
-    dot: "bg-amber-400",
-    text: "text-amber-400",
+    dot: "bg-amber-700",
+    text: "text-amber-700",
   },
   low: { label: "Low", dot: "bg-ds-gray-600", text: "text-ds-gray-900" },
 };
@@ -715,20 +715,20 @@ function DetailPanel({
             <ActionIcon size={16} className="text-ds-gray-1000" />
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-semibold text-ds-gray-1000 leading-tight">
+            <h2 className="text-heading-16 text-ds-gray-1000 leading-tight">
               {approval.title}
             </h2>
             <div className="flex items-center gap-3 mt-0.5 flex-wrap">
               {approval.project && (
-                <span className="text-xs font-mono text-ds-gray-900">
+                <span className="text-copy-13 font-mono text-ds-gray-900">
                   {approval.project}
                 </span>
               )}
-              <span className={`text-xs font-medium ${urg.text}`}>
+              <span className={`text-label-13 ${urg.text}`}>
                 {urg.label} urgency
               </span>
               <span
-                className="text-xs text-ds-gray-900 flex items-center gap-1"
+                className="text-copy-13 text-ds-gray-900 flex items-center gap-1"
                 suppressHydrationWarning
               >
                 <Clock size={10} />
@@ -743,10 +743,10 @@ function DetailPanel({
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
         {approval.description && (
           <section>
-            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-1">
+            <h3 className="text-label-12 text-ds-gray-900 mb-1">
               Description
             </h3>
-            <p className="text-sm text-ds-gray-1000 leading-relaxed">
+            <p className="text-copy-13 text-ds-gray-1000 leading-relaxed">
               {approval.description}
             </p>
           </section>
@@ -754,10 +754,10 @@ function DetailPanel({
 
         {approval.proposed_changes && (
           <section>
-            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-1">
+            <h3 className="text-label-12 text-ds-gray-900 mb-1">
               Proposed Changes
             </h3>
-            <pre className="text-xs text-ds-gray-1000 font-mono bg-ds-bg-100 border border-ds-gray-400 rounded-xl p-3 overflow-x-auto whitespace-pre-wrap">
+            <pre className="text-copy-13 text-ds-gray-1000 font-mono bg-ds-bg-100 border border-ds-gray-400 rounded-xl p-3 overflow-x-auto whitespace-pre-wrap">
               {approval.proposed_changes}
             </pre>
           </section>
@@ -765,10 +765,10 @@ function DetailPanel({
 
         {approval.context && (
           <section>
-            <h3 className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest mb-1">
+            <h3 className="text-label-12 text-ds-gray-900 mb-1">
               Context
             </h3>
-            <p className="text-sm text-ds-gray-900 leading-relaxed">
+            <p className="text-copy-13 text-ds-gray-900 leading-relaxed">
               {approval.context}
             </p>
           </section>
@@ -782,7 +782,7 @@ function DetailPanel({
             type="button"
             onClick={() => void onApprove(approval.id)}
             disabled={approving || dismissing}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-9 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-9 rounded-lg text-button-14 bg-green-700 hover:bg-green-700/80 text-white transition-colors disabled:opacity-50"
           >
             <CheckCircle size={14} />
             {approving ? "Approving\u2026" : "Approve"}
@@ -791,7 +791,7 @@ function DetailPanel({
             type="button"
             onClick={() => void onDismiss(approval.id)}
             disabled={approving || dismissing}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-9 rounded-lg text-sm font-semibold bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 min-h-9 rounded-lg text-button-14 bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
           >
             <XCircle size={14} />
             {dismissing ? "Dismissing\u2026" : "Dismiss"}
@@ -1016,9 +1016,9 @@ function ApprovalsTabContent() {
         ].join(" ")}
       >
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ds-gray-400 shrink-0">
-          <AlertTriangle size={14} className="text-amber-400 shrink-0" />
-          <span className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest">Queue</span>
-          <span className="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 min-w-[1.25rem] rounded text-xs font-mono font-medium bg-ds-gray-400 text-ds-gray-1000">
+          <AlertTriangle size={14} className="text-amber-700 shrink-0" />
+          <span className="text-label-12 text-ds-gray-900">Queue</span>
+          <span className="ml-auto inline-flex items-center justify-center px-1.5 py-0.5 min-w-[1.25rem] rounded text-copy-13 font-mono font-medium bg-ds-gray-400 text-ds-gray-1000">
             {pending.length}
           </span>
         </div>
@@ -1053,7 +1053,7 @@ function ApprovalsTabContent() {
         <button
           type="button"
           onClick={() => setMobileDetailOpen(false)}
-          className="flex md:hidden items-center gap-2 px-4 py-2.5 text-sm text-ds-gray-900 hover:text-ds-gray-1000 border-b border-ds-gray-400"
+          className="flex md:hidden items-center gap-2 px-4 py-2.5 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border-b border-ds-gray-400"
         >
           <ChevronRight size={14} className="rotate-180" />
           Back to queue
@@ -1070,7 +1070,7 @@ function ApprovalsTabContent() {
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-ds-gray-900 py-8">
             <AlertTriangle size={24} />
-            <p className="text-sm">Select an item to review</p>
+            <p className="text-copy-13">Select an item to review</p>
           </div>
         )}
       </div>
@@ -1314,7 +1314,7 @@ function ObligationsPage() {
             key={t.key}
             type="button"
             onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-4 py-1.5 rounded text-label-13 transition-colors ${
               tab === t.key
                 ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
                 : "text-ds-gray-900 hover:text-ds-gray-1000"
@@ -1323,7 +1323,7 @@ function ObligationsPage() {
             {t.icon}
             <span>{t.label}</span>
             {t.count !== null && (
-              <span className="text-xs font-mono opacity-70">{t.count}</span>
+              <span className="text-copy-13 font-mono opacity-70">{t.count}</span>
             )}
           </button>
         ))}

@@ -107,7 +107,7 @@ export default function StatusPage() {
 
       {/* Loading skeleton */}
       {loading && !fleetData ? (
-        <div className="space-y-6">
+        <div className="space-y-3">
           {Array.from({ length: 3 }).map((_, g) => (
             <div key={g} className="space-y-2">
               <div className="h-3 w-24 animate-pulse rounded bg-ds-gray-300" />

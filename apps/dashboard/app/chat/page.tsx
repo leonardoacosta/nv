@@ -96,7 +96,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
       <div
         className={`max-w-[75%] rounded-lg px-3.5 py-2.5 ${
           isUser
-            ? "bg-blue-900/20 border border-blue-800/20"
+            ? "bg-blue-700/10 border border-blue-700/20"
             : "bg-ds-gray-200 border border-ds-gray-400"
         }`}
       >
@@ -104,7 +104,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
         <div className="flex items-center gap-2 mb-1.5">
           <span
             className={`text-[11px] font-medium ${
-              isUser ? "text-blue-400" : "text-ds-gray-900"
+              isUser ? "text-blue-700" : "text-ds-gray-900"
             }`}
           >
             {isUser ? message.sender || "You" : "Nova"}
@@ -120,7 +120,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
         {/* Content */}
         {isUser ? (
-          <p className="text-sm text-ds-gray-1000 whitespace-pre-wrap break-words">
+          <p className="text-copy-13 text-ds-gray-1000 whitespace-pre-wrap break-words">
             {message.content}
           </p>
         ) : (
@@ -132,8 +132,8 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
       {/* User avatar */}
       {isUser && (
-        <div className="w-7 h-7 rounded-full bg-blue-900/30 flex items-center justify-center shrink-0 mt-1">
-          <User size={14} className="text-blue-400" />
+        <div className="w-7 h-7 rounded-full bg-blue-700/20 flex items-center justify-center shrink-0 mt-1">
+          <User size={14} className="text-blue-700" />
         </div>
       )}
     </div>
@@ -179,7 +179,7 @@ function TransportBadge({ mode }: { mode: TransportMode }) {
     <span className="inline-flex items-center gap-1.5 text-[11px] font-medium">
       <span
         className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-          mode === "direct" ? "bg-green-500" : "bg-[#229ED9]"
+          mode === "direct" ? "bg-green-700" : "bg-[#229ED9]"
         }`}
       />
       <span className="text-ds-gray-700">
@@ -512,7 +512,7 @@ export default function ChatPage() {
               {messages.length === 0 && !sending && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Bot size={32} className="text-ds-gray-700 mb-3" />
-                  <p className="text-sm text-ds-gray-900">
+                  <p className="text-copy-13 text-ds-gray-900">
                     No messages yet. Start a conversation with Nova.
                   </p>
                 </div>
@@ -569,7 +569,7 @@ export default function ChatPage() {
                 placeholder="Message Nova..."
                 disabled={sending}
                 rows={1}
-                className="w-full resize-none rounded-lg border border-ds-gray-400 bg-ds-gray-100 px-3.5 py-2.5 text-sm text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-700 transition-colors disabled:opacity-50"
+                className="w-full resize-none rounded-lg border border-ds-gray-400 bg-ds-gray-100 px-3.5 py-2.5 text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-700 transition-colors disabled:opacity-50"
                 style={{ maxHeight: "96px" }}
               />
               {/* Transport mode indicator [3.10] */}

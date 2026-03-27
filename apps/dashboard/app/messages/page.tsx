@@ -244,7 +244,7 @@ function TypeBadge({ type }: { type: StoredMessage["type"] }) {
   if (type === "conversation") return null;
   if (type === "tool-call") {
     return (
-      <span className="shrink-0 px-1 py-0.5 rounded text-[10px] font-mono bg-amber-500/15 text-amber-500">
+      <span className="shrink-0 px-1 py-0.5 rounded text-[10px] font-mono bg-amber-700/15 text-amber-700">
         tool
       </span>
     );
@@ -301,9 +301,9 @@ function MessageRowDense({
         {/* Direction icon */}
         <div className="shrink-0">
           {isInbound ? (
-            <ArrowDownLeft size={12} className="text-emerald-400" />
+            <ArrowDownLeft size={12} className="text-green-700" />
           ) : (
-            <ArrowUpRight size={12} className="text-amber-400" />
+            <ArrowUpRight size={12} className="text-amber-700" />
           )}
         </div>
 
@@ -311,12 +311,12 @@ function MessageRowDense({
         <div className="shrink-0">{cIcon}</div>
 
         {/* Resolved sender name */}
-        <span className="shrink-0 text-xs text-ds-gray-1000 font-medium w-[72px] truncate hidden md:inline">
+        <span className="shrink-0 text-copy-13 text-ds-gray-1000 font-medium w-[72px] truncate hidden md:inline">
           {resolvedName || "\u2014"}
         </span>
 
         {/* Message preview */}
-        <span className="flex-1 min-w-0 text-sm text-ds-gray-900 truncate">
+        <span className="flex-1 min-w-0 text-copy-13 text-ds-gray-900 truncate">
           {truncate(msg.content)}
         </span>
 
@@ -333,7 +333,7 @@ function MessageRowDense({
 
         {/* Timestamp */}
         <span
-          className="shrink-0 text-xs text-ds-gray-900 font-mono hidden sm:inline"
+          className="shrink-0 text-copy-13 text-ds-gray-900 font-mono hidden sm:inline"
           suppressHydrationWarning
         >
           {formatRelativeTs(msg.timestamp)}
@@ -347,7 +347,7 @@ function MessageRowDense({
             <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest font-semibold">
               Message content
             </p>
-            <pre className="text-xs text-ds-gray-1000 whitespace-pre-wrap break-words font-mono bg-ds-bg-100 rounded-lg p-3 border border-ds-gray-400 max-h-64 overflow-y-auto">
+            <pre className="text-copy-13 text-ds-gray-1000 whitespace-pre-wrap break-words font-mono bg-ds-bg-100 rounded-lg p-3 border border-ds-gray-400 max-h-64 overflow-y-auto">
               {msg.content}
             </pre>
           </section>
@@ -355,43 +355,43 @@ function MessageRowDense({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Direction</p>
-              <p className="text-xs font-medium text-ds-gray-1000 capitalize">{msg.direction}</p>
+              <p className="text-copy-13 font-medium text-ds-gray-1000 capitalize">{msg.direction}</p>
             </div>
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Channel</p>
-              <p className="text-xs font-medium" style={{ color: accent }}>{msg.channel}</p>
+              <p className="text-copy-13 font-medium" style={{ color: accent }}>{msg.channel}</p>
             </div>
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Sender</p>
-              <p className="text-xs font-medium text-ds-gray-1000">{msg.sender || "\u2014"}</p>
+              <p className="text-copy-13 font-medium text-ds-gray-1000">{msg.sender || "\u2014"}</p>
             </div>
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Timestamp</p>
-              <p className="text-xs font-mono text-ds-gray-1000" suppressHydrationWarning>
+              <p className="text-copy-13 font-mono text-ds-gray-1000" suppressHydrationWarning>
                 {formatTs(msg.timestamp)}
               </p>
             </div>
             {msg.response_time_ms !== null && msg.response_time_ms !== undefined && (
               <div className="space-y-0.5">
                 <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Latency</p>
-                <p className="text-xs font-mono text-ds-gray-1000">{msg.response_time_ms}ms</p>
+                <p className="text-copy-13 font-mono text-ds-gray-1000">{msg.response_time_ms}ms</p>
               </div>
             )}
             {msg.tokens_in !== null && msg.tokens_in !== undefined && (
               <div className="space-y-0.5">
                 <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Tokens in</p>
-                <p className="text-xs font-mono text-ds-gray-1000">{msg.tokens_in.toLocaleString()}</p>
+                <p className="text-copy-13 font-mono text-ds-gray-1000">{msg.tokens_in.toLocaleString()}</p>
               </div>
             )}
             {msg.tokens_out !== null && msg.tokens_out !== undefined && (
               <div className="space-y-0.5">
                 <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Tokens out</p>
-                <p className="text-xs font-mono text-ds-gray-1000">{msg.tokens_out.toLocaleString()}</p>
+                <p className="text-copy-13 font-mono text-ds-gray-1000">{msg.tokens_out.toLocaleString()}</p>
               </div>
             )}
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Type</p>
-              <p className="text-xs font-medium text-ds-gray-1000 capitalize">{msg.type}</p>
+              <p className="text-copy-13 font-medium text-ds-gray-1000 capitalize">{msg.type}</p>
             </div>
           </div>
         </div>
@@ -464,7 +464,7 @@ function FacetedFilterBar({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search messages…"
-          className="w-full pl-8 pr-7 py-1.5 surface-inset text-xs text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors h-[36px]"
+          className="w-full pl-8 pr-7 py-1.5 surface-inset text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors h-[36px]"
         />
         {search && (
           <button
@@ -482,7 +482,7 @@ function FacetedFilterBar({
       <select
         value={channelFilter}
         onChange={(e) => onChannelFilter(e.target.value)}
-        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
       >
         <option value="all">All channels</option>
         {channels.map((ch) => (
@@ -496,7 +496,7 @@ function FacetedFilterBar({
       <select
         value={direction}
         onChange={(e) => onDirection(e.target.value as DirectionFilter)}
-        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
       >
         <option value="all">All directions</option>
         <option value="inbound">Inbound</option>
@@ -526,7 +526,7 @@ function FacetedFilterBar({
       <select
         value={sort}
         onChange={(e) => onSort(e.target.value as SortMode)}
-        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
       >
         <option value="newest">Newest first</option>
         <option value="oldest">Oldest first</option>
@@ -539,7 +539,7 @@ function FacetedFilterBar({
         <button
           type="button"
           onClick={onClearAll}
-          className="h-[36px] flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+          className="h-[36px] flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
         >
           <X size={11} />
           Clear all
@@ -854,7 +854,7 @@ export default function MessagesPage() {
           ) : virtualRows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12">
               <Search size={28} className="text-ds-gray-600" />
-              <p className="text-sm text-ds-gray-900 text-center">
+              <p className="text-copy-13 text-ds-gray-900 text-center">
                 {hasActiveFilters
                   ? "No messages match your filters."
                   : "No messages found."}
@@ -863,7 +863,7 @@ export default function MessagesPage() {
                 <button
                   type="button"
                   onClick={handleClearAll}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
                 >
                   Clear filters
                 </button>
@@ -954,7 +954,7 @@ export default function MessagesPage() {
               {loadingMore && (
                 <div className="flex items-center justify-center py-3">
                   <div className="w-4 h-4 border border-ds-gray-600 border-t-ds-gray-900 rounded-full animate-spin" />
-                  <span className="ml-2 text-xs text-ds-gray-900">Loading more…</span>
+                  <span className="ml-2 text-copy-13 text-ds-gray-900">Loading more…</span>
                 </div>
               )}
             </div>
@@ -975,7 +975,7 @@ export default function MessagesPage() {
 
         {/* Result summary */}
         {!loading && virtualRows.length > 0 && (
-          <p className="text-xs text-ds-gray-900 font-mono">
+          <p className="text-copy-13 text-ds-gray-900 font-mono">
             {filtered.length} messages
             {total > filtered.length ? ` (${total} total)` : ""}
             {deferredSearch ? ` matching "${deferredSearch}"` : ""}

@@ -139,11 +139,11 @@ export default function DiaryPage() {
         </button>
 
         <div className="flex-1 text-center">
-          <p className="text-sm font-medium text-ds-gray-1000">
+          <p className="text-label-14 text-ds-gray-1000">
             {formatDisplayDate(dateStr)}
           </p>
           {isToday(dateStr) && (
-            <span className="text-xs text-ds-gray-1000 font-medium">Today</span>
+            <span className="text-label-13 text-ds-gray-1000">Today</span>
           )}
         </div>
 

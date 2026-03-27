@@ -65,8 +65,8 @@ function formatHistoryDate(iso: string): string {
 }
 
 function sourceStatusColor(status: string): string {
-  if (status === "ok") return "bg-emerald-400";
-  if (status === "unavailable") return "bg-red-400";
+  if (status === "ok") return "bg-green-700";
+  if (status === "unavailable") return "bg-red-700";
   return "bg-ds-gray-500";
 }
 
@@ -289,7 +289,7 @@ export default function BriefingPage() {
 
       {/* Update banner */}
       {updateBanner && (
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000 text-sm">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000 text-copy-13">
           <Sun size={14} className="text-ds-gray-1000 shrink-0" />
           Briefing updated
         </div>
@@ -312,7 +312,7 @@ export default function BriefingPage() {
               ([source, status]) => (
                 <span
                   key={source}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ds-gray-100 border border-ds-gray-400 text-xs text-ds-gray-900"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-900"
                 >
                   <span
                     className={`w-2 h-2 rounded-full shrink-0 ${sourceStatusColor(status)}`}
@@ -359,14 +359,14 @@ export default function BriefingPage() {
                       {displayEntry.suggested_actions.map((action) => {
                         const chipClass =
                           action.status === "completed"
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                            ? "bg-green-700/10 border-green-700/30 text-green-700"
                             : action.status === "dismissed"
                               ? "bg-ds-gray-100 border-ds-gray-400 text-ds-gray-900 line-through"
                               : "bg-ds-gray-alpha-100 border-ds-gray-1000/30 text-ds-gray-1000";
                         return (
                           <span
                             key={action.id}
-                            className={`px-3 py-1.5 rounded-full border text-xs font-medium ${chipClass}`}
+                            className={`px-3 py-1.5 rounded-full border text-label-13 ${chipClass}`}
                           >
                             {action.label}
                           </span>
@@ -396,7 +396,7 @@ export default function BriefingPage() {
                   key={h.id}
                   onClick={() => handleSelectHistory(h.id)}
                   className={[
-                    "w-full text-left px-3 py-2 rounded-lg text-xs transition-colors",
+                    "w-full text-left px-3 py-2 rounded-lg text-copy-13 transition-colors",
                     isSelected
                       ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border border-ds-gray-1000/30"
                       : "text-ds-gray-900 hover:text-ds-gray-1000 hover:bg-ds-gray-100 border border-transparent",

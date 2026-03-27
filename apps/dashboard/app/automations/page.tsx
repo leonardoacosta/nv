@@ -109,7 +109,7 @@ function ToggleSwitch({
       onClick={() => onChange(!checked)}
       className={[
         "relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ds-gray-500 disabled:opacity-50",
-        checked ? "bg-green-600" : "bg-ds-gray-400",
+        checked ? "bg-green-700" : "bg-ds-gray-400",
       ].join(" ")}
     >
       <span
@@ -205,7 +205,7 @@ function WatcherCard({ watcher, onUpdate }: WatcherCardProps) {
       </p>
 
       {fieldError && (
-        <p className="text-[11px] text-red-500">{fieldError}</p>
+        <p className="text-[11px] text-red-700">{fieldError}</p>
       )}
 
       <div className="space-y-3">
@@ -381,7 +381,7 @@ function BriefingCard({
       )}
 
       {genError && (
-        <p className="text-[11px] text-red-500">{genError}</p>
+        <p className="text-[11px] text-red-700">{genError}</p>
       )}
 
       <div className="flex items-center gap-3 mt-1">
@@ -460,7 +460,7 @@ function RemindersTab({
                   <td className="px-3 py-1.5 text-ds-gray-900">{r.channel}</td>
                   <td className="px-3 py-1.5">
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-label-13 ${
                         r.status === "overdue"
                           ? "bg-amber-700/20 text-amber-700"
                           : "bg-green-700/20 text-green-700"
@@ -474,7 +474,7 @@ function RemindersTab({
                       type="button"
                       onClick={() => onCancel(r.id)}
                       disabled={actionPending === r.id}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-red-700 hover:bg-red-700/10 transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-copy-13 text-red-700 hover:bg-red-700/10 transition-colors disabled:opacity-50"
                       title="Cancel reminder"
                     >
                       <XCircle size={12} />
@@ -557,7 +557,7 @@ function SchedulesTab({
                   </td>
                   <td className="px-3 py-1.5">
                     <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded text-label-13 ${
                         s.enabled
                           ? "bg-green-700/20 text-green-700"
                           : "bg-ds-gray-alpha-200 text-ds-gray-700"
@@ -571,7 +571,7 @@ function SchedulesTab({
                       type="button"
                       onClick={() => onToggle(s.id, !s.enabled)}
                       disabled={actionPending === s.id}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-ds-gray-900 hover:bg-ds-gray-alpha-200 transition-colors disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded text-copy-13 text-ds-gray-900 hover:bg-ds-gray-alpha-200 transition-colors disabled:opacity-50"
                       title={s.enabled ? "Pause schedule" : "Resume schedule"}
                     >
                       {s.enabled ? <Pause size={12} /> : <Play size={12} />}
@@ -775,7 +775,7 @@ export default function AutomationsPage() {
                   key={t.key}
                   type="button"
                   onClick={() => setScheduledTab(t.key)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded text-label-14 transition-colors ${
                     scheduledTab === t.key
                       ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
                       : "text-ds-gray-900 hover:text-ds-gray-1000"
@@ -783,7 +783,7 @@ export default function AutomationsPage() {
                 >
                   {t.icon}
                   <span>{t.label}</span>
-                  <span className="text-xs font-mono opacity-70">{t.count}</span>
+                  <span className="text-copy-13 font-mono opacity-70">{t.count}</span>
                 </button>
               ))}
             </div>

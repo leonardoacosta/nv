@@ -13,12 +13,12 @@ export default function QueueClearCelebration() {
       className="animate-fade-in-up flex flex-col items-center justify-center gap-4 py-16 text-center"
       style={{ animationDuration: "800ms" }}
     >
-      <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-emerald-600/10 border border-emerald-600/20">
-        <ShieldCheck size={32} className="text-emerald-600" />
+      <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-green-700/10 border border-green-700/20">
+        <ShieldCheck size={32} className="text-green-700" />
       </div>
       <div>
-        <h3 className="text-lg font-semibold text-ds-gray-1000">All clear</h3>
-        <p className="text-sm text-ds-gray-900 mt-1">
+        <h3 className="text-heading-16 text-ds-gray-1000">All clear</h3>
+        <p className="text-copy-13 text-ds-gray-900 mt-1">
           Every approval has been actioned. Nice work.
         </p>
       </div>

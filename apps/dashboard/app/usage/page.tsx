@@ -151,7 +151,7 @@ function UsagePage() {
             type="button"
             onClick={() => setActiveTab(tab)}
             className={[
-              "px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize",
+              "px-4 py-1.5 rounded-md text-label-14 transition-colors capitalize",
               activeTab === tab
                 ? "bg-ds-gray-alpha-200 text-ds-gray-1000"
                 : "text-ds-gray-900 hover:text-ds-gray-1000",
@@ -258,7 +258,7 @@ function UsagePage() {
             <p className="text-copy-13 text-ds-gray-900 py-3">No tool usage recorded</p>
           ) : (
             <div className="surface-card overflow-hidden">
-              <table className="w-full text-sm">
+              <table className="w-full text-copy-13">
                 <thead>
                   <tr
                     style={{ borderBottom: "1px solid var(--ds-gray-alpha-200)" }}

@@ -163,11 +163,11 @@ export default function ContactsPage() {
           <div>
             <div className="flex items-center gap-2">
               <Users size={20} className="text-ds-gray-900" />
-              <h1 className="text-2xl font-semibold text-ds-gray-1000">
+              <h1 className="text-heading-24 text-ds-gray-1000">
                 Contacts
               </h1>
             </div>
-            <p className="mt-1 text-sm text-ds-gray-900">
+            <p className="mt-1 text-copy-13 text-ds-gray-900">
               {loading
                 ? "Loading..."
                 : `Discovered ${totalSenders} contacts from ${totalMessages.toLocaleString()} conversations`}
@@ -177,7 +177,7 @@ export default function ContactsPage() {
             type="button"
             onClick={() => void fetchData()}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
           >
             <RefreshCw
               size={14}
@@ -198,7 +198,7 @@ export default function ContactsPage() {
             value={search}
             onChange={handleSearchChange}
             placeholder="Search contacts..."
-            className="w-full bg-ds-gray-100 border border-ds-gray-400 rounded-lg pl-9 pr-4 py-2 text-sm text-ds-gray-1000 placeholder-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+            className="w-full bg-ds-gray-100 border border-ds-gray-400 rounded-lg pl-9 pr-4 py-2 text-copy-13 text-ds-gray-1000 placeholder-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
           />
         </div>
 
@@ -210,7 +210,7 @@ export default function ContactsPage() {
               type="button"
               onClick={() => setFilterTab(key)}
               className={[
-                "px-3 py-1 rounded-full text-xs font-medium transition-colors border",
+                "px-3 py-1 rounded-full text-label-13 transition-colors border",
                 filterTab === key
                   ? "bg-ds-gray-alpha-200 text-ds-gray-1000 border-ds-gray-1000/40"
                   : "text-ds-gray-900 border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-1000/30",
@@ -225,11 +225,11 @@ export default function ContactsPage() {
         {error && (
           <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
             <AlertCircle size={16} />
-            <span className="text-sm">{error}</span>
+            <span className="text-copy-13">{error}</span>
             <button
               type="button"
               onClick={() => void fetchData()}
-              className="ml-auto text-xs underline hover:no-underline"
+              className="ml-auto text-copy-13 underline hover:no-underline"
             >
               Retry
             </button>
@@ -256,7 +256,7 @@ export default function ContactsPage() {
                   ? "No contacts found"
                   : "No conversations yet"}
               </h3>
-              <p className="text-sm text-ds-gray-900 max-w-sm mt-1">
+              <p className="text-copy-13 text-ds-gray-900 max-w-sm mt-1">
                 {search || filterTab !== "all"
                   ? "Try a different search or filter."
                   : "Nova hasn't received any messages yet. Contacts will appear automatically as people message Nova across channels."}

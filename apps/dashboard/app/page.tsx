@@ -108,10 +108,10 @@ function getEventSeverity(event: ActivityFeedEvent): "error" | "warning" | "rout
 /** Icon + color config per severity tier. */
 function getSeverityConfig(severity: "error" | "warning" | "routine") {
   if (severity === "error") {
-    return { iconColor: "text-red-500", rowBg: "bg-red-500/5", leftBorder: "border-l-2 border-red-500" };
+    return { iconColor: "text-red-700", rowBg: "bg-red-700/5", leftBorder: "border-l-2 border-red-700" };
   }
   if (severity === "warning") {
-    return { iconColor: "text-amber-500", rowBg: "bg-amber-500/5", leftBorder: "border-l-2 border-amber-500" };
+    return { iconColor: "text-amber-700", rowBg: "bg-amber-700/5", leftBorder: "border-l-2 border-amber-700" };
   }
   return { iconColor: "text-ds-gray-700", rowBg: "", leftBorder: "" };
 }
@@ -153,14 +153,13 @@ function PriorityBanner({
     return (
       <Link
         href="/obligations"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
-        style={{ background: "rgba(245, 158, 11, 0.10)", border: "1px solid rgba(245, 158, 11, 0.25)" }}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-copy-13 bg-amber-700/10 border border-amber-700/25"
       >
-        <AlertTriangle size={14} className="text-amber-500 shrink-0" />
-        <span className="text-amber-200">
+        <AlertTriangle size={14} className="text-amber-700 shrink-0" />
+        <span className="text-amber-700">
           {pendingCount} obligation{pendingCount !== 1 ? "s" : ""} need{pendingCount === 1 ? "s" : ""} attention
         </span>
-        <ArrowRight size={12} className="ml-auto text-amber-500/60" />
+        <ArrowRight size={12} className="ml-auto text-amber-700/60" />
       </Link>
     );
   }
@@ -169,14 +168,13 @@ function PriorityBanner({
     return (
       <Link
         href="/briefing"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm"
-        style={{ background: "rgba(59, 130, 246, 0.10)", border: "1px solid rgba(59, 130, 246, 0.25)" }}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-copy-13 bg-blue-700/10 border border-blue-700/25"
       >
-        <Info size={14} className="text-blue-400 shrink-0" />
-        <span className="text-blue-300">
+        <Info size={14} className="text-blue-700 shrink-0" />
+        <span className="text-blue-700">
           Briefing available{briefingTime ? ` — last generated ${briefingTime}` : ""}
         </span>
-        <ArrowRight size={12} className="ml-auto text-blue-400/60" />
+        <ArrowRight size={12} className="ml-auto text-blue-700/60" />
       </Link>
     );
   }
@@ -238,23 +236,23 @@ function ObligationBar() {
             if (e.key === "Enter") void handleCreate();
           }}
           placeholder="Add obligation..."
-          className="flex-1 min-w-0 bg-transparent text-sm text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none"
+          className="flex-1 min-w-0 bg-transparent text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none"
           disabled={creating}
         />
         <button
           type="button"
           onClick={() => void handleCreate()}
           disabled={creating || !input.trim()}
-          className="flex items-center justify-center px-2 py-0.5 rounded text-xs font-medium border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40"
+          className="flex items-center justify-center px-2 py-0.5 rounded text-label-12 border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40"
         >
           {creating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
         </button>
       </div>
       {result === "success" && (
-        <p className="text-xs text-emerald-400 px-1">Created</p>
+        <p className="text-copy-13 text-green-700 px-1">Created</p>
       )}
       {result === "error" && (
-        <p className="text-xs text-red-400 px-1">{errorMsg}</p>
+        <p className="text-copy-13 text-red-700 px-1">{errorMsg}</p>
       )}
     </div>
   );
@@ -409,17 +407,17 @@ function ActivityFeedSection({
               ].join(" ")}
             >
               <span
-                className="shrink-0 text-xs text-ds-gray-900 font-mono w-12 text-right tabular-nums"
+                className="shrink-0 text-copy-13 text-ds-gray-900 font-mono w-12 text-right tabular-nums"
                 suppressHydrationWarning
               >
                 {formatFeedTimestamp(ev.time)}
               </span>
               <FeedEventIcon type={ev.type} severity={ev.severity} />
-              <span className="flex-1 min-w-0 text-sm text-ds-gray-1000 truncate">
+              <span className="flex-1 min-w-0 text-copy-13 text-ds-gray-1000 truncate">
                 {ev.summary}
               </span>
               <span
-                className="shrink-0 text-xs text-ds-gray-700 tabular-nums"
+                className="shrink-0 text-copy-13 text-ds-gray-700 tabular-nums"
                 suppressHydrationWarning
               >
                 {formatRelativeTime(ev.time)}
@@ -429,20 +427,20 @@ function ActivityFeedSection({
             {/* Expandable detail panel */}
             {isExpanded && (
               <div className="px-4 py-2 bg-ds-gray-alpha-100 border-t border-ds-gray-400 space-y-1.5">
-                <p className="text-sm text-ds-gray-1000 leading-snug">{ev.summary}</p>
+                <p className="text-copy-13 text-ds-gray-1000 leading-snug">{ev.summary}</p>
                 <div className="flex items-center gap-3 flex-wrap">
                   <span className="text-label-12 px-1.5 py-0.5 rounded bg-ds-gray-200 text-ds-gray-900 border border-ds-gray-400">
                     {ev.type}
                   </span>
                   <span
-                    className="text-xs text-ds-gray-700 font-mono tabular-nums"
+                    className="text-copy-13 text-ds-gray-700 font-mono tabular-nums"
                     suppressHydrationWarning
                   >
                     {new Date(ev.time).toLocaleString()}
                   </span>
                   <Link
                     href={getViewLink(ev.type)}
-                    className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors ml-auto"
+                    className="flex items-center gap-1 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors ml-auto"
                   >
                     View
                     <ExternalLink size={11} />
@@ -528,18 +526,18 @@ function RecentConversations({
         >
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-ds-gray-1000">{group.sender}</span>
-              <span className="text-xs font-mono text-ds-gray-700 px-1.5 py-0.5 rounded bg-ds-gray-100">
+              <span className="text-label-14 text-ds-gray-1000">{group.sender}</span>
+              <span className="text-copy-13 font-mono text-ds-gray-700 px-1.5 py-0.5 rounded bg-ds-gray-100">
                 {group.channel}
               </span>
               <span
-                className="text-xs text-ds-gray-700 font-mono ml-auto shrink-0"
+                className="text-copy-13 text-ds-gray-700 font-mono ml-auto shrink-0"
                 suppressHydrationWarning
               >
                 {formatFeedTimestamp(group.timestamp)}
               </span>
             </div>
-            <p className="text-xs text-ds-gray-900 truncate mt-0.5">{group.preview}</p>
+            <p className="text-copy-13 text-ds-gray-900 truncate mt-0.5">{group.preview}</p>
           </div>
         </Link>
       ))}
@@ -735,11 +733,11 @@ export default function DashboardPage() {
   // Fleet health dot
   const fleetDot =
     fleetStatus === "healthy"
-      ? "bg-emerald-500"
+      ? "bg-green-700"
       : fleetStatus === "degraded"
-        ? "bg-amber-500"
+        ? "bg-amber-700"
         : fleetStatus === "unhealthy"
-          ? "bg-red-500"
+          ? "bg-red-700"
           : "bg-ds-gray-600";
 
   // Next briefing label
@@ -793,7 +791,7 @@ export default function DashboardPage() {
   const headerAction = (
     <div className="flex items-center gap-3">
       <span
-        className="text-xs text-ds-gray-900 tabular-nums"
+        className="text-copy-13 text-ds-gray-900 tabular-nums"
         title={lastFetchedIso}
         suppressHydrationWarning
       >
@@ -804,7 +802,7 @@ export default function DashboardPage() {
         onClick={() => setAutoRefresh((v) => !v)}
         disabled={isDisconnected}
         className={[
-          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 border transition-colors",
           isDisconnected
             ? "opacity-50 cursor-not-allowed text-ds-gray-900 border-ds-gray-400"
             : autoRefresh
@@ -820,7 +818,7 @@ export default function DashboardPage() {
         type="button"
         onClick={() => void fetchData()}
         disabled={isRefreshing || isDisconnected}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
         Refresh
@@ -883,7 +881,7 @@ export default function DashboardPage() {
             />
             <Link
               href="/messages"
-              className="flex items-center gap-1 text-xs text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
+              className="flex items-center gap-1 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
             >
               All messages
               <ArrowRight size={12} />

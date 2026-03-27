@@ -88,31 +88,37 @@
       "specs": [
         {
           "name": "messages-dense-view",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
           "pr_url": null,
           "pr_state": null,
-          "gates_passed": [],
+          "gates_passed": [
+            "API_typecheck",
+            "UI_typecheck"
+          ],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-27T03:02:02.199159",
+          "merged_at": "2026-03-27T03:14:42.903174"
         },
         {
           "name": "sessions-resilience",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
           "pr_url": null,
           "pr_state": null,
-          "gates_passed": [],
+          "gates_passed": [
+            "API_typecheck",
+            "UI_typecheck"
+          ],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-27T03:02:02.199160",
+          "merged_at": "2026-03-27T03:14:42.903176"
         }
       ]
     },
@@ -122,17 +128,20 @@
       "specs": [
         {
           "name": "dashboard-density-pass",
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
           "pr_url": null,
           "pr_state": null,
-          "gates_passed": [],
+          "gates_passed": [
+            "API_typecheck",
+            "UI_typecheck"
+          ],
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-27T03:21:43.587070"
         }
       ]
     },
@@ -226,17 +235,22 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 3,
+  "current_wave": 5,
   "started_at": "2026-03-27T01:19:58.504122",
   "completed_at": null,
   "completed_waves": [
     1,
-    2
+    2,
+    3,
+    4
   ],
   "completed_specs": [
     "entity-resolution-layer",
     "obligations-kanban-board",
-    "automations-ux-overhaul"
+    "automations-ux-overhaul",
+    "messages-dense-view",
+    "sessions-resilience",
+    "dashboard-density-pass"
   ],
   "failed_specs": [],
   "pre_audit_sha": "372d13e",
@@ -255,14 +269,14 @@
     },
     "phase_started_at": {
       "DB": "2026-03-27T01:20:36.106203",
-      "API": "2026-03-27T01:36:26.398168",
-      "UI": "2026-03-27T01:38:31.449982"
+      "API": "2026-03-27T03:02:02.199151",
+      "UI": "2026-03-27T03:05:18.479106"
     },
     "phase_completed_at": {
       "DB": "2026-03-27T01:23:57.749848",
-      "API": "2026-03-27T01:38:31.449991",
-      "E2E": "2026-03-27T02:28:25.467846",
-      "UI": "2026-03-27T02:28:25.467838"
+      "API": "2026-03-27T03:21:43.587056",
+      "E2E": "2026-03-27T03:21:43.587067",
+      "UI": "2026-03-27T03:21:43.587065"
     }
   }
 }

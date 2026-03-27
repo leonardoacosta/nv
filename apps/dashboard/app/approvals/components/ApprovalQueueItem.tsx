@@ -29,20 +29,20 @@ const URGENCY_CONFIG: Record<
 > = {
   critical: {
     label: "Critical",
-    dot: "bg-[#EF4444]",
-    text: "text-[#EF4444]",
+    dot: "bg-red-700",
+    text: "text-red-700",
     border: "border-l-[3px] border-l-red-700",
   },
   high: {
     label: "High",
-    dot: "bg-[#F97316]",
-    text: "text-[#F97316]",
+    dot: "bg-amber-700",
+    text: "text-amber-700",
     border: "border-l-[3px] border-l-red-700",
   },
   medium: {
     label: "Medium",
-    dot: "bg-amber-400",
-    text: "text-amber-400",
+    dot: "bg-amber-700",
+    text: "text-amber-700",
     border: "border-l-[3px] border-l-amber-700",
   },
   low: {
@@ -104,7 +104,7 @@ export default function ApprovalQueueItem({
         checked={checked}
         onChange={() => onToggleCheck(approval.id)}
         aria-label={`Select "${approval.title}" for batch action`}
-        className="mt-2 h-4 w-4 shrink-0 rounded border-ds-gray-400 accent-emerald-600 cursor-pointer"
+        className="mt-2 h-4 w-4 shrink-0 rounded border-ds-gray-400 accent-green-700 cursor-pointer"
       />
 
       {/* Clickable row area */}
@@ -120,7 +120,7 @@ export default function ApprovalQueueItem({
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-ds-gray-1000 truncate">
+            <span className="text-label-14 text-ds-gray-1000 truncate">
               {approval.title}
             </span>
             {/* Urgency dot */}
@@ -133,11 +133,11 @@ export default function ApprovalQueueItem({
 
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             {approval.project && (
-              <span className="text-xs font-mono text-ds-gray-900 truncate">
+              <span className="text-copy-13 font-mono text-ds-gray-900 truncate">
                 {approval.project}
               </span>
             )}
-            <span className="text-xs text-ds-gray-900 flex items-center gap-1">
+            <span className="text-copy-13 text-ds-gray-900 flex items-center gap-1">
               <Clock size={10} />
               <span suppressHydrationWarning>{relativeTime(approval.created_at)}</span>
             </span>

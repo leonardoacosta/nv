@@ -26,7 +26,7 @@ export default function BatchActionBar({
 
   return (
     <div className="animate-fade-in-up sticky bottom-4 mx-4 mb-4 flex items-center gap-3 rounded-xl border border-ds-gray-400 bg-ds-bg-200 px-4 py-3 shadow-lg">
-      <span className="text-sm font-medium text-ds-gray-1000">
+      <span className="text-label-14 text-ds-gray-1000">
         {selectedCount} selected
       </span>
 
@@ -35,7 +35,7 @@ export default function BatchActionBar({
           type="button"
           onClick={onClearSelection}
           disabled={busy}
-          className="px-3 py-2 min-h-9 rounded-lg text-xs font-medium text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+          className="px-3 py-2 min-h-9 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
         >
           Clear
         </button>
@@ -43,7 +43,7 @@ export default function BatchActionBar({
           type="button"
           onClick={onDismissAll}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg text-xs font-semibold bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg text-label-13 font-semibold bg-ds-gray-100 hover:bg-red-700/20 text-ds-gray-900 hover:text-red-700 border border-ds-gray-400 hover:border-red-700/40 transition-colors disabled:opacity-50"
         >
           <XCircle size={14} />
           Dismiss All Selected
@@ -52,7 +52,7 @@ export default function BatchActionBar({
           type="button"
           onClick={onApproveAll}
           disabled={busy}
-          className="flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg text-label-13 font-semibold bg-green-700 hover:bg-green-700/80 text-white transition-colors disabled:opacity-50"
         >
           <CheckCircle size={14} />
           Approve All Selected

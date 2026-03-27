@@ -269,7 +269,7 @@ export default function NexusPage() {
       type="button"
       onClick={() => void fetchHealth()}
       disabled={loading}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
     >
       <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
       Refresh
@@ -282,7 +282,7 @@ export default function NexusPage() {
       subtitle="System health and daemon status"
       action={headerAction}
     >
-      <div className="space-y-6 animate-fade-in-up">
+      <div className="space-y-3 animate-fade-in-up">
         {error && (
           <ErrorBanner
             message="Failed to load health data"

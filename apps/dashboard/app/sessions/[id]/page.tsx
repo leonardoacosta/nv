@@ -15,6 +15,7 @@ import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import { apiFetch } from "@/lib/api-client";
+import { getPlatformColor } from "@/lib/brand-colors";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,21 +47,12 @@ interface SessionDetail {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SERVICE_COLORS: Record<string, string> = {
-  Telegram: "bg-[#229ED9]/20 text-[#229ED9]",
-  Discord: "bg-[#5865F2]/20 text-[#5865F2]",
-  Slack: "bg-[#4A154B]/20 text-[#E01E5A]",
-  CLI: "bg-ds-gray-alpha-200 text-ds-gray-1000",
-  API: "bg-red-700/20 text-red-700",
-  Web: "bg-emerald-500/20 text-emerald-400",
-};
-
 const STATUS_CONFIG: Record<
   SessionDetail["status"],
   { label: string; dot: string; text: string }
 > = {
-  active: { label: "Active", dot: "bg-emerald-400 animate-pulse", text: "text-emerald-400" },
-  idle: { label: "Idle", dot: "bg-amber-400", text: "text-amber-400" },
+  active: { label: "Active", dot: "bg-green-700 animate-pulse", text: "text-green-700" },
+  idle: { label: "Idle", dot: "bg-amber-700", text: "text-amber-700" },
   completed: { label: "Completed", dot: "bg-ds-gray-600", text: "text-ds-gray-900" },
 };
 
@@ -100,10 +92,10 @@ function StatTile({
         />
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-ds-gray-900 uppercase tracking-wide truncate">
+        <p className="text-label-12 text-ds-gray-900 uppercase tracking-wide truncate">
           {label}
         </p>
-        <p className="text-lg font-semibold font-mono text-ds-gray-1000">
+        <p className="text-heading-16 font-mono text-ds-gray-1000">
           {value}
         </p>
       </div>
@@ -128,7 +120,7 @@ function MessageRow({
       }`}
     >
       <div
-        className={`flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-xs font-bold font-mono mt-0.5 ${
+        className={`flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-copy-13 font-bold font-mono mt-0.5 ${
           isUser
             ? "bg-red-700/20 text-red-700"
             : "bg-ds-gray-alpha-200 text-ds-gray-1000"
@@ -137,11 +129,11 @@ function MessageRow({
         {isUser ? "U" : "N"}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-ds-gray-1000 leading-relaxed whitespace-pre-wrap break-words">
+        <p className="text-copy-13 text-ds-gray-1000 leading-relaxed whitespace-pre-wrap break-words">
           {msg.content}
         </p>
         <p
-          className="text-xs text-ds-gray-900 mt-1 font-mono"
+          className="text-copy-13 text-ds-gray-900 mt-1 font-mono"
           suppressHydrationWarning
         >
           {new Date(msg.ts).toLocaleTimeString()}
@@ -206,7 +198,7 @@ export default function SessionDetailPage() {
       <button
         type="button"
         onClick={() => router.back()}
-        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
       >
         <ArrowLeft size={14} />
         <span className="hidden sm:inline">Back</span>
@@ -215,7 +207,7 @@ export default function SessionDetailPage() {
         type="button"
         onClick={() => void fetchSession()}
         disabled={loading}
-        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-sm text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+        className="flex items-center gap-2 px-3 py-2 min-h-11 rounded-lg text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
       </button>
@@ -254,15 +246,15 @@ export default function SessionDetailPage() {
       <PageShell title="Session" action={action}>
         <div className="flex flex-col items-center gap-3 py-16 text-ds-gray-900">
           <Layers size={32} />
-          <p className="text-sm">Session not found</p>
+          <p className="text-copy-13">Session not found</p>
         </div>
       </PageShell>
     );
   }
 
   const statusCfg = STATUS_CONFIG[session.status];
-  const serviceColor =
-    SERVICE_COLORS[session.service] ?? "bg-ds-gray-alpha-200 text-ds-gray-900";
+  const platformColor = getPlatformColor(session.service);
+  const serviceColor = `${platformColor.bg} ${platformColor.text}`;
 
   return (
     <PageShell
@@ -271,32 +263,32 @@ export default function SessionDetailPage() {
       action={action}
     >
       {/* Status row */}
-      <div className="flex items-center gap-3 mb-6 flex-wrap">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
         <span
-          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium font-mono ${serviceColor}`}
+          className={`inline-flex items-center px-2.5 py-1 rounded-lg text-label-13 font-mono ${serviceColor}`}
         >
           {session.service}
         </span>
-        <span className="flex items-center gap-1.5 text-sm">
+        <span className="flex items-center gap-1.5 text-copy-13">
           <span
             className={`inline-block w-2 h-2 rounded-full shrink-0 ${statusCfg.dot}`}
           />
-          <span className={`text-sm font-medium ${statusCfg.text}`}>
+          <span className={`text-label-13 ${statusCfg.text}`}>
             {statusCfg.label}
           </span>
         </span>
         {session.user && (
-          <span className="text-sm text-ds-gray-900">@{session.user}</span>
+          <span className="text-copy-13 text-ds-gray-900">@{session.user}</span>
         )}
         {session.project && (
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900">
+          <span className="text-copy-13 font-mono px-2 py-0.5 rounded bg-ds-gray-100 border border-ds-gray-400 text-ds-gray-900">
             {session.project}
           </span>
         )}
       </div>
 
       {/* Stat tiles — 2-col on mobile, 4-col on desktop */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
         <StatTile
           icon={MessageSquare}
           label="Messages"
@@ -323,7 +315,7 @@ export default function SessionDetailPage() {
 
       {/* Token / cost details */}
       {(session.input_tokens ?? session.output_tokens ?? session.cost_usd) && (
-        <div className="grid grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-3 gap-3 mb-3">
           {session.input_tokens !== undefined && (
             <StatTile
               icon={MessageSquare}
@@ -354,10 +346,10 @@ export default function SessionDetailPage() {
         <div className="rounded-xl border border-ds-gray-400 overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-ds-gray-400 bg-ds-gray-100 shrink-0">
             <MessageSquare size={14} className="text-ds-gray-900" />
-            <span className="text-xs font-semibold text-ds-gray-900 uppercase tracking-widest">
+            <span className="text-label-12 font-semibold text-ds-gray-900 uppercase tracking-widest">
               Recent Messages
             </span>
-            <span className="ml-auto text-xs font-mono text-ds-gray-900">
+            <span className="ml-auto text-copy-13 font-mono text-ds-gray-900">
               {session.recent_messages.length}
             </span>
           </div>

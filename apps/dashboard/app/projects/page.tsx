@@ -130,7 +130,7 @@ export default function ProjectsPage() {
 
       {solveStatus && (
         <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000">
-          <span className="text-sm">{solveStatus}</span>
+          <span className="text-copy-13">{solveStatus}</span>
         </div>
       )}
 

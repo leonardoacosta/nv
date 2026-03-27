@@ -1,0 +1,12 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/package-lock.json
+packages/daemon
+packages/tools
+.beads
+.claude
+openspec
+docs

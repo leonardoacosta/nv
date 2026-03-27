@@ -1,8 +1,8 @@
 services:
   dashboard:
     build:
-      context: apps/dashboard
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
     expose:
       - "3000"
     environment:

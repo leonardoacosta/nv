@@ -409,6 +409,86 @@ export interface DiscoveredContactsResponse {
   total_messages_scanned: number;
 }
 
+// ── Entity resolution types ────────────────────────────────────────────────
+
+/**
+ * A parsed person profile from the memory `people` topic.
+ * Produced by parsePeopleMemory() in the entity-resolution library.
+ */
+export interface PersonProfile {
+  name: string;
+  channel_ids: Record<string, string>;
+  role: string | null;
+  notes: string;
+}
+
+/**
+ * Response from GET /api/resolve/senders.
+ * Maps "channel:senderId" keys to resolved display names.
+ */
+export interface SenderResolutionResponse {
+  resolutions: Record<string, string>;
+  source_counts: {
+    contacts_table: number;
+    memory_people: number;
+    unresolved: number;
+  };
+}
+
+/**
+ * An ApiProject enriched with live DB counts and memory context.
+ * Returned by GET /api/projects (replaces the bare ApiProject[] response).
+ */
+export interface EnrichedProject extends ApiProject {
+  description: string | null;
+  memory_context: string | null;
+  obligation_count: number;
+  active_obligation_count: number;
+  session_count: number;
+  last_activity: string | null;
+}
+
+/**
+ * Response from GET /api/contacts/:id/related.
+ */
+export interface ContactRelatedResponse {
+  contact: Contact;
+  messages: StoredMessage[];
+  message_count: number;
+  obligations: DaemonObligation[];
+  memory_profile: string | null;
+  channels_active: string[];
+}
+
+/**
+ * Response from GET /api/projects/:code/related.
+ */
+export interface ProjectRelatedResponse {
+  project: ApiProject;
+  obligations: DaemonObligation[];
+  obligation_summary: {
+    total: number;
+    open: number;
+    in_progress: number;
+    done: number;
+  };
+  sessions: NexusSessionRaw[];
+  session_count: number;
+  memory_topics: Array<{ topic: string; preview: string }>;
+  recent_messages: StoredMessage[];
+}
+
+/**
+ * Response from GET /api/obligations/:id/related.
+ */
+export interface ObligationRelatedResponse {
+  obligation: DaemonObligation;
+  source_message: StoredMessage | null;
+  project: { code: string; obligation_count: number; session_count: number } | null;
+  reminders: Array<{ id: string; message: string; due_at: string; status: string }>;
+  related_obligations: DaemonObligation[];
+}
+
 // ── GET /api/contacts/relationships ──────────────────────────────────────
 
 /** A relationship edge inferred from message co-occurrence. */

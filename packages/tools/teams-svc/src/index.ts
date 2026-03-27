@@ -6,6 +6,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { createLogger } from "./logger.js";
 import { startMcpServer } from "./mcp.js";
 import { CloudPcUnreachableError, CloudPcScriptError } from "./ssh.js";
+import { SocksError } from "./socks-client.js";
 import {
   teamsListChats,
   teamsReadChat,
@@ -39,6 +40,10 @@ function handleToolError(c: Context, err: unknown) {
   if (err instanceof CloudPcScriptError) {
     logger.error({ err }, "CloudPC script error");
     return c.json({ ok: false, error: err.message }, 502);
+  }
+  if (err instanceof SocksError) {
+    logger.error({ err }, "SOCKS proxy error");
+    return c.json({ ok: false, error: err.message }, err.httpStatus);
   }
   if (err instanceof Error && err.message.includes("is required")) {
     return c.json({ ok: false, error: err.message }, 400);
@@ -78,6 +83,9 @@ if (isMcpMode) {
     }
     if (err instanceof CloudPcScriptError) {
       return c.json({ ok: false, error: err.message }, 502);
+    }
+    if (err instanceof SocksError) {
+      return c.json({ ok: false, error: err.message }, err.httpStatus);
     }
 
     return c.json(

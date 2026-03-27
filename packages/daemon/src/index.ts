@@ -37,6 +37,11 @@ import {
   OBLIGATION_ESCALATION_TAKEOVER_PREFIX,
 } from "./features/obligations/index.js";
 import { obligationKeyboard } from "./channels/telegram.js";
+import {
+  startReminderPoller,
+  handleReminderDone,
+  handleReminderSnooze,
+} from "./features/reminders/poller.js";
 import { serve } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
 import { createHttpApp } from "./http.js";
@@ -203,6 +208,20 @@ export async function main(): Promise<void> {
     );
   }
 
+  // ── Reminder delivery poller ────────────────────────────────────────────────
+
+  let stopReminderPoller: (() => void) | null = null;
+
+  if (telegram !== null && config.telegramChatId) {
+    stopReminderPoller = startReminderPoller({
+      pool,
+      logger: log,
+      telegram,
+      telegramChatId: config.telegramChatId,
+    });
+    log.info({ service: "nova-daemon" }, "Reminder delivery poller started");
+  }
+
   // ── NovaAgent ──────────────────────────────────────────────────────────────
 
   const agent = await NovaAgent.create(config);
@@ -337,6 +356,32 @@ export async function main(): Promise<void> {
       if (data.startsWith("digest:")) {
         log.info({ service: "nova-daemon", action: data }, "Digest callback received");
         // Callbacks are out-of-scope — acknowledge and log
+        return;
+      }
+
+      // Route reminder inline keyboard callbacks
+      if (data.startsWith("reminder:")) {
+        const callbackQueryId = String(
+          (msg.metadata as { callbackQueryId?: string } | undefined)
+            ?.callbackQueryId ?? "",
+        );
+        const messageId = Number(
+          (msg.metadata as { originalMessageId?: number } | undefined)
+            ?.originalMessageId ?? 0,
+        );
+
+        if (data.startsWith("reminder:done:")) {
+          const reminderId = data.slice("reminder:done:".length);
+          void handleReminderDone(reminderId, pool, telegram!, msg.chatId, messageId, callbackQueryId);
+        } else if (data.startsWith("reminder:snooze:")) {
+          // Format: reminder:snooze:<duration>:<id>
+          const rest = data.slice("reminder:snooze:".length);
+          const lastColon = rest.lastIndexOf(":");
+          const duration = rest.slice(0, lastColon);
+          const reminderId = rest.slice(lastColon + 1);
+          void handleReminderSnooze(reminderId, duration, pool, telegram!, msg.chatId, messageId, callbackQueryId);
+        }
+
         return;
       }
 
@@ -728,6 +773,10 @@ export async function main(): Promise<void> {
 
     if (obligationExecutor !== null) {
       await obligationExecutor.stop();
+    }
+
+    if (stopReminderPoller !== null) {
+      stopReminderPoller();
     }
 
     if (stopBriefingScheduler !== null) {

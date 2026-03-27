@@ -11,10 +11,10 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Extend `GET /api/sessions` route to accept query params: `page` (default 1), `limit` (default 25), `project`, `trigger_type`, `date_from`, `date_to` -- apply filters server-side with Drizzle `where` clauses and return `{ sessions, total, page, limit }` [owner:api-engineer] [beads:nv-jda8]
-- [ ] [2.2] [P-1] Create `GET /api/sessions/[id]/events` route that returns all `session_events` for a given session_id ordered by created_at ascending, with response shape `{ events: SessionEvent[] }` [owner:api-engineer] [beads:nv-s3jc]
-- [ ] [2.3] [P-2] Add `SessionTimelineItem`, `SessionListResponse`, `SessionEventsResponse` types to `apps/dashboard/types/api.ts` [owner:api-engineer] [beads:nv-lq3c]
-- [ ] [2.4] [P-2] Update `GET /api/sessions/[id]` route to include `trigger_type`, `message_count`, `tool_count` in the response [owner:api-engineer] [beads:nv-x7uf]
+- [x] [2.1] [P-1] Extend `GET /api/sessions` route to accept query params: `page` (default 1), `limit` (default 25), `project`, `trigger_type`, `date_from`, `date_to` -- apply filters server-side with Drizzle `where` clauses and return `{ sessions, total, page, limit }` [owner:api-engineer] [beads:nv-jda8]
+- [x] [2.2] [P-1] Create `GET /api/sessions/[id]/events` route that returns all `session_events` for a given session_id ordered by created_at ascending, with response shape `{ events: SessionEvent[] }` [owner:api-engineer] [beads:nv-s3jc]
+- [x] [2.3] [P-2] Add `SessionTimelineItem`, `SessionListResponse`, `SessionEventsResponse` types to `apps/dashboard/types/api.ts` [owner:api-engineer] [beads:nv-lq3c]
+- [x] [2.4] [P-2] Update `GET /api/sessions/[id]` route to include `trigger_type`, `message_count`, `tool_count` in the response [owner:api-engineer] [beads:nv-x7uf]
 
 ## UI Batch
 

@@ -48,11 +48,14 @@ export async function GET(
       id: row.id,
       service: deriveService(row.command),
       status: mapStatus(row.status),
-      messages: 0,
-      tools_executed: 0,
+      messages: row.messageCount,
+      tools_executed: row.toolCount,
       started_at: row.startedAt.toISOString(),
       ended_at: row.stoppedAt ? row.stoppedAt.toISOString() : null,
       project: row.project,
+      trigger_type: row.triggerType,
+      message_count: row.messageCount,
+      tool_count: row.toolCount,
     };
 
     return NextResponse.json(detail);

@@ -1,5 +1,10 @@
 /**
- * Project enrichment.
+ * Project enrichment (LEGACY).
+ *
+ * @deprecated Use the DB-backed extraction pipeline at `/api/projects/extract`
+ * instead. Projects are now stored in the `projects` table and enriched
+ * via the extract endpoint. This file is kept for backward compatibility
+ * but should not be used in new code.
  *
  * Takes a base list of ApiProject records (from NV_PROJECTS env var) and
  * enriches each with live DB data:

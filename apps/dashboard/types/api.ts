@@ -588,6 +588,48 @@ export interface SessionAnalyticsResponse {
   total_sessions: number;
 }
 
+// ── GET /api/sessions (paginated) ─────────────────────────────────────────
+
+/** A single session item in the paginated sessions list. */
+export interface SessionTimelineItem {
+  id: string;
+  project: string;
+  command: string;
+  status: string;
+  trigger_type: string | null;
+  message_count: number;
+  tool_count: number;
+  started_at: string;
+  stopped_at: string | null;
+  duration_display: string;
+}
+
+/** Paginated response from GET /api/sessions. */
+export interface SessionListResponse {
+  sessions: SessionTimelineItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+// ── GET /api/sessions/[id]/events ─────────────────────────────────────────
+
+/** A single session event from the session_events table. */
+export interface SessionEventItem {
+  id: string;
+  session_id: string;
+  event_type: string;
+  direction: string | null;
+  content: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/** Response from GET /api/sessions/[id]/events. */
+export interface SessionEventsResponse {
+  events: SessionEventItem[];
+}
+
 // ── GET /api/sessions/[id] ────────────────────────────────────────────────
 
 /**
@@ -600,12 +642,70 @@ export interface SessionDetail {
   service: string;
   /** "active" when status is "running", otherwise as-is from DB */
   status: string;
-  /** Not tracked in current schema — always 0 */
+  /** Message count from sessions table */
   messages: number;
-  /** Not tracked in current schema — always 0 */
+  /** Tool execution count from sessions table */
   tools_executed: number;
   started_at: string;
   /** ISO timestamp from stopped_at column, or null if still running */
   ended_at: string | null;
   project: string;
+  /** Trigger type from sessions table */
+  trigger_type: string | null;
+  /** Message count from sessions table */
+  message_count: number;
+  /** Tool count from sessions table */
+  tool_count: number;
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────
+
+/** Project category values. */
+export type ProjectCategory = "work" | "personal" | "open_source" | "archived";
+
+/** Project status values. */
+export type ProjectStatus = "active" | "paused" | "completed" | "archived";
+
+/** A project entity backed by the projects DB table, enriched with counts. */
+export interface ProjectEntity {
+  id: string;
+  code: string;
+  name: string;
+  category: ProjectCategory;
+  status: ProjectStatus;
+  description: string | null;
+  content: string | null;
+  path: string | null;
+  obligation_count: number;
+  active_obligation_count: number;
+  session_count: number;
+  last_activity: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Response from GET /api/projects. */
+export interface ProjectsListResponse {
+  projects: ProjectEntity[];
+}
+
+/** Response from POST /api/projects/extract. */
+export interface ProjectExtractionResponse {
+  projects_updated: number;
+  sources_scanned: string[];
+}
+
+/** Request body for POST /api/projects. */
+export interface CreateProjectRequest {
+  code: string;
+  name: string;
+  category?: ProjectCategory;
+  path?: string;
+}
+
+/** Request body for PUT /api/projects/[code]. */
+export interface UpdateProjectRequest {
+  name?: string;
+  category?: ProjectCategory;
+  status?: ProjectStatus;
 }

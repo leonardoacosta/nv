@@ -8,11 +8,11 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Create `packages/ui/` scaffold: `package.json` (`@nova/ui`), `tsconfig.json`, `components.json`, `tailwind.config.ts`, `src/lib/utils.ts` with `cn()` helper [owner:api-engineer] [beads:nv-6nfs]
-- [ ] [2.2] [P-1] Add shadcn CSS variable bridge to `apps/dashboard/app/globals.css` -- map `ds-*` hex values to HSL-format `--background`, `--foreground`, `--card`, `--muted`, `--accent`, `--destructive`, `--border`, `--input`, `--ring`, `--primary`, `--secondary`, `--popover` variables [owner:api-engineer] [beads:nv-0x7x]
-- [ ] [2.3] [P-2] Update `apps/dashboard/tailwind.config.ts` to include `../../packages/ui/src/**/*.{ts,tsx}` in the content array [owner:api-engineer] [beads:nv-67h3]
-- [ ] [2.4] [P-2] Add `"@nova/ui": "workspace:*"` dependency to `apps/dashboard/package.json` and install [owner:api-engineer] [beads:nv-9fqe]
-- [ ] [2.5] [P-2] Create `packages/ui/src/index.ts` barrel export file [owner:api-engineer] [beads:nv-h3dr]
+- [x] [2.1] [P-1] Create `packages/ui/` scaffold: `package.json` (`@nova/ui`), `tsconfig.json`, `components.json`, `tailwind.config.ts`, `src/lib/utils.ts` with `cn()` helper [owner:api-engineer] [beads:nv-6nfs]
+- [x] [2.2] [P-1] Add shadcn CSS variable bridge to `apps/dashboard/app/globals.css` -- map `ds-*` hex values to HSL-format `--background`, `--foreground`, `--card`, `--muted`, `--accent`, `--destructive`, `--border`, `--input`, `--ring`, `--primary`, `--secondary`, `--popover` variables [owner:api-engineer] [beads:nv-0x7x]
+- [x] [2.3] [P-2] Update `apps/dashboard/tailwind.config.ts` to include `../../packages/ui/src/**/*.{ts,tsx}` in the content array [owner:api-engineer] [beads:nv-67h3]
+- [x] [2.4] [P-2] Add `"@nova/ui": "workspace:*"` dependency to `apps/dashboard/package.json` and install [owner:api-engineer] [beads:nv-9fqe]
+- [x] [2.5] [P-2] Create `packages/ui/src/index.ts` barrel export file [owner:api-engineer] [beads:nv-h3dr]
 
 ## UI Batch
 

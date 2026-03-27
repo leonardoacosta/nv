@@ -16,6 +16,9 @@
 
 @import "tailwindcss";
 
+/* Scan @nova/ui package for Tailwind class usage (Tailwind v4 content detection) */
+@source "../../../packages/ui/src";
+
 @theme {
   /* ds-bg tokens */
   --color-ds-bg-100: #0a0a0a;
@@ -92,6 +95,29 @@
     --ds-amber-900: #ffcc4d;
     --ds-red-700: #e5484d;
     --ds-red-900: #ff6369;
+
+    /* shadcn/ui CSS variable bridge — HSL values derived from ds-* hex tokens.
+     * shadcn expects raw HSL channels without the hsl() wrapper. */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 0 0% 93%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 63%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 93%;
+    --destructive: 1 74% 57%;
+    --destructive-foreground: 0 0% 93%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 0% 27%;
+    --radius: 0.75rem;
   }
 
   html,

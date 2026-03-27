@@ -8,10 +8,10 @@ _(No database changes required -- this is a client-side refactor.)_
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Install `@tanstack/react-query` and `@tanstack/react-query-devtools` in `apps/dashboard/package.json` and run `pnpm install` [owner:api-engineer] [beads:nv-dr9i]
-- [ ] [2.2] [P-1] Create `apps/dashboard/lib/query-client.ts` -- QueryClient factory with 30s staleTime, 5min gcTime, 3 retries, exponential backoff, refetchOnWindowFocus [owner:api-engineer] [beads:nv-7gsk]
-- [ ] [2.3] [P-1] Create `apps/dashboard/lib/hooks/use-api-query.ts` -- `useApiQuery<T>(path, options?)` wrapping `useQuery` + `apiFetch`, and `useApiMutation<T, V>(path, options?)` wrapping `useMutation` + `apiFetch` [owner:api-engineer] [beads:nv-b0kd]
-- [ ] [2.4] [P-1] Create `apps/dashboard/lib/query-keys.ts` -- query key factory (`queryKeys.api(path, params?)`) with documentation of key convention and tRPC migration notes [owner:api-engineer] [beads:nv-gg24]
+- [x] [2.1] [P-1] Install `@tanstack/react-query` and `@tanstack/react-query-devtools` in `apps/dashboard/package.json` and run `pnpm install` [owner:api-engineer] [beads:nv-dr9i]
+- [x] [2.2] [P-1] Create `apps/dashboard/lib/query-client.ts` -- QueryClient factory with 30s staleTime, 5min gcTime, 3 retries, exponential backoff, refetchOnWindowFocus [owner:api-engineer] [beads:nv-7gsk]
+- [x] [2.3] [P-1] Create `apps/dashboard/lib/hooks/use-api-query.ts` -- `useApiQuery<T>(path, options?)` wrapping `useQuery` + `apiFetch`, and `useApiMutation<T, V>(path, options?)` wrapping `useMutation` + `apiFetch` [owner:api-engineer] [beads:nv-b0kd]
+- [x] [2.4] [P-1] Create `apps/dashboard/lib/query-keys.ts` -- query key factory (`queryKeys.api(path, params?)`) with documentation of key convention and tRPC migration notes [owner:api-engineer] [beads:nv-gg24]
 
 ## UI Batch
 

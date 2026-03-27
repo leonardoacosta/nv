@@ -3,6 +3,8 @@ import type { Logger } from "pino";
 import type { TelegramAdapter } from "../../channels/telegram.js";
 import type { ProactiveWatcherConfig } from "./types.js";
 import { watcherKeyboard } from "./callbacks.js";
+import type { ObligationStore } from "../obligations/store.js";
+import { ObligationStatus } from "../obligations/types.js";
 
 // ─── Row shape returned by pg (snake_case columns) ───────────────────────────
 
@@ -126,6 +128,7 @@ export class ProactiveWatcher {
     private readonly config: ProactiveWatcherConfig,
     private readonly logger: Logger,
     private readonly chatId: string,
+    private readonly obligationStore?: ObligationStore,
   ) {}
 
   /**
@@ -226,6 +229,36 @@ export class ProactiveWatcher {
       parseMode: "HTML",
       keyboard,
     });
+
+    // Bridge: create obligation if store is available and the row's status
+    // indicates it may not already be tracked as an active obligation
+    if (this.obligationStore) {
+      try {
+        const existing = await this.obligationStore.getById(row.id);
+        if (!existing) {
+          const priority = scanType === "stale" ? 2 : 1; // approaching/overdue = P1
+          await this.obligationStore.create({
+            detectedAction: row.detected_action,
+            owner: row.owner,
+            status: ObligationStatus.Open,
+            priority,
+            projectCode: row.project_code,
+            sourceChannel: "watcher",
+            sourceMessage: `[${scanType}] Auto-created by proactive watcher`,
+            deadline: row.deadline,
+          });
+          this.logger.info(
+            { obligationId: row.id, scanType },
+            "Watcher created obligation for untracked finding",
+          );
+        }
+      } catch (err: unknown) {
+        this.logger.warn(
+          { err, obligationId: row.id },
+          "Failed to bridge watcher finding to obligation",
+        );
+      }
+    }
 
     this.logger.info(
       { obligationId: row.id, scanType },

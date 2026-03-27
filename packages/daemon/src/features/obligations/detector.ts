@@ -142,7 +142,7 @@ export async function detectObligations(
     const prompt = buildDetectionPrompt(message, response, channel);
 
     const completion = await anthropic.messages.create({
-      model: "claude-opus-4-5",
+      model: "claude-haiku-3-5",
       max_tokens: 512,
       messages: [{ role: "user", content: prompt }],
     });

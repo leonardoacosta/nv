@@ -10,6 +10,7 @@ export const obligations = pgTable("obligations", {
   sourceChannel: text("source_channel").notNull(),
   sourceMessage: text("source_message"),
   deadline: timestamp("deadline"),
+  attemptCount: integer("attempt_count").notNull().default(0),
   lastAttemptAt: timestamp("last_attempt_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

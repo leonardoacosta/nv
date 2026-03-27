@@ -46,6 +46,9 @@ export interface AutonomyConfig {
   cooldownHours: number;
   idleDebounceMs: number;
   pollIntervalMs: number;
+  dailyBudgetUsd: number;
+  autonomyBudgetPct: number;
+  maxAttempts: number;
 }
 
 export interface McpServerEntry {
@@ -99,6 +102,9 @@ interface TomlConfig {
     cooldown_hours?: number;
     idle_debounce_ms?: number;
     poll_interval_ms?: number;
+    daily_budget_usd?: number;
+    autonomy_budget_pct?: number;
+    max_attempts?: number;
   };
   proactive_watcher?: {
     enabled?: boolean;
@@ -206,6 +212,9 @@ export async function loadConfig(
     cooldownHours: toml.autonomy?.cooldown_hours ?? 2,
     idleDebounceMs: toml.autonomy?.idle_debounce_ms ?? 60_000,
     pollIntervalMs: toml.autonomy?.poll_interval_ms ?? 30_000,
+    dailyBudgetUsd: toml.autonomy?.daily_budget_usd ?? 5.0,
+    autonomyBudgetPct: toml.autonomy?.autonomy_budget_pct ?? 0.20,
+    maxAttempts: toml.autonomy?.max_attempts ?? 3,
   };
 
   const proactiveWatcher: ProactiveWatcherConfig = {

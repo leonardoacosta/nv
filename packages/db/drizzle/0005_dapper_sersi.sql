@@ -1,0 +1,1 @@
+ALTER TABLE "obligations" ADD COLUMN "attempt_count" integer DEFAULT 0 NOT NULL;

@@ -26,6 +26,7 @@ describe("ObligationStore.listReadyForExecution", () => {
       source_channel: "telegram",
       source_message: null,
       deadline: null,
+      attempt_count: 0,
       last_attempt_at: null,
       created_at: new Date("2025-01-01"),
       updated_at: new Date("2025-01-01"),
@@ -66,6 +67,7 @@ describe("ObligationStore.create + getById round-trip", () => {
       source_channel: "telegram",
       source_message: null,
       deadline: null,
+      attempt_count: 0,
       last_attempt_at: null,
       created_at: new Date("2025-01-01"),
       updated_at: new Date("2025-01-01"),
@@ -119,6 +121,7 @@ describe("ObligationExecutor", () => {
       sourceChannel: "telegram",
       sourceMessage: null,
       deadline: null,
+      attemptCount: 0,
       lastAttemptAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -132,6 +135,9 @@ describe("ObligationExecutor", () => {
       getById: mock.fn(async () => obligation),
       listByStatus: mock.fn(async () => []),
       create: mock.fn(async () => obligation),
+      incrementAttemptCount: mock.fn(async () => 1),
+      updateOwner: mock.fn(async () => {}),
+      resetAttemptCount: mock.fn(async () => {}),
     };
 
     const telegram = {
@@ -144,6 +150,19 @@ describe("ObligationExecutor", () => {
       cooldownHours: 2,
       idleDebounceMs: 0,     // immediate idle
       pollIntervalMs: 50,
+      dailyBudgetUsd: 5.0,
+      autonomyBudgetPct: 0.20,
+      maxAttempts: 3,
+    };
+
+    const watcherConfig = {
+      enabled: true,
+      intervalMinutes: 30,
+      staleThresholdHours: 48,
+      approachingDeadlineHours: 24,
+      maxRemindersPerInterval: 1,
+      quietStart: "22:00",
+      quietEnd: "07:00",
     };
 
     const executor = new ObligationExecutor(
@@ -152,6 +171,7 @@ describe("ObligationExecutor", () => {
       telegram as never,
       "12345",
       config,
+      watcherConfig,
     );
 
     // Manually trigger tryExecuteNext by calling start + waiting for one tick

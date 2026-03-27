@@ -22,11 +22,21 @@ import { fleetPost } from "./fleet-client.js";
 import { writeEntry } from "./features/diary/writer.js";
 import {
   ObligationStore,
+  ObligationExecutor,
+  ObligationStatus,
+  detectObligations,
   handleObligationConfirm,
   handleObligationReopen,
+  handleEscalationRetry,
+  handleEscalationDismiss,
+  handleEscalationTakeover,
   OBLIGATION_CONFIRM_PREFIX,
   OBLIGATION_REOPEN_PREFIX,
+  OBLIGATION_ESCALATION_RETRY_PREFIX,
+  OBLIGATION_ESCALATION_DISMISS_PREFIX,
+  OBLIGATION_ESCALATION_TAKEOVER_PREFIX,
 } from "./features/obligations/index.js";
+import { obligationKeyboard } from "./channels/telegram.js";
 import { serve } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
 import { createHttpApp } from "./http.js";
@@ -90,6 +100,7 @@ export async function main(): Promise<void> {
   // ── Database pool ──────────────────────────────────────────────────────────
 
   const pool = new Pool({ connectionString: config.databaseUrl });
+  const obligationStore = new ObligationStore(pool);
 
   // ── Telegram adapter ───────────────────────────────────────────────────────
 
@@ -120,7 +131,7 @@ export async function main(): Promise<void> {
       );
     }
 
-    watcher = new ProactiveWatcher(pool, telegram, config.proactiveWatcher, log, chatId);
+    watcher = new ProactiveWatcher(pool, telegram, config.proactiveWatcher, log, chatId, obligationStore);
     watcher.start();
 
     log.info(
@@ -195,10 +206,42 @@ export async function main(): Promise<void> {
   // ── NovaAgent ──────────────────────────────────────────────────────────────
 
   const agent = await NovaAgent.create(config);
-  const obligationStore = new ObligationStore(pool);
   const conversationManager = new ConversationManager(pool);
 
+  // Wire obligation store into telegram for /obligation command
+  if (telegram !== null) {
+    telegram.setObligationStore(obligationStore);
+  }
+
   log.info({ service: "nova-daemon" }, "NovaAgent ready");
+
+  // ── Obligation executor ──────────────────────────────────────────────────────
+
+  let obligationExecutor: ObligationExecutor | null = null;
+
+  if (config.autonomy?.enabled && config.vercelGatewayKey && telegram !== null) {
+    obligationExecutor = new ObligationExecutor(
+      obligationStore,
+      config.vercelGatewayKey,
+      telegram,
+      config.telegramChatId ?? "",
+      config.autonomy,
+      config.proactiveWatcher,
+      config,
+    );
+    obligationExecutor.start();
+    log.info({ service: "nova-daemon" }, "ObligationExecutor started");
+  } else {
+    log.info(
+      {
+        service: "nova-daemon",
+        autonomyEnabled: config.autonomy?.enabled,
+        hasGatewayKey: !!config.vercelGatewayKey,
+        hasTelegram: telegram !== null,
+      },
+      "ObligationExecutor not started",
+    );
+  }
 
   // ── Job queue ────────────────────────────────────────────────────────────────
 
@@ -354,7 +397,44 @@ export async function main(): Promise<void> {
         return;
       }
 
+      // Route escalation inline keyboard callbacks
+      if (data.startsWith(OBLIGATION_ESCALATION_RETRY_PREFIX)) {
+        const id = data.slice(OBLIGATION_ESCALATION_RETRY_PREFIX.length);
+        const messageId = Number(
+          (msg.metadata as { originalMessageId?: number } | undefined)
+            ?.originalMessageId ?? 0,
+        );
+        void handleEscalationRetry(id, obligationStore, telegram!, msg.chatId, messageId);
+        return;
+      }
+
+      if (data.startsWith(OBLIGATION_ESCALATION_DISMISS_PREFIX)) {
+        const id = data.slice(OBLIGATION_ESCALATION_DISMISS_PREFIX.length);
+        const messageId = Number(
+          (msg.metadata as { originalMessageId?: number } | undefined)
+            ?.originalMessageId ?? 0,
+        );
+        void handleEscalationDismiss(id, obligationStore, telegram!, msg.chatId, messageId);
+        return;
+      }
+
+      if (data.startsWith(OBLIGATION_ESCALATION_TAKEOVER_PREFIX)) {
+        const id = data.slice(OBLIGATION_ESCALATION_TAKEOVER_PREFIX.length);
+        const messageId = Number(
+          (msg.metadata as { originalMessageId?: number } | undefined)
+            ?.originalMessageId ?? 0,
+        );
+        void handleEscalationTakeover(id, obligationStore, telegram!, msg.chatId, messageId);
+        return;
+      }
+
       // Route regular messages to the agent loop
+
+      // Notify executor of activity (resets idle timer)
+      if (obligationExecutor !== null) {
+        obligationExecutor.notifyActivity();
+      }
+
       log.info(
         {
           service: "nova-daemon",
@@ -539,6 +619,59 @@ export async function main(): Promise<void> {
                       },
                       "Agent response sent (streaming)",
                     );
+
+                    // Fire-and-forget: detect obligations from the exchange
+                    void (async () => {
+                      try {
+                        const detected = await detectObligations(
+                          msg.content,
+                          finalResponse!.text,
+                          msg.channel,
+                          config.vercelGatewayKey,
+                        );
+
+                        for (const det of detected) {
+                          const record = await obligationStore.create({
+                            detectedAction: det.detectedAction,
+                            owner: det.owner,
+                            status: ObligationStatus.Open,
+                            priority: det.priority,
+                            projectCode: det.projectCode,
+                            sourceChannel: "telegram",
+                            sourceMessage: msg.content,
+                            deadline: det.deadline,
+                          });
+
+                          log.info(
+                            {
+                              service: "nova-daemon",
+                              obligationId: record.id,
+                              action: det.detectedAction,
+                              owner: det.owner,
+                              priority: det.priority,
+                            },
+                            "Obligation detected and created",
+                          );
+
+                          // Notify via Telegram for nova-owned obligations
+                          if (det.owner === "nova") {
+                            await telegram!.sendMessage(
+                              msg.chatId,
+                              `Obligation detected: <b>${det.detectedAction}</b> (P${det.priority})`,
+                              {
+                                parseMode: "HTML",
+                                keyboard: obligationKeyboard(record.id),
+                              },
+                            );
+                          }
+                        }
+                      } catch (detErr: unknown) {
+                        log.warn(
+                          { service: "nova-daemon", err: detErr },
+                          "Obligation detection failed",
+                        );
+                      }
+                    })();
                   }
                 } catch (err: unknown) {
                   if (signal.aborted) {
@@ -592,6 +725,10 @@ export async function main(): Promise<void> {
       { service: "nova-daemon", cancelled: drainResult.cancelled, drained: drainResult.drained },
       "Job queue drained",
     );
+
+    if (obligationExecutor !== null) {
+      await obligationExecutor.stop();
+    }
 
     if (stopBriefingScheduler !== null) {
       stopBriefingScheduler();

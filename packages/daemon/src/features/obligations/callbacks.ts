@@ -5,6 +5,9 @@ import type { ObligationStore } from "./store.js";
 
 export const OBLIGATION_CONFIRM_PREFIX = "obligation_confirm:";
 export const OBLIGATION_REOPEN_PREFIX = "obligation_reopen:";
+export const OBLIGATION_ESCALATION_RETRY_PREFIX = "obligation_esc_retry:";
+export const OBLIGATION_ESCALATION_DISMISS_PREFIX = "obligation_esc_dismiss:";
+export const OBLIGATION_ESCALATION_TAKEOVER_PREFIX = "obligation_esc_take:";
 
 // ─── TelegramSender interface ─────────────────────────────────────────────────
 
@@ -66,4 +69,69 @@ export async function handleObligationReopen(
 
   await store.updateStatus(id, ObligationStatus.Open);
   await telegram.editMessage(chatId, messageId, "Reopened — Nova will retry.");
+}
+
+// ─── Escalation Handlers ─────────────────────────────────────────────────────
+
+/**
+ * Handles the "Retry" button on an escalated obligation.
+ * Resets attempt_count to 0 and sets status back to open.
+ */
+export async function handleEscalationRetry(
+  id: string,
+  store: ObligationStore,
+  telegram: TelegramSender,
+  chatId: number | string,
+  messageId: number,
+): Promise<void> {
+  const obligation = await store.getById(id);
+  if (!obligation) return;
+
+  if (obligation.status !== ObligationStatus.Escalated) return;
+
+  await store.resetAttemptCount(id);
+  await store.updateStatus(id, ObligationStatus.Open);
+  await telegram.editMessage(chatId, messageId, "Retry queued — attempt count reset.");
+}
+
+/**
+ * Handles the "Dismiss" button on an escalated obligation.
+ * Sets status to dismissed.
+ */
+export async function handleEscalationDismiss(
+  id: string,
+  store: ObligationStore,
+  telegram: TelegramSender,
+  chatId: number | string,
+  messageId: number,
+): Promise<void> {
+  const obligation = await store.getById(id);
+  if (!obligation) return;
+
+  if (obligation.status !== ObligationStatus.Escalated) return;
+
+  await store.updateStatus(id, ObligationStatus.Dismissed);
+  await telegram.editMessage(chatId, messageId, "Obligation dismissed.");
+}
+
+/**
+ * Handles the "Take Over" button on an escalated obligation.
+ * Changes owner to "leo" and status to open, resets attempt count.
+ */
+export async function handleEscalationTakeover(
+  id: string,
+  store: ObligationStore,
+  telegram: TelegramSender,
+  chatId: number | string,
+  messageId: number,
+): Promise<void> {
+  const obligation = await store.getById(id);
+  if (!obligation) return;
+
+  if (obligation.status !== ObligationStatus.Escalated) return;
+
+  await store.resetAttemptCount(id);
+  await store.updateOwner(id, "leo");
+  await store.updateStatus(id, ObligationStatus.Open);
+  await telegram.editMessage(chatId, messageId, "Transferred to Leo.");
 }

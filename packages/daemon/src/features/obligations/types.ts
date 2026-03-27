@@ -4,6 +4,7 @@ export enum ObligationStatus {
   ProposedDone = "proposed_done",
   Done = "done",
   Dismissed = "dismissed",
+  Escalated = "escalated",
 }
 
 export interface ObligationRecord {
@@ -16,6 +17,7 @@ export interface ObligationRecord {
   sourceChannel: string;
   sourceMessage: string | null;
   deadline: Date | null;
+  attemptCount: number;
   lastAttemptAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

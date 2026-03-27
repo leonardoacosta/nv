@@ -65,9 +65,13 @@ stale_threshold_hours = 48
 
 [autonomy]
 enabled = true
-# timeout_secs = 300       # max seconds per obligation attempt (default: 300)
-# cooldown_hours = 2       # hours before retrying same obligation (default: 2)
-# idle_debounce_secs = 60  # seconds of idle before executing (default: 60)
+timeout_ms = 300000
+cooldown_hours = 2
+idle_debounce_ms = 60000
+poll_interval_ms = 30000
+daily_budget_usd = 5.0
+autonomy_budget_pct = 0.20
+max_attempts = 3
 
 [dream]
 enabled = true

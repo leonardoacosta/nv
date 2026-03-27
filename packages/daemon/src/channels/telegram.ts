@@ -26,6 +26,9 @@ import { buildBriefReply } from "../telegram/commands/brief.js";
 import { buildDigestReply } from "../telegram/commands/digest.js";
 import { buildStartKeyboard } from "../telegram/commands/start.js";
 import { buildToolsKeyboard } from "../telegram/commands/tools.js";
+import { buildObligationReply } from "../telegram/commands/obligation.js";
+import type { ObligationStore } from "../features/obligations/store.js";
+import { ObligationStatus } from "../features/obligations/types.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -235,6 +238,7 @@ export class TelegramAdapter {
   private readonly token: string;
   private onMessageCallback: ((msg: Message) => void) | null = null;
   private readonly log = createLogger("telegram-adapter");
+  private obligationStore: ObligationStore | null = null;
 
   /** Cached draft API availability: null = untested, false = unsupported */
   private draftApiAvailable: boolean | null = null;
@@ -245,6 +249,14 @@ export class TelegramAdapter {
 
     this.registerCommands();
     this.registerCommandHandlers();
+  }
+
+  /**
+   * Sets the obligation store for the /obligation command.
+   * Must be called after the store is initialized.
+   */
+  setObligationStore(store: ObligationStore): void {
+    this.obligationStore = store;
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -515,6 +527,7 @@ export class TelegramAdapter {
         { command: "dream", description: "Memory consolidation" },
         { command: "status", description: "Fleet health + daemon status" },
         { command: "remind", description: "Set a reminder (/remind msg time)" },
+        { command: "obligation", description: "Create an obligation manually" },
         { command: "help", description: "All commands reference" },
       ])
       .catch((err: unknown) => {
@@ -587,6 +600,24 @@ export class TelegramAdapter {
     this.bot.onText(/^\/ob(@\S+)?$/, (msg) => {
       const chatId = String(msg.chat.id);
       void this.handleDirectCommand(chatId, () => buildObReply());
+    });
+
+    // /obligation <action> [p1|p2|p3] — create obligation manually
+    this.bot.onText(/^\/obligation(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const argsText = match?.[3]?.trim();
+      if (!this.obligationStore) {
+        void this.sendMessage(chatId, "Obligation store not initialized.");
+        return;
+      }
+      const store = this.obligationStore;
+      void this.handleDirectCommand(chatId, () =>
+        buildObligationReply(
+          argsText,
+          (input) => store.create(input),
+          ObligationStatus.Open,
+        ),
+      );
     });
 
     // /contacts — list contacts

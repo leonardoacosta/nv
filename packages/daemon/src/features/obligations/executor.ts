@@ -4,8 +4,16 @@ import type TelegramBot from "node-telegram-bot-api";
 import { ObligationStatus, type ObligationRecord } from "./types.js";
 import type { ObligationStore } from "./store.js";
 import { createLogger } from "../../logger.js";
-import { OBLIGATION_CONFIRM_PREFIX, OBLIGATION_REOPEN_PREFIX } from "./callbacks.js";
-import type { Config } from "../../config.js";
+import {
+  OBLIGATION_CONFIRM_PREFIX,
+  OBLIGATION_REOPEN_PREFIX,
+  OBLIGATION_ESCALATION_RETRY_PREFIX,
+  OBLIGATION_ESCALATION_DISMISS_PREFIX,
+  OBLIGATION_ESCALATION_TAKEOVER_PREFIX,
+} from "./callbacks.js";
+import type { AutonomyConfig, Config } from "../../config.js";
+import type { ProactiveWatcherConfig } from "../../features/watcher/types.js";
+import { isQuietHours } from "../../features/watcher/proactive.js";
 import { buildMcpServers, buildAllowedTools, type McpStdioServerConfig } from "../../brain/mcp-config.js";
 
 const log = createLogger("obligation-executor");
@@ -13,15 +21,19 @@ const log = createLogger("obligation-executor");
 /** Built-in Agent SDK tools available to the executor. */
 const BUILTIN_TOOLS = ["Read", "Write", "Bash", "Glob", "Grep", "WebSearch", "WebFetch"];
 
+// ─── Cost constants ──────────────────────────────────────────────────────────
+
+/** Sonnet pricing per million tokens */
+const SONNET_INPUT_PER_M = 3.0;
+const SONNET_OUTPUT_PER_M = 15.0;
+
+/** Haiku pricing per million tokens */
+const HAIKU_INPUT_PER_M = 0.80;
+const HAIKU_OUTPUT_PER_M = 4.0;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface ExecutorConfig {
-  enabled: boolean;
-  timeoutMs: number;
-  cooldownHours: number;
-  idleDebounceMs: number;
-  pollIntervalMs: number;
-}
+export type ExecutorConfig = AutonomyConfig;
 
 export interface TelegramNotifier {
   sendMessage(
@@ -61,6 +73,30 @@ function createTimeout(ms: number): Promise<never> {
   });
 }
 
+// ─── Model routing ───────────────────────────────────────────────────────────
+
+/**
+ * P0-P1 (urgent/critical): Sonnet for best reasoning.
+ * P2+ (normal/low): Haiku for cost savings.
+ */
+export function selectModel(priority: number): string {
+  return priority <= 1 ? "claude-sonnet-4-6" : "claude-haiku-3-5";
+}
+
+/**
+ * Estimates cost in USD for a given token usage and model.
+ */
+export function estimateCost(
+  inputTokens: number,
+  outputTokens: number,
+  model: string,
+): number {
+  const isHaiku = model.includes("haiku");
+  const inputRate = isHaiku ? HAIKU_INPUT_PER_M : SONNET_INPUT_PER_M;
+  const outputRate = isHaiku ? HAIKU_OUTPUT_PER_M : SONNET_OUTPUT_PER_M;
+  return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
+}
+
 // ─── Agent SDK query wrapper ──────────────────────────────────────────────────
 
 async function runAgentQuery(
@@ -69,7 +105,8 @@ async function runAgentQuery(
   timeoutMs: number,
   mcpServers: Record<string, McpStdioServerConfig>,
   allowedTools: string[],
-): Promise<string> {
+  model: string,
+): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
   const queryStream = query({
     prompt,
     options: {
@@ -81,11 +118,14 @@ async function runAgentQuery(
       env: {
         ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
         ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
+        ANTHROPIC_MODEL: model,
       },
     },
   });
 
   let resultText = "";
+  let inputTokens = 0;
+  let outputTokens = 0;
 
   const queryPromise = (async () => {
     for await (const message of queryStream as AsyncIterable<SDKMessage>) {
@@ -96,8 +136,14 @@ async function runAgentQuery(
           throw new Error(`Agent query failed: ${message.subtype}`);
         }
       }
+      // Accumulate token usage from assistant messages
+      if (message.type === "assistant" && message.message?.usage) {
+        const usage = message.message.usage as { input_tokens?: number; output_tokens?: number };
+        inputTokens += usage.input_tokens ?? 0;
+        outputTokens += usage.output_tokens ?? 0;
+      }
     }
-    return resultText;
+    return { text: resultText, inputTokens, outputTokens };
   })();
 
   return Promise.race([queryPromise, createTimeout(timeoutMs)]);
@@ -112,6 +158,10 @@ export class ObligationExecutor {
   private readonly mcpServers: Record<string, McpStdioServerConfig>;
   private readonly allowedTools: string[];
 
+  // Budget gate: in-memory daily spend tracker
+  private dailySpendUsd: number = 0;
+  private dailyResetDate: string = new Date().toISOString().slice(0, 10);
+
   // Draining: resolves when isExecuting transitions to false
   private drainingResolvers: Array<() => void> = [];
 
@@ -121,6 +171,7 @@ export class ObligationExecutor {
     private readonly telegram: TelegramNotifier,
     private readonly telegramChatId: number | string,
     private readonly config: ExecutorConfig,
+    private readonly watcherConfig: ProactiveWatcherConfig,
     appConfig?: Config,
   ) {
     this.mcpServers = appConfig ? buildMcpServers(appConfig) : {};
@@ -151,6 +202,8 @@ export class ObligationExecutor {
       {
         pollIntervalMs: this.config.pollIntervalMs,
         idleDebounceMs: this.config.idleDebounceMs,
+        dailyBudgetUsd: this.config.dailyBudgetUsd,
+        maxAttempts: this.config.maxAttempts,
       },
       "ObligationExecutor started",
     );
@@ -177,13 +230,40 @@ export class ObligationExecutor {
   // ── Private ────────────────────────────────────────────────────────────────
 
   private tick(): void {
+    // Quiet hours check
+    if (isQuietHours(new Date(), this.watcherConfig)) {
+      return;
+    }
+
     const idleMs = Date.now() - this.lastActivityAt;
     if (idleMs > this.config.idleDebounceMs && !this.isExecuting) {
       void this.tryExecuteNext();
     }
   }
 
+  /**
+   * Resets the daily spend counter if the UTC date has rolled over.
+   */
+  private resetDailySpendIfNeeded(): void {
+    const today = new Date().toISOString().slice(0, 10);
+    if (today !== this.dailyResetDate) {
+      this.dailySpendUsd = 0;
+      this.dailyResetDate = today;
+      log.info({ date: today }, "Daily budget counter reset");
+    }
+  }
+
   private async tryExecuteNext(): Promise<void> {
+    // Budget gate
+    this.resetDailySpendIfNeeded();
+    if (this.dailySpendUsd >= this.config.dailyBudgetUsd) {
+      log.info(
+        { dailySpendUsd: this.dailySpendUsd, budgetUsd: this.config.dailyBudgetUsd },
+        "Daily budget exhausted — skipping obligation execution",
+      );
+      return;
+    }
+
     const candidates = await this.store.listReadyForExecution(
       this.config.cooldownHours,
     );
@@ -195,8 +275,9 @@ export class ObligationExecutor {
     const obligation = candidates[0]!;
 
     this.isExecuting = true;
+    const model = selectModel(obligation.priority);
     log.info(
-      { id: obligation.id, action: obligation.detectedAction },
+      { id: obligation.id, action: obligation.detectedAction, model, priority: obligation.priority },
       "Executing obligation",
     );
 
@@ -205,18 +286,33 @@ export class ObligationExecutor {
       await this.store.updateLastAttemptAt(obligation.id, new Date());
 
       const prompt = buildExecutionPrompt(obligation);
-      const summary = await runAgentQuery(
+      const result = await runAgentQuery(
         prompt,
         this.gatewayKey,
         this.config.timeoutMs,
         this.mcpServers,
         this.allowedTools,
+        model,
       );
 
-      if (!summary || summary.trim().length === 0) {
+      // Track spend
+      const cost = estimateCost(result.inputTokens, result.outputTokens, model);
+      this.dailySpendUsd += cost;
+      log.info(
+        {
+          id: obligation.id,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          costUsd: cost.toFixed(4),
+          dailySpendUsd: this.dailySpendUsd.toFixed(4),
+        },
+        "Obligation execution cost tracked",
+      );
+
+      if (!result.text || result.text.trim().length === 0) {
         await this.handleFailure(obligation, new Error("Agent returned empty response"));
       } else {
-        await this.handleSuccess(obligation, summary);
+        await this.handleSuccess(obligation, result.text);
       }
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err));
@@ -283,15 +379,55 @@ export class ObligationExecutor {
         obligation.id,
         `[Attempt failed ${timestamp}] ${error.message}`,
       );
-      // Keep status as in_progress — cooldown prevents immediate retry
 
-      const messageText = `Failed to complete: ${obligation.detectedAction} — ${error.message}`;
-      await this.telegram.sendMessage(this.telegramChatId, messageText);
+      // Escalation: increment attempt count and check threshold
+      const attemptCount = await this.store.incrementAttemptCount(obligation.id);
 
-      log.warn(
-        { id: obligation.id, error: error.message },
-        "Obligation execution failed",
-      );
+      if (attemptCount >= this.config.maxAttempts) {
+        // Escalate
+        await this.store.updateStatus(obligation.id, ObligationStatus.Escalated);
+
+        const keyboard: TelegramBot.InlineKeyboardMarkup = {
+          inline_keyboard: [
+            [
+              {
+                text: "Retry",
+                callback_data: `${OBLIGATION_ESCALATION_RETRY_PREFIX}${obligation.id}`,
+              },
+              {
+                text: "Dismiss",
+                callback_data: `${OBLIGATION_ESCALATION_DISMISS_PREFIX}${obligation.id}`,
+              },
+              {
+                text: "Take Over",
+                callback_data: `${OBLIGATION_ESCALATION_TAKEOVER_PREFIX}${obligation.id}`,
+              },
+            ],
+          ],
+        };
+
+        const messageText =
+          `Escalated after ${attemptCount} attempts: <b>${obligation.detectedAction}</b>\n` +
+          `Last error: ${error.message}`;
+        await this.telegram.sendMessage(this.telegramChatId, messageText, {
+          parseMode: "HTML",
+          keyboard,
+        });
+
+        log.warn(
+          { id: obligation.id, attemptCount },
+          "Obligation escalated after max attempts",
+        );
+      } else {
+        // Normal failure — keep status as in_progress, cooldown prevents immediate retry
+        const messageText = `Failed to complete: ${obligation.detectedAction} — ${error.message} (attempt ${attemptCount}/${this.config.maxAttempts})`;
+        await this.telegram.sendMessage(this.telegramChatId, messageText);
+
+        log.warn(
+          { id: obligation.id, attemptCount, error: error.message },
+          "Obligation execution failed",
+        );
+      }
     } catch (innerErr: unknown) {
       log.error({ innerErr, id: obligation.id }, "Error in failure handler");
     }

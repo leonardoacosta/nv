@@ -14,6 +14,7 @@ interface ObligationRow {
   source_channel: string;
   source_message: string | null;
   deadline: Date | null;
+  attempt_count: number;
   last_attempt_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -30,6 +31,7 @@ function rowToRecord(row: ObligationRow): ObligationRecord {
     sourceChannel: row.source_channel,
     sourceMessage: row.source_message,
     deadline: row.deadline,
+    attemptCount: row.attempt_count,
     lastAttemptAt: row.last_attempt_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -48,9 +50,9 @@ export class ObligationStore {
     const result = await this.pool.query<ObligationRow>(
       `INSERT INTO obligations
          (id, detected_action, owner, status, priority, project_code,
-          source_channel, source_message, deadline, last_attempt_at,
-          created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, $10, $11)
+          source_channel, source_message, deadline, attempt_count,
+          last_attempt_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, NULL, $10, $11)
        RETURNING *`,
       [
         id,
@@ -127,6 +129,45 @@ export class ObligationStore {
     await this.pool.query(
       "UPDATE obligations SET last_attempt_at = $1, updated_at = $2 WHERE id = $3",
       [timestamp, new Date(), id],
+    );
+  }
+
+  /**
+   * Atomically increments attempt_count and returns the new value.
+   */
+  async incrementAttemptCount(id: string): Promise<number> {
+    const result = await this.pool.query<{ attempt_count: number }>(
+      `UPDATE obligations
+       SET attempt_count = attempt_count + 1, updated_at = $1
+       WHERE id = $2
+       RETURNING attempt_count`,
+      [new Date(), id],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new Error(`Obligation not found: ${id}`);
+    }
+    return row.attempt_count;
+  }
+
+  /**
+   * Updates the owner of an obligation.
+   */
+  async updateOwner(id: string, owner: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE obligations SET owner = $1, updated_at = $2 WHERE id = $3",
+      [owner, new Date(), id],
+    );
+  }
+
+  /**
+   * Resets the attempt count to zero.
+   */
+  async resetAttemptCount(id: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE obligations SET attempt_count = 0, updated_at = $1 WHERE id = $2",
+      [new Date(), id],
     );
   }
 

@@ -160,6 +160,7 @@ function SessionsPage() {
   const initialDateTo = searchParams.get("date_to") ?? "";
   const initialSearch = searchParams.get("q") ?? "";
   const initialPage = Number(searchParams.get("page")) || 1;
+  const initialCommand = searchParams.get("command") ?? "";
 
   // 2. Local State
   const [sessions, setSessions] = useState<SessionTimelineItem[]>([]);
@@ -174,6 +175,7 @@ function SessionsPage() {
   const [searchInput, setSearchInput] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearch);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [commandFilter, setCommandFilter] = useState(initialCommand);
 
   // Extract distinct projects from fetched data
   const [distinctProjects, setDistinctProjects] = useState<string[]>([]);
@@ -255,25 +257,30 @@ function SessionsPage() {
     if (dateFrom) params.set("date_from", dateFrom);
     if (dateTo) params.set("date_to", dateTo);
     if (debouncedSearch) params.set("q", debouncedSearch);
+    if (commandFilter) params.set("command", commandFilter);
     if (page > 1) params.set("page", String(page));
 
     const paramStr = params.toString();
     const newUrl = paramStr ? `?${paramStr}` : "/sessions";
     router.replace(newUrl, { scroll: false });
-  }, [projectFilter, triggerFilter, dateFrom, dateTo, debouncedSearch, page, router]);
+  }, [projectFilter, triggerFilter, dateFrom, dateTo, debouncedSearch, commandFilter, page, router]);
 
-  // 6. Derived — client-side text search filtering
-  const filtered = debouncedSearch
-    ? sessions.filter((s) => {
-        const q = debouncedSearch.toLowerCase();
-        return (
-          s.project.toLowerCase().includes(q) ||
-          s.command.toLowerCase().includes(q) ||
-          s.id.toLowerCase().includes(q) ||
-          (s.trigger_type?.toLowerCase().includes(q) ?? false)
-        );
-      })
-    : sessions;
+  // 6. Derived — client-side text search + command filtering
+  const filtered = sessions.filter((s) => {
+    // Command filter (task 3.5)
+    if (commandFilter && s.command !== commandFilter) return false;
+    // Text search
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      return (
+        s.project.toLowerCase().includes(q) ||
+        s.command.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q) ||
+        (s.trigger_type?.toLowerCase().includes(q) ?? false)
+      );
+    }
+    return true;
+  });
 
   // 7. Handlers
   const handleClearFilters = () => {
@@ -283,6 +290,7 @@ function SessionsPage() {
     setDateTo("");
     setSearchInput("");
     setDebouncedSearch("");
+    setCommandFilter("");
   };
 
   const hasFilters =
@@ -290,7 +298,8 @@ function SessionsPage() {
     triggerFilter !== "all" ||
     dateFrom !== "" ||
     dateTo !== "" ||
-    debouncedSearch !== "";
+    debouncedSearch !== "" ||
+    commandFilter !== "";
 
   const totalPages = Math.ceil(total / 25);
 
@@ -403,6 +412,24 @@ function SessionsPage() {
             />
           </div>
         </div>
+
+        {/* Command filter chip (task 3.5) */}
+        {commandFilter && (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-ds-gray-alpha-200 text-label-13 text-ds-gray-1000">
+              <Terminal size={12} />
+              command: {commandFilter}
+              <button
+                type="button"
+                onClick={() => setCommandFilter("")}
+                className="ml-0.5 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
+                aria-label="Clear command filter"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          </div>
+        )}
 
         {/* Results count */}
         {!loading && (

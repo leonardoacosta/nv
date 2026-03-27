@@ -13,6 +13,10 @@ import {
   Loader2,
   Info,
   ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Check,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
@@ -22,6 +26,7 @@ import type {
   AutomationReminder,
   AutomationSchedule,
   AutomationWatcher,
+  AutomationSettingsResponse,
 } from "@/types/api";
 import { apiFetch } from "@/lib/api-client";
 
@@ -127,15 +132,20 @@ function ToggleSwitch({
 interface WatcherCardProps {
   watcher: AutomationWatcher;
   onUpdate: (patch: Partial<AutomationWatcher>) => Promise<void>;
+  promptValue: string;
+  onPromptSave: (value: string) => Promise<void>;
 }
 
-function WatcherCard({ watcher, onUpdate }: WatcherCardProps) {
+function WatcherCard({ watcher, onUpdate, promptValue, onPromptSave }: WatcherCardProps) {
   const [localEnabled, setLocalEnabled] = useState(watcher.enabled);
   const [localInterval, setLocalInterval] = useState(watcher.interval_minutes);
   const [localQuietStart, setLocalQuietStart] = useState(watcher.quiet_start);
   const [localQuietEnd, setLocalQuietEnd] = useState(watcher.quiet_end);
   const [saving, setSaving] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [localPrompt, setLocalPrompt] = useState(promptValue);
+  const [promptSaveState, setPromptSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
   // Sync local state when prop changes
   useEffect(() => {
@@ -144,6 +154,24 @@ function WatcherCard({ watcher, onUpdate }: WatcherCardProps) {
     setLocalQuietStart(watcher.quiet_start);
     setLocalQuietEnd(watcher.quiet_end);
   }, [watcher]);
+
+  // Sync prompt from parent
+  useEffect(() => {
+    setLocalPrompt(promptValue);
+  }, [promptValue]);
+
+  const handlePromptBlur = async () => {
+    if (localPrompt === promptValue) return;
+    setPromptSaveState("saving");
+    try {
+      await onPromptSave(localPrompt);
+      setPromptSaveState("saved");
+      setTimeout(() => setPromptSaveState("idle"), 2000);
+    } catch {
+      setPromptSaveState("idle");
+      setFieldError("Failed to save prompt");
+    }
+  };
 
   const patch = useCallback(
     async (field: string, value: Partial<AutomationWatcher>) => {
@@ -297,6 +325,34 @@ function WatcherCard({ watcher, onUpdate }: WatcherCardProps) {
             </span>
           </div>
         )}
+
+        {/* Custom Prompt (task 3.1) */}
+        <div className="border-t border-ds-gray-400 pt-3">
+          <button
+            type="button"
+            onClick={() => setPromptOpen(!promptOpen)}
+            className="flex items-center gap-1.5 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
+          >
+            {promptOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            Custom Prompt
+            {promptSaveState === "saving" && (
+              <Loader2 size={11} className="animate-spin text-ds-gray-700 ml-1" />
+            )}
+            {promptSaveState === "saved" && (
+              <Check size={11} className="text-green-700 ml-1" />
+            )}
+          </button>
+          {promptOpen && (
+            <textarea
+              value={localPrompt}
+              onChange={(e) => setLocalPrompt(e.target.value)}
+              onBlur={() => void handlePromptBlur()}
+              placeholder="Describe what the watcher should look for (e.g., overdue obligations, calendar conflicts)..."
+              rows={3}
+              className="mt-2 w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
+            />
+          )}
+        </div>
       </div>
     </div>
   );
@@ -308,17 +364,77 @@ interface BriefingCardProps {
   lastGeneratedAt: string | null;
   nextGeneration: string | null;
   contentPreview: string | null;
+  briefingHour: number;
   onGenerated: () => void;
+  promptValue: string;
+  onPromptSave: (value: string) => Promise<void>;
+  onHourSave: (hour: number) => Promise<void>;
 }
 
 function BriefingCard({
   lastGeneratedAt,
   nextGeneration,
   contentPreview,
+  briefingHour,
   onGenerated,
+  promptValue,
+  onPromptSave,
+  onHourSave,
 }: BriefingCardProps) {
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [localPrompt, setLocalPrompt] = useState(promptValue);
+  const [promptSaveState, setPromptSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [localHour, setLocalHour] = useState(briefingHour);
+  const [localNextGen, setLocalNextGen] = useState(nextGeneration);
+  const [hourSaveState, setHourSaveState] = useState<"idle" | "saving" | "saved">("idle");
+
+  // Sync prompt from parent
+  useEffect(() => {
+    setLocalPrompt(promptValue);
+  }, [promptValue]);
+
+  // Sync hour and next generation from parent
+  useEffect(() => {
+    setLocalHour(briefingHour);
+  }, [briefingHour]);
+
+  useEffect(() => {
+    setLocalNextGen(nextGeneration);
+  }, [nextGeneration]);
+
+  const handlePromptBlur = async () => {
+    if (localPrompt === promptValue) return;
+    setPromptSaveState("saving");
+    try {
+      await onPromptSave(localPrompt);
+      setPromptSaveState("saved");
+      setTimeout(() => setPromptSaveState("idle"), 2000);
+    } catch {
+      setPromptSaveState("idle");
+    }
+  };
+
+  const handleHourChange = async (newHour: number) => {
+    setLocalHour(newHour);
+    // Optimistically update next_generation display
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(newHour, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    setLocalNextGen(next.toISOString());
+    setHourSaveState("saving");
+    try {
+      await onHourSave(newHour);
+      setHourSaveState("saved");
+      setTimeout(() => setHourSaveState("idle"), 2000);
+    } catch {
+      setLocalHour(briefingHour);
+      setLocalNextGen(nextGeneration);
+      setHourSaveState("idle");
+    }
+  };
 
   const handleGenerateNow = async () => {
     setGenerating(true);
@@ -361,12 +477,36 @@ function BriefingCard({
         <div className="flex items-center justify-between">
           <span className="text-copy-13 text-ds-gray-700">Next generation</span>
           <span className="text-copy-13 text-ds-gray-900">
-            {nextGeneration ? (
-              <span suppressHydrationWarning>{formatRelativeTime(nextGeneration)}</span>
+            {localNextGen ? (
+              <span suppressHydrationWarning>{formatRelativeTime(localNextGen)}</span>
             ) : (
               "--"
             )}
           </span>
+        </div>
+
+        {/* Hour picker (task 3.3) */}
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-copy-13 text-ds-gray-900">Briefing hour</span>
+          <div className="flex items-center gap-1.5">
+            {hourSaveState === "saving" && <Loader2 size={12} className="animate-spin text-ds-gray-700" />}
+            {hourSaveState === "saved" && <Check size={11} className="text-green-700" />}
+            <select
+              value={localHour}
+              onChange={(e) => void handleHourChange(Number(e.target.value))}
+              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-none focus:border-ds-gray-500"
+            >
+              {Array.from({ length: 24 }, (_, h) => {
+                const period = h >= 12 ? "PM" : "AM";
+                const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+                return (
+                  <option key={h} value={h}>
+                    {`${h12}:00 ${period}`}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -379,6 +519,34 @@ function BriefingCard({
           {contentPreview}
         </Link>
       )}
+
+      {/* Custom Prompt (task 3.2) */}
+      <div className="border-t border-ds-gray-400 pt-3">
+        <button
+          type="button"
+          onClick={() => setPromptOpen(!promptOpen)}
+          className="flex items-center gap-1.5 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
+        >
+          {promptOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          Custom Prompt
+          {promptSaveState === "saving" && (
+            <Loader2 size={11} className="animate-spin text-ds-gray-700 ml-1" />
+          )}
+          {promptSaveState === "saved" && (
+            <Check size={11} className="text-green-700 ml-1" />
+          )}
+        </button>
+        {promptOpen && (
+          <textarea
+            value={localPrompt}
+            onChange={(e) => setLocalPrompt(e.target.value)}
+            onBlur={() => void handlePromptBlur()}
+            placeholder="Describe what the briefing should emphasize (e.g., today's meetings, urgent tasks)..."
+            rows={3}
+            className="mt-2 w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
+          />
+        )}
+      </div>
 
       {genError && (
         <p className="text-[11px] text-red-700">{genError}</p>
@@ -405,6 +573,14 @@ function BriefingCard({
           <ExternalLink size={12} />
           View Briefing
         </Link>
+        {/* View All Briefings (task 3.4) */}
+        <Link
+          href="/briefing"
+          className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
+        >
+          <ExternalLink size={12} />
+          View All Briefings
+        </Link>
       </div>
     </div>
   );
@@ -416,16 +592,172 @@ function RemindersTab({
   reminders,
   actionPending,
   onCancel,
+  onRefetch,
 }: {
   reminders: AutomationReminder[];
   actionPending: string | null;
   onCancel: (id: string) => void;
+  onRefetch: () => void;
 }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [formMessage, setFormMessage] = useState("");
+  const [formDueAt, setFormDueAt] = useState("");
+  const [formChannel, setFormChannel] = useState("dashboard");
+  const [formSubmitting, setFormSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    // Client validation
+    if (!formMessage.trim()) {
+      setFormError("Message is required");
+      return;
+    }
+    if (formMessage.length > 500) {
+      setFormError("Message must be 500 characters or fewer");
+      return;
+    }
+    if (!formDueAt) {
+      setFormError("Due date is required");
+      return;
+    }
+    const dueDate = new Date(formDueAt);
+    if (dueDate <= new Date()) {
+      setFormError("Due date must be in the future");
+      return;
+    }
+
+    setFormSubmitting(true);
+    try {
+      const res = await apiFetch("/api/automations/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: formMessage.trim(),
+          due_at: dueDate.toISOString(),
+          channel: formChannel.trim() || "dashboard",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || `HTTP ${res.status}`);
+      }
+      // Reset form and close
+      setFormMessage("");
+      setFormDueAt("");
+      setFormChannel("dashboard");
+      setFormOpen(false);
+      onRefetch();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Failed to create reminder");
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
   return (
     <div>
-      <p className="text-copy-13 text-ds-gray-700 mb-3">
-        Created via Telegram ("remind me to...") or the API. One-time alerts delivered to a channel.
-      </p>
+      {/* Create Reminder button + form (task 3.6) */}
+      <div className="mb-3 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <p className="text-copy-13 text-ds-gray-700">
+            Created via Telegram (&ldquo;remind me to...&rdquo;) or the API. One-time alerts delivered to a channel.
+          </p>
+          <button
+            type="button"
+            onClick={() => setFormOpen(!formOpen)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors shrink-0"
+          >
+            <Plus size={13} />
+            Create Reminder
+          </button>
+        </div>
+
+        {formOpen && (
+          <form onSubmit={(e) => void handleFormSubmit(e)} className="surface-inset p-3 rounded-lg flex flex-col gap-3">
+            {/* Message */}
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reminder-message" className="text-label-12 text-ds-gray-700">
+                Message
+              </label>
+              <textarea
+                id="reminder-message"
+                value={formMessage}
+                onChange={(e) => setFormMessage(e.target.value)}
+                maxLength={500}
+                rows={2}
+                required
+                placeholder="What do you want to be reminded about?"
+                className="w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
+              />
+              <span className="text-[11px] text-ds-gray-700 text-right">
+                {formMessage.length}/500
+              </span>
+            </div>
+
+            {/* Due date + Channel */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+              <div className="flex flex-col gap-1 flex-1">
+                <label htmlFor="reminder-due" className="text-label-12 text-ds-gray-700">
+                  Due at
+                </label>
+                <input
+                  id="reminder-due"
+                  type="datetime-local"
+                  value={formDueAt}
+                  onChange={(e) => setFormDueAt(e.target.value)}
+                  required
+                  className="px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500"
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1">
+                <label htmlFor="reminder-channel" className="text-label-12 text-ds-gray-700">
+                  Channel (optional)
+                </label>
+                <input
+                  id="reminder-channel"
+                  type="text"
+                  value={formChannel}
+                  onChange={(e) => setFormChannel(e.target.value)}
+                  placeholder="dashboard"
+                  className="px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700"
+                />
+              </div>
+            </div>
+
+            {formError && (
+              <p className="text-[11px] text-red-700">{formError}</p>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={formSubmitting}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+              >
+                {formSubmitting ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Plus size={13} />
+                )}
+                {formSubmitting ? "Creating..." : "Create"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFormOpen(false);
+                  setFormError(null);
+                }}
+                className="px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
       {reminders.length === 0 ? (
         <div className="flex items-start gap-2 py-4 px-3 rounded-lg bg-ds-gray-alpha-100 border border-ds-gray-400">
           <Info size={14} className="text-ds-gray-700 shrink-0 mt-0.5" />
@@ -678,6 +1010,37 @@ export default function AutomationsPage() {
     [fetchData],
   );
 
+  // ── Settings (shared by WatcherCard + BriefingCard) ─────────────────────
+  const [settings, setSettings] = useState<Record<string, string>>({});
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/automations/settings");
+      if (!res.ok) return;
+      const json = (await res.json()) as AutomationSettingsResponse;
+      setSettings(json.settings);
+    } catch {
+      // Non-critical — prompts stay empty
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchSettings();
+  }, [fetchSettings]);
+
+  const saveSetting = useCallback(
+    async (key: string, value: string) => {
+      const res = await apiFetch("/api/automations/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSettings((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
   // Sessions count for cross-link
   const sessionCount = data?.active_sessions.length ?? 0;
 
@@ -739,13 +1102,42 @@ export default function AutomationsPage() {
 
           {/* ── Top row: Watcher + Briefing ──────────────────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <WatcherCard watcher={data.watcher} onUpdate={patchWatcher} />
-            <BriefingCard
-              lastGeneratedAt={data.briefing.last_generated_at}
-              nextGeneration={data.briefing.next_generation}
-              contentPreview={data.briefing.content_preview}
-              onGenerated={() => void fetchData()}
-            />
+            <div className="flex flex-col gap-2">
+              <WatcherCard
+                watcher={data.watcher}
+                onUpdate={patchWatcher}
+                promptValue={settings["watcher_prompt"] ?? ""}
+                onPromptSave={(value) => saveSetting("watcher_prompt", value)}
+              />
+              {/* View Watcher Sessions (task 3.4) */}
+              <Link
+                href="/sessions?command=proactive-followup"
+                className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
+              >
+                <ExternalLink size={12} />
+                View Watcher Sessions
+              </Link>
+            </div>
+            <div className="flex flex-col gap-2">
+              <BriefingCard
+                lastGeneratedAt={data.briefing.last_generated_at}
+                nextGeneration={data.briefing.next_generation}
+                contentPreview={data.briefing.content_preview}
+                briefingHour={data.briefing.briefing_hour}
+                onGenerated={() => void fetchData()}
+                promptValue={settings["briefing_prompt"] ?? ""}
+                onPromptSave={(value) => saveSetting("briefing_prompt", value)}
+                onHourSave={(hour) => saveSetting("briefing_hour", String(hour))}
+              />
+              {/* View Briefing Sessions (task 3.4) */}
+              <Link
+                href="/sessions?command=morning-briefing"
+                className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
+              >
+                <ExternalLink size={12} />
+                View Briefing Sessions
+              </Link>
+            </div>
           </div>
 
           {/* ── Bottom row: Scheduled Automations ────────────────────────── */}
@@ -793,6 +1185,7 @@ export default function AutomationsPage() {
                 reminders={data.reminders}
                 actionPending={actionPending}
                 onCancel={(id) => void cancelReminder(id)}
+                onRefetch={() => void fetchData()}
               />
             ) : (
               <SchedulesTab

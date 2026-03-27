@@ -3,16 +3,13 @@ services:
     build:
       context: .
       dockerfile: apps/dashboard/Dockerfile
-    expose:
-      - "3000"
+    network_mode: host
     environment:
-      - DATABASE_URL=postgresql://cortex:cortexdev@host.docker.internal:5436/nova
-      - TOOL_ROUTER_URL=http://host.docker.internal:4100
-      - MEMORY_SVC_URL=http://host.docker.internal:4101
-      - MESSAGES_SVC_URL=http://host.docker.internal:4102
-      - META_SVC_URL=http://host.docker.internal:4108
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - DATABASE_URL=postgresql://cortex:cortexdev@localhost:5436/nova
+      - TOOL_ROUTER_URL=http://localhost:4100
+      - MEMORY_SVC_URL=http://localhost:4101
+      - MESSAGES_SVC_URL=http://localhost:4102
+      - META_SVC_URL=http://localhost:4108
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -22,9 +19,3 @@ services:
       - "traefik.http.routers.nova-dashboard.tls.certresolver=cloudflare"
       - "traefik.http.routers.nova-dashboard.middlewares=homelab-webapp@file"
       - "traefik.http.services.nova-dashboard.loadbalancer.server.port=3000"
-    networks:
-      - homelab
-
-networks:
-  homelab:
-    external: true

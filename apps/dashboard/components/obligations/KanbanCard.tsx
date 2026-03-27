@@ -282,7 +282,7 @@ export default function KanbanCard({
 
       {/* Hover action bar */}
       {isHovered && !isExpanded && !actionPending && (
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-ds-gray-200 border border-ds-gray-400 rounded-lg px-1 py-0.5 z-10 shadow-sm">
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-ds-gray-200 border border-ds-gray-400 rounded-lg px-1 py-0.5 z-10 shadow-xs">
           {hoverActions.map((action) => (
             <Tooltip key={action.label} label={action.label}>
               <button

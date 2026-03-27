@@ -150,7 +150,7 @@ export default function CreateProjectDialog({
               value={code}
               onChange={(e) => setCode(e.target.value.toLowerCase())}
               placeholder="my-project"
-              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-14 text-ds-gray-1000 font-mono placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-14 text-ds-gray-1000 font-mono placeholder:text-ds-gray-700 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
               autoFocus
             />
             {code.length > 0 && !codeValid && (
@@ -171,7 +171,7 @@ export default function CreateProjectDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My Project"
-              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-14 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-14 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
             />
           </div>
 
@@ -184,7 +184,7 @@ export default function CreateProjectDialog({
               id="project-category"
               value={category}
               onChange={(e) => setCategory(e.target.value as ProjectCategory)}
-              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -205,7 +205,7 @@ export default function CreateProjectDialog({
               value={path}
               onChange={(e) => setPath(e.target.value)}
               placeholder="~/dev/my-project"
-              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-14 text-ds-gray-1000 font-mono placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-14 text-ds-gray-1000 font-mono placeholder:text-ds-gray-700 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
             />
           </div>
 

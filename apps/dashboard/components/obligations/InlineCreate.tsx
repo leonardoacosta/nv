@@ -73,7 +73,7 @@ export default function InlineCreate({ owner, onCreated, onCancel }: InlineCreat
         onBlur={handleBlur}
         disabled={submitting}
         placeholder="What needs to be done?"
-        className="w-full px-3 py-1.5 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 focus:ring-1 focus:ring-ds-gray-500 placeholder:text-ds-gray-700 disabled:opacity-50 transition-colors"
+        className="w-full px-3 py-1.5 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-hidden focus:border-ds-gray-500 focus:ring-1 focus:ring-ds-gray-500 placeholder:text-ds-gray-700 disabled:opacity-50 transition-colors"
       />
       {error && (
         <p className="mt-1 text-[11px] text-red-500 px-1">{error}</p>

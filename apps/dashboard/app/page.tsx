@@ -239,7 +239,7 @@ function ObligationBar() {
             if (e.key === "Enter") void handleCreate();
           }}
           placeholder="Add obligation..."
-          className="flex-1 min-w-0 bg-transparent text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none"
+          className="flex-1 min-w-0 bg-transparent text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden"
           disabled={creating}
         />
         <button

@@ -113,13 +113,13 @@ function ToggleSwitch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={[
-        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ds-gray-500 disabled:opacity-50",
+        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-hidden focus:ring-2 focus:ring-ds-gray-500 disabled:opacity-50",
         checked ? "bg-green-700" : "bg-ds-gray-400",
       ].join(" ")}
     >
       <span
         className={[
-          "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200",
+          "inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform duration-200",
           checked ? "translate-x-4" : "translate-x-0.5",
         ].join(" ")}
       />
@@ -274,7 +274,7 @@ function WatcherCard({ watcher, onUpdate, promptValue, onPromptSave }: WatcherCa
               onChange={(e) => handleIntervalChange(Number(e.target.value))}
               onBlur={() => void handleIntervalBlur()}
               disabled={saving !== null}
-              className="w-14 px-2 py-1 text-center text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-none focus:border-ds-gray-500 disabled:opacity-50"
+              className="w-14 px-2 py-1 text-center text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-hidden focus:border-ds-gray-500 disabled:opacity-50"
             />
             <button
               type="button"
@@ -302,7 +302,7 @@ function WatcherCard({ watcher, onUpdate, promptValue, onPromptSave }: WatcherCa
               onChange={(e) => setLocalQuietStart(e.target.value)}
               onBlur={() => void handleQuietStartBlur()}
               disabled={saving !== null}
-              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-none focus:border-ds-gray-500 disabled:opacity-50"
+              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-hidden focus:border-ds-gray-500 disabled:opacity-50"
             />
             <span className="text-copy-13 text-ds-gray-700">to</span>
             <input
@@ -311,7 +311,7 @@ function WatcherCard({ watcher, onUpdate, promptValue, onPromptSave }: WatcherCa
               onChange={(e) => setLocalQuietEnd(e.target.value)}
               onBlur={() => void handleQuietEndBlur()}
               disabled={saving !== null}
-              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-none focus:border-ds-gray-500 disabled:opacity-50"
+              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-hidden focus:border-ds-gray-500 disabled:opacity-50"
             />
           </div>
         </div>
@@ -349,7 +349,7 @@ function WatcherCard({ watcher, onUpdate, promptValue, onPromptSave }: WatcherCa
               onBlur={() => void handlePromptBlur()}
               placeholder="Describe what the watcher should look for (e.g., overdue obligations, calendar conflicts)..."
               rows={3}
-              className="mt-2 w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
+              className="mt-2 w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-hidden focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
             />
           )}
         </div>
@@ -494,7 +494,7 @@ function BriefingCard({
             <select
               value={localHour}
               onChange={(e) => void handleHourChange(Number(e.target.value))}
-              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-none focus:border-ds-gray-500"
+              className="px-2 py-1 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded focus:outline-hidden focus:border-ds-gray-500"
             >
               {Array.from({ length: 24 }, (_, h) => {
                 const period = h >= 12 ? "PM" : "AM";
@@ -543,7 +543,7 @@ function BriefingCard({
             onBlur={() => void handlePromptBlur()}
             placeholder="Describe what the briefing should emphasize (e.g., today's meetings, urgent tasks)..."
             rows={3}
-            className="mt-2 w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
+            className="mt-2 w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-hidden focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
           />
         )}
       </div>
@@ -690,7 +690,7 @@ function RemindersTab({
                 rows={2}
                 required
                 placeholder="What do you want to be reminded about?"
-                className="w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
+                className="w-full px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-hidden focus:border-ds-gray-500 placeholder:text-ds-gray-700 resize-y"
               />
               <span className="text-[11px] text-ds-gray-700 text-right">
                 {formMessage.length}/500
@@ -709,7 +709,7 @@ function RemindersTab({
                   value={formDueAt}
                   onChange={(e) => setFormDueAt(e.target.value)}
                   required
-                  className="px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500"
+                  className="px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-hidden focus:border-ds-gray-500"
                 />
               </div>
               <div className="flex flex-col gap-1 flex-1">
@@ -722,7 +722,7 @@ function RemindersTab({
                   value={formChannel}
                   onChange={(e) => setFormChannel(e.target.value)}
                   placeholder="dashboard"
-                  className="px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-none focus:border-ds-gray-500 placeholder:text-ds-gray-700"
+                  className="px-3 py-2 text-copy-13 text-ds-gray-1000 bg-ds-gray-100 border border-ds-gray-400 rounded-lg focus:outline-hidden focus:border-ds-gray-500 placeholder:text-ds-gray-700"
                 />
               </div>
             </div>

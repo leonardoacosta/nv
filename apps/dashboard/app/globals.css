@@ -14,9 +14,44 @@
   font-display: swap;
 }
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  /* ds-bg tokens */
+  --color-ds-bg-100: #0a0a0a;
+  --color-ds-bg-200: #111111;
+
+  /* ds-gray scale */
+  --color-ds-gray-100: #1a1a1a;
+  --color-ds-gray-200: #1f1f1f;
+  --color-ds-gray-300: #292929;
+  --color-ds-gray-400: #2e2e2e;
+  --color-ds-gray-500: #454545;
+  --color-ds-gray-600: #5e5e5e;
+  --color-ds-gray-700: #6e6e6e;
+  --color-ds-gray-800: #7c7c7c;
+  --color-ds-gray-900: #a0a0a0;
+  --color-ds-gray-1000: #ededed;
+
+  /* ds-gray alpha variants */
+  --color-ds-gray-alpha-100: rgba(255, 255, 255, 0.03);
+  --color-ds-gray-alpha-200: rgba(255, 255, 255, 0.06);
+  --color-ds-gray-alpha-400: rgba(255, 255, 255, 0.10);
+
+  /* Status colors */
+  --color-blue-700: #0070f3;
+  --color-blue-900: #52a8ff;
+  --color-green-700: #0cce6b;
+  --color-green-900: #52e78c;
+  --color-amber-700: #f5a623;
+  --color-amber-900: #ffcc4d;
+  --color-red-700: #e5484d;
+  --color-red-900: #ff6369;
+
+  /* Font families */
+  --font-sans: "Geist Sans Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+}
 
 /* countUp — numeric value interpolation via CSS @property */
 @property --num {

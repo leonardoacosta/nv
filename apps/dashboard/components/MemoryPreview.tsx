@@ -349,7 +349,7 @@ export default function MemoryPreview({
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            className="w-full h-full p-4 bg-transparent text-xs font-mono text-ds-gray-1000 resize-none focus:outline-none leading-relaxed"
+            className="w-full h-full p-4 bg-transparent text-xs font-mono text-ds-gray-1000 resize-none focus:outline-hidden leading-relaxed"
             spellCheck={false}
           />
         ) : file.content ? (

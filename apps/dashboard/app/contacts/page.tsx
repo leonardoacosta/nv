@@ -198,7 +198,7 @@ export default function ContactsPage() {
             value={search}
             onChange={handleSearchChange}
             placeholder="Search contacts..."
-            className="w-full bg-ds-gray-100 border border-ds-gray-400 rounded-lg pl-9 pr-4 py-2 text-copy-13 text-ds-gray-1000 placeholder-ds-gray-700 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+            className="w-full bg-ds-gray-100 border border-ds-gray-400 rounded-lg pl-9 pr-4 py-2 text-copy-13 text-ds-gray-1000 placeholder-ds-gray-700 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
           />
         </div>
 

@@ -391,7 +391,7 @@ export default function Sidebar() {
           "flex items-center justify-center w-11 h-11 rounded-md",
           "bg-ds-bg-200 border border-ds-gray-400 text-ds-gray-900",
           "hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors",
-          "shadow-sm",
+          "shadow-xs",
         ].join(" ")}
       >
         <Menu size={18} />
@@ -481,7 +481,7 @@ export default function Sidebar() {
             "flex items-center justify-center w-6 h-6 rounded-full",
             "bg-ds-bg-200 border border-ds-gray-400",
             "text-ds-gray-700 hover:text-ds-gray-1000 hover:border-ds-gray-500",
-            "transition-colors duration-150 shadow-sm",
+            "transition-colors duration-150 shadow-xs",
           ].join(" ")}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >

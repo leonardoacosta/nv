@@ -464,7 +464,7 @@ function FacetedFilterBar({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search messages…"
-          className="w-full pl-8 pr-7 py-1.5 surface-inset text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors h-[36px]"
+          className="w-full pl-8 pr-7 py-1.5 surface-inset text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors h-[36px]"
         />
         {search && (
           <button
@@ -482,7 +482,7 @@ function FacetedFilterBar({
       <select
         value={channelFilter}
         onChange={(e) => onChannelFilter(e.target.value)}
-        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
       >
         <option value="all">All channels</option>
         {channels.map((ch) => (
@@ -496,7 +496,7 @@ function FacetedFilterBar({
       <select
         value={direction}
         onChange={(e) => onDirection(e.target.value as DirectionFilter)}
-        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
       >
         <option value="all">All directions</option>
         <option value="inbound">Inbound</option>
@@ -526,7 +526,7 @@ function FacetedFilterBar({
       <select
         value={sort}
         onChange={(e) => onSort(e.target.value as SortMode)}
-        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+        className="h-[36px] px-2 py-1.5 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-copy-13 text-ds-gray-1000 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
       >
         <option value="newest">Newest first</option>
         <option value="oldest">Oldest first</option>
@@ -874,7 +874,7 @@ export default function MessagesPage() {
               ref={parentRef}
               tabIndex={0}
               onKeyDown={handleKeyDown}
-              className="overflow-auto focus:outline-none"
+              className="overflow-auto focus:outline-hidden"
               style={{ height: "calc(100vh - 220px)", minHeight: "400px" }}
             >
               <div

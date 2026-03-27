@@ -293,7 +293,7 @@ function FieldRow({ field, config, onChange }: FieldRowProps) {
               field.type === "number" ? Number(e.target.value) : e.target.value,
             )
           }
-          className="w-full px-3 py-1.5 surface-inset text-label-13-mono text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-500 transition-colors"
+          className="w-full px-3 py-1.5 surface-inset text-label-13-mono text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden focus:border-ds-gray-500 transition-colors"
         />
       </div>
     </div>

@@ -75,7 +75,7 @@ export default function LoginPage() {
               placeholder="Dashboard token"
               autoFocus
               autoComplete="current-password"
-              className="w-full pl-9 pr-4 py-3 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-none focus:border-ds-gray-1000/60 transition-colors"
+              className="w-full pl-9 pr-4 py-3 surface-inset text-label-14 text-ds-gray-1000 placeholder:text-ds-gray-900 focus:outline-hidden focus:border-ds-gray-1000/60 transition-colors"
             />
           </div>
 

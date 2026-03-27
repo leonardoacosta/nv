@@ -569,7 +569,7 @@ export default function ChatPage() {
                 placeholder="Message Nova..."
                 disabled={sending}
                 rows={1}
-                className="w-full resize-none rounded-lg border border-ds-gray-400 bg-ds-gray-100 px-3.5 py-2.5 text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-none focus:border-ds-gray-700 transition-colors disabled:opacity-50"
+                className="w-full resize-none rounded-lg border border-ds-gray-400 bg-ds-gray-100 px-3.5 py-2.5 text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden focus:border-ds-gray-700 transition-colors disabled:opacity-50"
                 style={{ maxHeight: "96px" }}
               />
               {/* Transport mode indicator [3.10] */}

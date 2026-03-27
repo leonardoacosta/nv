@@ -293,6 +293,57 @@ export interface ActivityFeedGetResponse {
   events: ActivityFeedEvent[];
 }
 
+// ── GET /api/automations ──────────────────────────────────────────────────
+
+export interface AutomationReminder {
+  id: string;
+  message: string;
+  due_at: string;
+  channel: string;
+  created_at: string;
+  status: "pending" | "overdue";
+}
+
+export interface AutomationSchedule {
+  id: string;
+  name: string;
+  cron_expr: string;
+  action: string;
+  channel: string;
+  enabled: boolean;
+  last_run_at: string | null;
+  next_run: string | null;
+}
+
+export interface AutomationWatcher {
+  enabled: boolean;
+  interval_minutes: number;
+  quiet_start: string;
+  quiet_end: string;
+  last_run_at: string | null;
+}
+
+export interface AutomationBriefing {
+  last_generated_at: string | null;
+  next_generation: string | null;
+}
+
+export interface AutomationSession {
+  id: string;
+  project: string;
+  command: string;
+  status: string;
+  started_at: string;
+}
+
+export interface AutomationsGetResponse {
+  reminders: AutomationReminder[];
+  schedules: AutomationSchedule[];
+  watcher: AutomationWatcher;
+  briefing: AutomationBriefing;
+  active_sessions: AutomationSession[];
+}
+
 // ── GET /stats ─────────────────────────────────────────────────────────────
 
 /** Per-tool breakdown entry. Source: meta-svc fleet service. */
@@ -357,4 +408,34 @@ export interface DiaryGetResponse {
   date: string;
   entries: DiaryEntryItem[];
   total: number;
+}
+
+// ── GET /api/fleet-status ────────────────────────────────────────────────
+
+/** Health status for a single fleet service. */
+export interface FleetServiceStatus {
+  name: string;
+  url: string;
+  port: number;
+  status: "healthy" | "unreachable" | "unknown";
+  latency_ms: number | null;
+  tools: string[];
+}
+
+/** Fleet health aggregation. */
+export interface FleetHealthResponse {
+  fleet: {
+    status: "healthy" | "degraded" | "unhealthy" | "unknown";
+    services: FleetServiceStatus[];
+    healthy_count: number;
+    total_count: number;
+  };
+  channels: ChannelStatus[];
+}
+
+/** Status of a single channel. */
+export interface ChannelStatus {
+  name: string;
+  status: "configured" | "unknown";
+  direction: "bidirectional" | "inbound" | "outbound";
 }

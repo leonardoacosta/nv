@@ -11,6 +11,8 @@ export interface DiaryWriteInput {
   tokensIn?: number;
   tokensOut?: number;
   responseLatencyMs?: number;
+  routingTier?: number;
+  routingConfidence?: number;
 }
 
 /**
@@ -30,6 +32,8 @@ export async function writeEntry(input: DiaryWriteInput): Promise<void> {
       tokensIn: input.tokensIn ?? null,
       tokensOut: input.tokensOut ?? null,
       responseLatencyMs: input.responseLatencyMs ?? null,
+      routingTier: input.routingTier ?? null,
+      routingConfidence: input.routingConfidence ?? null,
     });
   } catch (err: unknown) {
     logger.error({ err, slug: input.slug }, "Failed to write diary entry — continuing");

@@ -1,0 +1,13 @@
+{
+  "tool": "contact_lookup",
+  "port": 4105,
+  "utterances": [
+    "who is John Smith",
+    "contact info for Sarah",
+    "look up Mike's email address",
+    "find the phone number for David",
+    "what's Emily's contact information",
+    "do you have contact details for the manager",
+    "search contacts for marketing team"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "tool": "reminders_list",
+  "port": 4106,
+  "utterances": [
+    "show my reminders",
+    "what do I need to do",
+    "list my pending tasks",
+    "any active reminders",
+    "what's on my to-do list",
+    "do I have any reminders set",
+    "show my task list",
+    "what reminders are active"
+  ]
+}

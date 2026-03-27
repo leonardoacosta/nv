@@ -1,0 +1,13 @@
+{
+  "tool": "reminder_create",
+  "port": 4106,
+  "utterances": [
+    "remind me to buy groceries",
+    "set a reminder for tomorrow",
+    "create a reminder to call the dentist",
+    "remind me about the meeting at 3pm",
+    "I need a reminder to submit the report",
+    "add a reminder for next week",
+    "don't let me forget to pick up the package"
+  ]
+}

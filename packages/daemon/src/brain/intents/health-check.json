@@ -1,0 +1,14 @@
+{
+  "tool": "health_check",
+  "port": 4100,
+  "utterances": [
+    "system status",
+    "are all services running",
+    "health check",
+    "is everything working",
+    "check service status",
+    "fleet health report",
+    "any services down",
+    "system health overview"
+  ]
+}

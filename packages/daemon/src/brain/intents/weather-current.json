@@ -1,0 +1,14 @@
+{
+  "tool": "weather_current",
+  "port": 4104,
+  "utterances": [
+    "what's the weather like",
+    "is it going to rain today",
+    "current temperature",
+    "weather forecast",
+    "how's the weather outside",
+    "do I need an umbrella",
+    "will it be sunny today",
+    "what's the temperature right now"
+  ]
+}

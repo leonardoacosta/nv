@@ -29,6 +29,13 @@
       "when": 1774566050063,
       "tag": "0003_bitter_shadowcat",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774601816961,
+      "tag": "0004_military_selene",
+      "breakpoints": true
     }
   ]
 }

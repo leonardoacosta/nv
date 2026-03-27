@@ -1,0 +1,13 @@
+{
+  "tool": "datetime_now",
+  "port": 4108,
+  "utterances": [
+    "what time is it",
+    "current time",
+    "what's today's date",
+    "what day is it",
+    "tell me the time",
+    "current date and time",
+    "what's the date today"
+  ]
+}

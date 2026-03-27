@@ -1,0 +1,13 @@
+{
+  "tool": "email_send",
+  "port": 4103,
+  "utterances": [
+    "send an email to John",
+    "compose a new email",
+    "write an email about the meeting",
+    "email Sarah about the project update",
+    "draft a message to the team",
+    "send a reply to that email",
+    "I need to email someone"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "tool": "messages_recent",
+  "port": 4102,
+  "utterances": [
+    "show recent messages",
+    "what are the latest messages",
+    "message history",
+    "what has been said recently",
+    "show me the conversation log",
+    "any recent messages",
+    "what messages came in",
+    "display recent conversations"
+  ]
+}

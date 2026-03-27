@@ -1,0 +1,14 @@
+{
+  "tool": "calendar_today",
+  "port": 4106,
+  "utterances": [
+    "what's on my calendar today",
+    "show me today's events",
+    "do I have any meetings today",
+    "what's my schedule for today",
+    "today's agenda please",
+    "am I free today",
+    "what meetings do I have",
+    "any appointments today"
+  ]
+}

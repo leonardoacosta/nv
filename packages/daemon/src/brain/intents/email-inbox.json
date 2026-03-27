@@ -1,0 +1,14 @@
+{
+  "tool": "email_inbox",
+  "port": 4103,
+  "utterances": [
+    "check my email",
+    "any new emails",
+    "show my inbox",
+    "do I have new mail",
+    "unread emails",
+    "what's in my inbox",
+    "any important emails",
+    "check for new messages in my email"
+  ]
+}

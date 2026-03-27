@@ -1,0 +1,14 @@
+{
+  "tool": "calendar_upcoming",
+  "port": 4106,
+  "utterances": [
+    "upcoming events",
+    "what's next on my calendar",
+    "next meeting",
+    "what's coming up this week",
+    "my schedule for the week",
+    "do I have anything tomorrow",
+    "when is my next appointment",
+    "what events are coming up"
+  ]
+}

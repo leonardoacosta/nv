@@ -1,0 +1,13 @@
+{
+  "tool": "memory_read",
+  "port": 4101,
+  "utterances": [
+    "what do you know about project alpha",
+    "recall what we discussed yesterday",
+    "do you remember the meeting notes",
+    "what's stored in memory about the client",
+    "search your memory for deployment issues",
+    "what do you remember about the API redesign",
+    "recall information about the budget"
+  ]
+}

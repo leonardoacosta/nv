@@ -94,8 +94,8 @@ async function checkSSH(): Promise<SshResult> {
   const start = performance.now();
   const { exitCode } = await exec(
     "ssh",
-    ["-o", "ConnectTimeout=3", "-o", "BatchMode=yes", "cloudpc", "echo", "ok"],
-    5000,
+    ["-o", "ConnectTimeout=10", "-o", "BatchMode=yes", "cloudpc", "echo", "ok"],
+    15000,
   );
   const latencyMs = Math.round(performance.now() - start);
   return { reachable: exitCode === 0, latencyMs: exitCode === 0 ? latencyMs : null };

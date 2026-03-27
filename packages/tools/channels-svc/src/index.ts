@@ -30,8 +30,9 @@ const registry = new AdapterRegistry();
 const telegramToken = process.env["TELEGRAM_BOT_TOKEN"];
 registry.register(new TelegramAdapter(telegramToken));
 
-// Stub adapters
-registry.register(new DiscordAdapter());
+// Discord: real adapter
+const discordToken = process.env["DISCORD_BOT_TOKEN"];
+registry.register(new DiscordAdapter(discordToken));
 registry.register(new TeamsAdapter());
 registry.register(new EmailAdapter());
 registry.register(new IMessageAdapter());

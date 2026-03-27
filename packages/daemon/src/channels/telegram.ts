@@ -18,6 +18,7 @@ import { buildContactsReply } from "../telegram/commands/contacts.js";
 import { buildSoulReply } from "../telegram/commands/soul.js";
 import { buildStatusReply } from "../telegram/commands/status.js";
 import { buildAzReply } from "../telegram/commands/az.js";
+import { buildMailReply } from "../telegram/commands/mail.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -382,6 +383,7 @@ export class TelegramAdapter {
         { command: "soul", description: "Read Nova's personality" },
         { command: "status", description: "Daemon and fleet status" },
         { command: "az", description: "Run Azure CLI command (/az vm list)" },
+        { command: "mail", description: "Read Outlook email (/mail, /mail read ID, /mail search query)" },
       ])
       .catch((err: unknown) => {
         this.log.error({ err }, "Failed to register bot commands");
@@ -478,6 +480,24 @@ export class TelegramAdapter {
       const chatId = String(msg.chat.id);
       const command = match?.[3]?.trim();
       void this.handleDirectCommand(chatId, () => buildAzReply(command));
+    });
+
+    // /mail [subcommand] [arg] — Outlook email
+    this.bot.onText(/^\/mail(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const argsText = match?.[3]?.trim();
+      let subcommand: string | undefined;
+      let arg: string | undefined;
+      if (argsText) {
+        const spaceIdx = argsText.indexOf(" ");
+        if (spaceIdx === -1) {
+          subcommand = argsText;
+        } else {
+          subcommand = argsText.slice(0, spaceIdx);
+          arg = argsText.slice(spaceIdx + 1).trim();
+        }
+      }
+      void this.handleDirectCommand(chatId, () => buildMailReply(subcommand, arg));
     });
 
     // ── Agent-routed commands (complex — go through onMessageCallback) ──────

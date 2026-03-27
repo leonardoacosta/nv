@@ -8,6 +8,7 @@ import type { ToolRegistry } from "./tools.js";
 import { SshError } from "./ssh.js";
 import { calendarToday, calendarUpcoming, calendarNext } from "./tools/calendar.js";
 import { adoProjects, adoPipelines, adoBuilds } from "./tools/ado.js";
+import { outlookInbox, outlookRead, outlookSearch } from "./tools/mail.js";
 
 const startedAt = Date.now();
 
@@ -125,6 +126,56 @@ export function createHttpApp(
       const limitRaw = c.req.query("limit");
       const limit = limitRaw ? Math.min(50, Math.max(1, parseInt(limitRaw, 10) || 10)) : 10;
       const result = await adoBuilds(config, project, pipeline, limit);
+      return c.json({ result });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ error: err.message, status: err.httpStatus }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message, status: 500 }, 500);
+    }
+  });
+
+  // ── Mail routes ────────────────────────────────────────────────
+
+  app.get("/mail/inbox", async (c) => {
+    try {
+      const limitRaw = c.req.query("limit");
+      const limit = limitRaw ? Math.min(50, Math.max(1, parseInt(limitRaw, 10) || 10)) : 10;
+      const result = await outlookInbox(config, limit);
+      return c.json({ result });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ error: err.message, status: err.httpStatus }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message, status: 500 }, 500);
+    }
+  });
+
+  app.get("/mail/read/:messageId", async (c) => {
+    try {
+      const messageId = c.req.param("messageId");
+      const result = await outlookRead(config, messageId);
+      return c.json({ result });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ error: err.message, status: err.httpStatus }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message, status: 500 }, 500);
+    }
+  });
+
+  app.post("/mail/search", async (c) => {
+    try {
+      const body = await c.req.json<{ query?: string; limit?: number }>();
+      const query = body.query;
+      if (!query) {
+        return c.json({ error: "query is required", status: 400 }, 400);
+      }
+      const limit = body.limit ? Math.min(50, Math.max(1, body.limit)) : 10;
+      const result = await outlookSearch(config, query, limit);
       return c.json({ result });
     } catch (err) {
       if (err instanceof SshError) {

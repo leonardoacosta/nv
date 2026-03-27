@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 import { desc, gte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { messages, obligations, diary } from "@nova/db";
+import { messages, obligations, diary, sessions } from "@nova/db";
 import type { ActivityFeedEvent, ActivityFeedGetResponse } from "@/types/api";
+
+function getObligationSeverity(status: string): "error" | "warning" | "info" {
+  const lower = status.toLowerCase();
+  if (lower.includes("failed") || lower.includes("error")) return "error";
+  if (lower === "open" || lower.includes("detected")) return "warning";
+  return "info";
+}
 
 export async function GET() {
   try {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [messageRows, obligationRows, diaryRows] = await Promise.all([
+    const [messageRows, obligationRows, diaryRows, sessionRows] = await Promise.all([
       db
         .select()
         .from(messages)
@@ -27,6 +34,12 @@ export async function GET() {
         .where(gte(diary.createdAt, twentyFourHoursAgo))
         .orderBy(desc(diary.createdAt))
         .limit(50),
+      db
+        .select()
+        .from(sessions)
+        .where(gte(sessions.startedAt, twentyFourHoursAgo))
+        .orderBy(desc(sessions.startedAt))
+        .limit(50),
     ]);
 
     const events: ActivityFeedEvent[] = [];
@@ -40,6 +53,7 @@ export async function GET() {
         timestamp: row.createdAt.toISOString(),
         icon_hint: "MessageSquare",
         summary: `${direction === "inbound" ? "In" : "Out"} [${row.channel}] ${row.sender ?? "unknown"}: ${preview}`,
+        severity: "info",
       });
     }
 
@@ -50,6 +64,7 @@ export async function GET() {
         timestamp: row.createdAt.toISOString(),
         icon_hint: "CheckSquare",
         summary: `${row.detectedAction} — ${row.status}`,
+        severity: getObligationSeverity(row.status),
       });
     }
 
@@ -60,6 +75,22 @@ export async function GET() {
         timestamp: row.createdAt.toISOString(),
         icon_hint: "BookOpen",
         summary: `${row.slug} [${row.channel}]`,
+        severity: "info",
+      });
+    }
+
+    for (const row of sessionRows) {
+      const isCompleted = row.status === "completed" || row.status === "stopped";
+      const summary = isCompleted
+        ? `Session completed: ${row.project} (${row.command})`
+        : `Session started: ${row.project} (${row.command})`;
+      events.push({
+        id: `session-${row.id}`,
+        type: "session",
+        timestamp: row.startedAt.toISOString(),
+        icon_hint: "Activity",
+        summary,
+        severity: "info",
       });
     }
 

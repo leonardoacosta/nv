@@ -283,13 +283,14 @@ export type ChatSSEEvent = ChatSSEChunk | ChatSSEDone | ChatSSEError;
 
 // ── GET /api/activity-feed ────────────────────────────────────────────────
 
-/** A single event in the unified activity feed (messages + obligations + diary). */
+/** A single event in the unified activity feed (messages + obligations + diary + sessions). */
 export interface ActivityFeedEvent {
   id: string;
-  type: "message" | "obligation" | "diary";
+  type: "message" | "obligation" | "diary" | "session";
   timestamp: string;
   icon_hint: string;
   summary: string;
+  severity: "error" | "warning" | "info";
 }
 
 /** Response from GET /api/activity-feed. */

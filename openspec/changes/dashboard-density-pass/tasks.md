@@ -3,8 +3,8 @@
 
 ## API Batch
 
-- [ ] [1.1] [P-1] Update `apps/dashboard/types/api.ts` -- add `severity: "error" | "warning" | "info"` field to `ActivityFeedEvent` interface; add `"session"` to the `type` union (`type: "message" | "obligation" | "diary" | "session"`) [owner:api-engineer]
-- [ ] [1.2] [P-1] Update `apps/dashboard/app/api/activity-feed/route.ts` -- add sessions query: select from `sessions` table where `startedAt >= twentyFourHoursAgo`, map each to `ActivityFeedEvent` with type `"session"`, icon_hint `"Activity"`, and summary `"Session started: {project} ({agent_name})"` or `"Session completed: {project} ({duration})"` based on status; assign severity to all events: obligation events with "failed" or "error" in status get `"error"`, obligation events with status "open" or "detected" get `"warning"`, all others get `"info"` [owner:api-engineer]
+- [x] [1.1] [P-1] Update `apps/dashboard/types/api.ts` -- add `severity: "error" | "warning" | "info"` field to `ActivityFeedEvent` interface; add `"session"` to the `type` union (`type: "message" | "obligation" | "diary" | "session"`) [owner:api-engineer]
+- [x] [1.2] [P-1] Update `apps/dashboard/app/api/activity-feed/route.ts` -- add sessions query: select from `sessions` table where `startedAt >= twentyFourHoursAgo`, map each to `ActivityFeedEvent` with type `"session"`, icon_hint `"Activity"`, and summary `"Session started: {project} ({agent_name})"` or `"Session completed: {project} ({duration})"` based on status; assign severity to all events: obligation events with "failed" or "error" in status get `"error"`, obligation events with status "open" or "detected" get `"warning"`, all others get `"info"` [owner:api-engineer]
 
 ## UI Batch 1 -- Stat Strip Component
 

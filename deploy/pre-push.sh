@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Nova - Pre-push deploy hook
+# Nova - Pre-push deploy hook (graceful)
 #
-# Selectively deploys only the components that changed:
-#   - Daemon + tool fleet: when packages/daemon/, packages/db/, packages/tools/, deploy/, or config/ change
-#   - Dashboard: when apps/dashboard/ or packages/db/ change
+# Selectively deploys only the components that changed. Avoids restarting
+# the daemon when Nova may be mid-conversation — only restarts when the
+# daemon code, DB schema, config, or MCP registration changed.
 #
 # Skip deployment:  SKIP_DEPLOY=1 git push
 #
@@ -39,19 +39,28 @@ GIT_ROOT=$(git rev-parse --show-toplevel)
 REMOTE_SHA=$(git rev-parse origin/main 2>/dev/null || echo "")
 if [[ -z "$REMOTE_SHA" ]]; then
     # First push — deploy everything
-    CHANGED_FILES="(first push — all files)"
+    CHANGED_FILES="(first push)"
     DAEMON_CHANGED=true
+    FLEET_CHANGED=true
     DASHBOARD_CHANGED=true
 else
     CHANGED_FILES=$(git diff --name-only "$REMOTE_SHA"..HEAD 2>/dev/null || echo "")
 
-    # Daemon/fleet: packages/daemon/, packages/db/, packages/tools/, deploy/, config/
+    # Daemon restart needed: daemon code, DB schema, config, MCP, systemd services
+    # These require the daemon process to reload to pick up changes.
     DAEMON_CHANGED=false
-    if echo "$CHANGED_FILES" | grep -qE '^(packages/daemon/|packages/db/|packages/tools/|deploy/|config/)'; then
+    if echo "$CHANGED_FILES" | grep -qE '^(packages/daemon/|packages/db/|config/|deploy/.*\.service|deploy/.*\.target)'; then
         DAEMON_CHANGED=true
     fi
 
-    # Dashboard: apps/dashboard/, packages/db/ (shared dep), docker-compose.yml, .dockerignore
+    # Fleet rebuild needed: tool service code or shared DB package
+    # Individual services restart independently — doesn't affect the daemon.
+    FLEET_CHANGED=false
+    if echo "$CHANGED_FILES" | grep -qE '^(packages/tools/|packages/db/)'; then
+        FLEET_CHANGED=true
+    fi
+
+    # Dashboard rebuild: dashboard code, shared DB, docker config
     DASHBOARD_CHANGED=false
     if echo "$CHANGED_FILES" | grep -qE '^(apps/dashboard/|packages/db/|docker-compose\.yml|\.dockerignore)'; then
         DASHBOARD_CHANGED=true
@@ -60,21 +69,24 @@ fi
 
 # ── Summary ────────────────────────────────────────────────────────────────
 
-if ! $DAEMON_CHANGED && ! $DASHBOARD_CHANGED; then
-    echo "=== Nova: No deployable changes (docs/specs/config only) ==="
+if ! $DAEMON_CHANGED && ! $FLEET_CHANGED && ! $DASHBOARD_CHANGED; then
+    echo "=== Nova: No deployable changes (docs/specs only) ==="
     echo "    Skipping deploy. Push continues."
     exit 0
 fi
 
 echo "=== Nova: Selective deploy ==="
-echo "    Daemon/fleet: $($DAEMON_CHANGED && echo 'YES — changed' || echo 'skip')"
-echo "    Dashboard:    $($DASHBOARD_CHANGED && echo 'YES — changed' || echo 'skip')"
+echo "    Daemon:    $($DAEMON_CHANGED && echo 'YES — will restart' || echo 'skip (Nova keeps running)')"
+echo "    Fleet:     $($FLEET_CHANGED && echo 'YES — services restart' || echo 'skip')"
+echo "    Dashboard: $($DASHBOARD_CHANGED && echo 'YES — container rebuild' || echo 'skip')"
 echo "    Log: ${LOG_FILE}"
 echo ""
 
 RESULTS=()
 
-# ── Deploy Daemon + Tool Fleet ─────────────────────────────────────────────
+# ── Deploy Daemon ──────────────────────────────────────────────────────────
+# Only when daemon code/config/schema changed. Avoids interrupting Nova
+# mid-conversation for fleet-only or dashboard-only changes.
 
 if $DAEMON_CHANGED; then
     DEPLOY_SCRIPT="${GIT_ROOT}/deploy/install-ts.sh"
@@ -82,19 +94,47 @@ if $DAEMON_CHANGED; then
     if [[ ! -f "$DEPLOY_SCRIPT" ]]; then
         echo "Warning: deploy/install-ts.sh not found — skipping daemon deploy"
         RESULTS+=("daemon: SKIPPED (no script)")
-    elif bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
-        echo ""
-        echo "Daemon + tool fleet deploy succeeded."
-        RESULTS+=("daemon+fleet: OK")
     else
-        echo ""
-        echo "Daemon deploy failed. Push continues — check logs:"
-        echo "  ${LOG_FILE}"
-        echo "  journalctl --user -u nova-ts.service -n 30"
-        RESULTS+=("daemon+fleet: FAILED")
+        # install-ts.sh also calls install-tools.sh internally
+        if bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
+            echo ""
+            echo "Daemon + fleet deploy succeeded."
+            RESULTS+=("daemon: OK (restarted)")
+            RESULTS+=("fleet: OK (via daemon deploy)")
+            FLEET_CHANGED=false  # Already handled by install-ts.sh
+        else
+            echo ""
+            echo "Daemon deploy failed. Push continues — check logs."
+            RESULTS+=("daemon: FAILED")
+        fi
     fi
 else
-    RESULTS+=("daemon+fleet: skip (no changes)")
+    RESULTS+=("daemon: skip (not interrupted)")
+fi
+
+# ── Deploy Fleet Only ──────────────────────────────────────────────────────
+# When only tool services changed — rebuild and restart fleet without
+# touching the daemon. Nova stays up processing messages.
+
+if $FLEET_CHANGED; then
+    TOOLS_SCRIPT="${GIT_ROOT}/deploy/install-tools.sh"
+
+    if [[ ! -f "$TOOLS_SCRIPT" ]]; then
+        echo "Warning: deploy/install-tools.sh not found — skipping fleet deploy"
+        RESULTS+=("fleet: SKIPPED (no script)")
+    else
+        echo ""
+        echo "=== Nova: Deploying tool fleet only (daemon stays up) ==="
+        if bash "$TOOLS_SCRIPT" 2>&1 | tee -a "$LOG_FILE"; then
+            echo ""
+            echo "Tool fleet deploy succeeded. Daemon was NOT restarted."
+            RESULTS+=("fleet: OK (daemon untouched)")
+        else
+            echo ""
+            echo "Fleet deploy failed. Daemon still running."
+            RESULTS+=("fleet: FAILED")
+        fi
+    fi
 fi
 
 # ── Deploy Dashboard ───────────────────────────────────────────────────────
@@ -103,7 +143,6 @@ if $DASHBOARD_CHANGED; then
     COMPOSE_FILE="${GIT_ROOT}/docker-compose.yml"
 
     if [[ ! -f "$COMPOSE_FILE" ]]; then
-        echo "    No docker-compose.yml found — skipping dashboard deploy"
         RESULTS+=("dashboard: SKIPPED (no compose)")
     else
         echo ""
@@ -128,11 +167,9 @@ if $DASHBOARD_CHANGED; then
                 echo "    Dashboard deploy succeeded."
                 RESULTS+=("dashboard: OK")
             else
-                echo "    Dashboard container not running."
                 RESULTS+=("dashboard: FAILED (not running)")
             fi
         else
-            echo "    Dashboard build failed."
             RESULTS+=("dashboard: FAILED (build)")
         fi
     fi
@@ -148,7 +185,6 @@ for r in "${RESULTS[@]}"; do
     echo "    $r"
 done
 
-# Build TTS message from results
 TTS_MSG="Nova deploy:"
 for r in "${RESULTS[@]}"; do
     TTS_MSG="$TTS_MSG $r."

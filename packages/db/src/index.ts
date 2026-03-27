@@ -32,18 +32,6 @@ export type { SessionEvent, NewSessionEvent } from "./schema/session-events.js";
 
 export { projects } from "./schema/projects.js";
 export type { Project, NewProject } from "./schema/projects.js";
-export {
-  projectCategoryEnum,
-  projectStatusEnum,
-  createProjectSchema,
-  updateProjectSchema,
-} from "./schema/projects.js";
-export type {
-  ProjectCategory,
-  ProjectStatus,
-  CreateProjectInput,
-  UpdateProjectInput,
-} from "./schema/projects.js";
 
 export { settings } from "./schema/settings.js";
 export type { Setting, NewSetting } from "./schema/settings.js";

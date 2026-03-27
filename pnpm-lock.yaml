@@ -148,9 +148,6 @@ importers:
       postgres:
         specifier: ^3.4.5
         version: 3.4.8
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.10.7
@@ -549,6 +546,25 @@ importers:
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/validators:
+    dependencies:
+      drizzle-zod:
+        specifier: ^0.8.3
+        version: 0.8.3(drizzle-orm@0.39.3(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8))(zod@3.25.76)
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@nova/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^0.39.3
+        version: 0.39.3(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8)
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -1999,6 +2015,12 @@ packages:
         optional: true
       sqlite3:
         optional: true
+
+  drizzle-zod@0.8.3:
+    resolution: {integrity: sha512-66yVOuvGhKJnTdiqj1/Xaaz9/qzOdRJADpDa68enqS6g3t0kpNkwNYjUuaeXgZfO/UWuIM9HIhSlJ6C5ZraMww==}
+    peerDependencies:
+      drizzle-orm: '>=0.36.0'
+      zod: ^3.25.0 || ^4.0.0
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -4681,6 +4703,11 @@ snapshots:
       '@types/pg': 8.20.0
       pg: 8.20.0
       postgres: 3.4.8
+
+  drizzle-zod@0.8.3(drizzle-orm@0.39.3(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8))(zod@3.25.76):
+    dependencies:
+      drizzle-orm: 0.39.3(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8)
+      zod: 3.25.76
 
   dunder-proto@1.0.1:
     dependencies:

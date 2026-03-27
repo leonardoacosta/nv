@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { memory } from "@nova/db";
-import { toSnakeCase } from "@/lib/case";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,20 +24,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // No topic — return list of all topics
+    // No topic — return list of topic names (frontend expects string[])
     const rows = await db
-      .select({
-        id: memory.id,
-        topic: memory.topic,
-        updatedAt: memory.updatedAt,
-      })
+      .select({ topic: memory.topic })
       .from(memory);
 
-    const mapped = rows.map((row) =>
-      toSnakeCase(row as unknown as Record<string, unknown>),
-    );
-
-    return NextResponse.json({ topics: mapped });
+    return NextResponse.json({ topics: rows.map((r) => r.topic) });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

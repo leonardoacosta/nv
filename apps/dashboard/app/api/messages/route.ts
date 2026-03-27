@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { messages } from "@nova/db";
-import { toSnakeCase } from "@/lib/case";
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,23 +15,25 @@ export async function GET(request: NextRequest) {
     const where = channel ? eq(messages.channel, channel) : undefined;
 
     const rows = await db
-      .select({
-        id: messages.id,
-        channel: messages.channel,
-        sender: messages.sender,
-        content: messages.content,
-        metadata: messages.metadata,
-        createdAt: messages.createdAt,
-      })
+      .select()
       .from(messages)
       .where(where)
       .orderBy(desc(messages.createdAt))
       .limit(limit)
       .offset(offset);
 
-    const mapped = rows.map((row) =>
-      toSnakeCase(row as unknown as Record<string, unknown>),
-    );
+    // Map to StoredMessage shape expected by the frontend
+    const mapped = rows.map((row, idx) => ({
+      id: idx + offset,
+      timestamp: row.createdAt.toISOString(),
+      direction: row.sender === "nova" ? "outbound" : "inbound",
+      channel: row.channel ?? "unknown",
+      sender: row.sender ?? "unknown",
+      content: row.content,
+      response_time_ms: null,
+      tokens_in: null,
+      tokens_out: null,
+    }));
 
     return NextResponse.json({
       messages: mapped,

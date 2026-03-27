@@ -228,9 +228,11 @@ export class TelegramAdapter {
 
     // Handle plain text messages (non-command)
     this.bot.on("message", (msg) => {
-      // Skip messages that are commands — handled by onText handlers
+      // Skip messages that are Telegram bot commands — handled by onText handlers.
+      // A command is a single slash-word like /start or /diary, NOT a file path
+      // like /home/user/... or a message that merely begins with /.
       const text = msg.text ?? "";
-      if (text.startsWith("/")) return;
+      if (/^\/[a-z_]+(\s|$|@)/i.test(text)) return;
 
       void this.handleInboundMessage(msg);
     });

@@ -115,6 +115,7 @@ export function normalizeTextMessage(msg: TelegramBot.Message): Message {
   const senderName = msg.from?.first_name ?? "Unknown";
   const text = msg.text ?? "";
   const timestamp = new Date(msg.date * 1000);
+  const replyToMessageId = msg.reply_to_message?.message_id;
 
   return {
     id: randomUUID(),
@@ -124,7 +125,8 @@ export function normalizeTextMessage(msg: TelegramBot.Message): Message {
     type: "text",
     from: normalizeUser(msg.from),
     timestamp,
-    metadata: { messageId: msg.message_id },
+    replyToMessageId,
+    metadata: { messageId: msg.message_id, replyToMessageId },
     // Legacy fields
     threadId: undefined,
     senderId,
@@ -143,6 +145,7 @@ export async function normalizeVoiceMessage(
   const senderName = msg.from?.first_name ?? "Unknown";
   const timestamp = new Date(msg.date * 1000);
   const fileId = msg.voice?.file_id ?? "";
+  const replyToMessageId = msg.reply_to_message?.message_id;
 
   let fileUrl: string | undefined;
   if (fileId) {
@@ -161,8 +164,10 @@ export async function normalizeVoiceMessage(
     type: "voice",
     from: normalizeUser(msg.from),
     timestamp,
+    replyToMessageId,
     metadata: {
       messageId: msg.message_id,
+      replyToMessageId,
       fileId,
       ...(fileUrl !== undefined ? { fileUrl } : {}),
     },
@@ -182,6 +187,7 @@ export function normalizePhotoMessage(msg: TelegramBot.Message): Message {
   const text = msg.caption ?? "";
   const timestamp = new Date(msg.date * 1000);
   const fileIds = (msg.photo ?? []).map((p) => p.file_id);
+  const replyToMessageId = msg.reply_to_message?.message_id;
 
   return {
     id: randomUUID(),
@@ -191,7 +197,8 @@ export function normalizePhotoMessage(msg: TelegramBot.Message): Message {
     type: "photo",
     from: normalizeUser(msg.from),
     timestamp,
-    metadata: { messageId: msg.message_id, fileIds },
+    replyToMessageId,
+    metadata: { messageId: msg.message_id, replyToMessageId, fileIds },
     // Legacy fields
     threadId: undefined,
     senderId,

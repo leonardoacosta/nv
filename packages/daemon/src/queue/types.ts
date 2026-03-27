@@ -10,6 +10,7 @@ export interface Job {
   status: JobStatus;
   abortController: AbortController;
   handler: (signal: AbortSignal) => Promise<void>;
+  threadId: string;
   createdAt: Date;
   startedAt?: Date;
   completedAt?: Date;
@@ -20,6 +21,18 @@ export interface JobEvent {
   type: "enqueued" | "started" | "completed" | "failed" | "cancelled";
   job: Job;
   queueDepth: number;
+}
+
+export interface EnqueueOpts {
+  threadId: string;
+  replyToMessageId?: number;
+}
+
+export interface EnqueueResult {
+  job: Job;
+  startedImmediately: boolean;
+  position: number;
+  threadState: "thread-busy" | "global-full" | "started";
 }
 
 export interface QueueConfig {

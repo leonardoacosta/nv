@@ -18,6 +18,7 @@ export interface Message {
   metadata: Record<string, unknown>;
   // Legacy fields — kept for backward compatibility with existing code
   threadId?: string;
+  replyToMessageId?: number;
   senderId: string;
   senderName: string;
   content: string;

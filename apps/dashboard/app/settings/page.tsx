@@ -16,6 +16,8 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import SettingsSection from "@/app/settings/components/SettingsSection";
 import SaveRestartBar from "@/app/settings/components/SaveRestartBar";
 import type { PutConfigRequest } from "@/types/api";
+import { trpcClient } from "@/lib/trpc/client";
+// apiFetch retained for config PUT (no tRPC updateConfig procedure exists yet)
 import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -328,9 +330,7 @@ export default function SettingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/config");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ConfigObject;
+      const data = (await trpcClient.system.config.query()) as ConfigObject;
       setConfig(data);
       setOriginal(data);
     } catch (err) {

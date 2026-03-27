@@ -24,12 +24,11 @@ import {
   Terminal,
   HelpCircle,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import EmptyState from "@/components/layout/EmptyState";
 import QuerySkeleton from "@/components/layout/QuerySkeleton";
 import ObligationSummaryBar from "@/components/ObligationSummaryBar";
-// ActivityFeed retained in codebase for other pages; removed from Active tab layout
 import ApprovalQueueItem from "@/components/approvals/ApprovalQueueItem";
 import BatchActionBar from "@/components/approvals/BatchActionBar";
 import QueueClearCelebration from "@/components/approvals/QueueClearCelebration";
@@ -41,9 +40,7 @@ import type {
   ObligationNote,
   ObligationsGetResponse,
 } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api-query";
-import { queryKeys } from "@/lib/query-keys";
+import { trpc } from "@/lib/trpc/react";
 import KanbanBoard from "@/components/obligations/KanbanBoard";
 import { useKanbanKeyboard } from "@/hooks/useKanbanKeyboard";
 
@@ -237,17 +234,24 @@ function ObligationCard({
   const mostRecentNote = notes[0];
   const olderNotes = notes.slice(1);
 
+  const updateMutation = useMutation(
+    trpc.obligation.update.mutationOptions({
+      onSuccess: () => onRefresh(),
+    }),
+  );
+
+  const executeMutation = useMutation(
+    trpc.obligation.execute.mutationOptions({
+      onSuccess: () => onRefresh(),
+    }),
+  );
+
   async function patchStatus(status: string) {
     setActionPending(true);
     try {
-      const res = await apiFetch(`/api/obligations/${obligation.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) onRefresh();
+      await updateMutation.mutateAsync({ id: obligation.id, status });
     } catch {
-      // ignore — user can retry
+      // ignore -- user can retry
     } finally {
       setActionPending(false);
     }
@@ -256,10 +260,7 @@ function ObligationCard({
   async function handleStart() {
     setActionPending(true);
     try {
-      const res = await apiFetch(`/api/obligations/${obligation.id}/execute`, {
-        method: "POST",
-      });
-      if (res.ok) onRefresh();
+      await executeMutation.mutateAsync({ id: obligation.id });
     } catch {
       // ignore
     } finally {
@@ -811,6 +812,7 @@ function DetailPanel({
 // ---------------------------------------------------------------------------
 
 function ApprovalsTabContent() {
+  const queryClient = useQueryClient();
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -825,28 +827,29 @@ function ApprovalsTabContent() {
   const pending = approvals.filter((a) => a.status === "pending");
   const selected = pending.find((a) => a.id === selectedId) ?? null;
 
-  const fetchApprovals = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/obligations?owner=leo&status=open");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ObligationsGetResponse;
-      const mapped = (data.obligations ?? []).map(mapObligationToApproval);
+  const approvalsQuery = useQuery(
+    trpc.obligation.list.queryOptions({ owner: "leo", status: "open" }),
+  );
+
+  // Sync query results into local state for approval workflow
+  useEffect(() => {
+    if (approvalsQuery.data) {
+      const mapped = (approvalsQuery.data.obligations ?? []).map(mapObligationToApproval);
       setApprovals(mapped);
       if (mapped.length > 0 && !selectedId) {
         setSelectedId(mapped[0]!.id);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load approvals");
-    } finally {
       setLoading(false);
     }
-  }, [selectedId]);
+    if (approvalsQuery.error) {
+      setError(approvalsQuery.error.message);
+      setLoading(false);
+    }
+  }, [approvalsQuery.data, approvalsQuery.error, selectedId]);
 
-  useEffect(() => {
-    void fetchApprovals();
-  }, [fetchApprovals]);
+  const fetchApprovals = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+  }, [queryClient]);
 
   useDaemonEvents(
     useCallback(
@@ -858,11 +861,26 @@ function ApprovalsTabContent() {
     "approval",
   );
 
+  const approveMutation = useMutation(
+    trpc.obligation.approve.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+      },
+    }),
+  );
+
+  const dismissMutation = useMutation(
+    trpc.obligation.update.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+      },
+    }),
+  );
+
   const handleApprove = async (id: string) => {
     setApproving(true);
     try {
-      const res = await apiFetch(`/api/approvals/${id}/approve`, { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await approveMutation.mutateAsync({ id });
       setApprovals((prev) => {
         const next = prev.filter((a) => a.id !== id);
         if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
@@ -883,12 +901,7 @@ function ApprovalsTabContent() {
   const handleDismiss = async (id: string) => {
     setDismissing(true);
     try {
-      const res = await apiFetch(`/api/obligations/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "dismissed" }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await dismissMutation.mutateAsync({ id, status: "dismissed" });
       setApprovals((prev) => {
         const next = prev.filter((a) => a.id !== id);
         if (next.filter((a) => a.status === "pending").length === 0 && prev.filter((a) => a.status === "pending").length > 0) {
@@ -924,10 +937,7 @@ function ApprovalsTabContent() {
     setBatchBusy(true);
     try {
       await Promise.all(
-        Array.from(checkedIds).map(async (id) => {
-          const res = await apiFetch(`/api/approvals/${id}/approve`, { method: "POST" });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        }),
+        Array.from(checkedIds).map((id) => approveMutation.mutateAsync({ id })),
       );
       setApprovals((prev) => {
         const next = prev.filter((a) => !checkedIds.has(a.id));
@@ -950,14 +960,9 @@ function ApprovalsTabContent() {
     setBatchBusy(true);
     try {
       await Promise.all(
-        Array.from(checkedIds).map(async (id) => {
-          const res = await apiFetch(`/api/obligations/${id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: "dismissed" }),
-          });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        }),
+        Array.from(checkedIds).map((id) =>
+          dismissMutation.mutateAsync({ id, status: "dismissed" }),
+        ),
       );
       setApprovals((prev) => {
         const next = prev.filter((a) => !checkedIds.has(a.id));
@@ -1101,36 +1106,32 @@ function KanbanBoardWithKeyboard({
 }: KanbanBoardWithKeyboardProps) {
   const [keyboardExpandedId, setKeyboardExpandedId] = useState<string | null>(null);
 
+  const kbUpdateMutation = useMutation(
+    trpc.obligation.update.mutationOptions({
+      onSuccess: () => onRefresh(),
+    }),
+  );
+
   const handleKeyboardDone = useCallback(
     async (id: string) => {
       try {
-        await apiFetch(`/api/obligations/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "done" }),
-        });
-        onRefresh();
+        await kbUpdateMutation.mutateAsync({ id, status: "done" });
       } catch {
         // ignore
       }
     },
-    [onRefresh],
+    [kbUpdateMutation],
   );
 
   const handleKeyboardDismiss = useCallback(
     async (id: string) => {
       try {
-        await apiFetch(`/api/obligations/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "dismissed" }),
-        });
-        onRefresh();
+        await kbUpdateMutation.mutateAsync({ id, status: "dismissed" });
       } catch {
         // ignore
       }
     },
-    [onRefresh],
+    [kbUpdateMutation],
   );
 
   const handleKeyboardReassign = useCallback(
@@ -1139,17 +1140,12 @@ function KanbanBoardWithKeyboard({
       if (!obl) return;
       const newOwner = obl.owner === "nova" ? "leo" : "nova";
       try {
-        await apiFetch(`/api/obligations/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ owner: newOwner }),
-        });
-        onRefresh();
+        await kbUpdateMutation.mutateAsync({ id, owner: newOwner });
       } catch {
         // ignore
       }
     },
-    [obligations, onRefresh],
+    [obligations, kbUpdateMutation],
   );
 
   useKanbanKeyboard({
@@ -1216,16 +1212,16 @@ function ObligationsPage() {
   const listRef = useRef<HTMLDivElement>(null);
 
   // Query: obligations list
-  const oblQuery = useApiQuery<ObligationsGetResponse>("/api/obligations");
+  const oblQuery = useQuery(trpc.obligation.list.queryOptions({}));
   const obligations = oblQuery.data?.obligations ?? [];
   const loading = oblQuery.isLoading;
   const error = oblQuery.error;
 
   // Query: config for deadline threshold
-  const configQuery = useApiQuery<Record<string, unknown>>("/api/config");
+  const configQuery = useQuery(trpc.system.config.queryOptions());
   useEffect(() => {
     if (configQuery.data) {
-      const hours = configQuery.data.approaching_deadline_hours;
+      const hours = (configQuery.data as Record<string, unknown>).approaching_deadline_hours;
       if (typeof hours === "number" && hours > 0) {
         setApproachingDeadlineHours(hours);
       }
@@ -1233,7 +1229,7 @@ function ObligationsPage() {
   }, [configQuery.data]);
 
   const fetchObligations = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/obligations") });
+    void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
   }, [queryClient]);
 
   const toggleExpand = useCallback((id: string) => {

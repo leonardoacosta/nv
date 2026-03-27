@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Activity, RefreshCw, AlertCircle } from "lucide-react";
-import { apiFetch } from "@/lib/api-client";
+import { trpcClient } from "@/lib/trpc/client";
 
 // ── API types ─────────────────────────────────────────────────────────────────
 
@@ -103,9 +103,7 @@ export default function LatencyChart({ window = "24h" }: LatencyChartProps) {
     try {
       setLoading(true);
       setError(null);
-      const res = await apiFetch("/api/latency");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: LatencyResponse = await res.json();
+      const json = (await trpcClient.system.latency.query()) as LatencyResponse;
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   RefreshCw,
@@ -28,6 +28,9 @@ import type {
   AutomationWatcher,
   AutomationSettingsResponse,
 } from "@/types/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
+// apiFetch retained for reminder creation (no tRPC procedure exists yet)
 import { apiFetch } from "@/lib/api-client";
 
 // ── Cron-to-human helper ─────────────────────────────────────────────────────
@@ -436,12 +439,13 @@ function BriefingCard({
     }
   };
 
+  const generateMutation = useMutation(trpc.briefing.generate.mutationOptions());
+
   const handleGenerateNow = async () => {
     setGenerating(true);
     setGenError(null);
     try {
-      const res = await apiFetch("/api/briefing/generate", { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await generateMutation.mutateAsync();
       onGenerated();
     } catch (err) {
       setGenError(err instanceof Error ? err.message : "Failed to generate briefing");
@@ -631,6 +635,7 @@ function RemindersTab({
 
     setFormSubmitting(true);
     try {
+      // No tRPC createReminder procedure exists yet -- using apiFetch
       const res = await apiFetch("/api/automations/reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -925,118 +930,94 @@ function SchedulesTab({
 type ScheduledTab = "reminders" | "schedules";
 
 export default function AutomationsPage() {
-  const [data, setData] = useState<AutomationsGetResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [scheduledTab, setScheduledTab] = useState<ScheduledTab>("reminders");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/automations");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as AutomationsGetResponse;
-      setData(json);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load automations");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const automationsQuery = useQuery(
+    trpc.automation.getAll.queryOptions(undefined, { refetchInterval: 30_000 }),
+  );
+  const data = (automationsQuery.data as AutomationsGetResponse | undefined) ?? null;
+  const loading = automationsQuery.isLoading;
+  const error = automationsQuery.error?.message ?? null;
 
-  // Initial fetch + 30s auto-refresh
-  useEffect(() => {
-    void fetchData();
-    intervalRef.current = setInterval(() => void fetchData(), 30_000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [fetchData]);
+  const fetchData = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: trpc.automation.getAll.queryKey() });
+  }, [queryClient]);
 
   // ── Quick actions ────────────────────────────────────────────────────────
+
+  const cancelReminderMut = useMutation(
+    trpc.automation.updateReminder.mutationOptions({
+      onSuccess: () => fetchData(),
+    }),
+  );
+
+  const toggleScheduleMut = useMutation(
+    trpc.automation.updateSchedule.mutationOptions({
+      onSuccess: () => fetchData(),
+    }),
+  );
 
   const cancelReminder = useCallback(
     async (id: string) => {
       setActionPending(id);
       try {
-        const res = await apiFetch(`/api/automations/reminders/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "cancel" }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await fetchData();
+        await cancelReminderMut.mutateAsync({ id, action: "cancel" });
       } catch {
-        // Silently fail — next refresh will show real state
+        // Silently fail -- next refresh will show real state
       } finally {
         setActionPending(null);
       }
     },
-    [fetchData],
+    [cancelReminderMut],
   );
 
   const toggleSchedule = useCallback(
     async (id: string, enabled: boolean) => {
       setActionPending(id);
       try {
-        const res = await apiFetch(`/api/automations/schedules/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await fetchData();
+        await toggleScheduleMut.mutateAsync({ id, enabled });
       } catch {
         // Silently fail
       } finally {
         setActionPending(null);
       }
     },
-    [fetchData],
+    [toggleScheduleMut],
   );
 
   const patchWatcher = useCallback(
     async (patch: Partial<AutomationWatcher>) => {
+      // No dedicated patchWatcher tRPC procedure -- use apiFetch
       const res = await apiFetch("/api/automations/watcher", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await fetchData();
+      fetchData();
     },
     [fetchData],
   );
 
-  // ── Settings (shared by WatcherCard + BriefingCard) ─────────────────────
-  const [settings, setSettings] = useState<Record<string, string>>({});
+  // -- Settings (shared by WatcherCard + BriefingCard) --
+  const settingsQuery = useQuery(trpc.automation.getSettings.queryOptions());
+  const settings = (settingsQuery.data as Record<string, string> | undefined)?.settings
+    ? ((settingsQuery.data as { settings: Record<string, string> }).settings)
+    : ({} as Record<string, string>);
 
-  const fetchSettings = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/automations/settings");
-      if (!res.ok) return;
-      const json = (await res.json()) as AutomationSettingsResponse;
-      setSettings(json.settings);
-    } catch {
-      // Non-critical — prompts stay empty
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchSettings();
-  }, [fetchSettings]);
+  const updateSettingsMut = useMutation(
+    trpc.automation.updateSettings.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.automation.getSettings.queryKey() });
+      },
+    }),
+  );
 
   const saveSetting = useCallback(
     async (key: string, value: string) => {
-      const res = await apiFetch("/api/automations/settings", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSettings((prev) => ({ ...prev, [key]: value }));
+      await updateSettingsMut.mutateAsync({ key, value });
     },
     [],
   );

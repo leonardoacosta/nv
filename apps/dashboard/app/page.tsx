@@ -43,9 +43,8 @@ import type {
   FleetHealthResponse,
   SessionsGetResponse,
 } from "@/types/api";
-import { useApiQuery, useApiMutation } from "@/lib/hooks/use-api-query";
-import { queryKeys } from "@/lib/query-keys";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -199,28 +198,21 @@ function ObligationBar() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { mutate: createObligation, isPending: creating } = useApiMutation<
-    unknown,
-    {
-      detected_action: string;
-      owner: string;
-      status: string;
-      priority: number;
-      source_channel: string;
-    }
-  >("/api/obligations", {
-    onSuccess: () => {
-      setInput("");
-      setResult("success");
-      setTimeout(() => setResult(null), 2000);
-      queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/obligations") });
-      queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/activity-feed") });
-    },
-    onError: (err) => {
-      setResult("error");
-      setErrorMsg(err.message);
-    },
-  });
+  const { mutate: createObligation, isPending: creating } = useMutation(
+    trpc.obligation.create.mutationOptions({
+      onSuccess: () => {
+        setInput("");
+        setResult("success");
+        setTimeout(() => setResult(null), 2000);
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+        void queryClient.invalidateQueries({ queryKey: trpc.system.activityFeed.queryKey() });
+      },
+      onError: (err) => {
+        setResult("error");
+        setErrorMsg(err.message);
+      },
+    }),
+  );
 
   const handleCreate = () => {
     if (!input.trim()) return;
@@ -561,7 +553,7 @@ function RecentConversations({
 // ---------------------------------------------------------------------------
 
 function CcSessionsWidget() {
-  const { data, isLoading } = useApiQuery<CcSessionsGetResponse>("/api/cc-sessions");
+  const { data, isLoading } = useQuery(trpc.session.ccSessions.queryOptions());
   const sessions = data?.sessions ?? [];
   const running = sessions.filter((s) => s.state === "running").length;
 
@@ -638,34 +630,38 @@ export default function DashboardPage() {
     );
   });
 
-  // --- 4. Queries (replace Promise.allSettled + 15 useState calls) ---
-  const feedQuery = useApiQuery<ActivityFeedGetResponse>("/api/activity-feed", {
-    refetchInterval: autoRefresh ? 10_000 : false,
-  });
-  const oblQuery = useApiQuery<ObligationsGetResponse>("/api/obligations", {
-    refetchInterval: autoRefresh ? 10_000 : false,
-  });
-  const msgQuery = useApiQuery<MessagesGetResponse>("/api/messages", {
-    params: { limit: "50" },
-    refetchInterval: autoRefresh ? 10_000 : false,
-  });
-  const briefQuery = useApiQuery<BriefingGetResponse>("/api/briefing", {
-    refetchInterval: autoRefresh ? 10_000 : false,
-  });
-  const fleetQuery = useApiQuery<FleetHealthResponse>("/api/fleet-status", {
-    refetchInterval: autoRefresh ? 10_000 : false,
-  });
-  const sessionsQuery = useApiQuery<SessionsGetResponse>("/api/sessions", {
-    refetchInterval: autoRefresh ? 10_000 : false,
-  });
+  // --- 4. Queries (tRPC with independent refetch intervals) ---
+  const refetchOpts = { refetchInterval: autoRefresh ? 10_000 : false as const };
+  const feedQuery = useQuery(
+    trpc.system.activityFeed.queryOptions(undefined, refetchOpts),
+  );
+  const oblQuery = useQuery(
+    trpc.obligation.list.queryOptions({}, refetchOpts),
+  );
+  const msgQuery = useQuery(
+    trpc.message.list.queryOptions({ limit: 50 } as Record<string, unknown>, refetchOpts),
+  );
+  const briefQuery = useQuery(
+    trpc.briefing.latest.queryOptions(undefined, refetchOpts),
+  );
+  const fleetQuery = useQuery(
+    trpc.system.fleetStatus.queryOptions(undefined, refetchOpts),
+  );
+  const sessionsQuery = useQuery(
+    trpc.session.list.queryOptions({}, refetchOpts),
+  );
 
   // --- 5. Derived values from queries ---
-  const feedEvents = feedQuery.data?.events ?? [];
-  const obligations = (oblQuery.data?.obligations ?? []) as ApiObligation[];
-  const recentMessages = (msgQuery.data?.messages ?? []).slice(0, 10);
-  const allMessages = msgQuery.data?.messages ?? [];
+  const feedData = feedQuery.data as ActivityFeedGetResponse | undefined;
+  const feedEvents = feedData?.events ?? [];
+  const oblData = oblQuery.data as ObligationsGetResponse | undefined;
+  const obligations = (oblData?.obligations ?? []) as ApiObligation[];
+  const msgData = msgQuery.data as MessagesGetResponse | undefined;
+  const recentMessages = (msgData?.messages ?? []).slice(0, 10) as StoredMessage[];
+  const allMessages = (msgData?.messages ?? []) as StoredMessage[];
 
-  const briefingEntry = briefQuery.data?.entry;
+  const briefData = briefQuery.data as BriefingGetResponse | undefined;
+  const briefingEntry = briefData?.entry;
   const briefingAvailable = !!briefingEntry;
   const briefingTime = briefingEntry
     ? new Date(briefingEntry.generated_at).toLocaleTimeString([], {
@@ -674,12 +670,14 @@ export default function DashboardPage() {
       })
     : null;
 
-  const fleetData = fleetQuery.data?.fleet;
+  const fleetRaw = fleetQuery.data as FleetHealthResponse | undefined;
+  const fleetData = fleetRaw?.fleet;
   const fleetHealthy = fleetData?.healthy_count ?? null;
   const fleetTotal = fleetData?.total_count ?? null;
   const fleetStatus = fleetData?.status ?? null;
 
-  const sessionsList = sessionsQuery.data?.sessions ?? [];
+  const sessData = sessionsQuery.data as SessionsGetResponse | undefined;
+  const sessionsList = sessData?.sessions ?? [];
   const activeSessions = sessionsList.filter(
     (s) => s.status === "running" || s.status === "active",
   ).length;

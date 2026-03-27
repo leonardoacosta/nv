@@ -16,8 +16,9 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import QuerySkeleton from "@/components/layout/QuerySkeleton";
-import type { SessionListResponse, SessionTimelineItem } from "@/types/api";
-import { useApiQuery } from "@/lib/hooks/use-api-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { SessionTimelineItem } from "@/types/api";
+import { trpc } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,33 +175,31 @@ function SessionsPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commandFilter, setCommandFilter] = useState(initialCommand);
 
-  // Build query params for useApiQuery
-  const apiParams: Record<string, string> = {
-    page: String(page),
-    limit: "25",
+  // Build query input for tRPC
+  const queryInput: Record<string, unknown> = {
+    page,
+    limit: 25,
   };
-  if (projectFilter !== "all") apiParams.project = projectFilter;
-  if (triggerFilter !== "all") apiParams.trigger_type = triggerFilter;
-  if (dateFrom) apiParams.date_from = dateFrom;
-  if (dateTo) apiParams.date_to = dateTo;
+  if (projectFilter !== "all") queryInput.project = projectFilter;
+  if (triggerFilter !== "all") queryInput.trigger_type = triggerFilter;
+  if (dateFrom) queryInput.date_from = dateFrom;
+  if (dateTo) queryInput.date_to = dateTo;
 
-  // 3. Query — sessions list
-  const { data, isLoading, error, refetch } = useApiQuery<SessionListResponse>(
-    "/api/sessions",
-    { params: apiParams },
+  // 3. Query -- sessions list
+  const { data, isLoading, error, refetch } = useQuery(
+    trpc.session.list.queryOptions(queryInput as { page?: number; limit?: number; project?: string; trigger_type?: string; date_from?: string; date_to?: string }),
   );
 
-  const sessions = data?.sessions ?? [];
+  const sessions = (data?.sessions ?? []) as SessionTimelineItem[];
   const total = data?.total ?? 0;
 
   // 4. Distinct projects query (unfiltered, for dropdown)
-  const { data: allSessionsData } = useApiQuery<SessionListResponse>(
-    "/api/sessions",
-    { params: { page: "1", limit: "100" } },
+  const { data: allSessionsData } = useQuery(
+    trpc.session.list.queryOptions({ page: 1, limit: 100 }),
   );
   const distinctProjects = Array.from(
     new Set([
-      ...(allSessionsData?.sessions ?? []).map((s) => s.project),
+      ...((allSessionsData?.sessions ?? []) as SessionTimelineItem[]).map((s) => s.project),
       ...sessions.map((s) => s.project),
     ]),
   ).sort();

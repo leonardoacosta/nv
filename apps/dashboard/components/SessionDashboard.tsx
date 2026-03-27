@@ -11,8 +11,9 @@ import {
   RefreshCw,
   Terminal,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SessionStatus, SessionState } from "@/lib/session-manager";
-import { apiFetch } from "@/lib/api-client";
+import { trpc } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,27 +101,15 @@ function StateBadge({ state }: { state: SessionState }) {
 // ---------------------------------------------------------------------------
 
 function LogViewer() {
-  const [lines, setLines] = useState<string[]>([]);
-  const [logsError, setLogsError] = useState<string | null>(null);
+  const { data, error: logsQueryError } = useQuery(
+    trpc.ccSession.logs.queryOptions(
+      { lines: 50 },
+      { refetchInterval: 5000 },
+    ),
+  );
+  const lines = data?.lines ?? [];
+  const logsError = logsQueryError?.message ?? null;
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await apiFetch("/api/session/logs");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { lines: string[] };
-        setLines(data.lines);
-        setLogsError(null);
-      } catch (err) {
-        setLogsError(err instanceof Error ? err.message : "Failed to load logs");
-      }
-    };
-
-    void fetchLogs();
-    const interval = setInterval(() => void fetchLogs(), 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Auto-scroll to bottom when new lines arrive
   useEffect(() => {
@@ -161,42 +150,29 @@ function LogViewer() {
 // ---------------------------------------------------------------------------
 
 export default function SessionDashboard({ initialStatus }: SessionDashboardProps) {
-  const [status, setStatus] = useState<SessionStatus | null>(initialStatus);
+  const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState<"start" | "stop" | "restart" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Auto-refresh status every 5s
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await apiFetch("/api/session/status");
-        if (!res.ok) return;
-        const data = (await res.json()) as SessionStatus;
-        setStatus(data);
-      } catch {
-        // Silently ignore polling errors
-      }
-    };
+  // Auto-refresh status every 5s via tRPC
+  const statusQuery = useQuery(
+    trpc.ccSession.status.queryOptions(undefined, { refetchInterval: 5000 }),
+  );
+  const status = (statusQuery.data as SessionStatus | undefined) ?? initialStatus;
 
-    const interval = setInterval(() => void fetchStatus(), 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const controlMutation = useMutation(
+    trpc.ccSession.control.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.ccSession.status.queryKey() });
+      },
+    }),
+  );
 
   const sendControl = async (action: "start" | "stop" | "restart") => {
     setActionPending(action);
     setActionError(null);
     try {
-      const res = await apiFetch("/api/session/control", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
-      });
-      const data = (await res.json()) as { status?: SessionStatus; error?: string };
-      if (!res.ok) {
-        setActionError(data.error ?? `Action failed: HTTP ${res.status}`);
-      } else if (data.status) {
-        setStatus(data.status);
-      }
+      await controlMutation.mutateAsync({ action });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Request failed");
     } finally {

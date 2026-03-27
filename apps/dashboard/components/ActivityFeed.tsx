@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle, XCircle, Plus, Play, Zap, Wifi, WifiOff } from "lucide-react";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
 import type { ObligationActivity, ObligationActivityGetResponse } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { trpcClient } from "@/lib/trpc/client";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -68,11 +68,10 @@ export default function ActivityFeed({ onObligationClick }: ActivityFeedProps) {
   // Fetch initial + poll fallback
   const fetchActivity = useCallback(async () => {
     try {
-      const res = await apiFetch(`/api/obligations/activity?limit=${MAX_EVENTS}`);
-      if (!res.ok) return;
-      const data = (await res.json()) as ObligationActivityGetResponse;
-      if (data.events) {
-        setEvents(data.events.slice(0, MAX_EVENTS));
+      const data = await trpcClient.obligation.activity.query({ limit: MAX_EVENTS });
+      const actData = data as ObligationActivityGetResponse;
+      if (actData.events) {
+        setEvents(actData.events.slice(0, MAX_EVENTS));
       }
     } catch {
       // silently ignore — feed degrades gracefully

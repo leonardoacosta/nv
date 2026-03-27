@@ -20,7 +20,8 @@ import ErrorBanner from "@/components/layout/ErrorBanner";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ColdStartsPanel from "@/components/ColdStartsPanel";
 import type { StatsGetResponse } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 
 type UsageTab = "cost" | "performance";
 
@@ -84,28 +85,20 @@ function UsagePage() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") === "performance" ? "performance" : "cost";
   const [activeTab, setActiveTab] = useState<UsageTab>(initialTab);
-  const [data, setData] = useState<UsageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const statsQuery = useQuery(trpc.system.stats.queryOptions());
+  const statsRaw = statsQuery.data as StatsGetResponse | undefined;
 
-  const fetchUsage = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/stats");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const stats = (await res.json()) as StatsGetResponse;
+  const tools: ToolUsage[] = (statsRaw?.tool_usage?.per_tool ?? [])
+    .map((t) => ({
+      name: t.name,
+      count: t.count,
+      avg_duration_ms: t.avg_duration_ms ?? 0,
+      success_rate: t.count > 0 ? t.success_count / t.count : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
 
-      const tools: ToolUsage[] = (stats.tool_usage?.per_tool ?? [])
-        .map((t) => ({
-          name: t.name,
-          count: t.count,
-          avg_duration_ms: t.avg_duration_ms ?? 0,
-          success_rate: t.count > 0 ? t.success_count / t.count : 0,
-        }))
-        .sort((a, b) => b.count - a.count);
-
-      setData({
+  const data: UsageData | null = statsRaw
+    ? {
         cost_today_usd: 0,
         cost_week_usd: 0,
         cost_month_usd: 0,
@@ -113,17 +106,12 @@ function UsagePage() {
         tokens_week: 0,
         tools,
         credentials: [],
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load usage");
-    } finally {
-      setLoading(false);
-    }
-  };
+      }
+    : null;
+  const loading = statsQuery.isLoading;
+  const error = statsQuery.error?.message ?? null;
 
-  useEffect(() => {
-    void fetchUsage();
-  }, []);
+  const fetchUsage = () => void statsQuery.refetch();
 
   const headerAction = (
     <button

@@ -7,7 +7,7 @@
 
 import { createTRPCClient, httpBatchLink, loggerLink } from "@trpc/client";
 import superjson from "superjson";
-import type { AppRouter } from "@nova/api";
+import type { DashboardRouter } from "@/app/api/trpc/[trpc]/route";
 
 const AUTH_COOKIE_NAME = "dashboard_token";
 
@@ -30,7 +30,7 @@ function getBaseUrl() {
  * Vanilla tRPC client (no React hooks).
  * Useful for server-side calls and non-React contexts.
  */
-export const trpcClient = createTRPCClient<AppRouter>({
+export const trpcClient = createTRPCClient<DashboardRouter>({
   links: [
     loggerLink({
       enabled: (opts) =>

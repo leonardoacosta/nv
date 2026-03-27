@@ -6,7 +6,7 @@ import MemoryPreview, { type MemoryFile } from "@/components/MemoryPreview";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import type { MemoryListResponse, MemoryTopicResponse } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { trpcClient } from "@/lib/trpc/client";
 
 export default function MemoryPage() {
   const [files, setFiles] = useState<MemoryFile[]>([]);
@@ -17,10 +17,8 @@ export default function MemoryPage() {
 
   const fetchTopicContent = async (topic: string): Promise<string> => {
     try {
-      const res = await apiFetch(`/api/memory?topic=${encodeURIComponent(topic)}`);
-      if (!res.ok) return "";
-      const data = (await res.json()) as MemoryTopicResponse;
-      return data.content ?? "";
+      const data = await trpcClient.system.memory.query({ topic });
+      return (data as MemoryTopicResponse).content ?? "";
     } catch {
       return "";
     }
@@ -30,9 +28,7 @@ export default function MemoryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/memory");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const raw = (await res.json()) as MemoryListResponse;
+      const raw = (await trpcClient.system.memory.query({})) as MemoryListResponse;
 
       let parsed: MemoryFile[] = [];
       if (Array.isArray(raw.topics)) {
@@ -81,12 +77,7 @@ export default function MemoryPage() {
   }, []);
 
   const handleSave = async (path: string, content: string): Promise<void> => {
-    const res = await apiFetch("/api/memory", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic: path, content }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await trpcClient.system.updateMemory.mutate({ topic: path, content });
 
     setFiles((prev) =>
       prev.map((f) => (f.path === path ? { ...f, content } : f)),

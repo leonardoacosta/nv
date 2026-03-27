@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Users, Search, AlertCircle, RefreshCw } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   DiscoveredContact,
-  DiscoveredContactsResponse,
   ContactRelationship,
-  RelationshipsResponse,
 } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { trpc } from "@/lib/trpc/react";
 import ContactCard from "@/components/ContactCard";
 import ContactDetailPanel from "@/components/ContactDetailPanel";
 
@@ -59,65 +58,32 @@ function getRelatedPeople(
 // ---------------------------------------------------------------------------
 
 export default function ContactsPage() {
+  const queryClient = useQueryClient();
+
   // State
-  const [contacts, setContacts] = useState<DiscoveredContact[]>([]);
-  const [relationships, setRelationships] = useState<ContactRelationship[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
   const [selectedContact, setSelectedContact] =
     useState<DiscoveredContact | null>(null);
-  const [totalSenders, setTotalSenders] = useState(0);
-  const [totalMessages, setTotalMessages] = useState(0);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch data
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [contactsRes, relRes] = await Promise.all([
-        apiFetch("/api/contacts/discovered"),
-        apiFetch("/api/contacts/relationships"),
-      ]);
+  // Queries
+  const discoveredQuery = useQuery(trpc.contact.discovered.queryOptions());
+  const relQuery = useQuery(trpc.contact.relationships.queryOptions({}));
 
-      if (!contactsRes.ok) {
-        if (contactsRes.status === 503) {
-          // Store not configured — treat as empty
-          setContacts([]);
-          setTotalSenders(0);
-          setTotalMessages(0);
-          return;
-        }
-        throw new Error(`HTTP ${contactsRes.status}`);
-      }
+  const contacts = discoveredQuery.data?.contacts ?? [];
+  const totalSenders = discoveredQuery.data?.total_senders ?? 0;
+  const totalMessages = discoveredQuery.data?.total_messages_scanned ?? 0;
+  const relationships = relQuery.data?.relationships ?? [];
+  const loading = discoveredQuery.isLoading;
+  const error = discoveredQuery.error;
 
-      const contactsData =
-        (await contactsRes.json()) as DiscoveredContactsResponse;
-      setContacts(contactsData.contacts);
-      setTotalSenders(contactsData.total_senders);
-      setTotalMessages(contactsData.total_messages_scanned);
-
-      if (relRes.ok) {
-        const relData = (await relRes.json()) as RelationshipsResponse;
-        setRelationships(relData.relationships);
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load contacts",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial fetch
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const fetchData = () => {
+    void queryClient.invalidateQueries({ queryKey: trpc.contact.discovered.queryKey() });
+    void queryClient.invalidateQueries({ queryKey: trpc.contact.relationships.queryKey() });
+  };
 
   // Debounced search
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,13 +141,13 @@ export default function ContactsPage() {
           </div>
           <button
             type="button"
-            onClick={() => void fetchData()}
+            onClick={fetchData}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
           >
             <RefreshCw
               size={14}
-              className={loading ? "animate-spin" : ""}
+              className={discoveredQuery.isFetching ? "animate-spin" : ""}
             />
             Refresh
           </button>
@@ -225,10 +191,10 @@ export default function ContactsPage() {
         {error && (
           <div className="flex items-center gap-3 p-4 rounded-xl bg-red-700/10 border border-red-700/30 text-red-700">
             <AlertCircle size={16} />
-            <span className="text-copy-13">{error}</span>
+            <span className="text-copy-13">{error.message}</span>
             <button
               type="button"
-              onClick={() => void fetchData()}
+              onClick={fetchData}
               className="ml-auto text-copy-13 underline hover:no-underline"
             >
               Retry

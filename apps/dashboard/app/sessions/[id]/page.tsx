@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,15 +12,12 @@ import {
   Terminal,
   Zap,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import SessionTimelineEvent from "@/components/SessionTimelineEvent";
-import type {
-  SessionDetail,
-  SessionEventItem,
-  SessionEventsResponse,
-} from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import type { SessionEventItem } from "@/types/api";
+import { trpc } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -88,45 +85,26 @@ function StatTile({
 export default function SessionDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const sessionId = params.id;
 
-  // 1. State
-  const [session, setSession] = useState<SessionDetail | null>(null);
-  const [events, setEvents] = useState<SessionEventItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // 1. Queries
+  const sessionQuery = useQuery(
+    trpc.session.getById.queryOptions({ id: sessionId }),
+  );
+  const eventsQuery = useQuery(
+    trpc.session.getEvents.queryOptions({ id: sessionId }),
+  );
 
-  // 2. Fetch session + events in parallel
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [sessionRes, eventsRes] = await Promise.all([
-        apiFetch(`/api/sessions/${sessionId}`),
-        apiFetch(`/api/sessions/${sessionId}/events`),
-      ]);
+  const session = sessionQuery.data ?? null;
+  const events = (eventsQuery.data?.events ?? []) as SessionEventItem[];
+  const loading = sessionQuery.isLoading;
+  const error = sessionQuery.error?.message ?? null;
 
-      if (!sessionRes.ok) throw new Error(`Session: HTTP ${sessionRes.status}`);
-      const sessionData = (await sessionRes.json()) as SessionDetail;
-      setSession(sessionData);
-
-      if (eventsRes.ok) {
-        const eventsData = (await eventsRes.json()) as SessionEventsResponse;
-        setEvents(eventsData.events);
-      } else {
-        setEvents([]);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load session");
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId]);
-
-  // 3. Initial load
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+  const fetchData = () => {
+    void queryClient.invalidateQueries({ queryKey: trpc.session.getById.queryKey() });
+    void queryClient.invalidateQueries({ queryKey: trpc.session.getEvents.queryKey() });
+  };
 
   // 4. Build "Back to Sessions" link preserving filter state (task 3.9)
   const backParams = new URLSearchParams();

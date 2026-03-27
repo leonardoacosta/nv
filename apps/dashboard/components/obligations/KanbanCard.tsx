@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
   Check,
   X,
@@ -13,8 +13,9 @@ import {
   Play,
   RotateCcw,
 } from "lucide-react";
-import type { DaemonObligation, ObligationActivity } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { DaemonObligation } from "@/types/api";
+import { trpc } from "@/lib/trpc/react";
 
 // ── Shared constants (replicate from obligations page to keep components independent) ──
 
@@ -98,28 +99,12 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
 // ── Activity section ──────────────────────────────────────────────────────────
 
 function CardActivity({ obligationId }: { obligationId: string }) {
-  const [events, setEvents] = useState<ObligationActivity[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useQuery(
+    trpc.obligation.activity.queryOptions({ id: obligationId }),
+  );
+  const events = data?.events ?? [];
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await apiFetch(`/api/obligations/${obligationId}/activity`);
-        if (!cancelled && res.ok) {
-          const data = (await res.json()) as { events: ObligationActivity[] };
-          setEvents(data.events ?? []);
-        }
-      } catch {
-        // silently ignore
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [obligationId]);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-1.5">
         {Array.from({ length: 2 }).map((_, i) => (
@@ -135,7 +120,7 @@ function CardActivity({ obligationId }: { obligationId: string }) {
 
   return (
     <div className="space-y-1.5">
-      {events.slice(0, 5).map((ev) => (
+      {events.slice(0, 5).map((ev: { id: string; timestamp: string; event_type: string; description: string }) => (
         <div key={ev.id} className="flex gap-2 text-xs">
           <span className="font-mono text-ds-gray-700 shrink-0 whitespace-nowrap" suppressHydrationWarning>
             {relativeTime(ev.timestamp)}
@@ -171,9 +156,28 @@ export default function KanbanCard({
   isDragging = false,
   onDragStart,
 }: KanbanCardProps) {
+  const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
+
+  const updateMut = useMutation(
+    trpc.obligation.update.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+        onRefresh();
+      },
+    }),
+  );
+
+  const executeMut = useMutation(
+    trpc.obligation.execute.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+        onRefresh();
+      },
+    }),
+  );
 
   const priorityBar = PRIORITY_BAR[obligation.priority] ?? PRIORITY_BAR[2]!;
   const priorityText = PRIORITY_TEXT[obligation.priority] ?? PRIORITY_TEXT[2]!;
@@ -190,49 +194,36 @@ export default function KanbanCard({
   const patchStatus = useCallback(async (status: string) => {
     setActionPending(true);
     try {
-      const res = await apiFetch(`/api/obligations/${obligation.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (res.ok) onRefresh();
+      await updateMut.mutateAsync({ id: obligation.id, status });
     } catch {
       // ignore
     } finally {
       setActionPending(false);
     }
-  }, [obligation.id, onRefresh]);
+  }, [obligation.id, updateMut]);
 
   const handleStart = useCallback(async () => {
     setActionPending(true);
     try {
-      const res = await apiFetch(`/api/obligations/${obligation.id}/execute`, {
-        method: "POST",
-      });
-      if (res.ok) onRefresh();
+      await executeMut.mutateAsync({ id: obligation.id });
     } catch {
       // ignore
     } finally {
       setActionPending(false);
     }
-  }, [obligation.id, onRefresh]);
+  }, [obligation.id, executeMut]);
 
   const handleReassign = useCallback(async () => {
     const newOwner = obligation.owner === "nova" ? "leo" : "nova";
     setActionPending(true);
     try {
-      const res = await apiFetch(`/api/obligations/${obligation.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner: newOwner }),
-      });
-      if (res.ok) onRefresh();
+      await updateMut.mutateAsync({ id: obligation.id, owner: newOwner });
     } catch {
       // ignore
     } finally {
       setActionPending(false);
     }
-  }, [obligation.id, obligation.owner, onRefresh]);
+  }, [obligation.id, obligation.owner, updateMut]);
 
   // Hover actions based on status
   const hoverActions = (() => {

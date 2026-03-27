@@ -7,12 +7,23 @@
 
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter, createTRPCContext } from "@nova/api";
+import { mergeRouters } from "@nova/api";
+import { ccSessionRouter } from "@/lib/routers/cc-session";
+import { resolveRouter } from "@/lib/routers/resolve";
+
+export const dashboardRouter = mergeRouters(
+  appRouter,
+  ccSessionRouter,
+  resolveRouter,
+);
+
+export type DashboardRouter = typeof dashboardRouter;
 
 function handler(req: Request) {
   return fetchRequestHandler({
     endpoint: "/api/trpc",
     req,
-    router: appRouter,
+    router: dashboardRouter,
     createContext: () => createTRPCContext({ req }),
   });
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonObligation } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { trpc } from "@/lib/trpc/react";
 import KanbanColumn from "@/components/obligations/KanbanColumn";
 import EmptyState from "@/components/layout/EmptyState";
 import { LayoutGrid } from "lucide-react";
@@ -18,9 +19,19 @@ export default function KanbanBoard({
   onRefresh,
   approachingDeadlineHours = 24,
 }: KanbanBoardProps) {
+  const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [forceCreateOwner, setForceCreateOwner] = useState<"nova" | "leo" | null>(null);
+
+  const updateMutation = useMutation(
+    trpc.obligation.update.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+        onRefresh();
+      },
+    }),
+  );
 
   // Sort by priority ascending
   const sortByPriority = (items: DaemonObligation[]) =>
@@ -39,24 +50,16 @@ export default function KanbanBoard({
   // Handle status change within same column
   const handleStatusChange = useCallback(
     async (obligationId: string, newStatus: string) => {
-      // Find current obligation to check if status actually changed
       const current = obligations.find((o) => o.id === obligationId);
       if (!current || current.status === newStatus) return;
 
-      // Optimistic update: trigger refresh after patch
       try {
-        const res = await apiFetch(`/api/obligations/${obligationId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: newStatus }),
-        });
-        if (res.ok) onRefresh();
+        await updateMutation.mutateAsync({ id: obligationId, status: newStatus });
       } catch {
-        // Refresh anyway to reconcile state
         onRefresh();
       }
     },
-    [obligations, onRefresh],
+    [obligations, onRefresh, updateMutation],
   );
 
   // Cross-column drop: nova column receives a leo card (owner change)
@@ -66,17 +69,12 @@ export default function KanbanBoard({
       if (!current || current.owner === newOwner) return;
 
       try {
-        const res = await apiFetch(`/api/obligations/${obligationId}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ owner: newOwner }),
-        });
-        if (res.ok) onRefresh();
+        await updateMutation.mutateAsync({ id: obligationId, owner: newOwner });
       } catch {
         onRefresh();
       }
     },
-    [obligations, onRefresh],
+    [obligations, onRefresh, updateMutation],
   );
 
   // Wrap status change to also handle cross-column drops

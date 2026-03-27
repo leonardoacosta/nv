@@ -24,7 +24,7 @@ import type {
   ProjectCategory,
   ProjectEntity,
 } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { trpcClient } from "@/lib/trpc/client";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -90,20 +90,7 @@ export default function CreateProjectDialog({
       };
       if (path.trim()) body.path = path.trim();
 
-      const res = await apiFetch("/api/projects", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(data?.error ?? `HTTP ${res.status}`);
-      }
-
-      const project = (await res.json()) as ProjectEntity;
+      const project = (await trpcClient.project.create.mutate(body)) as ProjectEntity;
       onCreated(project);
       onClose();
     } catch (err) {

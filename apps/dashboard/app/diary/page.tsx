@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import {
   BookOpen,
   ChevronLeft,
@@ -14,7 +14,8 @@ import DiaryEntryCard from "@/components/DiaryEntry";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import StatCard from "@/components/layout/StatCard";
 import type { DiaryGetResponse } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,28 +80,18 @@ function dayLabel(dateStr: string): string {
 
 export default function DiaryPage() {
   const [dateStr, setDateStr] = useState<string>(toDateString(new Date()));
-  const [data, setData] = useState<DiaryGetResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchDiary = useCallback(async (date: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch(`/api/diary?date=${date}&limit=100`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as DiaryGetResponse;
-      setData(json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load diary");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const diaryQuery = useQuery(
+    trpc.diary.list.queryOptions({ date: dateStr, limit: 100 }),
+  );
+  const data = (diaryQuery.data as DiaryGetResponse | undefined) ?? null;
+  const loading = diaryQuery.isLoading;
+  const error = diaryQuery.error?.message ?? null;
 
-  useEffect(() => {
-    void fetchDiary(dateStr);
-  }, [dateStr, fetchDiary]);
+  // Refetch triggers -- date navigation re-queries automatically via queryOptions input change
+  const fetchDiary = useCallback(() => {
+    void diaryQuery.refetch();
+  }, [diaryQuery]);
 
   const goBack = () => setDateStr((d) => addDays(d, -1));
   const goForward = () => {
@@ -127,7 +118,7 @@ export default function DiaryPage() {
 
         <button
           type="button"
-          onClick={() => void fetchDiary(dateStr)}
+          onClick={() => void fetchDiary()}
           disabled={loading}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50 shrink-0"
         >
@@ -172,7 +163,7 @@ export default function DiaryPage() {
         <ErrorBanner
           message="Failed to load diary"
           detail={error}
-          onRetry={() => void fetchDiary(dateStr)}
+          onRetry={() => void fetchDiary()}
         />
       )}
 

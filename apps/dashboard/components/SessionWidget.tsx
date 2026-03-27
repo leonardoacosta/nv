@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Terminal, RotateCcw, MessageSquare, ArrowRight, AlertCircle } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SessionStatus, SessionState } from "@/lib/session-manager";
-import { apiFetch } from "@/lib/api-client";
+import { trpc } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -72,42 +73,27 @@ function StateBadge({ state }: { state: SessionState }) {
 // ---------------------------------------------------------------------------
 
 export default function SessionWidget() {
-  const [status, setStatus] = useState<SessionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [restarting, setRestarting] = useState(false);
 
-  const fetchStatus = async () => {
-    try {
-      const res = await apiFetch("/api/session/status");
-      if (!res.ok) {
-        setLoading(false);
-        return;
-      }
-      const data = (await res.json()) as SessionStatus;
-      setStatus(data);
-    } catch {
-      // Silently ignore
-    } finally {
-      setLoading(false);
-    }
-  };
+  const statusQuery = useQuery(
+    trpc.ccSession.status.queryOptions(undefined, { refetchInterval: 5000 }),
+  );
+  const status = (statusQuery.data as SessionStatus | undefined) ?? null;
+  const loading = statusQuery.isLoading;
 
-  useEffect(() => {
-    void fetchStatus();
-    const interval = setInterval(() => void fetchStatus(), 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const controlMutation = useMutation(
+    trpc.ccSession.control.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.ccSession.status.queryKey() });
+      },
+    }),
+  );
 
   const handleRestart = async () => {
     setRestarting(true);
     try {
-      await apiFetch("/api/session/control", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "restart" }),
-      });
-      // Refresh status after restart request
-      await fetchStatus();
+      await controlMutation.mutateAsync({ action: "restart" });
     } catch {
       // Silently ignore
     } finally {

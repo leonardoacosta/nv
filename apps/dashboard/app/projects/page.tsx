@@ -13,6 +13,9 @@ import type {
   ProjectsListResponse,
   UpdateProjectRequest,
 } from "@/types/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
+// apiFetch retained for project update (no tRPC procedure exists yet)
 import { apiFetch } from "@/lib/api-client";
 
 // ---------------------------------------------------------------------------
@@ -35,9 +38,6 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
 
 export default function ProjectsPage() {
   // 1. Local State
-  const [projects, setProjects] = useState<ProjectEntity[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
@@ -49,28 +49,17 @@ export default function ProjectsPage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 2. Fetch projects
-  const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/projects");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ProjectsListResponse;
-      setProjects(data.projects ?? []);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load projects",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const queryClient = useQueryClient();
 
-  // 3. Initial load
-  useEffect(() => {
-    void fetchProjects();
-  }, [fetchProjects]);
+  // 2. Query: projects list
+  const projectsQuery = useQuery(trpc.project.list.queryOptions({}));
+  const projects = (projectsQuery.data as ProjectsListResponse | undefined)?.projects ?? [];
+  const loading = projectsQuery.isLoading;
+  const error = projectsQuery.error?.message ?? null;
+
+  const fetchProjects = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: trpc.project.list.queryKey() });
+  }, [queryClient]);
 
   // 4. Search debounce
   const handleSearchChange = (value: string) => {
@@ -81,12 +70,17 @@ export default function ProjectsPage() {
     }, 300);
   };
 
-  // 5. Refresh handler — extract then re-fetch
+  const extractMutation = useMutation(
+    trpc.project.extract.mutationOptions({
+      onSuccess: () => fetchProjects(),
+    }),
+  );
+
+  // 5. Refresh handler -- extract then re-fetch
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await apiFetch("/api/projects/extract", { method: "POST" });
-      await fetchProjects();
+      await extractMutation.mutateAsync();
     } catch {
       // fetchProjects handles its own error
     } finally {
@@ -94,7 +88,7 @@ export default function ProjectsPage() {
     }
   };
 
-  // 6. Update handler
+  // 6. Update handler (no tRPC update procedure exists yet)
   const handleUpdate = async (code: string, data: UpdateProjectRequest) => {
     try {
       const res = await apiFetch(`/api/projects/${code}`, {
@@ -103,12 +97,7 @@ export default function ProjectsPage() {
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const updated = (await res.json()) as ProjectEntity;
-
-      // Update local state
-      setProjects((prev) =>
-        prev.map((p) => (p.code === code ? updated : p)),
-      );
+      fetchProjects();
       setSelectedProject(updated);
     } catch {
       // Error handled in detail panel
@@ -264,8 +253,8 @@ export default function ProjectsPage() {
       <CreateProjectDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(project) => {
-          setProjects((prev) => [...prev, project]);
+        onCreated={() => {
+          fetchProjects();
         }}
       />
     </>

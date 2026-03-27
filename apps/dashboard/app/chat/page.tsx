@@ -13,6 +13,8 @@ import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import { MarkdownContent } from "@/lib/markdown";
 import { channelAccentColor } from "@/lib/channel-colors";
+// apiFetch retained for SSE streaming chat, history, and Telegram polling
+// (no tRPC chat router exists)
 import { apiFetch } from "@/lib/api-client";
 import type {
   StoredMessage,

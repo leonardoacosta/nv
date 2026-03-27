@@ -25,9 +25,12 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import { channelAccentColor } from "@/lib/channel-colors";
+import { useQuery } from "@tanstack/react-query";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
+import { trpc } from "@/lib/trpc/react";
+import { trpcClient } from "@/lib/trpc/client";
+// apiFetch retained for infinite scroll append (append-to-state pattern)
 import { apiFetch } from "@/lib/api-client";
-import { useApiQuery } from "@/lib/hooks/use-api-query";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -108,12 +111,8 @@ function useContactResolver(messages: StoredMessage[]) {
     const uncached = unique.filter((s) => !cacheRef.current.has(s));
     if (uncached.length === 0) return;
 
-    void apiFetch("/api/contacts/resolve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ senders: uncached }),
-    })
-      .then((res) => (res.ok ? res.json() : null))
+    void trpcClient.contact.resolve
+      .mutate({ senders: uncached })
       .then((data: Record<string, string> | null) => {
         if (!data) return;
         // Cache all resolved names, mark unresolved ones with empty to avoid refetch
@@ -585,9 +584,15 @@ export default function MessagesPage() {
   if (deferredSearch) initialParams.search = deferredSearch;
   if (channelFilter !== "all") initialParams.channel = channelFilter;
 
-  const initialQuery = useApiQuery<MessagesGetResponse>("/api/messages", {
-    params: initialParams,
-  });
+  const initialQuery = useQuery(
+    trpc.message.list.queryOptions({
+      limit: PAGE_SIZE,
+      offset: 0,
+      sort: sort === "oldest" ? "asc" : "desc",
+      ...(deferredSearch ? { search: deferredSearch } : {}),
+      ...(channelFilter !== "all" ? { channel: channelFilter } : {}),
+    } as Record<string, unknown>),
+  );
 
   const loading = initialQuery.isLoading;
   const error = initialQuery.error;
@@ -595,10 +600,11 @@ export default function MessagesPage() {
   // Sync query data into local state for infinite scroll append
   useEffect(() => {
     if (initialQuery.data) {
-      const fetched = initialQuery.data.messages ?? [];
+      const data = initialQuery.data as MessagesGetResponse;
+      const fetched = data.messages ?? [];
       setAllMessages(fetched);
       setOffset(fetched.length);
-      setTotal(initialQuery.data.total ?? fetched.length);
+      setTotal(data.total ?? fetched.length);
       setHasMore(fetched.length === PAGE_SIZE);
     }
   }, [initialQuery.data]);

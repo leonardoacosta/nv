@@ -14,7 +14,8 @@ import {
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import type { ServerHealthGetResponse } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -173,28 +174,22 @@ export default function NexusPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchHealth = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/server-health");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as ServerHealthGetResponse;
-      setData(json);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load health data",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const healthQuery = useQuery(
+    trpc.system.health.queryOptions(undefined, { refetchInterval: 15_000 }),
+  );
 
   useEffect(() => {
-    void fetchHealth();
-    const interval = setInterval(() => void fetchHealth(), 15000);
-    return () => clearInterval(interval);
-  }, [fetchHealth]);
+    if (healthQuery.data) {
+      setData(healthQuery.data as ServerHealthGetResponse);
+      setLoading(false);
+    }
+    if (healthQuery.error) {
+      setError(healthQuery.error.message);
+      setLoading(false);
+    }
+  }, [healthQuery.data, healthQuery.error]);
+
+  const fetchHealth = () => void healthQuery.refetch();
 
   const latest = data?.latest;
 

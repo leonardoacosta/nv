@@ -16,7 +16,8 @@ import type {
   BriefingGetResponse,
   BriefingHistoryGetResponse,
 } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -132,104 +133,73 @@ export default function BriefingPage() {
       ? (history.find((e) => e.id === selectedId) ?? entry)
       : entry;
 
-  // 2. Fetch functions
-  const fetchLatest = async (): Promise<BriefingEntry | null> => {
-    const res = await apiFetch("/api/briefing");
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`GET /api/briefing: HTTP ${res.status}`);
-    const data = (await res.json()) as BriefingGetResponse;
-    return data.entry;
-  };
+  const queryClient = useQueryClient();
 
-  const fetchHistory = async (): Promise<BriefingEntry[]> => {
-    const res = await apiFetch("/api/briefing/history?limit=10");
-    if (!res.ok) return [];
-    const data = (await res.json()) as BriefingHistoryGetResponse;
-    return data.entries;
-  };
+  // 2. Queries
+  const latestQuery = useQuery(
+    trpc.briefing.latest.queryOptions(undefined, { refetchInterval: 60_000 }),
+  );
+  const historyQuery = useQuery(
+    trpc.briefing.history.queryOptions({ limit: 10 }),
+  );
 
-  // 3. Initial load
-  const loadAll = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [latestResult, histResult] = await Promise.allSettled([
-        fetchLatest(),
-        fetchHistory(),
-      ]);
+  const generateMutation = useMutation(
+    trpc.briefing.generate.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.briefing.latest.queryKey() });
+        void queryClient.invalidateQueries({ queryKey: trpc.briefing.history.queryKey() });
+      },
+    }),
+  );
 
-      if (latestResult.status === "fulfilled") {
-        setEntry(latestResult.value);
-      } else {
-        setError(
-          latestResult.reason instanceof Error
-            ? latestResult.reason.message
-            : "Failed to load briefing",
-        );
+  // 3. Sync query data to local state
+  useEffect(() => {
+    if (latestQuery.data) {
+      const data = latestQuery.data as BriefingGetResponse;
+      if (data.entry && data.entry.generated_at !== entry?.generated_at) {
+        setEntry(data.entry);
+        setUpdateBanner(true);
+        if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = setTimeout(() => setUpdateBanner(false), 4000);
+      } else if (data.entry) {
+        setEntry(data.entry);
       }
-
-      if (histResult.status === "fulfilled") {
-        setHistory(histResult.value);
-      }
-    } finally {
       setLoading(false);
     }
-  };
+    if (latestQuery.error) {
+      setError(latestQuery.error.message);
+      setLoading(false);
+    }
+  }, [latestQuery.data, latestQuery.error]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 4. Effects — initial load
   useEffect(() => {
-    void loadAll();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (historyQuery.data) {
+      const data = historyQuery.data as BriefingHistoryGetResponse;
+      setHistory(data.entries);
+    }
+  }, [historyQuery.data]);
 
-  // 5. Effects — 60s polling (auto-refresh)
+  // Cleanup on unmount
   useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      void (async () => {
-        try {
-          const latest = await fetchLatest();
-          if (latest && latest.generated_at !== entry?.generated_at) {
-            setEntry(latest);
-            // Also refresh history so the rail stays current
-            const hist = await fetchHistory();
-            setHistory(hist);
-            // Show update banner
-            setUpdateBanner(true);
-            if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
-            bannerTimerRef.current = setTimeout(
-              () => setUpdateBanner(false),
-              4000,
-            );
-          }
-        } catch {
-          // Silent — don't surface auto-refresh errors
-        }
-      })();
-    }, 60_000);
-
-    // 6. Cleanup on unmount
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
     };
-  }, [entry?.generated_at]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // 7. Handlers
   const handleRefresh = () => {
     setSelectedId(null);
-    void loadAll();
+    void queryClient.invalidateQueries({ queryKey: trpc.briefing.latest.queryKey() });
+    void queryClient.invalidateQueries({ queryKey: trpc.briefing.history.queryKey() });
   };
 
   const handleGenerate = async () => {
     setGenerating(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/briefing/generate", { method: "POST" });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${res.status}`);
-      }
+      await generateMutation.mutateAsync();
       setSelectedId(null);
-      await loadAll();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to generate briefing",

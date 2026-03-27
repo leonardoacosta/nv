@@ -1,35 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import SessionDashboard from "@/components/SessionDashboard";
 import type { SessionStatus } from "@/lib/session-manager";
-import { apiFetch } from "@/lib/api-client";
+import { trpc } from "@/lib/trpc/react";
 
 export default function CCSessionPanel() {
-  const [initialStatus, setInitialStatus] = useState<SessionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useQuery(
+    trpc.ccSession.status.queryOptions(),
+  );
+  const initialStatus = (data as SessionStatus | undefined) ?? null;
 
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await apiFetch("/api/session/status");
-        if (!res.ok) throw new Error(`Failed to fetch status: ${res.status}`);
-        const data = (await res.json()) as SessionStatus;
-        setInitialStatus(data);
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to load session status",
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void fetchStatus();
-  }, []);
-
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-4 animate-fade-in-up">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -51,7 +33,7 @@ export default function CCSessionPanel() {
           borderLeft: "3px solid var(--ds-red-700)",
         }}
       >
-        <p className="text-copy-14 text-red-700">{error}</p>
+        <p className="text-copy-14 text-red-700">{error.message}</p>
       </div>
     );
   }

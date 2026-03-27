@@ -16,7 +16,7 @@ import type {
   ProjectStatus,
   UpdateProjectRequest,
 } from "@/types/api";
-import { apiFetch } from "@/lib/api-client";
+import { trpcClient } from "@/lib/trpc/client";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -103,7 +103,7 @@ export default function ProjectDetailPanel({
   const handleExtract = async () => {
     setExtracting(true);
     try {
-      await apiFetch("/api/projects/extract", { method: "POST" });
+      await trpcClient.project.extract.mutate();
     } catch {
       // Non-critical — user can retry
     } finally {

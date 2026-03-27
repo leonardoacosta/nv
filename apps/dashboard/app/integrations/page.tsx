@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Activity, AlertCircle, Database, RefreshCw, Server, Radio } from "lucide-react";
 import ChannelRow from "@/components/ChannelRow";
 import ServiceRow from "@/components/ServiceRow";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 import type {
   FleetHealthResponse,
   ServerHealthGetResponse,
@@ -14,49 +15,31 @@ import type {
 const POLL_INTERVAL_MS = 30_000;
 
 export default function StatusPage() {
-  const [fleetData, setFleetData] = useState<FleetHealthResponse | null>(null);
-  const [infraData, setInfraData] = useState<ServerHealthGetResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    setError(null);
-    try {
-      const [fleetRes, healthRes] = await Promise.all([
-        apiFetch("/api/fleet-status"),
-        apiFetch("/api/server-health"),
-      ]);
+  const fleetQuery = useQuery(
+    trpc.system.fleetStatus.queryOptions(undefined, { refetchInterval: POLL_INTERVAL_MS }),
+  );
+  const healthQuery = useQuery(
+    trpc.system.health.queryOptions(undefined, { refetchInterval: POLL_INTERVAL_MS }),
+  );
 
-      if (!fleetRes.ok) throw new Error(`Fleet status: HTTP ${fleetRes.status}`);
-      if (!healthRes.ok) throw new Error(`Server health: HTTP ${healthRes.status}`);
+  const fleetData = (fleetQuery.data as FleetHealthResponse | undefined) ?? null;
+  const infraData = (healthQuery.data as ServerHealthGetResponse | undefined) ?? null;
+  const loading = fleetQuery.isLoading && healthQuery.isLoading;
+  const error = fleetQuery.error?.message ?? healthQuery.error?.message ?? null;
 
-      const fleet = (await fleetRes.json()) as FleetHealthResponse;
-      const health = (await healthRes.json()) as ServerHealthGetResponse;
-
-      setFleetData(fleet);
-      setInfraData(health);
-      setLastChecked(new Date());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load status");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Initial fetch + auto-refresh with cleanup
+  // Track last successful fetch
   useEffect(() => {
-    void fetchStatus();
+    if (fleetQuery.data) setLastChecked(new Date());
+  }, [fleetQuery.data]);
 
-    intervalRef.current = setInterval(() => {
-      void fetchStatus();
-    }, POLL_INTERVAL_MS);
+  const fetchStatus = useCallback(() => {
+    void fleetQuery.refetch();
+    void healthQuery.refetch();
+  }, [fleetQuery, healthQuery]);
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [fetchStatus]);
+
 
   const dbStatus = infraData?.status ?? "unknown";
 

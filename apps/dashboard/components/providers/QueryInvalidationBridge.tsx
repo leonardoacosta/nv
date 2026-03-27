@@ -2,45 +2,94 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useDaemonEvents } from "@/components/providers/DaemonEventContext";
-import { queryKeys } from "@/lib/query-keys";
+import { trpc } from "@/lib/trpc/react";
 
 /**
- * QueryInvalidationBridge — listens to WebSocket events from the daemon
- * and invalidates relevant TanStack Query caches.
+ * QueryInvalidationBridge -- listens to WebSocket events from the daemon
+ * and invalidates relevant tRPC query caches.
  *
- * This replaces the previous pattern of manually calling fetchData()
- * on WebSocket events. Instead, query invalidation triggers automatic
- * refetches for any active queries with matching keys.
+ * Uses tRPC queryKey() helpers for cache invalidation so that both tRPC
+ * queries and any remaining legacy REST queries are refreshed.
  *
- * Renders nothing — pure side-effect component.
+ * Renders nothing -- pure side-effect component.
  */
 
-/** Map event type prefixes to query paths that should be invalidated. */
-const EVENT_TO_QUERIES: Record<string, string[]> = {
-  obligation: ["/api/obligations", "/api/activity-feed"],
-  message: ["/api/messages", "/api/activity-feed"],
-  session: ["/api/sessions", "/api/activity-feed"],
-  approval: ["/api/obligations", "/api/activity-feed"],
-  briefing: ["/api/briefing"],
-  fleet: ["/api/fleet-status"],
-  diary: ["/api/activity-feed"],
-};
+/** Map event type prefixes to tRPC router-level query key prefixes. */
+function invalidateForEvent(
+  queryClient: ReturnType<typeof useQueryClient>,
+  eventType: string,
+) {
+  switch (eventType) {
+    case "obligation":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.obligation.list.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.obligation.stats.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.activityFeed.queryKey(),
+      });
+      break;
+    case "message":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.message.list.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.activityFeed.queryKey(),
+      });
+      break;
+    case "session":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.session.list.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.activityFeed.queryKey(),
+      });
+      break;
+    case "approval":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.obligation.list.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.activityFeed.queryKey(),
+      });
+      break;
+    case "briefing":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.briefing.latest.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.briefing.history.queryKey(),
+      });
+      break;
+    case "fleet":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.fleetStatus.queryKey(),
+      });
+      break;
+    case "diary":
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.activityFeed.queryKey(),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: trpc.diary.list.queryKey(),
+      });
+      break;
+    default:
+      // Unknown events: invalidate activity feed as catch-all
+      void queryClient.invalidateQueries({
+        queryKey: trpc.system.activityFeed.queryKey(),
+      });
+      break;
+  }
+}
 
 export default function QueryInvalidationBridge() {
   const queryClient = useQueryClient();
 
   useDaemonEvents((event) => {
-    // Find matching query paths for this event type
-    const paths = EVENT_TO_QUERIES[event.type];
-
-    if (paths) {
-      for (const path of paths) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.api(path) });
-      }
-    } else {
-      // For unknown event types, invalidate the activity feed as a catch-all
-      queryClient.invalidateQueries({ queryKey: queryKeys.api("/api/activity-feed") });
-    }
+    invalidateForEvent(queryClient, event.type);
   });
 
   return null;

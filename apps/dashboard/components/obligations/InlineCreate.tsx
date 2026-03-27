@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { apiFetch } from "@/lib/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
 
 export interface InlineCreateProps {
   owner: "nova" | "leo";
@@ -10,10 +11,19 @@ export interface InlineCreateProps {
 }
 
 export default function InlineCreate({ owner, onCreated, onCancel }: InlineCreateProps) {
+  const queryClient = useQueryClient();
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const createMutation = useMutation(
+    trpc.obligation.create.mutationOptions({
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
+      },
+    }),
+  );
 
   const handleSubmit = async () => {
     const trimmed = value.trim();
@@ -24,18 +34,13 @@ export default function InlineCreate({ owner, onCreated, onCancel }: InlineCreat
     setSubmitting(true);
     setError(null);
     try {
-      const res = await apiFetch("/api/obligations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          detected_action: trimmed,
-          owner,
-          status: "open",
-          priority: 2,
-          source_channel: "dashboard",
-        }),
+      await createMutation.mutateAsync({
+        detected_action: trimmed,
+        owner,
+        status: "open",
+        priority: 2,
+        source_channel: "dashboard",
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setValue("");
       onCreated();
     } catch (err) {

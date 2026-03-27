@@ -18,10 +18,11 @@
 
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createTRPCReact } from "@trpc/react-query";
 import { httpBatchLink, loggerLink } from "@trpc/client";
 import superjson from "superjson";
-import type { AppRouter } from "@nova/api";
+import type { DashboardRouter } from "@/app/api/trpc/[trpc]/route";
 
 const AUTH_COOKIE_NAME = "dashboard_token";
 
@@ -45,7 +46,7 @@ function getBaseUrl() {
  * This is the primary interface for client components.
  * Always use via useQuery(trpc.x.queryOptions()) -- never trpc.x.useQuery().
  */
-export const trpc = createTRPCReact<AppRouter>();
+export const trpc = createTRPCReact<DashboardRouter>();
 
 /**
  * Create tRPC client with httpBatchLink and auth.
@@ -114,7 +115,12 @@ export function TRPCProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        {process.env.NODE_ENV === "development" && (
+          <ReactQueryDevtools initialIsOpen={false} />
+        )}
+      </QueryClientProvider>
     </trpc.Provider>
   );
 }

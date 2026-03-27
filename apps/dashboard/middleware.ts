@@ -90,10 +90,11 @@ export function middleware(request: NextRequest) {
 
   // API requests: check Authorization header
   if (pathname.startsWith("/api/")) {
-    // Allow auth endpoints without token
+    // Allow auth endpoints without token (both REST and tRPC auth)
     if (
       pathname === "/api/auth/verify" ||
-      pathname === "/api/auth/logout"
+      pathname === "/api/auth/logout" ||
+      pathname.startsWith("/api/trpc/auth.")
     ) {
       const response = NextResponse.next();
       return addCorsHeaders(response, request);

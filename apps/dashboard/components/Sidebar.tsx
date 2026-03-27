@@ -30,7 +30,9 @@ import {
   useDaemonStatus,
   type WsStatus,
 } from "@/components/providers/DaemonEventContext";
-import { apiFetch } from "@/lib/api-client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc/react";
+import { trpcClient } from "@/lib/trpc/client";
 
 // ---------------------------------------------------------------------------
 // WebSocket status footer
@@ -88,22 +90,11 @@ interface Obligation {
 }
 
 function useApprovalCount(): number {
-  const [count, setCount] = useState(0);
-
-  const fetchCount = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/obligations?owner=leo&status=open");
-      if (!res.ok) return;
-      const data = (await res.json()) as Obligation[];
-      setCount(Array.isArray(data) ? data.length : 0);
-    } catch {
-      // silently swallow fetch errors for badge
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchCount();
-  }, [fetchCount]);
+  const { data } = useQuery(
+    trpc.obligation.list.queryOptions({ owner: "leo", status: "open" }),
+  );
+  const oblData = data as { obligations?: unknown[] } | undefined;
+  const count = oblData?.obligations?.length ?? 0;
 
   useDaemonEvents(
     useCallback(
@@ -354,7 +345,7 @@ export default function Sidebar() {
 
   const handleLogout = useCallback(async () => {
     try {
-      await apiFetch("/api/auth/logout", { method: "POST" });
+      await trpcClient.auth.logout.mutate();
     } catch {
       // Clear cookie manually on failure
     }

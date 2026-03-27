@@ -24,5 +24,5 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Add unit tests in `packages/validators/src/__tests__/` for create/update DTOs: valid input passes, missing required fields rejected, partial updates accepted, pagination defaults applied [owner:e2e-engineer] [beads:nv-golh]
-- [ ] [4.2] Add unit tests for drizzle-zod overrides: vector fields accept number arrays, jsonb fields accept records, custom type fallbacks work [owner:e2e-engineer] [beads:nv-9en7]
+- [x] [4.1] Add unit tests in `packages/validators/src/__tests__/` for create/update DTOs: valid input passes, missing required fields rejected, partial updates accepted, pagination defaults applied [owner:e2e-engineer] [beads:nv-golh]
+- [x] [4.2] Add unit tests for drizzle-zod overrides: vector fields accept number arrays, jsonb fields accept records, custom type fallbacks work [owner:e2e-engineer] [beads:nv-9en7]

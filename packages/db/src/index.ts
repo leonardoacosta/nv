@@ -35,3 +35,12 @@ export type { Project, NewProject } from "./schema/projects.js";
 
 export { settings } from "./schema/settings.js";
 export type { Setting, NewSetting } from "./schema/settings.js";
+
+export { user, authSession, account, verification, apikey } from "./schema/auth.js";
+export type {
+  AuthUser, NewAuthUser,
+  AuthSession, NewAuthSession,
+  Account, NewAccount,
+  Verification, NewVerification,
+  ApiKey, NewApiKey,
+} from "./schema/auth.js";

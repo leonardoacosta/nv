@@ -57,6 +57,13 @@
       "when": 1774635076459,
       "tag": "0007_simple_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1774651586611,
+      "tag": "0008_wakeful_changeling",
+      "breakpoints": true
     }
   ]
 }

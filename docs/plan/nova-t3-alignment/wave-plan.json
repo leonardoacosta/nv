@@ -213,7 +213,7 @@
             "UI": 7,
             "E2E": 6
           },
-          "status": "queued",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -222,7 +222,7 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-27T17:42:48.550898",
           "merged_at": null
         }
       ],
@@ -247,12 +247,8 @@
   ],
   "failed_specs": [],
   "mega_batch_state": {
-    "current_phase": null,
-    "phases_completed": [
-      "API_wave3",
-      "UI_wave3",
-      "E2E_wave3"
-    ],
+    "current_phase": "DB",
+    "phases_completed": [],
     "task_results": {
       "add-turborepo": {},
       "extract-shared-validators": {},
@@ -272,7 +268,8 @@
       "E2E_wave2": "2026-03-27T16:30:08.962554",
       "API_wave3": "2026-03-27T16:33:26.835882",
       "UI_wave3": "2026-03-27T16:50:06.280831",
-      "E2E_wave3": "2026-03-27T17:20:06.606321"
+      "E2E_wave3": "2026-03-27T17:20:06.606321",
+      "DB_wave4": "2026-03-27T17:42:48.550891"
     },
     "phase_completed_at": {
       "DB_wave1": "2026-03-27T15:51:05.396157",

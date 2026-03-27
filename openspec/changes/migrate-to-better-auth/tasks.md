@@ -4,10 +4,10 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Create packages/db/src/schema/auth.ts -- generate Better Auth schema tables (user, session, account, verification, apikey) using `npx @better-auth/cli generate` with Drizzle output, adjust table names if collision with existing `sessions` table (use `auth_session` or keep singular `session`) [owner:db-engineer] [beads:nv-wx83]
-- [ ] [1.2] [P-2] Register auth schema in packages/db/src/client.ts -- import auth tables from schema/auth.ts and add to schema object so db.query.user, db.query.account etc. are available [owner:db-engineer] [beads:nv-qe1e]
-- [ ] [1.3] [P-2] Export auth schema and types from packages/db/src/index.ts -- follow existing pattern: export tables + inferred select/insert types (User, NewUser, AuthSession, NewAuthSession, etc.) [owner:db-engineer] [beads:nv-mxan]
-- [ ] [1.4] [P-2] Generate Drizzle migration -- run `pnpm db:generate` from packages/db to create SQL migration for new auth tables [owner:db-engineer] [beads:nv-jg80]
+- [x] [1.1] [P-1] Create packages/db/src/schema/auth.ts -- generate Better Auth schema tables (user, session, account, verification, apikey) using `npx @better-auth/cli generate` with Drizzle output, adjust table names if collision with existing `sessions` table (use `auth_session` or keep singular `session`) [owner:db-engineer] [beads:nv-wx83]
+- [x] [1.2] [P-2] Register auth schema in packages/db/src/client.ts -- import auth tables from schema/auth.ts and add to schema object so db.query.user, db.query.account etc. are available [owner:db-engineer] [beads:nv-qe1e]
+- [x] [1.3] [P-2] Export auth schema and types from packages/db/src/index.ts -- follow existing pattern: export tables + inferred select/insert types (User, NewUser, AuthSession, NewAuthSession, etc.) [owner:db-engineer] [beads:nv-mxan]
+- [x] [1.4] [P-2] Generate Drizzle migration -- run `pnpm db:generate` from packages/db to create SQL migration for new auth tables [owner:db-engineer] [beads:nv-jg80]
 
 ## API Batch
 

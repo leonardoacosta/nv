@@ -8,6 +8,7 @@ import { createLogger } from "./logger.js";
 import { probeFleet, summarizeFleet } from "./health.js";
 import { runSelfAssessment } from "./self-assess.js";
 import { readSoul, writeSoul } from "./soul.js";
+import { runTypecheck, runBuild } from "./code-tools.js";
 
 const log = createLogger("meta-svc");
 const startedAt = Date.now();
@@ -88,6 +89,30 @@ export function createHttpApp(): Hono {
       log.error({ err }, "Failed to write soul");
       return c.json({ error: message }, 500);
     }
+  });
+
+  // POST /typecheck — run pnpm typecheck
+  app.post("/typecheck", async (c) => {
+    let body: { package?: string } = {};
+    try {
+      body = (await c.req.json()) as { package?: string };
+    } catch {
+      // empty body is fine — runs on whole workspace
+    }
+    const result = await runTypecheck(body.package);
+    return c.json(result, result.success ? 200 : 422);
+  });
+
+  // POST /build — run pnpm build
+  app.post("/build", async (c) => {
+    let body: { package?: string } = {};
+    try {
+      body = (await c.req.json()) as { package?: string };
+    } catch {
+      // empty body is fine — runs on whole workspace
+    }
+    const result = await runBuild(body.package);
+    return c.json(result, result.success ? 200 : 422);
   });
 
   return app;

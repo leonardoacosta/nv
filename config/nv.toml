@@ -4,8 +4,9 @@ think = "ultratrue"
 
 [agent]
 digest_interval_minutes = 60
-model = "claude-sonnet-4-6"
+model = "claude-opus-4-6"
 think = true
+max_turns = 100
 
 [alert_rules]
 interval_secs = 300

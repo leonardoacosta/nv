@@ -115,10 +115,11 @@ export class NovaAgent {
       prompt: message.content,
       options: {
         systemPrompt: systemPromptWithHistory,
+        model: this.config.agent.model,
         allowedTools: this.allowedTools,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
-        maxTurns: 30,
+        maxTurns: this.config.agent.maxTurns,
         mcpServers: this.mcpServers,
         env: {
           ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
@@ -221,10 +222,11 @@ export class NovaAgent {
       prompt: message.content,
       options: {
         systemPrompt: systemPromptWithHistory,
+        model: this.config.agent.model,
         allowedTools: this.allowedTools,
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
-        maxTurns: 30,
+        maxTurns: this.config.agent.maxTurns,
         mcpServers: this.mcpServers,
         env: {
           ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",

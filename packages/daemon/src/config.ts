@@ -57,6 +57,11 @@ export interface McpServerEntry {
   env?: Record<string, string>;
 }
 
+export interface AgentConfig {
+  model: string;
+  maxTurns: number;
+}
+
 export interface Config {
   logLevel: string;
   daemonPort: number;
@@ -67,6 +72,7 @@ export interface Config {
   telegramChatId?: string;
   toolRouterUrl: string;
   mcpServers: Record<string, McpServerEntry>;
+  agent: AgentConfig;
   autonomy?: AutonomyConfig;
   proactiveWatcher: ProactiveWatcherConfig;
   dream: DreamSchedulerConfig;
@@ -83,6 +89,7 @@ const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proact
   systemPromptPath: "config/system-prompt.md",
   toolRouterUrl: "http://localhost:4100",
   mcpServers: {},
+  agent: { model: "claude-opus-4-6", maxTurns: 100 },
   conversationHistoryDepth: 20,
 };
 
@@ -92,6 +99,10 @@ interface TomlConfig {
     health_port?: number;
     log_level?: string;
     tool_router_url?: string;
+  };
+  agent?: {
+    model?: string;
+    max_turns?: number;
   };
   telegram?: {
     chat_id?: number | string;
@@ -280,6 +291,11 @@ export async function loadConfig(
     ? parseInt(historyDepthRaw, 10)
     : (toml.conversation?.history_depth ?? 20);
 
+  const agent: AgentConfig = {
+    model: toml.agent?.model ?? "claude-opus-4-6",
+    maxTurns: toml.agent?.max_turns ?? 100,
+  };
+
   // Parse [tools.mcp_servers] section — each entry becomes an McpServerEntry
   const mcpServers: Record<string, McpServerEntry> = {};
   const tomlMcpServers = toml.tools?.mcp_servers;
@@ -303,6 +319,7 @@ export async function loadConfig(
     systemPromptPath,
     toolRouterUrl,
     mcpServers,
+    agent,
     autonomy,
     proactiveWatcher,
     dream,

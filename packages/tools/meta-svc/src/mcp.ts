@@ -6,6 +6,7 @@ import { createLogger } from "./logger.js";
 import { probeFleet, summarizeFleet } from "./health.js";
 import { runSelfAssessment } from "./self-assess.js";
 import { writeSoul } from "./soul.js";
+import { runTypecheck, runBuild } from "./code-tools.js";
 
 const logger = createLogger("meta-svc", { destination: process.stderr });
 
@@ -76,6 +77,62 @@ server.registerTool(
         {
           type: "text" as const,
           text: `Soul document updated (${bytes} bytes written)`,
+        },
+      ],
+    };
+  },
+);
+
+// typecheck_project — run pnpm typecheck on a package
+server.registerTool(
+  "typecheck_project",
+  {
+    description:
+      "Run TypeScript typecheck on a package. Returns errors if any. Use after modifying code to verify changes.",
+    inputSchema: z.object({
+      package: z
+        .string()
+        .optional()
+        .describe(
+          "Package filter for pnpm (e.g. '@nova/daemon'). If omitted, runs typecheck on the whole workspace.",
+        ),
+    }),
+  },
+  async ({ package: pkg }) => {
+    const result = await runTypecheck(pkg);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
+        },
+      ],
+    };
+  },
+);
+
+// build_project — run pnpm build on a package
+server.registerTool(
+  "build_project",
+  {
+    description:
+      "Run build on a package. Returns build output and success status. Use to verify changes compile and bundle correctly.",
+    inputSchema: z.object({
+      package: z
+        .string()
+        .optional()
+        .describe(
+          "Package filter for pnpm (e.g. '@nova/daemon'). If omitted, runs build on the whole workspace.",
+        ),
+    }),
+  },
+  async ({ package: pkg }) => {
+    const result = await runBuild(pkg);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(result, null, 2),
         },
       ],
     };

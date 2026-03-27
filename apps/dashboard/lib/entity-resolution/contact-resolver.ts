@@ -9,7 +9,7 @@
  * Key format: `"${channel}:${senderId}"` e.g. `"telegram:7380462766"`.
  */
 
-import type { PersonProfile } from "./people-parser.js";
+import type { PersonProfile } from "./people-parser";
 
 /**
  * Drizzle-inferred Contact row shape.

@@ -13,11 +13,11 @@
  *  - EnrichedProject
  */
 
-export { parsePeopleMemory } from "./people-parser.js";
-export type { PersonProfile } from "./people-parser.js";
+export { parsePeopleMemory } from "./people-parser";
+export type { PersonProfile } from "./people-parser";
 
-export { resolveContacts } from "./contact-resolver.js";
-export type { ContactRow } from "./contact-resolver.js";
+export { resolveContacts } from "./contact-resolver";
+export type { ContactRow } from "./contact-resolver";
 
-export { enrichProjects } from "./project-enrichment.js";
-export type { ApiProject, EnrichedProject } from "./project-enrichment.js";
+export { enrichProjects } from "./project-enrichment";
+export type { ApiProject, EnrichedProject } from "./project-enrichment";

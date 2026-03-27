@@ -7,8 +7,9 @@ import {
   type ProactiveWatcherConfig,
   defaultProactiveWatcherConfig,
 } from "./features/watcher/types.js";
+import type { DreamSchedulerConfig } from "./features/dream/types.js";
 
-export type { ProactiveWatcherConfig };
+export type { ProactiveWatcherConfig, DreamSchedulerConfig };
 
 export interface AutonomyConfig {
   enabled: boolean;
@@ -36,12 +37,13 @@ export interface Config {
   mcpServers: Record<string, McpServerEntry>;
   autonomy?: AutonomyConfig;
   proactiveWatcher: ProactiveWatcherConfig;
+  dream: DreamSchedulerConfig;
   conversationHistoryDepth: number;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
 
-const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "vercelGatewayKey"> = {
+const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "dream" | "vercelGatewayKey"> = {
   logLevel: "info",
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
@@ -53,6 +55,7 @@ const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proact
 interface TomlConfig {
   daemon?: {
     port?: number;
+    health_port?: number;
     log_level?: string;
     tool_router_url?: string;
   };
@@ -74,6 +77,14 @@ interface TomlConfig {
     max_reminders_per_interval?: number;
     quiet_start?: string;
     quiet_end?: string;
+  };
+  dream?: {
+    enabled?: boolean;
+    cron_hour?: number;
+    interaction_threshold?: number;
+    size_threshold_kb?: number;
+    debounce_hours?: number;
+    topic_max_kb?: number;
   };
   conversation?: {
     history_depth?: number;
@@ -114,7 +125,7 @@ export async function loadConfig(
   const daemonPortRaw = process.env["NV_DAEMON_PORT"];
   const daemonPort = daemonPortRaw
     ? parseInt(daemonPortRaw, 10)
-    : (toml.daemon?.port ?? DEFAULTS.daemonPort);
+    : (toml.daemon?.port ?? toml.daemon?.health_port ?? DEFAULTS.daemonPort);
 
   const databaseUrl = process.env["DATABASE_URL"];
   if (!databaseUrl) {
@@ -173,6 +184,15 @@ export async function loadConfig(
       defaultProactiveWatcherConfig.quietEnd,
   };
 
+  const dream: DreamSchedulerConfig = {
+    enabled: toml.dream?.enabled ?? true,
+    cronHour: toml.dream?.cron_hour ?? 3,
+    interactionThreshold: toml.dream?.interaction_threshold ?? 50,
+    sizeThresholdKb: toml.dream?.size_threshold_kb ?? 60,
+    debounceHours: toml.dream?.debounce_hours ?? 12,
+    topicMaxKb: toml.dream?.topic_max_kb ?? 4,
+  };
+
   const historyDepthRaw = process.env["NV_HISTORY_DEPTH"];
   const conversationHistoryDepth = historyDepthRaw
     ? parseInt(historyDepthRaw, 10)
@@ -203,6 +223,7 @@ export async function loadConfig(
     mcpServers,
     autonomy,
     proactiveWatcher,
+    dream,
     conversationHistoryDepth,
   };
 }

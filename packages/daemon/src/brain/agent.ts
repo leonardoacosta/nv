@@ -7,6 +7,7 @@ import { logger } from "../logger.js";
 import type { AgentResponse, ToolCall } from "./types.js";
 import { writeEntry } from "../features/diary/index.js";
 import { buildMcpServers, buildAllowedTools } from "./mcp-config.js";
+import type { DreamScheduler } from "../features/dream/scheduler.js";
 
 /**
  * Format an array of messages into a `<conversation_history>` block
@@ -40,6 +41,7 @@ export class NovaAgent {
   private systemPrompt: string = "";
   private readonly mcpServers: Record<string, { command: string; args: string[]; env?: Record<string, string> }>;
   private readonly allowedTools: string[];
+  private _dreamScheduler: DreamScheduler | null = null;
 
   private constructor(config: Config) {
     this.config = config;
@@ -58,6 +60,11 @@ export class NovaAgent {
       logger.info({ mcpServers: mcpNames }, "MCP servers configured for agent");
     }
     return agent;
+  }
+
+  /** Wire up the dream scheduler for interaction counting. */
+  setDreamScheduler(scheduler: DreamScheduler): void {
+    this._dreamScheduler = scheduler;
   }
 
   private async loadSystemPrompt(): Promise<void> {
@@ -165,6 +172,11 @@ export class NovaAgent {
       tokensOut: tokensOut > 0 ? tokensOut : undefined,
       responseLatencyMs,
     });
+
+    // Increment dream interaction counter
+    if (this._dreamScheduler) {
+      this._dreamScheduler.incrementInteractionCount();
+    }
 
     return {
       text: resultText,

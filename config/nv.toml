@@ -69,6 +69,14 @@ enabled = true
 # cooldown_hours = 2       # hours before retrying same obligation (default: 2)
 # idle_debounce_secs = 60  # seconds of idle before executing (default: 60)
 
+[dream]
+enabled = true
+cron_hour = 3
+interaction_threshold = 50
+size_threshold_kb = 60
+debounce_hours = 12
+topic_max_kb = 4
+
 [telegram]
 chat_id = 7380462766
 

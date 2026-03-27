@@ -33,44 +33,44 @@
 
 ## Daemon: Dream Orchestrator
 
-- [ ] [6.1] [P-1] Create packages/daemon/src/features/dream/orchestrator.ts -- runDream(config, agent, memorySvcUrl) function that executes full 4-phase cycle: orient -> rules -> LLM compress -> writeback. Return DreamResult. Support dry_run flag that skips writeback [owner:api-engineer]
-- [ ] [6.2] [P-1] Create packages/daemon/src/features/dream/index.ts -- barrel export for orchestrator, scheduler [owner:api-engineer]
-- [ ] [6.3] [P-2] Expose POST /dream on daemon health port (:8400) -- run dream cycle, return DreamResult JSON. Accept ?dry_run=true query param [owner:api-engineer]
-- [ ] [6.4] [P-2] Expose GET /dream/status on daemon health port -- read _dream_meta topic from memory-svc, return stats + per-topic sizes [owner:api-engineer]
+- [x] [6.1] [P-1] Create packages/daemon/src/features/dream/orchestrator.ts -- runDream(config, agent, memorySvcUrl) function that executes full 4-phase cycle: orient -> rules -> LLM compress -> writeback. Return DreamResult. Support dry_run flag that skips writeback [owner:api-engineer]
+- [x] [6.2] [P-1] Create packages/daemon/src/features/dream/index.ts -- barrel export for orchestrator, scheduler [owner:api-engineer]
+- [x] [6.3] [P-2] Expose POST /dream on daemon health port (:8400) -- run dream cycle, return DreamResult JSON. Accept ?dry_run=true query param [owner:api-engineer]
+- [x] [6.4] [P-2] Expose GET /dream/status on daemon health port -- read _dream_meta topic from memory-svc, return stats + per-topic sizes [owner:api-engineer]
 
 ## Daemon: Dream Scheduler
 
-- [ ] [7.1] [P-2] Create packages/daemon/src/features/dream/scheduler.ts -- DreamScheduler class following ProactiveWatcher pattern (start/stop, setInterval, config-driven) [owner:api-engineer]
-- [ ] [7.2] [P-2] Implement cron trigger -- check hourly if current hour matches config.dream.cron_hour (CDT), trigger dream if match [owner:api-engineer]
-- [ ] [7.3] [P-2] Implement interaction counter trigger -- export incrementInteractionCount() called from NovaAgent.processMessage(). When count >= config.dream.interaction_threshold, trigger dream and reset [owner:api-engineer]
-- [ ] [7.4] [P-2] Implement size trigger -- on scheduler tick, read total memory size from _dream_meta or compute via orient. If >= config.dream.size_threshold_kb, trigger dream [owner:api-engineer]
-- [ ] [7.5] [P-2] Implement debounce -- read _dream_meta.lastDreamAt, skip if elapsed < config.dream.debounce_hours [owner:api-engineer]
-- [ ] [7.6] [P-2] Wire DreamScheduler into daemon main init -- start after Agent SDK and memory-svc are ready, stop on shutdown [owner:api-engineer]
+- [x] [7.1] [P-2] Create packages/daemon/src/features/dream/scheduler.ts -- DreamScheduler class following ProactiveWatcher pattern (start/stop, setInterval, config-driven) [owner:api-engineer]
+- [x] [7.2] [P-2] Implement cron trigger -- check hourly if current hour matches config.dream.cron_hour (CDT), trigger dream if match [owner:api-engineer]
+- [x] [7.3] [P-2] Implement interaction counter trigger -- export incrementInteractionCount() called from NovaAgent.processMessage(). When count >= config.dream.interaction_threshold, trigger dream and reset [owner:api-engineer]
+- [x] [7.4] [P-2] Implement size trigger -- on scheduler tick, read total memory size from _dream_meta or compute via orient. If >= config.dream.size_threshold_kb, trigger dream [owner:api-engineer]
+- [x] [7.5] [P-2] Implement debounce -- read _dream_meta.lastDreamAt, skip if elapsed < config.dream.debounce_hours [owner:api-engineer]
+- [x] [7.6] [P-2] Wire DreamScheduler into daemon main init -- start after Agent SDK and memory-svc are ready, stop on shutdown [owner:api-engineer]
 
 ## Daemon: Interaction Counter Hook
 
-- [ ] [8.1] [P-2] Modify packages/daemon/src/brain/agent.ts -- after processMessage returns, call incrementInteractionCount() from dream scheduler module. Import is lazy to avoid circular deps [owner:api-engineer]
+- [x] [8.1] [P-2] Modify packages/daemon/src/brain/agent.ts -- after processMessage returns, call incrementInteractionCount() from dream scheduler module. Import is lazy to avoid circular deps [owner:api-engineer]
 
 ## Config: nv.toml
 
-- [ ] [9.1] [P-1] Add [dream] section to config/nv.toml with defaults: enabled=true, cron_hour=3, interaction_threshold=50, size_threshold_kb=60, debounce_hours=12, topic_max_kb=4 [owner:api-engineer]
-- [ ] [9.2] [P-1] Parse [dream] config in daemon config loader -- add DreamConfig type to daemon config types, parse from TOML with defaults [owner:api-engineer]
+- [x] [9.1] [P-1] Add [dream] section to config/nv.toml with defaults: enabled=true, cron_hour=3, interaction_threshold=50, size_threshold_kb=60, debounce_hours=12, topic_max_kb=4 [owner:api-engineer]
+- [x] [9.2] [P-1] Parse [dream] config in daemon config loader -- add DreamConfig type to daemon config types, parse from TOML with defaults [owner:api-engineer]
 
 ## Telegram: /dream Command
 
-- [ ] [10.1] [P-2] Create packages/daemon/src/telegram/commands/dream.ts -- buildDreamReply() that calls POST :8400/dream, formats before/after stats as Telegram-friendly text. buildDreamStatusReply() that calls GET :8400/dream/status, formats per-topic sizes sorted by size desc with total KB and last dream timestamp [owner:api-engineer]
-- [ ] [10.2] [P-2] Register /dream in packages/daemon/src/channels/telegram.ts -- add bot.onText(/^\/dream(@\S+)?(\s+(.+))?$/) handler, route "status" subarg to buildDreamStatusReply(), default to buildDreamReply(). Import buildDreamReply and buildDreamStatusReply [owner:api-engineer]
+- [x] [10.1] [P-2] Create packages/daemon/src/telegram/commands/dream.ts -- buildDreamReply() that calls POST :8400/dream, formats before/after stats as Telegram-friendly text. buildDreamStatusReply() that calls GET :8400/dream/status, formats per-topic sizes sorted by size desc with total KB and last dream timestamp [owner:api-engineer]
+- [x] [10.2] [P-2] Register /dream in packages/daemon/src/channels/telegram.ts -- add bot.onText(/^\/dream(@\S+)?(\s+(.+))?$/) handler, route "status" subarg to buildDreamStatusReply(), default to buildDreamReply(). Import buildDreamReply and buildDreamStatusReply [owner:api-engineer]
 
 ## CLI: nv dream Command
 
-- [ ] [11.1] [P-2] Create packages/cli/src/commands/dream.ts -- dreamCmd(subcommand, flags) function. "nv dream" calls POST :8400/dream and prints stats table. "nv dream status" calls GET :8400/dream/status and prints per-topic sizes. "nv dream --dry-run" calls POST :8400/dream?dry_run=true and prints what would change [owner:api-engineer]
-- [ ] [11.2] [P-2] Register in packages/cli/src/index.ts -- add case "dream" to switch, call dreamCmd with argv[3] and --dry-run flag detection [owner:api-engineer]
+- [x] [11.1] [P-2] Create packages/cli/src/commands/dream.ts -- dreamCmd(subcommand, flags) function. "nv dream" calls POST :8400/dream and prints stats table. "nv dream status" calls GET :8400/dream/status and prints per-topic sizes. "nv dream --dry-run" calls POST :8400/dream?dry_run=true and prints what would change [owner:api-engineer]
+- [x] [11.2] [P-2] Register in packages/cli/src/index.ts -- add case "dream" to switch, call dreamCmd with argv[3] and --dry-run flag detection [owner:api-engineer]
 
 ## Verify
 
 - [ ] [12.1] tsc --noEmit passes for @nova/memory-svc (dream module) [owner:api-engineer]
-- [ ] [12.2] tsc --noEmit passes for daemon (dream scheduler + orchestrator) [owner:api-engineer]
-- [ ] [12.3] tsc --noEmit passes for @nova/cli (dream command) [owner:api-engineer]
+- [x] [12.2] tsc --noEmit passes for daemon (dream scheduler + orchestrator) [owner:api-engineer]
+- [x] [12.3] tsc --noEmit passes for @nova/cli (dream command) [owner:api-engineer]
 - [ ] [12.4] Daemon starts with [dream] config and DreamScheduler initializes without error [owner:api-engineer]
 - [ ] [12.5] POST :8400/dream returns DreamResult JSON with correct stats [owner:api-engineer]
 - [ ] [12.6] GET :8400/dream/status returns per-topic sizes and _dream_meta [owner:api-engineer]

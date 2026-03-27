@@ -21,6 +21,7 @@ import { buildAzReply } from "../telegram/commands/az.js";
 import { buildMailReply } from "../telegram/commands/mail.js";
 import { buildPimReply } from "../telegram/commands/pim.js";
 import { buildAdoReply } from "../telegram/commands/ado.js";
+import { buildDreamReply, buildDreamStatusReply } from "../telegram/commands/dream.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -388,6 +389,7 @@ export class TelegramAdapter {
         { command: "mail", description: "Read Outlook email (/mail, /mail read ID, /mail search query)" },
         { command: "pim", description: "PIM role status and activation" },
         { command: "ado", description: "Azure DevOps: work items, PRs, repos" },
+        { command: "dream", description: "Run memory consolidation (/dream, /dream status)" },
       ])
       .catch((err: unknown) => {
         this.log.error({ err }, "Failed to register bot commands");
@@ -527,6 +529,17 @@ export class TelegramAdapter {
         }
       }
       void this.handleDirectCommand(chatId, () => buildAdoReply(subcommand, arg));
+    });
+
+    // /dream [status] — memory consolidation
+    this.bot.onText(/^\/dream(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const subArg = match?.[3]?.trim();
+      if (subArg === "status") {
+        void this.handleDirectCommand(chatId, () => buildDreamStatusReply());
+      } else {
+        void this.handleDirectCommand(chatId, () => buildDreamReply());
+      }
     });
 
     // ── Agent-routed commands (complex — go through onMessageCallback) ──────

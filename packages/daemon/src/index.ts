@@ -8,6 +8,7 @@ import { initFleetClient } from "./fleet-client.js";
 import { TelegramAdapter } from "./channels/telegram.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
+import { DreamScheduler } from "./features/dream/index.js";
 import { NovaAgent } from "./brain/agent.js";
 import { ConversationManager } from "./brain/conversation.js";
 import {
@@ -134,6 +135,28 @@ export async function main(): Promise<void> {
   const conversationManager = new ConversationManager(pool);
 
   log.info({ service: "nova-daemon" }, "NovaAgent ready");
+
+  // ── Dream scheduler ─────────────────────────────────────────────────────────
+
+  let dreamScheduler: DreamScheduler | null = null;
+
+  if (config.dream.enabled) {
+    dreamScheduler = new DreamScheduler(config.dream);
+    dreamScheduler.start();
+
+    // Expose the scheduler so the agent interaction hook can increment counter
+    agent.setDreamScheduler(dreamScheduler);
+
+    log.info(
+      {
+        service: "nova-daemon",
+        cronHour: config.dream.cronHour,
+        interactionThreshold: config.dream.interactionThreshold,
+        sizeThresholdKb: config.dream.sizeThresholdKb,
+      },
+      "Dream scheduler started",
+    );
+  }
 
   // ── HTTP server (Hono) ───────────────────────────────────────────────────
 
@@ -335,6 +358,10 @@ export async function main(): Promise<void> {
 
     if (stopBriefingScheduler !== null) {
       stopBriefingScheduler();
+    }
+
+    if (dreamScheduler !== null) {
+      dreamScheduler.stop();
     }
 
     if (watcher !== null) {

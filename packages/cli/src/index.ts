@@ -8,6 +8,7 @@ import { checkCmd } from "./commands/check.js";
 import { logs } from "./commands/logs.js";
 import { restart } from "./commands/restart.js";
 import { pim } from "./commands/pim.js";
+import { dreamCmd } from "./commands/dream.js";
 import { help } from "./commands/help.js";
 
 const command = process.argv[2] || "health";
@@ -31,6 +32,9 @@ switch (command) {
     break;
   case "pim":
     await pim(process.argv[3]);
+    break;
+  case "dream":
+    await dreamCmd(process.argv[3], process.argv.includes("--dry-run"));
     break;
   case "help":
   case "--help":

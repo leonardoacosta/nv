@@ -10,6 +10,7 @@ import type { Message } from "./types.js";
 import type { Logger } from "./logger.js";
 import type { BriefingDeps } from "./features/briefing/synthesizer.js";
 import { runMorningBriefing } from "./features/briefing/runner.js";
+import { runDream, getDreamStatus } from "./features/dream/index.js";
 
 const startedAt = Date.now();
 
@@ -212,6 +213,37 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
         if (inactivityTimer) clearTimeout(inactivityTimer);
       }
     });
+  });
+
+  // ── POST /dream ──────────────────────────────────────────────────────────────
+  app.post("/dream", async (c) => {
+    const dryRun = c.req.query("dry_run") === "true";
+    const topicMaxKb = config.dream.topicMaxKb;
+
+    try {
+      const result = await runDream({ topicMaxKb, dryRun });
+      return c.json(result);
+    } catch (err) {
+      logger.error({ err }, "POST /dream failed");
+      return c.json(
+        { error: err instanceof Error ? err.message : "Dream cycle failed" },
+        500,
+      );
+    }
+  });
+
+  // ── GET /dream/status ───────────────────────────────────────────────────────
+  app.get("/dream/status", async (c) => {
+    try {
+      const status = await getDreamStatus();
+      return c.json(status);
+    } catch (err) {
+      logger.error({ err }, "GET /dream/status failed");
+      return c.json(
+        { error: err instanceof Error ? err.message : "Failed to get dream status" },
+        500,
+      );
+    }
   });
 
   return app;

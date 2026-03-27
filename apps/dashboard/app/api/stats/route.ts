@@ -1,43 +1,45 @@
 import { NextResponse } from "next/server";
-import { fleetFetch } from "@/lib/fleet";
-import type { StatsGetResponse, ToolStatsReport } from "@/types/api";
+import { sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { messages, obligations, contacts, memory, diary } from "@nova/db";
+import type { StatsGetResponse } from "@/types/api";
 
 export async function GET() {
   try {
-    const res = await fleetFetch("meta-svc", "/services");
-
-    if (!res.ok) {
-      // Return empty stats rather than an error for degraded state
-      const empty: StatsGetResponse = {
-        tool_usage: {
-          total_invocations: 0,
-          invocations_today: 0,
-          per_tool: [],
-        },
-      };
-      return NextResponse.json(empty);
-    }
-
-    const data = await res.json();
-
-    // meta-svc /services returns tool usage aggregates
-    const toolUsage: ToolStatsReport = {
-      total_invocations: data.total_invocations ?? 0,
-      invocations_today: data.invocations_today ?? 0,
-      per_tool: data.per_tool ?? data.tools ?? [],
-    };
+    const [msgCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(messages);
+    const [oblCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(obligations);
+    const [contactCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(contacts);
+    const [memCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(memory);
+    const [diaryCount] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(diary);
 
     const response: StatsGetResponse = {
-      tool_usage: toolUsage,
-      ...data,
+      tool_usage: {
+        total_invocations: 0,
+        invocations_today: 0,
+        per_tool: [],
+      },
+      counts: {
+        messages: msgCount?.count ?? 0,
+        obligations: oblCount?.count ?? 0,
+        contacts: contactCount?.count ?? 0,
+        memory: memCount?.count ?? 0,
+        diary: diaryCount?.count ?? 0,
+      },
     };
 
     return NextResponse.json(response);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json(
-      { error: `Fleet unreachable: ${message}` },
-      { status: 502 },
-    );
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

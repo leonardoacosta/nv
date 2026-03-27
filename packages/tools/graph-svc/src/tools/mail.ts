@@ -1,15 +1,8 @@
 import type { ServiceConfig } from "../config.js";
 import { sshCloudPC } from "../ssh.js";
+import { sanitize } from "../utils.js";
 
 const OUTLOOK_SCRIPT = "graph-outlook.ps1";
-
-/**
- * Sanitize a user-supplied string before passing it to SSH/PowerShell.
- * Strips single quotes, semicolons, backticks, and pipe characters to prevent injection.
- */
-function sanitize(value: string): string {
-  return value.replace(/[';`|]/g, "");
-}
 
 /**
  * Get recent emails from Outlook inbox.

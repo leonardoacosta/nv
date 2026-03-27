@@ -2,7 +2,7 @@ import type { ToolDefinition } from "../tools.js";
 import type { ServiceConfig } from "../config.js";
 import { calendarToday, calendarUpcoming, calendarNext } from "./calendar.js";
 import { adoProjects, adoPipelines, adoBuilds } from "./ado.js";
-import { adoWorkItems, adoRepos, adoPullRequests, adoBuildLogs } from "./ado-extended.js";
+import { adoWorkItems, adoRepos, adoPullRequests, adoBuildLogs, adoCommits, adoPipelineDefinition, adoPipelineUpdate, adoRepoUpdate, adoPipelineRun, adoPipelineVariables, adoBranches, adoRepoDelete } from "./ado-extended.js";
 import { outlookInbox, outlookRead, outlookSearch, outlookFolders, outlookSent, outlookFolder, outlookFlag, outlookMove, outlookUnread } from "./mail.js";
 import { pimStatus, pimActivate, pimActivateAll } from "./pim.js";
 
@@ -334,6 +334,264 @@ export function registerGraphTools(
             ? input["project"]
             : undefined;
         return adoBuildLogs(config, buildId, project);
+      },
+    },
+
+    // ── ADO Git & Pipeline Management Tools ────────────────────────
+    {
+      name: "ado_commits",
+      description:
+        "Get recent commits from an Azure DevOps Git repository. Useful for contributor analysis and activity tracking.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          repo: {
+            type: "string",
+            description: "Repository name.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+          limit: {
+            type: "integer",
+            description: "Maximum number of commits (1-50, default 20).",
+            minimum: 1,
+            maximum: 50,
+          },
+        },
+        required: ["repo"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const repo = input["repo"];
+        if (typeof repo !== "string" || !repo) {
+          throw new Error("repo is required");
+        }
+        const project =
+          typeof input["project"] === "string" ? input["project"] : undefined;
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : 20;
+        return adoCommits(config, repo, project, limit);
+      },
+    },
+    {
+      name: "ado_pipeline_definition",
+      description:
+        "Get pipeline definition details: triggers, variables, YAML path, default branch.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pipeline_id: {
+            type: "integer",
+            description: "The pipeline definition ID.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+        },
+        required: ["pipeline_id"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const pipelineId = input["pipeline_id"];
+        if (typeof pipelineId !== "number") {
+          throw new Error("pipeline_id is required and must be a number");
+        }
+        const project =
+          typeof input["project"] === "string" ? input["project"] : undefined;
+        return adoPipelineDefinition(config, pipelineId, project);
+      },
+    },
+    {
+      name: "ado_pipeline_update",
+      description:
+        "Update a pipeline's default branch or settings. Requires operator confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pipeline_id: {
+            type: "integer",
+            description: "The pipeline definition ID.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+          branch: {
+            type: "string",
+            description: "New default branch (e.g., refs/heads/main).",
+          },
+        },
+        required: ["pipeline_id", "project"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const pipelineId = input["pipeline_id"];
+        if (typeof pipelineId !== "number") {
+          throw new Error("pipeline_id is required and must be a number");
+        }
+        const project = input["project"];
+        if (typeof project !== "string" || !project) {
+          throw new Error("project is required");
+        }
+        const branch =
+          typeof input["branch"] === "string" ? input["branch"] : undefined;
+        return adoPipelineUpdate(config, pipelineId, project, branch);
+      },
+    },
+    {
+      name: "ado_pipeline_run",
+      description:
+        "Trigger a pipeline run. Returns the new build run details. Requires operator confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pipeline_id: {
+            type: "integer",
+            description: "The pipeline definition ID.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+          branch: {
+            type: "string",
+            description: "Branch to build (e.g., refs/heads/main). Uses pipeline default if omitted.",
+          },
+        },
+        required: ["pipeline_id", "project"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const pipelineId = input["pipeline_id"];
+        if (typeof pipelineId !== "number") {
+          throw new Error("pipeline_id is required and must be a number");
+        }
+        const project = input["project"];
+        if (typeof project !== "string" || !project) {
+          throw new Error("project is required");
+        }
+        const branch =
+          typeof input["branch"] === "string" ? input["branch"] : undefined;
+        return adoPipelineRun(config, pipelineId, project, branch);
+      },
+    },
+    {
+      name: "ado_pipeline_variables",
+      description:
+        "List variables configured on a pipeline.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          pipeline_id: {
+            type: "integer",
+            description: "The pipeline definition ID.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+        },
+        required: ["pipeline_id"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const pipelineId = input["pipeline_id"];
+        if (typeof pipelineId !== "number") {
+          throw new Error("pipeline_id is required and must be a number");
+        }
+        const project =
+          typeof input["project"] === "string" ? input["project"] : undefined;
+        return adoPipelineVariables(config, pipelineId, project);
+      },
+    },
+    {
+      name: "ado_repo_update",
+      description:
+        "Update repository settings (e.g., set default branch). Requires operator confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          repo: {
+            type: "string",
+            description: "Repository name.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+          default_branch: {
+            type: "string",
+            description: "New default branch (e.g., refs/heads/main).",
+          },
+        },
+        required: ["repo", "project", "default_branch"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const repo = input["repo"];
+        if (typeof repo !== "string" || !repo) throw new Error("repo is required");
+        const project = input["project"];
+        if (typeof project !== "string" || !project) throw new Error("project is required");
+        const defaultBranch = input["default_branch"];
+        if (typeof defaultBranch !== "string" || !defaultBranch) throw new Error("default_branch is required");
+        return adoRepoUpdate(config, repo, project, defaultBranch);
+      },
+    },
+    {
+      name: "ado_branches",
+      description:
+        "List branches in an Azure DevOps Git repository.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          repo: {
+            type: "string",
+            description: "Repository name.",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+        },
+        required: ["repo"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const repo = input["repo"];
+        if (typeof repo !== "string" || !repo) throw new Error("repo is required");
+        const project =
+          typeof input["project"] === "string" ? input["project"] : undefined;
+        return adoBranches(config, repo, project);
+      },
+    },
+    {
+      name: "ado_repo_delete",
+      description:
+        "Delete an Azure DevOps repository. DESTRUCTIVE — requires operator confirmation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          repo_id: {
+            type: "string",
+            description: "Repository ID (GUID).",
+          },
+          project: {
+            type: "string",
+            description: "Project name.",
+          },
+        },
+        required: ["repo_id", "project"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const repoId = input["repo_id"];
+        if (typeof repoId !== "string" || !repoId) throw new Error("repo_id is required");
+        const project = input["project"];
+        if (typeof project !== "string" || !project) throw new Error("project is required");
+        return adoRepoDelete(config, repoId, project);
       },
     },
 

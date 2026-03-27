@@ -1,15 +1,8 @@
 import type { ServiceConfig } from "../config.js";
 import { sshCloudPC } from "../ssh.js";
+import { sanitize } from "../utils.js";
 
 const PIM_SCRIPT = "graph-pim.ps1";
-
-/**
- * Sanitize a user-supplied string before passing it to SSH/PowerShell.
- * Strips single quotes, semicolons, backticks, and pipe characters to prevent injection.
- */
-function sanitize(value: string): string {
-  return value.replace(/[';`|]/g, "");
-}
 
 /**
  * Get PIM-eligible Azure roles with activation status.

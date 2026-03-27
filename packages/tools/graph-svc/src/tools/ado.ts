@@ -1,26 +1,16 @@
 import type { ServiceConfig } from "../config.js";
-import { sshCloudPC } from "../ssh.js";
+import { sshAdoCommand } from "../ssh.js";
+import { sanitize } from "../utils.js";
 
-const ADO_SCRIPT = "graph-ado.ps1";
-
-/**
- * Sanitize a user-supplied string before passing it to SSH/PowerShell.
- * Strips single quotes, semicolons, backticks, and pipe characters to prevent injection.
- */
-function sanitize(value: string): string {
-  return value.replace(/[';`|]/g, "");
-}
+/** Azure DevOps organization URL. */
+const ADO_ORG = "https://dev.azure.com/brownandbrowninc";
 
 /**
  * List Azure DevOps projects.
  */
 export async function adoProjects(config: ServiceConfig): Promise<string> {
-  return sshCloudPC(
-    config.cloudpcHost,
-    config.cloudpcUserPath,
-    ADO_SCRIPT,
-    "-Action Projects",
-  );
+  const cmd = `az devops project list --organization ${ADO_ORG} -o json 2>$null`;
+  return sshAdoCommand(config.cloudpcHost, cmd);
 }
 
 /**
@@ -30,16 +20,12 @@ export async function adoPipelines(
   config: ServiceConfig,
   project?: string,
 ): Promise<string> {
-  let args = "-Action Pipelines";
+  let cmd = `az pipelines list --organization ${ADO_ORG}`;
   if (project) {
-    args += ` -Project '${sanitize(project)}'`;
+    cmd += ` --project '${sanitize(project)}'`;
   }
-  return sshCloudPC(
-    config.cloudpcHost,
-    config.cloudpcUserPath,
-    ADO_SCRIPT,
-    args,
-  );
+  cmd += ` -o json 2>$null`;
+  return sshAdoCommand(config.cloudpcHost, cmd);
 }
 
 /**
@@ -51,18 +37,17 @@ export async function adoBuilds(
   pipeline?: string,
   limit: number = 10,
 ): Promise<string> {
-  let args = "-Action Builds";
+  let cmd = `az pipelines runs list --organization ${ADO_ORG}`;
   if (project) {
-    args += ` -Project '${sanitize(project)}'`;
+    cmd += ` --project '${sanitize(project)}'`;
   }
   if (pipeline) {
-    args += ` -Pipeline '${sanitize(pipeline)}'`;
+    cmd += ` --pipeline-ids (az pipelines list --organization ${ADO_ORG}`;
+    if (project) {
+      cmd += ` --project '${sanitize(project)}'`;
+    }
+    cmd += ` --name '${sanitize(pipeline)}' --query '[0].id' -o tsv 2>$null)`;
   }
-  args += ` -Limit ${limit}`;
-  return sshCloudPC(
-    config.cloudpcHost,
-    config.cloudpcUserPath,
-    ADO_SCRIPT,
-    args,
-  );
+  cmd += ` --top ${limit} -o json 2>$null`;
+  return sshAdoCommand(config.cloudpcHost, cmd);
 }

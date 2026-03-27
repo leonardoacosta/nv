@@ -82,13 +82,6 @@ async function adoSocksDelete(config: ServiceConfig, path: string): Promise<stri
   }
 }
 
-// ── SSH fallback helpers ───────────────────────────────────────────────
-
-function sshAdoPs(cloudpcHost: string, ps: string, timeoutMs: number = 45_000): Promise<string> {
-  const cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "${ps}"`;
-  return sshAdoCommand(cloudpcHost, cmd, timeoutMs);
-}
-
 // ── Tool implementations ───────────────────────────────────────────────
 
 /**

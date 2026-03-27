@@ -44,3 +44,6 @@ export type {
   CreateProjectInput,
   UpdateProjectInput,
 } from "./schema/projects.js";
+
+export { settings } from "./schema/settings.js";
+export type { Setting, NewSetting } from "./schema/settings.js";

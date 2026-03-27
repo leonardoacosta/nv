@@ -11,6 +11,7 @@ import { schedules } from "./schema/schedules.js";
 import { sessions } from "./schema/sessions.js";
 import { sessionEvents } from "./schema/session-events.js";
 import { projects } from "./schema/projects.js";
+import { settings } from "./schema/settings.js";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -20,6 +21,6 @@ if (!connectionString) {
 
 const queryClient = postgres(connectionString);
 
-const schema = { messages, obligations, contacts, diary, memory, briefings, reminders, schedules, sessions, sessionEvents, projects };
+const schema = { messages, obligations, contacts, diary, memory, briefings, reminders, schedules, sessions, sessionEvents, projects, settings };
 
 export const db = drizzle(queryClient, { schema });

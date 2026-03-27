@@ -4,7 +4,7 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] [beads:nv-y5ot] Create `packages/db/src/schema/settings.ts` with `settings` pgTable (key TEXT PK, value TEXT NOT NULL, updatedAt TIMESTAMP WITH TZ NOT NULL DEFAULT NOW). Export `settings`, `Setting`, `NewSetting` types. Re-export from `packages/db/src/index.ts`. Run `pnpm drizzle-kit generate` to produce the migration. [owner:db-engineer]
+- [x] [1.1] [P-1] [beads:nv-y5ot] Create `packages/db/src/schema/settings.ts` with `settings` pgTable (key TEXT PK, value TEXT NOT NULL, updatedAt TIMESTAMP WITH TZ NOT NULL DEFAULT NOW). Export `settings`, `Setting`, `NewSetting` types. Re-export from `packages/db/src/index.ts`. Run `pnpm drizzle-kit generate` to produce the migration. [owner:db-engineer]
 
 ## API Batch
 

@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # Nova - Pre-push deploy hook
 #
-# Automatically deploys the Nova TS daemon (systemd), tool fleet (systemd),
-# and dashboard (Docker container) when pushing to main. TTS announces
-# success or failure. Deploy failures warn but do NOT block the push —
-# the code always lands.
+# Selectively deploys only the components that changed:
+#   - Daemon + tool fleet: when packages/daemon/, packages/db/, packages/tools/, deploy/, or config/ change
+#   - Dashboard: when apps/dashboard/ or packages/db/ change
 #
 # Skip deployment:  SKIP_DEPLOY=1 git push
 #
@@ -33,79 +32,127 @@ if [[ "$BRANCH" != "main" ]]; then
 fi
 
 GIT_ROOT=$(git rev-parse --show-toplevel)
-DEPLOY_SCRIPT="${GIT_ROOT}/deploy/install-ts.sh"
 
-if [[ ! -f "$DEPLOY_SCRIPT" ]]; then
-    echo "Warning: deploy/install-ts.sh not found at ${DEPLOY_SCRIPT} — skipping deploy"
+# ── Detect what changed ────────────────────────────────────────────────────
+# Compare local HEAD to what's on origin/main (the commits being pushed)
+
+REMOTE_SHA=$(git rev-parse origin/main 2>/dev/null || echo "")
+if [[ -z "$REMOTE_SHA" ]]; then
+    # First push — deploy everything
+    CHANGED_FILES="(first push — all files)"
+    DAEMON_CHANGED=true
+    DASHBOARD_CHANGED=true
+else
+    CHANGED_FILES=$(git diff --name-only "$REMOTE_SHA"..HEAD 2>/dev/null || echo "")
+
+    # Daemon/fleet: packages/daemon/, packages/db/, packages/tools/, deploy/, config/
+    DAEMON_CHANGED=false
+    if echo "$CHANGED_FILES" | grep -qE '^(packages/daemon/|packages/db/|packages/tools/|deploy/|config/)'; then
+        DAEMON_CHANGED=true
+    fi
+
+    # Dashboard: apps/dashboard/, packages/db/ (shared dep), docker-compose.yml, .dockerignore
+    DASHBOARD_CHANGED=false
+    if echo "$CHANGED_FILES" | grep -qE '^(apps/dashboard/|packages/db/|docker-compose\.yml|\.dockerignore)'; then
+        DASHBOARD_CHANGED=true
+    fi
+fi
+
+# ── Summary ────────────────────────────────────────────────────────────────
+
+if ! $DAEMON_CHANGED && ! $DASHBOARD_CHANGED; then
+    echo "=== Nova: No deployable changes (docs/specs/config only) ==="
+    echo "    Skipping deploy. Push continues."
     exit 0
 fi
 
-echo "=== Nova: Deploying TS daemon + tool fleet to homelab ==="
+echo "=== Nova: Selective deploy ==="
+echo "    Daemon/fleet: $($DAEMON_CHANGED && echo 'YES — changed' || echo 'skip')"
+echo "    Dashboard:    $($DASHBOARD_CHANGED && echo 'YES — changed' || echo 'skip')"
 echo "    Log: ${LOG_FILE}"
 echo ""
 
-DAEMON_OK=false
-TOOLS_OK=false
+RESULTS=()
 
-# ── Deploy TS Daemon + Tool Fleet ────────────────────────────────────────────
-# install-ts.sh calls install-tools.sh internally after the daemon health check.
+# ── Deploy Daemon + Tool Fleet ─────────────────────────────────────────────
 
-if bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
-    echo ""
-    echo "Daemon + tool fleet deploy succeeded."
-    DAEMON_OK=true
-    TOOLS_OK=true
-else
-    DEPLOY_EXIT="${PIPESTATUS[0]}"
-    echo ""
-    echo "Daemon deploy failed (exit ${DEPLOY_EXIT}). Push continues — check logs:"
-    echo "  ${LOG_FILE}"
-    echo "  journalctl --user -u nova-ts.service -n 30"
-    echo ""
-    echo "Re-deploy manually:  bash deploy/install-ts.sh"
-    echo "Skip next time:      SKIP_DEPLOY=1 git push"
-    _notify "Nova deploy failed, check logs"
-fi
+if $DAEMON_CHANGED; then
+    DEPLOY_SCRIPT="${GIT_ROOT}/deploy/install-ts.sh"
 
-# ── Deploy Dashboard ─────────────────────────────────────────────────────────
-
-COMPOSE_FILE="${GIT_ROOT}/docker-compose.yml"
-
-if [[ -f "$COMPOSE_FILE" ]]; then
-    echo ""
-    echo "=== Nova: Rebuilding dashboard container ==="
-
-    if docker compose -f "$COMPOSE_FILE" build --no-cache dashboard 2>&1 | tee -a "$LOG_FILE"; then
-        # Restart the container with the new image
-        docker compose -f "$COMPOSE_FILE" up -d dashboard 2>&1 | tee -a "$LOG_FILE"
-
-        echo "    Waiting for dashboard to start..."
-        sleep 5
-
-        # Health check — dashboard serves on port 3000 behind Traefik
-        DASH_HEALTHY=false
-        for i in 1 2 3; do
-            if docker compose -f "$COMPOSE_FILE" ps dashboard --format json 2>/dev/null | grep -q '"running"'; then
-                DASH_HEALTHY=true
-                break
-            fi
-            sleep 3
-        done
-
-        if $DASH_HEALTHY; then
-            echo "    Dashboard deploy succeeded."
-            _notify "Nova deploy succeeded — daemon + tools + dashboard"
-        else
-            echo "    Dashboard container not running. Check: docker compose -f $COMPOSE_FILE logs dashboard"
-            _notify "Nova daemon + tools OK, dashboard failed"
-        fi
+    if [[ ! -f "$DEPLOY_SCRIPT" ]]; then
+        echo "Warning: deploy/install-ts.sh not found — skipping daemon deploy"
+        RESULTS+=("daemon: SKIPPED (no script)")
+    elif bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
+        echo ""
+        echo "Daemon + tool fleet deploy succeeded."
+        RESULTS+=("daemon+fleet: OK")
     else
-        echo "    Dashboard build failed. Check logs: ${LOG_FILE}"
-        _notify "Nova daemon + tools OK, dashboard build failed"
+        echo ""
+        echo "Daemon deploy failed. Push continues — check logs:"
+        echo "  ${LOG_FILE}"
+        echo "  journalctl --user -u nova-ts.service -n 30"
+        RESULTS+=("daemon+fleet: FAILED")
     fi
 else
-    echo "    No docker-compose.yml found — skipping dashboard deploy"
-    _notify "Nova deployed — daemon + tools (no dashboard compose file)"
+    RESULTS+=("daemon+fleet: skip (no changes)")
 fi
+
+# ── Deploy Dashboard ───────────────────────────────────────────────────────
+
+if $DASHBOARD_CHANGED; then
+    COMPOSE_FILE="${GIT_ROOT}/docker-compose.yml"
+
+    if [[ ! -f "$COMPOSE_FILE" ]]; then
+        echo "    No docker-compose.yml found — skipping dashboard deploy"
+        RESULTS+=("dashboard: SKIPPED (no compose)")
+    else
+        echo ""
+        echo "=== Nova: Rebuilding dashboard container ==="
+
+        if docker compose -f "$COMPOSE_FILE" build --no-cache dashboard 2>&1 | tee -a "$LOG_FILE"; then
+            docker compose -f "$COMPOSE_FILE" up -d dashboard 2>&1 | tee -a "$LOG_FILE"
+
+            echo "    Waiting for dashboard to start..."
+            sleep 5
+
+            DASH_HEALTHY=false
+            for i in 1 2 3; do
+                if docker compose -f "$COMPOSE_FILE" ps dashboard --format json 2>/dev/null | grep -q '"running"'; then
+                    DASH_HEALTHY=true
+                    break
+                fi
+                sleep 3
+            done
+
+            if $DASH_HEALTHY; then
+                echo "    Dashboard deploy succeeded."
+                RESULTS+=("dashboard: OK")
+            else
+                echo "    Dashboard container not running."
+                RESULTS+=("dashboard: FAILED (not running)")
+            fi
+        else
+            echo "    Dashboard build failed."
+            RESULTS+=("dashboard: FAILED (build)")
+        fi
+    fi
+else
+    RESULTS+=("dashboard: skip (no changes)")
+fi
+
+# ── Summary + TTS ──────────────────────────────────────────────────────────
+
+echo ""
+echo "=== Deploy Summary ==="
+for r in "${RESULTS[@]}"; do
+    echo "    $r"
+done
+
+# Build TTS message from results
+TTS_MSG="Nova deploy:"
+for r in "${RESULTS[@]}"; do
+    TTS_MSG="$TTS_MSG $r."
+done
+_notify "$TTS_MSG"
 
 exit 0

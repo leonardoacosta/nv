@@ -12,6 +12,7 @@ import { startBriefingScheduler } from "./features/briefing/scheduler.js";
 import { DreamScheduler } from "./features/dream/index.js";
 import { startDigestScheduler } from "./features/digest/index.js";
 import { setDigestDeps } from "./telegram/commands/digest.js";
+import { JobQueue } from "./queue/index.js";
 import { NovaAgent } from "./brain/agent.js";
 import { ConversationManager } from "./brain/conversation.js";
 import { KeywordRouter } from "./brain/keyword-router.js";
@@ -199,6 +200,47 @@ export async function main(): Promise<void> {
 
   log.info({ service: "nova-daemon" }, "NovaAgent ready");
 
+  // ── Job queue ────────────────────────────────────────────────────────────────
+
+  const queue = new JobQueue(config.queue);
+
+  queue.on("started", (event) => {
+    log.info(
+      { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, queueDepth: event.queueDepth },
+      "Job started",
+    );
+    // Send typing indicator when job starts (streaming drafts replace it once text arrives)
+    if (telegram !== null) {
+      void telegram.sendChatAction(event.job.chatId, "typing");
+    }
+  });
+
+  queue.on("completed", (event) => {
+    log.info(
+      { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, queueDepth: event.queueDepth },
+      "Job completed",
+    );
+  });
+
+  queue.on("failed", (event) => {
+    log.error(
+      { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, error: event.job.error, queueDepth: event.queueDepth },
+      "Job failed",
+    );
+  });
+
+  queue.on("cancelled", (event) => {
+    log.info(
+      { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, queueDepth: event.queueDepth },
+      "Job cancelled",
+    );
+  });
+
+  log.info(
+    { service: "nova-daemon", concurrency: config.queue.concurrency, maxQueueSize: config.queue.maxQueueSize },
+    "Job queue initialized",
+  );
+
   // ── Dream scheduler ─────────────────────────────────────────────────────────
 
   let dreamScheduler: DreamScheduler | null = null;
@@ -324,10 +366,17 @@ export async function main(): Promise<void> {
         "Message received",
       );
 
-      void (async () => {
-        // Stream writer for progressive draft updates (replaces typing indicator)
-        const writer = new TelegramStreamWriter(telegram!, msg.chatId);
+      // ── Cancel-phrase detection ───────────────────────────────────────
+      const CANCEL_RE = /^(cancel|stop|never mind|nvm)$/i;
 
+      if (CANCEL_RE.test(data.trim())) {
+        const cancelled = queue.cancelByChatId(msg.chatId);
+        const reply = cancelled > 0 ? "Cancelled." : "Nothing to cancel.";
+        void telegram!.sendMessage(msg.chatId, reply);
+        return;
+      }
+
+      void (async () => {
         try {
           // ── Smart routing: try Tier 1/2 before Agent SDK ───────────────
           const routeStart = Date.now();
@@ -415,69 +464,118 @@ export async function main(): Promise<void> {
             }
           }
 
-          // ── Tier 3: Full Agent SDK (streaming) ─────────────────────────
+          // ── Tier 3: Full Agent SDK (streaming) — dispatched via job queue ──
 
-          // Send initial typing indicator while router/history loads
-          void telegram!.sendChatAction(msg.chatId, "typing");
+          // Determine priority: /brief and /dream get low, regular messages get normal
+          const priority = /^\/(brief|dream)\b/i.test(data) ? "low" as const : "normal" as const;
 
-          // Load conversation history for this chat
-          const channelKey = `telegram:${msg.chatId}`;
-          const history = await conversationManager.loadHistory(
-            channelKey,
-            config.conversationHistoryDepth,
-          );
+          let enqueueResult: { job: { id: string }; startedImmediately: boolean };
+          try {
+            enqueueResult = queue.enqueue({
+              chatId: msg.chatId,
+              content: data,
+              priority,
+              handler: async (signal: AbortSignal) => {
+                const writer = new TelegramStreamWriter(telegram!, msg.chatId);
 
-          let finalResponse: { text: string; toolCalls: { name: string }[]; stopReason: string } | null = null;
+                try {
+                  // Load conversation history for this chat
+                  const channelKey = `telegram:${msg.chatId}`;
+                  const history = await conversationManager.loadHistory(
+                    channelKey,
+                    config.conversationHistoryDepth,
+                  );
 
-          for await (const event of agent.processMessageStream(msg, history)) {
-            switch (event.type) {
-              case "text_delta":
-                writer.onTextDelta(event.text);
-                break;
-              case "tool_start":
-                writer.onToolStart(event.name, event.callId);
-                break;
-              case "tool_done":
-                writer.onToolDone(event.name, event.callId, event.durationMs);
-                break;
-              case "done":
-                finalResponse = event.response;
-                await writer.finalize(event.response.text);
-                break;
-            }
+                  let finalResponse: { text: string; toolCalls: { name: string }[]; stopReason: string } | null = null;
+
+                  for await (const event of agent.processMessageStream(msg, history)) {
+                    // Check abort before processing each event
+                    if (signal.aborted) {
+                      return;
+                    }
+
+                    switch (event.type) {
+                      case "text_delta":
+                        writer.onTextDelta(event.text);
+                        break;
+                      case "tool_start":
+                        writer.onToolStart(event.name, event.callId);
+                        break;
+                      case "tool_done":
+                        writer.onToolDone(event.name, event.callId, event.durationMs);
+                        break;
+                      case "done":
+                        finalResponse = event.response;
+                        // Check abort before sending final response
+                        if (signal.aborted) {
+                          return;
+                        }
+                        await writer.finalize(event.response.text);
+                        break;
+                    }
+                  }
+
+                  if (finalResponse && !signal.aborted) {
+                    // Save exchange fire-and-forget — never block the response path
+                    void conversationManager.saveExchange(channelKey, msg, {
+                      ...msg,
+                      senderId: "nova",
+                      senderName: "nova",
+                      content: finalResponse.text,
+                      text: finalResponse.text,
+                    }).catch((saveErr: unknown) => {
+                      log.warn(
+                        { service: "nova-daemon", chatId: msg.chatId, err: saveErr },
+                        "Failed to save conversation exchange",
+                      );
+                    });
+
+                    log.info(
+                      {
+                        service: "nova-daemon",
+                        chatId: msg.chatId,
+                        stopReason: finalResponse.stopReason,
+                        toolCalls: finalResponse.toolCalls.length,
+                      },
+                      "Agent response sent (streaming)",
+                    );
+                  }
+                } catch (err: unknown) {
+                  if (signal.aborted) {
+                    return;
+                  }
+                  log.error(
+                    { service: "nova-daemon", chatId: msg.chatId, err },
+                    "Agent processing failed",
+                  );
+                  await writer.abort("Sorry, something went wrong.");
+                }
+              },
+            });
+          } catch (queueErr: unknown) {
+            // Queue full
+            log.warn(
+              { service: "nova-daemon", chatId: msg.chatId, err: queueErr },
+              "Queue full — rejecting message",
+            );
+            void telegram!.sendMessage(msg.chatId, "Queue full, try again in a moment.");
+            return;
           }
 
-          if (finalResponse) {
-            // Save exchange fire-and-forget — never block the response path
-            void conversationManager.saveExchange(channelKey, msg, {
-              ...msg,
-              senderId: "nova",
-              senderName: "nova",
-              content: finalResponse.text,
-              text: finalResponse.text,
-            }).catch((saveErr: unknown) => {
-              log.warn(
-                { service: "nova-daemon", chatId: msg.chatId, err: saveErr },
-                "Failed to save conversation exchange",
-              );
-            });
-
-            log.info(
-              {
-                service: "nova-daemon",
-                chatId: msg.chatId,
-                stopReason: finalResponse.stopReason,
-                toolCalls: finalResponse.toolCalls.length,
-              },
-              "Agent response sent (streaming)",
+          // Send ack if queued (not immediately started)
+          if (!enqueueResult.startedImmediately) {
+            const status = queue.getStatus(msg.chatId);
+            const position = status.position ?? 0;
+            void telegram!.sendMessage(
+              msg.chatId,
+              `Queued (${position} ahead). I'll respond when ready.`,
             );
           }
         } catch (err: unknown) {
           log.error(
             { service: "nova-daemon", chatId: msg.chatId, err },
-            "Agent processing failed",
+            "Message routing failed",
           );
-          await writer.abort("Sorry, something went wrong.");
         }
       })();
     });
@@ -487,6 +585,13 @@ export async function main(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     log.info({ service: "nova-daemon" }, "Shutting down…");
+
+    // Drain job queue first — cancel waiting, wait for running (up to 10s)
+    const drainResult = await queue.drain(10_000);
+    log.info(
+      { service: "nova-daemon", cancelled: drainResult.cancelled, drained: drainResult.drained },
+      "Job queue drained",
+    );
 
     if (stopBriefingScheduler !== null) {
       stopBriefingScheduler();

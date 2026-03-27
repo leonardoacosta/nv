@@ -8,8 +8,9 @@ import {
   defaultProactiveWatcherConfig,
 } from "./features/watcher/types.js";
 import type { DreamSchedulerConfig } from "./features/dream/types.js";
+import type { QueueConfig } from "./queue/index.js";
 
-export type { ProactiveWatcherConfig, DreamSchedulerConfig };
+export type { ProactiveWatcherConfig, DreamSchedulerConfig, QueueConfig };
 
 export interface DigestConfig {
   enabled: boolean;
@@ -67,12 +68,13 @@ export interface Config {
   proactiveWatcher: ProactiveWatcherConfig;
   dream: DreamSchedulerConfig;
   digest: DigestConfig;
+  queue: QueueConfig;
   conversationHistoryDepth: number;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
 
-const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "dream" | "digest" | "vercelGatewayKey"> = {
+const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "dream" | "digest" | "queue" | "vercelGatewayKey"> = {
   logLevel: "info",
   daemonPort: 7700,
   systemPromptPath: "config/system-prompt.md",
@@ -127,6 +129,10 @@ interface TomlConfig {
     p1_cooldown_ms?: number;
     p2_cooldown_ms?: number;
     hash_ttl_ms?: number;
+  };
+  queue?: {
+    concurrency?: number;
+    max_queue_size?: number;
   };
   conversation?: {
     history_depth?: number;
@@ -249,6 +255,17 @@ export async function loadConfig(
     hashTtlMs: toml.digest?.hash_ttl_ms ?? defaultDigestConfig.hashTtlMs,
   };
 
+  const queueConcurrencyRaw = process.env["NV_QUEUE_CONCURRENCY"];
+  const queueMaxSizeRaw = process.env["NV_QUEUE_MAX_SIZE"];
+  const queue: QueueConfig = {
+    concurrency: queueConcurrencyRaw
+      ? parseInt(queueConcurrencyRaw, 10)
+      : (toml.queue?.concurrency ?? 2),
+    maxQueueSize: queueMaxSizeRaw
+      ? parseInt(queueMaxSizeRaw, 10)
+      : (toml.queue?.max_queue_size ?? 20),
+  };
+
   const historyDepthRaw = process.env["NV_HISTORY_DEPTH"];
   const conversationHistoryDepth = historyDepthRaw
     ? parseInt(historyDepthRaw, 10)
@@ -281,6 +298,7 @@ export async function loadConfig(
     proactiveWatcher,
     dream,
     digest,
+    queue,
     conversationHistoryDepth,
   };
 }

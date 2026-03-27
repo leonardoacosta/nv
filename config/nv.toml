@@ -77,6 +77,10 @@ size_threshold_kb = 60
 debounce_hours = 12
 topic_max_kb = 4
 
+[queue]
+concurrency = 2
+max_queue_size = 20
+
 [digest]
 enabled = true
 quiet_start = "22:00"

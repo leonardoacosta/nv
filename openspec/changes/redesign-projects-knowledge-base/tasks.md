@@ -32,5 +32,5 @@
 
 ## E2E Batch
 
-- [ ] [4.1] TypeScript compilation: `pnpm build` passes with no errors across all packages [owner:ui-engineer]
+- [x] [4.1] TypeScript compilation: `pnpm build` passes with no errors across all packages [owner:ui-engineer]
 - [ ] [4.2] [user] Manual smoke: navigate to /projects, verify empty state seeds from NV_PROJECTS, click Refresh to trigger extraction, verify knowledge docs populate, test category filters, test project detail panel, test create new project [beads:nv-vpuy]

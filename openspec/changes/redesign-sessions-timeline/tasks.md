@@ -30,6 +30,6 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Verify sessions page loads without WebSocket dependency and displays session rows from DB [owner:e2e-engineer] [beads:nv-68c0]
-- [ ] [4.2] Verify session detail page loads and renders timeline events for a known session [owner:e2e-engineer] [beads:nv-oahj]
-- [ ] [4.3] Verify filter controls (project, date range, trigger type) update the displayed session list [owner:e2e-engineer] [beads:nv-ivcr]
+- [x] [4.1] Verify sessions page loads without WebSocket dependency and displays session rows from DB [owner:e2e-engineer] [beads:nv-68c0]
+- [x] [4.2] Verify session detail page loads and renders timeline events for a known session [owner:e2e-engineer] [beads:nv-oahj]
+- [x] [4.3] Verify filter controls (project, date range, trigger type) update the displayed session list [owner:e2e-engineer] [beads:nv-ivcr]

@@ -130,26 +130,28 @@ async function checkGraphTokens(): Promise<TokenResult[]> {
 
   const results = await Promise.allSettled(
     tokens.map(async (t): Promise<TokenResult> => {
-      // CloudPC is Windows — use PowerShell to read token files from $env:USERPROFILE
-      const filePath = `$env:USERPROFILE\\${t.file}`;
-      const psCmd = `if (Test-Path '${filePath}') { Get-Content '${filePath}' -Raw } else { Write-Output 'MISSING' }`;
+      // CloudPC is Windows — read token file via PowerShell
+      // Use double quotes so $env:USERPROFILE expands, escape inner quotes for SSH
+      const psCmd = `$f = Join-Path $env:USERPROFILE '${t.file}'; if (Test-Path $f) { Get-Content $f -Raw } else { 'MISSING' }`;
       const { stdout, exitCode } = await exec(
         "ssh",
-        ["-o", "ConnectTimeout=5", "-o", "BatchMode=yes", "cloudpc", "powershell", "-NoProfile", "-Command", psCmd],
+        ["-o", "ConnectTimeout=5", "cloudpc", `powershell -NoProfile -Command "${psCmd}"`],
         15_000,
       );
       if (exitCode !== 0 || !stdout || stdout.trim() === "MISSING") {
         return { name: t.name, file: t.file, valid: false, expiresIn: null, error: "file not found" };
       }
       try {
-        const parsed = JSON.parse(stdout) as { expires_on?: number; expiresOn?: string; access_token?: string };
+        const parsed = JSON.parse(stdout) as { expires_on?: number; expiresOn?: string; expiry?: string; access_token?: string };
         if (!parsed.access_token) {
           return { name: t.name, file: t.file, valid: false, expiresIn: null, error: "no access_token" };
         }
-        // Determine expiry
+        // Determine expiry — token files use different field names
         let expiresAt: number | null = null;
         if (typeof parsed.expires_on === "number") {
           expiresAt = parsed.expires_on * 1000; // Unix seconds -> ms
+        } else if (typeof parsed.expiry === "string") {
+          expiresAt = new Date(parsed.expiry).getTime(); // ISO datetime string
         } else if (typeof parsed.expiresOn === "string") {
           expiresAt = new Date(parsed.expiresOn).getTime();
         }

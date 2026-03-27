@@ -145,7 +145,7 @@ function formatBytes(bytes: number): string {
 
 /** Deep-check all fleet services for meaningful data. */
 export async function checkFleetDeep(timeoutMs = 15_000): Promise<DeepCheckResult[]> {
-  const sshTimeoutMs = 30_000; // SSH-backed services need more time
+  const sshTimeoutMs = 45_000; // SSH-backed services need more time
   const results = await Promise.allSettled([
     // tool-router :4100 — GET /health and count registered services
     runDeep("tool-router", 4100, async () => {

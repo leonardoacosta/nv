@@ -14,7 +14,6 @@ import ErrorBoundary from "@/components/layout/ErrorBoundary";
 import type {
   BriefingEntry,
   BriefingGetResponse,
-  BriefingHistoryGetResponse,
 } from "@/types/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
@@ -175,8 +174,7 @@ export default function BriefingPage() {
 
   useEffect(() => {
     if (historyQuery.data) {
-      const data = historyQuery.data as BriefingHistoryGetResponse;
-      setHistory(data.entries);
+      setHistory(historyQuery.data.entries as unknown as BriefingEntry[]);
     }
   }, [historyQuery.data]);
 

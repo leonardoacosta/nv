@@ -103,7 +103,7 @@ export default function LatencyChart({ window = "24h" }: LatencyChartProps) {
     try {
       setLoading(true);
       setError(null);
-      const json = (await trpcClient.system.latency.query()) as LatencyResponse;
+      const json = (await trpcClient.system.latency.query()) as unknown as LatencyResponse;
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");

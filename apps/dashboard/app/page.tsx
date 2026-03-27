@@ -727,7 +727,7 @@ export default function DashboardPage() {
 
   // --- 6. Refresh all ---
   const handleRefreshAll = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.all });
+    void queryClient.invalidateQueries();
   };
 
   // --- 7. Stat strip cells ---

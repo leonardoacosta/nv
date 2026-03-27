@@ -63,7 +63,6 @@ export default function StatusPage() {
           <button
             type="button"
             onClick={() => {
-              setLoading(true);
               void fetchStatus();
             }}
             disabled={loading}

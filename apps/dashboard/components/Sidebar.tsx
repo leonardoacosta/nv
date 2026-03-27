@@ -30,7 +30,7 @@ import {
   useDaemonStatus,
   type WsStatus,
 } from "@/components/providers/DaemonEventContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
 import { trpcClient } from "@/lib/trpc/client";
 
@@ -91,6 +91,7 @@ interface Obligation {
 
 function useApprovalCount(): number {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const { data } = useQuery(
     trpc.obligation.list.queryOptions({ owner: "leo", status: "open" }),
   );
@@ -100,9 +101,9 @@ function useApprovalCount(): number {
   useDaemonEvents(
     useCallback(
       (_ev) => {
-        void fetchCount();
+        void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
       },
-      [fetchCount],
+      [queryClient, trpc],
     ),
     "approval",
   );

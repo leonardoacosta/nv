@@ -836,7 +836,7 @@ function ApprovalsTabContent() {
   // Sync query results into local state for approval workflow
   useEffect(() => {
     if (approvalsQuery.data) {
-      const mapped = (approvalsQuery.data.obligations ?? []).map(mapObligationToApproval);
+      const mapped = ((approvalsQuery.data.obligations ?? []) as unknown as DaemonObligation[]).map(mapObligationToApproval);
       setApprovals(mapped);
       if (mapped.length > 0 && !selectedId) {
         setSelectedId(mapped[0]!.id);
@@ -1217,7 +1217,7 @@ function ObligationsPage() {
 
   // Query: obligations list
   const oblQuery = useQuery(trpc.obligation.list.queryOptions({}));
-  const obligations = oblQuery.data?.obligations ?? [];
+  const obligations = (oblQuery.data?.obligations ?? []) as unknown as DaemonObligation[];
   const loading = oblQuery.isLoading;
   const error = oblQuery.error;
 

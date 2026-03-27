@@ -99,7 +99,6 @@ export default function ProjectsPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       fetchProjects();
-      setSelectedProject(updated);
     } catch {
       // Error handled in detail panel
     }

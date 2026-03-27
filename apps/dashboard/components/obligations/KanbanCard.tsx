@@ -101,9 +101,11 @@ function Tooltip({ label, children }: { label: string; children: React.ReactNode
 function CardActivity({ obligationId }: { obligationId: string }) {
   const trpc = useTRPC();
   const { data, isLoading } = useQuery(
-    trpc.obligation.activity.queryOptions({ id: obligationId }),
+    trpc.obligation.activity.queryOptions({ limit: 100 }),
   );
-  const events = data?.events ?? [];
+  const events = (data?.events ?? []).filter(
+    (ev: { obligation_id?: string }) => ev.obligation_id === obligationId,
+  );
 
   if (isLoading) {
     return (

@@ -199,7 +199,15 @@ async function checkEnvVars(): Promise<{ name: string; set: boolean; required: b
     ["secrets", "--project", "nova", "--config", "prd", "--only-names"],
     5000,
   );
-  const dopplerKeys = exitCode === 0 ? new Set(stdout.split("\n").filter(Boolean)) : new Set<string>();
+  // Doppler --only-names outputs a table: │ KEY_NAME │ — strip borders and whitespace
+  const dopplerKeys = exitCode === 0
+    ? new Set(
+        stdout
+          .split("\n")
+          .map((line) => line.replace(/[│┌┐└┘├┤─]/g, "").trim())
+          .filter((line) => line && line !== "NAME"),
+      )
+    : new Set<string>();
 
   return EXPECTED_ENV_VARS.map((v) => ({
     name: v.name,

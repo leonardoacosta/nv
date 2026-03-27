@@ -119,7 +119,13 @@ function formatDuration(ms) {
 // ---------------------------------------------------------------------------
 async function checkEnvVars() {
     const { stdout, exitCode } = await exec("doppler", ["secrets", "--project", "nova", "--config", "prd", "--only-names"], 5000);
-    const dopplerKeys = exitCode === 0 ? new Set(stdout.split("\n").filter(Boolean)) : new Set();
+    // Doppler --only-names outputs a table: │ KEY_NAME │ — strip borders and whitespace
+    const dopplerKeys = exitCode === 0
+        ? new Set(stdout
+            .split("\n")
+            .map((line) => line.replace(/[│┌┐└┘├┤─]/g, "").trim())
+            .filter((line) => line && line !== "NAME"))
+        : new Set();
     return EXPECTED_ENV_VARS.map((v) => ({
         name: v.name,
         set: dopplerKeys.has(v.name) || !!process.env[v.name],

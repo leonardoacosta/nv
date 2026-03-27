@@ -7,7 +7,7 @@ export function buildStartKeyboard(): TelegramBot.InlineKeyboardMarkup {
   return {
     inline_keyboard: [
       [
-        { text: "Briefing", callback_data: "cmd:brief" },
+        { text: "Snapshot", callback_data: "cmd:snapshot" },
         { text: "Calendar", callback_data: "cmd:calendar" },
         { text: "Mail", callback_data: "cmd:mail" },
       ],

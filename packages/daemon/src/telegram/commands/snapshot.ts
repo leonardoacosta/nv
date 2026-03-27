@@ -5,9 +5,9 @@ import { buildObReply } from "./ob.js";
 const TELEGRAM_MAX_CHARS = 4000;
 
 /**
- * /brief — morning briefing combining calendar, mail, and obligations
+ * /snapshot — briefing snapshot combining calendar, mail, and obligations
  */
-export async function buildBriefReply(): Promise<string> {
+export async function buildSnapshotReply(): Promise<string> {
   const [calendarResult, mailResult, obResult] = await Promise.allSettled([
     buildCalendarReply(),
     buildMailReply("inbox"),

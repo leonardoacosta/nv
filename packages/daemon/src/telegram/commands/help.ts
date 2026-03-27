@@ -6,7 +6,7 @@ Navigation:
   /help     This message
 
 Data:
-  /brief    Briefing (calendar + mail + obligations)
+  /snapshot  Briefing snapshot (calendar + mail + obligations)
   /calendar Today's events
   /mail     Outlook email (/mail inbox|read|search)
   /teams    Teams chats

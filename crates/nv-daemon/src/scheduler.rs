@@ -10,6 +10,95 @@ use crate::digest::state::DigestStateManager;
 use crate::messages::MessageStore;
 use crate::tools::schedule::{validate_cron_expr, ScheduleStore};
 
+// ── Cached briefing_hour from Postgres settings table ──────────────
+
+/// How long to cache the briefing_hour value before re-querying Postgres.
+const BRIEFING_HOUR_CACHE_SECS: u64 = 60;
+
+/// Read `briefing_hour` from the Postgres `settings` table.
+/// Caches the result for 60 seconds. Falls back to `MORNING_BRIEFING_HOUR` on error.
+async fn read_briefing_hour(
+    cache: &tokio::sync::Mutex<(Option<u32>, std::time::Instant)>,
+) -> u32 {
+    let mut guard = cache.lock().await;
+    let (ref cached_val, ref last_fetch) = *guard;
+
+    // Return cached value if still fresh
+    if let Some(val) = cached_val {
+        if last_fetch.elapsed() < Duration::from_secs(BRIEFING_HOUR_CACHE_SECS) {
+            return *val;
+        }
+    }
+
+    // Try to read from Postgres
+    let result = read_briefing_hour_from_db().await;
+    let hour = result.unwrap_or(MORNING_BRIEFING_HOUR);
+    *guard = (Some(hour), std::time::Instant::now());
+    hour
+}
+
+/// Query Postgres settings table for the "briefing_hour" key.
+async fn read_briefing_hour_from_db() -> Result<u32, Box<dyn std::error::Error>> {
+    let url = std::env::var("DATABASE_URL")?;
+
+    let query = "SELECT value FROM settings WHERE key = 'briefing_hour'";
+
+    // Connect with TLS if the URL indicates a cloud provider, otherwise no TLS.
+    // Branches are separate because the connection types differ.
+    if url.contains("sslmode=require") || url.contains("neon.tech") {
+        let tls_config = rustls::ClientConfig::builder()
+            .with_root_certificates({
+                let mut roots = rustls::RootCertStore::empty();
+                roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+                roots
+            })
+            .with_no_client_auth();
+        let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_config);
+
+        let (client, connection) = tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio_postgres::connect(&url, tls),
+        )
+        .await??;
+
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                tracing::warn!(error = %e, "briefing_hour: postgres connection error (tls)");
+            }
+        });
+
+        parse_briefing_hour_row(client.query_opt(query, &[]).await?)
+    } else {
+        let (client, connection) = tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio_postgres::connect(&url, tokio_postgres::NoTls),
+        )
+        .await??;
+
+        tokio::spawn(async move {
+            if let Err(e) = connection.await {
+                tracing::warn!(error = %e, "briefing_hour: postgres connection error (no-tls)");
+            }
+        });
+
+        parse_briefing_hour_row(client.query_opt(query, &[]).await?)
+    }
+}
+
+/// Parse the optional row from the settings query into a u32 hour.
+fn parse_briefing_hour_row(
+    row: Option<tokio_postgres::Row>,
+) -> Result<u32, Box<dyn std::error::Error>> {
+    match row {
+        Some(r) => {
+            let val: &str = r.get::<_, &str>(0);
+            let hour: u32 = val.parse()?;
+            Ok(hour.min(23)) // Clamp to valid hour range
+        }
+        None => Ok(MORNING_BRIEFING_HOUR),
+    }
+}
+
 /// Minimum allowed digest interval (prevents runaway loops).
 const MIN_INTERVAL_MINUTES: u64 = 5;
 
@@ -96,6 +185,9 @@ pub fn spawn_scheduler(
 
         // Track the last date we sent a morning briefing to prevent duplicate fires.
         let mut last_briefing_date: Option<chrono::NaiveDate> = None;
+        // Cache for briefing_hour read from Postgres settings table.
+        let briefing_hour_cache: tokio::sync::Mutex<(Option<u32>, std::time::Instant)> =
+            tokio::sync::Mutex::new((None, std::time::Instant::now()));
         // Track the last date we pruned latency_spans to fire once per day.
         let mut last_latency_prune_date: Option<chrono::NaiveDate> = None;
         // Track the last date we fired the weekly self-assessment.
@@ -114,11 +206,16 @@ pub fn spawn_scheduler(
                     let today = now.date_naive();
                     let current_hour = now.hour();
 
-                    // Fire once per day at exactly MORNING_BRIEFING_HOUR.
+                    // Read configured briefing hour from Postgres (cached 60s,
+                    // falls back to MORNING_BRIEFING_HOUR on error).
+                    let configured_hour = read_briefing_hour(&briefing_hour_cache).await;
+
+                    // Fire once per day at exactly the configured briefing hour.
                     // Using == instead of >= prevents spurious fires when the
                     // daemon restarts with a stale last_briefing_date at any
-                    // hour after 7am (e.g. a 9pm restart would not re-trigger).
-                    if current_hour == MORNING_BRIEFING_HOUR
+                    // hour after the configured hour (e.g. a 9pm restart would
+                    // not re-trigger).
+                    if current_hour == configured_hour
                         && last_briefing_date.is_none_or(|d| d < today)
                     {
                         last_briefing_date = Some(today);

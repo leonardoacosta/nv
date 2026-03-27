@@ -22,7 +22,7 @@ import { buildMailReply } from "../telegram/commands/mail.js";
 import { buildPimReply } from "../telegram/commands/pim.js";
 import { buildAdoReply } from "../telegram/commands/ado.js";
 import { buildDreamReply, buildDreamStatusReply } from "../telegram/commands/dream.js";
-import { buildBriefReply } from "../telegram/commands/brief.js";
+import { buildSnapshotReply } from "../telegram/commands/snapshot.js";
 import { buildDigestReply } from "../telegram/commands/digest.js";
 import { buildStartKeyboard } from "../telegram/commands/start.js";
 import { buildToolsKeyboard } from "../telegram/commands/tools.js";
@@ -454,8 +454,8 @@ export class TelegramAdapter {
       const argsText = args.join(" ") || undefined;
 
       switch (command) {
-        case "brief":
-          return void this.handleDirectCommand(chatId, () => buildBriefReply());
+        case "snapshot":
+          return void this.handleDirectCommand(chatId, () => buildSnapshotReply());
         case "calendar":
           return void this.handleDirectCommand(chatId, () => buildCalendarReply());
         case "mail": {
@@ -522,7 +522,7 @@ export class TelegramAdapter {
     this.bot
       .setMyCommands([
         { command: "start", description: "Dashboard with quick actions" },
-        { command: "brief", description: "Morning briefing + calendar + mail" },
+        { command: "snapshot", description: "Briefing snapshot + calendar + mail" },
         { command: "tools", description: "Teams, ADO, PIM, Azure, Discord" },
         { command: "dream", description: "Memory consolidation" },
         { command: "status", description: "Fleet health + daemon status" },
@@ -707,10 +707,10 @@ export class TelegramAdapter {
       });
     });
 
-    // /brief — morning briefing (calendar + mail + obligations)
-    this.bot.onText(/^\/brief(@\S+)?$/, (msg) => {
+    // /snapshot — briefing snapshot (calendar + mail + obligations)
+    this.bot.onText(/^\/snapshot(@\S+)?$/, (msg) => {
       const chatId = String(msg.chat.id);
-      void this.handleDirectCommand(chatId, () => buildBriefReply());
+      void this.handleDirectCommand(chatId, () => buildSnapshotReply());
     });
 
     // /digest [weekly] — proactive digest

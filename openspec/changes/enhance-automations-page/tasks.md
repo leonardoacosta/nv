@@ -8,10 +8,10 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] [beads:nv-iw5a] Create `apps/dashboard/app/api/automations/settings/route.ts` with GET (return all settings as `{ settings: Record<string, string> }`) and PUT (accept `{ key, value }`, validate key is one of `watcher_prompt`, `briefing_prompt`, `briefing_hour`, upsert via INSERT ON CONFLICT UPDATE, return updated row). Invalid keys return 400. [owner:api-engineer]
-- [ ] [2.2] [P-1] [beads:nv-qwoi] Create `apps/dashboard/app/api/automations/reminders/route.ts` with POST handler. Accept `{ message: string, due_at: string, channel?: string }`. Validate message non-empty (max 500), due_at is valid future ISO 8601. Default channel to `"dashboard"`. Insert into reminders table. Return created reminder with status 201. [owner:api-engineer]
-- [ ] [2.3] [P-2] [beads:nv-4vuv] Update `apps/dashboard/app/api/automations/route.ts` to read `briefing_hour` from the settings table (SELECT where key = `briefing_hour`, parse as int, default 7). Use the configured hour to compute `next_generation` instead of hardcoded 7. Add `briefing_hour` to the briefing section of the response. [owner:api-engineer]
-- [ ] [2.4] [P-2] [beads:nv-ti1x] Update `apps/dashboard/types/api.ts`: extend `AutomationBriefing` with `briefing_hour: number`. Add `AutomationSettingsResponse` (`{ settings: Record<string, string> }`), `PutSettingRequest` (`{ key: string, value: string }`), and `CreateReminderRequest` (`{ message: string, due_at: string, channel?: string }`). [owner:api-engineer]
+- [x] [2.1] [P-1] [beads:nv-iw5a] Create `apps/dashboard/app/api/automations/settings/route.ts` with GET (return all settings as `{ settings: Record<string, string> }`) and PUT (accept `{ key, value }`, validate key is one of `watcher_prompt`, `briefing_prompt`, `briefing_hour`, upsert via INSERT ON CONFLICT UPDATE, return updated row). Invalid keys return 400. [owner:api-engineer]
+- [x] [2.2] [P-1] [beads:nv-qwoi] Create `apps/dashboard/app/api/automations/reminders/route.ts` with POST handler. Accept `{ message: string, due_at: string, channel?: string }`. Validate message non-empty (max 500), due_at is valid future ISO 8601. Default channel to `"dashboard"`. Insert into reminders table. Return created reminder with status 201. [owner:api-engineer]
+- [x] [2.3] [P-2] [beads:nv-4vuv] Update `apps/dashboard/app/api/automations/route.ts` to read `briefing_hour` from the settings table (SELECT where key = `briefing_hour`, parse as int, default 7). Use the configured hour to compute `next_generation` instead of hardcoded 7. Add `briefing_hour` to the briefing section of the response. [owner:api-engineer]
+- [x] [2.4] [P-2] [beads:nv-ti1x] Update `apps/dashboard/types/api.ts`: extend `AutomationBriefing` with `briefing_hour: number`. Add `AutomationSettingsResponse` (`{ settings: Record<string, string> }`), `PutSettingRequest` (`{ key: string, value: string }`), and `CreateReminderRequest` (`{ message: string, due_at: string, channel?: string }`). [owner:api-engineer]
 
 ## UI Batch
 
@@ -24,10 +24,10 @@
 
 ## Daemon Batch
 
-- [ ] [4.1] [P-1] [beads:nv-fu7a] Rename `packages/daemon/src/telegram/commands/brief.ts` to `snapshot.ts`. Rename export `buildBriefReply` to `buildSnapshotReply`. Update JSDoc to reference `/snapshot`. [owner:api-engineer]
-- [ ] [4.2] [P-1] [beads:nv-8tm3] Update `packages/daemon/src/channels/telegram.ts`: change import from `brief.js` to `snapshot.js`, rename `buildBriefReply` to `buildSnapshotReply`, update switch case from `"brief"` to `"snapshot"`, update onText regex from `/^\/brief(@\S+)?$/` to `/^\/snapshot(@\S+)?$/`. [owner:api-engineer]
-- [ ] [4.3] [P-1] [beads:nv-hcyr] Update `packages/daemon/src/telegram/commands/help.ts`: change `/brief` to `/snapshot` in help text. Update `packages/daemon/src/telegram/commands/start.ts`: change `callback_data` from `"cmd:brief"` to `"cmd:snapshot"`. [owner:api-engineer]
-- [ ] [4.4] [P-2] [beads:nv-h7cr] Update `crates/nv-daemon/src/scheduler.rs`: add a function `read_briefing_hour` that queries the Postgres settings table for key `"briefing_hour"`, parses as u32, caches for 60s, falls back to 7 on error. Replace `MORNING_BRIEFING_HOUR` usage in the morning briefing poll branch with the cached value. Keep the constant as the documented default. [owner:api-engineer]
+- [x] [4.1] [P-1] [beads:nv-fu7a] Rename `packages/daemon/src/telegram/commands/brief.ts` to `snapshot.ts`. Rename export `buildBriefReply` to `buildSnapshotReply`. Update JSDoc to reference `/snapshot`. [owner:api-engineer]
+- [x] [4.2] [P-1] [beads:nv-8tm3] Update `packages/daemon/src/channels/telegram.ts`: change import from `brief.js` to `snapshot.js`, rename `buildBriefReply` to `buildSnapshotReply`, update switch case from `"brief"` to `"snapshot"`, update onText regex from `/^\/brief(@\S+)?$/` to `/^\/snapshot(@\S+)?$/`. [owner:api-engineer]
+- [x] [4.3] [P-1] [beads:nv-hcyr] Update `packages/daemon/src/telegram/commands/help.ts`: change `/brief` to `/snapshot` in help text. Update `packages/daemon/src/telegram/commands/start.ts`: change `callback_data` from `"cmd:brief"` to `"cmd:snapshot"`. [owner:api-engineer]
+- [x] [4.4] [P-2] [beads:nv-h7cr] Update `crates/nv-daemon/src/scheduler.rs`: add a function `read_briefing_hour` that queries the Postgres settings table for key `"briefing_hour"`, parses as u32, caches for 60s, falls back to 7 on error. Replace `MORNING_BRIEFING_HOUR` usage in the morning briefing poll branch with the cached value. Keep the constant as the documented default. [owner:api-engineer]
 
 ## E2E Batch
 

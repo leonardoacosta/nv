@@ -336,6 +336,7 @@ export interface AutomationBriefing {
   last_generated_at: string | null;
   next_generation: string | null;
   content_preview: string | null;
+  briefing_hour: number;
 }
 
 export interface AutomationSession {
@@ -352,6 +353,23 @@ export interface AutomationsGetResponse {
   watcher: AutomationWatcher;
   briefing: AutomationBriefing;
   active_sessions: AutomationSession[];
+}
+
+// ── Settings API ────────────────────────────────────────────────────
+
+export interface AutomationSettingsResponse {
+  settings: Record<string, string>;
+}
+
+export interface PutSettingRequest {
+  key: string;
+  value: string;
+}
+
+export interface CreateReminderRequest {
+  message: string;
+  due_at: string;
+  channel?: string;
 }
 
 // ── GET /stats ─────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { reminders, schedules, sessions, briefings } from "@nova/db";
+import { reminders, schedules, sessions, briefings, settings } from "@nova/db";
 import type {
   AutomationReminder,
   AutomationSchedule,
@@ -115,6 +115,16 @@ export async function GET() {
       .orderBy(desc(briefings.generatedAt))
       .limit(1);
 
+    // Read briefing_hour from settings (default 7)
+    const [briefingHourSetting] = await db
+      .select()
+      .from(settings)
+      .where(eq(settings.key, "briefing_hour"));
+    const briefingHour = briefingHourSetting
+      ? parseInt(briefingHourSetting.value, 10)
+      : 7;
+    const effectiveBriefingHour = isNaN(briefingHour) ? 7 : briefingHour;
+
     // Strip markdown formatting and truncate to 200 chars for the preview
     const contentPreview: string | null = latestBriefing
       ? latestBriefing.content
@@ -145,10 +155,11 @@ export async function GET() {
     const briefingData: AutomationBriefing = {
       last_generated_at: latestBriefing?.generatedAt.toISOString() ?? null,
       content_preview: contentPreview,
+      briefing_hour: effectiveBriefingHour,
       next_generation: (() => {
-        // Next 7:00 AM after now
+        // Next briefing at the configured hour after now
         const next = new Date(now);
-        next.setHours(7, 0, 0, 0);
+        next.setHours(effectiveBriefingHour, 0, 0, 0);
         if (next <= now) next.setDate(next.getDate() + 1);
         // If already generated today, push to tomorrow
         if (latestBriefing) {
@@ -160,7 +171,7 @@ export async function GET() {
           ) {
             const tomorrow = new Date(now);
             tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(7, 0, 0, 0);
+            tomorrow.setHours(effectiveBriefingHour, 0, 0, 0);
             return tomorrow.toISOString();
           }
         }

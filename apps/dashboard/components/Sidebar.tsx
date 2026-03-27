@@ -15,6 +15,7 @@ import {
   Settings,
   Layers,
   MessageSquare,
+  MessageSquareText,
   Users,
   ChevronLeft,
   ChevronRight,
@@ -145,6 +146,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Activity",
     items: [
+      { to: "/chat", label: "Chat", icon: MessageSquareText },
       { to: "/obligations", label: "Obligations", icon: CheckSquare },
       { to: "/approvals", label: "Approvals", icon: ShieldAlert, badge: "approvals" },
       { to: "/diary", label: "Diary", icon: BookOpen },

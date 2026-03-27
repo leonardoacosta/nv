@@ -9,6 +9,8 @@ import { briefings } from "./schema/briefings.js";
 import { reminders } from "./schema/reminders.js";
 import { schedules } from "./schema/schedules.js";
 import { sessions } from "./schema/sessions.js";
+import { sessionEvents } from "./schema/session-events.js";
+import { projects } from "./schema/projects.js";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -18,6 +20,6 @@ if (!connectionString) {
 
 const queryClient = postgres(connectionString);
 
-const schema = { messages, obligations, contacts, diary, memory, briefings, reminders, schedules, sessions };
+const schema = { messages, obligations, contacts, diary, memory, briefings, reminders, schedules, sessions, sessionEvents, projects };
 
 export const db = drizzle(queryClient, { schema });

@@ -4,10 +4,10 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Create `packages/db/src/schema/projects.ts` -- define `projects` pgTable with columns: id (uuid pk), code (text unique not null), name (text not null), category (text not null default 'work'), status (text not null default 'active'), description (text nullable), content (text nullable), path (text nullable), createdAt (timestamp default now), updatedAt (timestamp default now). Export `Project` and `NewProject` inferred types. Add barrel export in `packages/db/src/index.ts` [owner:db-engineer]
-- [ ] [1.2] [P-1] Create Zod validation schemas in `packages/db/src/schema/projects.ts` -- `projectCategoryEnum` z.enum(['work', 'personal', 'open_source', 'archived']), `projectStatusEnum` z.enum(['active', 'paused', 'completed', 'archived']), `createProjectSchema` z.object({ code, name, category?, status?, path? }), `updateProjectSchema` z.object({ name?, category?, status? }). Export all schemas [owner:db-engineer]
-- [ ] [1.3] [P-2] Run `pnpm drizzle-kit generate` in packages/db/ to produce migration SQL for the new projects table [owner:db-engineer]
-- [ ] [1.4] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:db-engineer] [beads:nv-cndr]
+- [x] [1.1] [P-1] Create `packages/db/src/schema/projects.ts` -- define `projects` pgTable with columns: id (uuid pk), code (text unique not null), name (text not null), category (text not null default 'work'), status (text not null default 'active'), description (text nullable), content (text nullable), path (text nullable), createdAt (timestamp default now), updatedAt (timestamp default now). Export `Project` and `NewProject` inferred types. Add barrel export in `packages/db/src/index.ts` [owner:db-engineer]
+- [x] [1.2] [P-1] Create Zod validation schemas in `packages/db/src/schema/projects.ts` -- `projectCategoryEnum` z.enum(['work', 'personal', 'open_source', 'archived']), `projectStatusEnum` z.enum(['active', 'paused', 'completed', 'archived']), `createProjectSchema` z.object({ code, name, category?, status?, path? }), `updateProjectSchema` z.object({ name?, category?, status? }). Export all schemas [owner:db-engineer]
+- [x] [1.3] [P-2] Run `pnpm drizzle-kit generate` in packages/db/ to produce migration SQL for the new projects table [owner:db-engineer]
+- [x] [1.4] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:db-engineer] [beads:nv-cndr]
 
 ## API Batch
 

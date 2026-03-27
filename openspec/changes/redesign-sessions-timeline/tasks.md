@@ -4,10 +4,10 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Add `trigger_type` (text nullable), `message_count` (integer default 0), `tool_count` (integer default 0) columns to `sessions` table in `packages/db/src/schema/sessions.ts` [owner:db-engineer] [beads:nv-2g86]
-- [ ] [1.2] [P-1] Create `session_events` table in `packages/db/src/schema/session-events.ts` with columns: id (uuid PK), session_id (uuid FK to sessions.id), event_type (text), direction (text nullable), content (text nullable), metadata (jsonb nullable), created_at (timestamp with tz) -- add index on (session_id, created_at) [owner:db-engineer] [beads:nv-eya9]
-- [ ] [1.3] [P-2] Export `sessionEvents`, `SessionEvent`, `NewSessionEvent` from `packages/db/src/index.ts` [owner:db-engineer] [beads:nv-vfpn]
-- [ ] [1.4] [P-2] Run `pnpm drizzle-kit generate` to create migration for new columns and table [owner:db-engineer] [beads:nv-iyvl]
+- [x] [1.1] [P-1] Add `trigger_type` (text nullable), `message_count` (integer default 0), `tool_count` (integer default 0) columns to `sessions` table in `packages/db/src/schema/sessions.ts` [owner:db-engineer] [beads:nv-2g86]
+- [x] [1.2] [P-1] Create `session_events` table in `packages/db/src/schema/session-events.ts` with columns: id (uuid PK), session_id (uuid FK to sessions.id), event_type (text), direction (text nullable), content (text nullable), metadata (jsonb nullable), created_at (timestamp with tz) -- add index on (session_id, created_at) [owner:db-engineer] [beads:nv-eya9]
+- [x] [1.3] [P-2] Export `sessionEvents`, `SessionEvent`, `NewSessionEvent` from `packages/db/src/index.ts` [owner:db-engineer] [beads:nv-vfpn]
+- [x] [1.4] [P-2] Run `pnpm drizzle-kit generate` to create migration for new columns and table [owner:db-engineer] [beads:nv-iyvl]
 
 ## API Batch
 

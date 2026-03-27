@@ -26,3 +26,21 @@ export type { Schedule, NewSchedule } from "./schema/schedules.js";
 
 export { sessions } from "./schema/sessions.js";
 export type { Session, NewSession } from "./schema/sessions.js";
+
+export { sessionEvents } from "./schema/session-events.js";
+export type { SessionEvent, NewSessionEvent } from "./schema/session-events.js";
+
+export { projects } from "./schema/projects.js";
+export type { Project, NewProject } from "./schema/projects.js";
+export {
+  projectCategoryEnum,
+  projectStatusEnum,
+  createProjectSchema,
+  updateProjectSchema,
+} from "./schema/projects.js";
+export type {
+  ProjectCategory,
+  ProjectStatus,
+  CreateProjectInput,
+  UpdateProjectInput,
+} from "./schema/projects.js";

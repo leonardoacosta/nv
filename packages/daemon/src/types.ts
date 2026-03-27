@@ -1,4 +1,4 @@
-export type Channel = "telegram" | "teams" | "discord" | "email" | "imessage";
+export type Channel = "telegram" | "teams" | "discord" | "email" | "imessage" | "dashboard";
 
 export type MessageType = "text" | "voice" | "photo" | "callback";
 

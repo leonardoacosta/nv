@@ -5,6 +5,18 @@ import TelegramBot from "node-telegram-bot-api";
 import { createLogger } from "../logger.js";
 import type { Message } from "../types.js";
 import { buildDiaryReply } from "../telegram/commands/diary.js";
+import { buildHelpReply } from "../telegram/commands/help.js";
+import { buildMemoryReply } from "../telegram/commands/memory.js";
+import { buildSearchReply } from "../telegram/commands/search.js";
+import { buildTeamsReply } from "../telegram/commands/teams.js";
+import { buildCalendarReply } from "../telegram/commands/calendar.js";
+import { buildDiscordReply } from "../telegram/commands/discord.js";
+import { buildHealthReply } from "../telegram/commands/health.js";
+import { buildRemindReply } from "../telegram/commands/remind.js";
+import { buildObReply } from "../telegram/commands/ob.js";
+import { buildContactsReply } from "../telegram/commands/contacts.js";
+import { buildSoulReply } from "../telegram/commands/soul.js";
+import { buildStatusReply } from "../telegram/commands/status.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -356,9 +368,18 @@ export class TelegramAdapter {
       .setMyCommands([
         { command: "start", description: "Start Nova and show status" },
         { command: "help", description: "Show available commands" },
+        { command: "memory", description: "Read a memory topic (/memory [topic])" },
+        { command: "search", description: "Search messages (/search [query])" },
+        { command: "teams", description: "List recent Teams chats" },
+        { command: "calendar", description: "Today's calendar events" },
+        { command: "discord", description: "List Discord servers" },
+        { command: "health", description: "Fleet service health status" },
+        { command: "remind", description: "Set a reminder (/remind [message] [time])" },
         { command: "ob", description: "List active obligations" },
-        { command: "diary", description: "Show today's interaction summary" },
-        { command: "status", description: "Nova daemon status" },
+        { command: "diary", description: "Today's interaction summary" },
+        { command: "contacts", description: "List contacts" },
+        { command: "soul", description: "Read Nova's personality" },
+        { command: "status", description: "Daemon and fleet status" },
       ])
       .catch((err: unknown) => {
         this.log.error({ err }, "Failed to register bot commands");
@@ -366,22 +387,114 @@ export class TelegramAdapter {
   }
 
   private registerCommandHandlers(): void {
-    // /diary is handled directly — it queries the diary and replies inline
+    // ── Direct handlers (fast — call fleet HTTP or DB, no agent) ────────────
+
+    // /diary [date] — interaction summary
     this.bot.onText(/^\/diary(@\S+)?(\s+(.+))?$/, (msg, match) => {
       const chatId = String(msg.chat.id);
       const dateArg = match?.[3]?.trim();
       void this.handleDiaryCommand(chatId, dateArg);
     });
 
-    // All other commands are routed through onMessageCallback
-    const commands = ["/start", "/help", "/ob", "/status"] as const;
+    // /help — command list
+    this.bot.onText(/^\/help(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => Promise.resolve(buildHelpReply()));
+    });
 
-    for (const command of commands) {
-      this.bot.onText(new RegExp(`^\\${command}(@\\S+)?$`), (msg) => {
-        if (!this.onMessageCallback) return;
-        const normalized = normalizeTextMessage(msg);
-        this.onMessageCallback({ ...normalized, text: command, content: command });
-      });
+    // /memory [topic] — read memory
+    this.bot.onText(/^\/memory(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const topicArg = match?.[3]?.trim();
+      void this.handleDirectCommand(chatId, () => buildMemoryReply(topicArg));
+    });
+
+    // /search [query] — search messages
+    this.bot.onText(/^\/search(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const query = match?.[3]?.trim();
+      void this.handleDirectCommand(chatId, () => buildSearchReply(query));
+    });
+
+    // /teams — list Teams chats
+    this.bot.onText(/^\/teams(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildTeamsReply());
+    });
+
+    // /calendar — today's events
+    this.bot.onText(/^\/calendar(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildCalendarReply());
+    });
+
+    // /discord — list Discord servers
+    this.bot.onText(/^\/discord(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildDiscordReply());
+    });
+
+    // /health — fleet service health
+    this.bot.onText(/^\/health(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildHealthReply());
+    });
+
+    // /remind [message] [time] — set a reminder
+    this.bot.onText(/^\/remind(@\S+)?(\s+(.+))?$/, (msg, match) => {
+      const chatId = String(msg.chat.id);
+      const argsText = match?.[3]?.trim();
+      void this.handleDirectCommand(chatId, () => buildRemindReply(argsText));
+    });
+
+    // /ob — active obligations
+    this.bot.onText(/^\/ob(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildObReply());
+    });
+
+    // /contacts — list contacts
+    this.bot.onText(/^\/contacts(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildContactsReply());
+    });
+
+    // /soul — Nova's personality
+    this.bot.onText(/^\/soul(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildSoulReply());
+    });
+
+    // /status — daemon + fleet status
+    this.bot.onText(/^\/status(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildStatusReply());
+    });
+
+    // ── Agent-routed commands (complex — go through onMessageCallback) ──────
+
+    // /start — routes to agent for greeting/status synthesis
+    this.bot.onText(/^\/start(@\S+)?$/, (msg) => {
+      if (!this.onMessageCallback) return;
+      const normalized = normalizeTextMessage(msg);
+      this.onMessageCallback({ ...normalized, text: "/start", content: "/start" });
+    });
+  }
+
+  private async handleDirectCommand(
+    chatId: string,
+    handler: () => Promise<string>,
+  ): Promise<void> {
+    try {
+      const text = await handler();
+      await this.sendMessage(chatId, text, { disablePreview: true });
+    } catch (err: unknown) {
+      this.log.error({ err }, "Command handler failed");
+      const serviceName =
+        err instanceof Error && "status" in err
+          ? "Service unavailable"
+          : "Something went wrong";
+      await this.sendMessage(chatId, `${serviceName}. Please try again.`);
     }
   }
 

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
+import { initFleetClient } from "./fleet-client.js";
 import { TelegramAdapter } from "./channels/telegram.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
@@ -16,6 +17,9 @@ import {
   OBLIGATION_CONFIRM_PREFIX,
   OBLIGATION_REOPEN_PREFIX,
 } from "./features/obligations/index.js";
+import { serve } from "@hono/node-server";
+import type { ServerType } from "@hono/node-server";
+import { createHttpApp } from "./http.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,6 +50,10 @@ export async function main(): Promise<void> {
     },
     "Nova daemon starting",
   );
+
+  // ── Fleet client initialization ───────────────────────────────────────────
+
+  initFleetClient(config.toolRouterUrl);
 
   // ── Database pool ──────────────────────────────────────────────────────────
 
@@ -120,6 +128,26 @@ export async function main(): Promise<void> {
   const conversationManager = new ConversationManager(pool);
 
   log.info({ service: "nova-daemon" }, "NovaAgent ready");
+
+  // ── HTTP server (Hono) ───────────────────────────────────────────────────
+
+  const httpApp = createHttpApp({
+    agent,
+    conversationManager,
+    config,
+    logger: log,
+  });
+
+  let httpServer: ServerType | null = null;
+  httpServer = serve(
+    { fetch: httpApp.fetch, port: config.daemonPort },
+    () => {
+      log.info(
+        { service: "nova-daemon", port: config.daemonPort },
+        `HTTP server listening on port ${config.daemonPort}`,
+      );
+    },
+  );
 
   // ── Message routing ────────────────────────────────────────────────────────
 
@@ -295,6 +323,10 @@ export async function main(): Promise<void> {
 
     if (telegram !== null) {
       telegram.stop();
+    }
+
+    if (httpServer !== null) {
+      httpServer.close();
     }
 
     await pool.end();

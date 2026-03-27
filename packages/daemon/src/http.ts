@@ -1,0 +1,197 @@
+import { Hono } from "hono";
+import { cors } from "hono/cors";
+import { secureHeaders } from "hono/secure-headers";
+import { streamSSE } from "hono/streaming";
+
+import type { NovaAgent } from "./brain/agent.js";
+import type { ConversationManager } from "./brain/conversation.js";
+import type { Config } from "./config.js";
+import type { Message } from "./types.js";
+import type { Logger } from "./logger.js";
+
+const startedAt = Date.now();
+
+export interface HttpServerDeps {
+  agent: NovaAgent;
+  conversationManager: ConversationManager;
+  config: Config;
+  logger: Logger;
+}
+
+export function createHttpApp(deps: HttpServerDeps): Hono {
+  const { agent, conversationManager, config, logger } = deps;
+
+  const app = new Hono();
+
+  // Middleware
+  app.use("*", cors({ origin: "*" }));
+  app.use("*", secureHeaders());
+
+  // Global error handler
+  app.onError((err, c) => {
+    logger.error({ err }, "Unhandled HTTP error");
+    return c.json(
+      { error: err instanceof Error ? err.message : "Internal Server Error" },
+      500,
+    );
+  });
+
+  // ── GET /health ────────────────────────────────────────────────────────────
+  app.get("/health", (c) => {
+    return c.json({
+      status: "ok",
+      service: "nova-daemon",
+      uptime_secs: Math.floor((Date.now() - startedAt) / 1000),
+    });
+  });
+
+  // ── POST /chat ─────────────────────────────────────────────────────────────
+  app.post("/chat", async (c) => {
+    const body = await c.req.json<{ message?: string }>();
+
+    if (!body.message || typeof body.message !== "string") {
+      return c.json({ error: "Missing required field: message" }, 400);
+    }
+
+    const userMessage = body.message;
+
+    // Log request
+    logger.info(
+      {
+        service: "nova-daemon",
+        route: "POST /chat",
+        contentLength: userMessage.length,
+        contentPreview: userMessage.slice(0, 80),
+      },
+      "Chat request received",
+    );
+
+    // Construct a Message object for the dashboard channel
+    const msg: Message = {
+      id: crypto.randomUUID(),
+      channel: "dashboard",
+      chatId: "dashboard:web",
+      text: userMessage,
+      content: userMessage,
+      type: "text",
+      from: {
+        id: "dashboard-user",
+        firstName: "Dashboard",
+      },
+      senderId: "dashboard-user",
+      senderName: "Dashboard User",
+      timestamp: new Date(),
+      receivedAt: new Date(),
+      metadata: {},
+    };
+
+    // Load conversation history
+    const history = await conversationManager.loadHistory(
+      "dashboard:web",
+      config.conversationHistoryDepth,
+    );
+
+    const requestStartMs = Date.now();
+
+    return streamSSE(c, async (stream) => {
+      // Overall timeout: 120s
+      const overallTimeout = setTimeout(() => {
+        void stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            message: "Request timed out after 120 seconds",
+          }),
+        });
+        void stream.close();
+      }, 120_000);
+
+      // Inactivity timeout: 30s between chunks
+      let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const resetInactivityTimer = (): void => {
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(() => {
+          void stream.writeSSE({
+            data: JSON.stringify({
+              type: "error",
+              message: "No response received for 30 seconds",
+            }),
+          });
+          void stream.close();
+        }, 30_000);
+      };
+
+      resetInactivityTimer();
+
+      let fullText = "";
+      let toolCallCount = 0;
+      let stopReason = "end_turn";
+
+      try {
+        for await (const event of agent.processMessageStream(msg, history)) {
+          if (event.type === "chunk") {
+            resetInactivityTimer();
+            fullText += event.text;
+            await stream.writeSSE({
+              data: JSON.stringify({ type: "chunk", text: event.text }),
+            });
+          } else if (event.type === "done") {
+            fullText = event.response.text;
+            toolCallCount = event.response.toolCalls.length;
+            stopReason = event.response.stopReason;
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "done",
+                full_text: event.response.text,
+              }),
+            });
+          }
+        }
+
+        // Save exchange -- fire-and-forget
+        void conversationManager
+          .saveExchange("dashboard:web", msg, {
+            ...msg,
+            senderId: "nova",
+            senderName: "nova",
+            content: fullText,
+            text: fullText,
+          })
+          .catch((saveErr: unknown) => {
+            logger.warn(
+              { service: "nova-daemon", err: saveErr },
+              "Failed to save dashboard conversation exchange",
+            );
+          });
+
+        // Log completion
+        const latencyMs = Date.now() - requestStartMs;
+        logger.info(
+          {
+            service: "nova-daemon",
+            route: "POST /chat",
+            stopReason,
+            toolCallCount,
+            latencyMs,
+          },
+          "Chat request completed",
+        );
+      } catch (err: unknown) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Agent processing failed";
+        logger.error(
+          { service: "nova-daemon", route: "POST /chat", err },
+          "Chat stream error",
+        );
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "error", message: errorMessage }),
+        });
+      } finally {
+        clearTimeout(overallTimeout);
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+      }
+    });
+  });
+
+  return app;
+}

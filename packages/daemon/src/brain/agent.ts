@@ -172,4 +172,105 @@ export class NovaAgent {
       stopReason,
     };
   }
+
+  /**
+   * Streaming variant of processMessage().
+   * Yields `chunk` events as assistant text blocks arrive, then a final `done`
+   * event with the full AgentResponse. Reuses the same allowedTools, mcpServers,
+   * and systemPrompt as processMessage().
+   */
+  async *processMessageStream(
+    message: Message,
+    history: Message[],
+  ): AsyncGenerator<
+    | { type: "chunk"; text: string }
+    | { type: "done"; response: AgentResponse }
+  > {
+    const gatewayKey =
+      this.config.vercelGatewayKey ?? process.env["VERCEL_GATEWAY_KEY"];
+
+    if (!gatewayKey) {
+      throw new Error(
+        "Vercel AI Gateway key is required but not configured. " +
+          "Set VERCEL_GATEWAY_KEY environment variable or vercelGatewayKey in config.",
+      );
+    }
+
+    const toolCalls: ToolCall[] = [];
+    let resultText = "";
+    let stopReason = "end_turn";
+    let tokensIn = 0;
+    let tokensOut = 0;
+    const startMs = Date.now();
+
+    const historyBlock = formatHistoryBlock(history);
+    const systemPromptWithHistory = this.systemPrompt + historyBlock;
+
+    const queryStream = query({
+      prompt: message.content,
+      options: {
+        systemPrompt: systemPromptWithHistory,
+        allowedTools: this.allowedTools,
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+        maxTurns: 30,
+        mcpServers: this.mcpServers,
+        env: {
+          ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
+          ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
+        },
+      },
+    });
+
+    for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {
+      if (sdkMsg.type === "assistant") {
+        const content = sdkMsg.message.content;
+        for (const block of content) {
+          if (block.type === "tool_use") {
+            toolCalls.push({
+              name: block.name,
+              input: block.input as Record<string, unknown>,
+              result: null,
+            });
+          } else if (block.type === "text" && block.text) {
+            yield { type: "chunk", text: block.text };
+          }
+        }
+        const usage = sdkMsg.message.usage;
+        if (usage) {
+          tokensIn += usage.input_tokens ?? 0;
+          tokensOut += usage.output_tokens ?? 0;
+        }
+      } else if (sdkMsg.type === "result") {
+        if (sdkMsg.subtype === "success") {
+          resultText = sdkMsg.result;
+          stopReason = sdkMsg.stop_reason ?? "end_turn";
+        } else {
+          throw new Error(
+            `Agent query failed: ${sdkMsg.subtype}`,
+          );
+        }
+      }
+    }
+
+    const responseLatencyMs = Date.now() - startMs;
+
+    // Write diary entry -- fire-and-forget
+    void writeEntry({
+      triggerType: "message",
+      triggerSource: message.senderId,
+      channel: message.channel,
+      slug: message.content.slice(0, 50),
+      content: resultText,
+      toolsUsed: toolCalls.map((t) => t.name),
+      tokensIn: tokensIn > 0 ? tokensIn : undefined,
+      tokensOut: tokensOut > 0 ? tokensOut : undefined,
+      responseLatencyMs,
+    });
+
+    yield {
+      type: "done",
+      response: { text: resultText, toolCalls, stopReason },
+    };
+  }
 }

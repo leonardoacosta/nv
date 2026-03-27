@@ -13,7 +13,7 @@ const SERVICES = {
   "discord-svc": { url: "http://127.0.0.1:4104", tools: ["discord_list_guilds", "discord_list_channels", "discord_read_messages"] },
   "teams-svc": { url: "http://127.0.0.1:4105", tools: ["teams_list_chats", "teams_read_chat", "teams_messages", "teams_channels", "teams_presence", "teams_send"] },
   "schedule-svc": { url: "http://127.0.0.1:4106", tools: ["set_reminder", "cancel_reminder", "list_reminders", "add_schedule", "modify_schedule", "remove_schedule", "list_schedules", "start_session", "stop_session"] },
-  "graph-svc": { url: "http://127.0.0.1:4107", tools: ["calendar_today", "calendar_upcoming", "calendar_next", "ado_projects", "ado_pipelines", "ado_builds", "outlook_inbox", "outlook_read", "outlook_search"] },
+  "graph-svc": { url: "http://127.0.0.1:4107", tools: ["calendar_today", "calendar_upcoming", "calendar_next", "ado_projects", "ado_pipelines", "ado_builds", "outlook_inbox", "outlook_read", "outlook_search", "outlook_folders", "outlook_sent", "outlook_folder"] },
   "meta-svc": { url: "http://127.0.0.1:4108", tools: ["check_services", "self_assessment_run", "update_soul"] },
   "azure-svc": { url: "http://127.0.0.1:4109", tools: ["azure_cli"] },
 } as const satisfies Record<string, { url: string; tools: readonly string[] }>;

@@ -2,7 +2,7 @@ import type { ToolDefinition } from "../tools.js";
 import type { ServiceConfig } from "../config.js";
 import { calendarToday, calendarUpcoming, calendarNext } from "./calendar.js";
 import { adoProjects, adoPipelines, adoBuilds } from "./ado.js";
-import { outlookInbox, outlookRead, outlookSearch } from "./mail.js";
+import { outlookInbox, outlookRead, outlookSearch, outlookFolders, outlookSent, outlookFolder } from "./mail.js";
 
 export function registerGraphTools(
   config: ServiceConfig,
@@ -212,6 +212,74 @@ export function registerGraphTools(
         const limit =
           typeof input["limit"] === "number" ? input["limit"] : 10;
         return outlookSearch(config, query, limit);
+      },
+    },
+    {
+      name: "outlook_folders",
+      description:
+        "List Outlook mail folders (Inbox, Sent, Drafts, etc.) with folder IDs.",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async () => outlookFolders(config),
+    },
+    {
+      name: "outlook_sent",
+      description:
+        "Get recent sent emails from Outlook. Returns subject, recipient, date, and preview.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            description:
+              "Number of emails to return (1-50, default 10).",
+            minimum: 1,
+            maximum: 50,
+          },
+        },
+        required: [],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : 10;
+        return outlookSent(config, limit);
+      },
+    },
+    {
+      name: "outlook_folder",
+      description:
+        "Read emails from a specific Outlook folder by folder ID. Use outlook_folders to find available folder IDs.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          folder_id: {
+            type: "string",
+            description: "The Outlook folder ID to read from.",
+          },
+          limit: {
+            type: "integer",
+            description:
+              "Number of emails to return (1-50, default 10).",
+            minimum: 1,
+            maximum: 50,
+          },
+        },
+        required: ["folder_id"],
+        additionalProperties: false,
+      },
+      handler: async (input) => {
+        const folderId = input["folder_id"];
+        if (typeof folderId !== "string" || !folderId) {
+          throw new Error("folder_id is required");
+        }
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : 10;
+        return outlookFolder(config, folderId, limit);
       },
     },
   ];

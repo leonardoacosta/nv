@@ -59,3 +59,51 @@ export async function outlookSearch(
     `-Action Search -Query '${sanitize(query)}' -Count ${limit}`,
   );
 }
+
+/**
+ * List mail folders (Inbox, Sent, Drafts, etc.).
+ */
+export async function outlookFolders(
+  config: ServiceConfig,
+): Promise<string> {
+  return sshCloudPC(
+    config.cloudpcHost,
+    config.cloudpcUserPath,
+    OUTLOOK_SCRIPT,
+    `-Action Folders`,
+  );
+}
+
+/**
+ * Get recent sent emails.
+ * @param limit Number of emails to return (1-50, default 10)
+ */
+export async function outlookSent(
+  config: ServiceConfig,
+  limit: number = 10,
+): Promise<string> {
+  return sshCloudPC(
+    config.cloudpcHost,
+    config.cloudpcUserPath,
+    OUTLOOK_SCRIPT,
+    `-Action Sent -Count ${limit}`,
+  );
+}
+
+/**
+ * Read emails from a specific folder.
+ * @param folderId The Outlook folder ID
+ * @param limit Number of emails to return (1-50, default 10)
+ */
+export async function outlookFolder(
+  config: ServiceConfig,
+  folderId: string,
+  limit: number = 10,
+): Promise<string> {
+  return sshCloudPC(
+    config.cloudpcHost,
+    config.cloudpcUserPath,
+    OUTLOOK_SCRIPT,
+    `-Action Folder -FolderId '${sanitize(folderId)}' -Count ${limit}`,
+  );
+}

@@ -8,7 +8,7 @@ import type { ToolRegistry } from "./tools.js";
 import { SshError } from "./ssh.js";
 import { calendarToday, calendarUpcoming, calendarNext } from "./tools/calendar.js";
 import { adoProjects, adoPipelines, adoBuilds } from "./tools/ado.js";
-import { outlookInbox, outlookRead, outlookSearch } from "./tools/mail.js";
+import { outlookInbox, outlookRead, outlookSearch, outlookFolders, outlookSent, outlookFolder } from "./tools/mail.js";
 
 const startedAt = Date.now();
 
@@ -176,6 +176,50 @@ export function createHttpApp(
       }
       const limit = body.limit ? Math.min(50, Math.max(1, body.limit)) : 10;
       const result = await outlookSearch(config, query, limit);
+      return c.json({ result });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ error: err.message, status: err.httpStatus }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message, status: 500 }, 500);
+    }
+  });
+
+  app.get("/mail/folders", async (c) => {
+    try {
+      const result = await outlookFolders(config);
+      return c.json({ result });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ error: err.message, status: err.httpStatus }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message, status: 500 }, 500);
+    }
+  });
+
+  app.get("/mail/sent", async (c) => {
+    try {
+      const limitRaw = c.req.query("limit");
+      const limit = limitRaw ? Math.min(50, Math.max(1, parseInt(limitRaw, 10) || 10)) : 10;
+      const result = await outlookSent(config, limit);
+      return c.json({ result });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ error: err.message, status: err.httpStatus }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ error: message, status: 500 }, 500);
+    }
+  });
+
+  app.get("/mail/folder/:folderId", async (c) => {
+    try {
+      const folderId = c.req.param("folderId");
+      const limitRaw = c.req.query("limit");
+      const limit = limitRaw ? Math.min(50, Math.max(1, parseInt(limitRaw, 10) || 10)) : 10;
+      const result = await outlookFolder(config, folderId, limit);
       return c.json({ result });
     } catch (err) {
       if (err instanceof SshError) {

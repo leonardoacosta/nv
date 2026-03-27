@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { z } from "zod";
 
 import type { ServiceConfig } from "./config.js";
 import type { Logger } from "./logger.js";
+import { jsonSchemaToZod } from "./schema-utils.js";
 import type { ToolRegistry } from "./tools.js";
 
 export async function startMcpServer(
@@ -18,14 +18,15 @@ export async function startMcpServer(
 
   // Register all tools from the shared registry
   for (const tool of registry.list()) {
+    const zodSchema = jsonSchemaToZod(tool.inputSchema);
     server.registerTool(
       tool.name,
       {
         description: tool.description,
-        inputSchema: z.object({}),
+        inputSchema: zodSchema,
       },
-      async () => {
-        const result = await tool.handler({});
+      async (input) => {
+        const result = await tool.handler(input as Record<string, unknown>);
         return {
           content: [{ type: "text" as const, text: result }],
         };

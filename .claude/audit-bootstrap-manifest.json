@@ -3,7 +3,7 @@
   "generated_at": "2026-03-24T00:29:33.603662Z",
   "generator": "audit:init (manual \u2014 Rust project)",
   "project": "nv",
-  "project_path": "/home/nyaptor/nv",
+  "project_path": "/home/nyaptor/dev/nv",
   "discovery_hash": "674e54cc7632",
   "domains": {
     "agent": {

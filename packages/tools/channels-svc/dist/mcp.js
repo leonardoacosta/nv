@@ -8,7 +8,7 @@ export async function startMcpServer(registry, logger) {
     });
     // list_channels tool
     server.registerTool("list_channels", {
-        description: "List available messaging channels and their connection status",
+        description: "List available messaging channels (Telegram, Discord, Teams, etc.) with connection status.",
         inputSchema: z.object({}),
     }, async () => {
         const channels = registry.list();
@@ -20,7 +20,7 @@ export async function startMcpServer(registry, logger) {
     });
     // send_to_channel tool
     server.registerTool("send_to_channel", {
-        description: "Send a message to a specific channel",
+        description: "Send a message to a specific channel. Requires operator confirmation for outbound messages.",
         inputSchema: z.object({
             channel: z.string().describe("Channel name"),
             target: z

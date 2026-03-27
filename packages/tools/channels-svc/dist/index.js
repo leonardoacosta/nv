@@ -9,7 +9,7 @@ import { TeamsAdapter } from "./adapters/teams.js";
 import { EmailAdapter } from "./adapters/email.js";
 import { IMessageAdapter } from "./adapters/imessage.js";
 const SERVICE_NAME = "channels-svc";
-const DEFAULT_PORT = 4003;
+const DEFAULT_PORT = 4103;
 const isMcpMode = process.argv.includes("--mcp");
 const servicePort = parseInt(process.env["PORT"] ?? String(DEFAULT_PORT), 10);
 const corsOrigin = process.env["CORS_ORIGIN"] ?? "https://nova.leonardoacosta.dev";

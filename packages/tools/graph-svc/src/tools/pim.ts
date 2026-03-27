@@ -9,11 +9,13 @@ const PIM_SCRIPT = "graph-pim.ps1";
  * Shows both direct and group-based assignments.
  */
 export async function pimStatus(config: ServiceConfig): Promise<string> {
+  // Status queries 13 scopes sequentially — needs 45s+
   return sshCloudPC(
     config.cloudpcHost,
     config.cloudpcUserPath,
     PIM_SCRIPT,
     "-Action Status",
+    60_000,
   );
 }
 

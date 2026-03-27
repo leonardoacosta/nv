@@ -3,9 +3,9 @@
 
 ## API Batch
 
-- [ ] [2.1] Add `content_preview` to briefing response in `apps/dashboard/app/api/automations/route.ts`. Select the `content` column from the latest briefing row (already queried). Strip markdown formatting, truncate to 200 chars, and return as `content_preview: string | null` in the `briefing` object. [owner:api-engineer]
-- [ ] [2.2] Create `PATCH /api/automations/watcher` endpoint at `apps/dashboard/app/api/automations/watcher/route.ts`. Accept partial body with optional fields: `enabled` (boolean), `interval_minutes` (number, 5-120), `quiet_start` (string, HH:MM), `quiet_end` (string, HH:MM). Validate input, update the watcher config source (env override or in-memory state), return the updated `AutomationWatcher` object. [owner:api-engineer]
-- [ ] [2.3] Update `AutomationBriefing` in `apps/dashboard/types/api.ts` -- add `content_preview: string | null` field. [owner:api-engineer]
+- [x] [2.1] Add `content_preview` to briefing response in `apps/dashboard/app/api/automations/route.ts`. Select the `content` column from the latest briefing row (already queried). Strip markdown formatting, truncate to 200 chars, and return as `content_preview: string | null` in the `briefing` object. [owner:api-engineer]
+- [x] [2.2] Create `PATCH /api/automations/watcher` endpoint at `apps/dashboard/app/api/automations/watcher/route.ts`. Accept partial body with optional fields: `enabled` (boolean), `interval_minutes` (number, 5-120), `quiet_start` (string, HH:MM), `quiet_end` (string, HH:MM). Validate input, update the watcher config source (env override or in-memory state), return the updated `AutomationWatcher` object. [owner:api-engineer]
+- [x] [2.3] Update `AutomationBriefing` in `apps/dashboard/types/api.ts` -- add `content_preview: string | null` field. [owner:api-engineer]
 
 ## UI Batch
 

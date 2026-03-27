@@ -115,8 +115,36 @@ export async function GET() {
       .orderBy(desc(briefings.generatedAt))
       .limit(1);
 
+    // Strip markdown formatting and truncate to 200 chars for the preview
+    const contentPreview: string | null = latestBriefing
+      ? latestBriefing.content
+          // Remove headings (# ## ### etc.)
+          .replace(/^#{1,6}\s+/gm, "")
+          // Remove bold/italic markers
+          .replace(/\*{1,3}([^*]+)\*{1,3}/g, "$1")
+          .replace(/_{1,3}([^_]+)_{1,3}/g, "$1")
+          // Remove inline code
+          .replace(/`([^`]+)`/g, "$1")
+          // Remove code blocks
+          .replace(/```[\s\S]*?```/g, "")
+          // Remove blockquotes
+          .replace(/^>\s+/gm, "")
+          // Remove horizontal rules
+          .replace(/^[-*_]{3,}\s*$/gm, "")
+          // Remove list markers
+          .replace(/^[\s]*[-*+]\s+/gm, "")
+          .replace(/^[\s]*\d+\.\s+/gm, "")
+          // Collapse whitespace and newlines
+          .replace(/\n{2,}/g, " ")
+          .replace(/\n/g, " ")
+          .replace(/\s{2,}/g, " ")
+          .trim()
+          .slice(0, 200)
+      : null;
+
     const briefingData: AutomationBriefing = {
       last_generated_at: latestBriefing?.generatedAt.toISOString() ?? null,
+      content_preview: contentPreview,
       next_generation: (() => {
         // Next 7:00 AM after now
         const next = new Date(now);

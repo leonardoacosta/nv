@@ -326,6 +326,7 @@ export interface AutomationWatcher {
 export interface AutomationBriefing {
   last_generated_at: string | null;
   next_generation: string | null;
+  content_preview: string | null;
 }
 
 export interface AutomationSession {

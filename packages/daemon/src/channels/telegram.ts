@@ -232,10 +232,15 @@ export function normalizeCallbackQuery(query: TelegramBot.CallbackQuery): Messag
 
 export class TelegramAdapter {
   private bot: TelegramBot;
+  private readonly token: string;
   private onMessageCallback: ((msg: Message) => void) | null = null;
   private readonly log = createLogger("telegram-adapter");
 
+  /** Cached draft API availability: null = untested, false = unsupported */
+  private draftApiAvailable: boolean | null = null;
+
   constructor(token: string, polling: boolean = true) {
+    this.token = token;
     this.bot = new TelegramBot(token, { polling });
 
     this.registerCommands();
@@ -338,6 +343,65 @@ export class TelegramAdapter {
     action: TelegramBot.ChatAction,
   ): Promise<void> {
     await this.bot.sendChatAction(chatId, action);
+  }
+
+  /**
+   * Send a draft message via Telegram Bot API sendMessageDraft (raw HTTP).
+   * Returns true on success, false on failure. Caches availability --
+   * if the first call returns 404/method-not-found, future calls short-circuit.
+   */
+  async sendDraft(
+    chatId: string | number,
+    draftId: number,
+    text: string,
+  ): Promise<boolean> {
+    // Short-circuit if already known unsupported
+    if (this.draftApiAvailable === false) return false;
+
+    try {
+      const res = await fetch(
+        `https://api.telegram.org/bot${this.token}/sendMessageDraft`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, draft_id: draftId, text }),
+        },
+      );
+
+      if (res.ok) {
+        this.draftApiAvailable = true;
+        return true;
+      }
+
+      // Check for method-not-found / 404
+      if (res.status === 404) {
+        this.draftApiAvailable = false;
+        this.log.debug("sendMessageDraft returned 404 -- draft API unavailable");
+        return false;
+      }
+
+      // Try to detect "method not found" in response body
+      try {
+        const body = (await res.json()) as { description?: string };
+        if (body.description?.toLowerCase().includes("method not found")) {
+          this.draftApiAvailable = false;
+          this.log.debug("sendMessageDraft: method not found -- draft API unavailable");
+          return false;
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+
+      this.log.debug({ status: res.status }, "sendMessageDraft failed");
+      return false;
+    } catch (err: unknown) {
+      this.log.debug({ err }, "sendMessageDraft fetch error");
+      // Network error on first call -- mark unavailable
+      if (this.draftApiAvailable === null) {
+        this.draftApiAvailable = false;
+      }
+      return false;
+    }
   }
 
   stop(): void {

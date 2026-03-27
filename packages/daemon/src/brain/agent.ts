@@ -4,7 +4,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Config } from "../config.js";
 import type { Message } from "../types.js";
 import { logger } from "../logger.js";
-import type { AgentResponse, ToolCall } from "./types.js";
+import type { AgentResponse, StreamEvent, ToolCall } from "./types.js";
 import { writeEntry } from "../features/diary/index.js";
 import { buildMcpServers, buildAllowedTools } from "./mcp-config.js";
 import type { DreamScheduler } from "../features/dream/scheduler.js";
@@ -187,17 +187,13 @@ export class NovaAgent {
 
   /**
    * Streaming variant of processMessage().
-   * Yields `chunk` events as assistant text blocks arrive, then a final `done`
-   * event with the full AgentResponse. Reuses the same allowedTools, mcpServers,
-   * and systemPrompt as processMessage().
+   * Yields rich StreamEvent events: text_delta, tool_start, tool_done, done.
+   * Reuses the same allowedTools, mcpServers, and systemPrompt as processMessage().
    */
   async *processMessageStream(
     message: Message,
     history: Message[],
-  ): AsyncGenerator<
-    | { type: "chunk"; text: string }
-    | { type: "done"; response: AgentResponse }
-  > {
+  ): AsyncGenerator<StreamEvent> {
     const gatewayKey =
       this.config.vercelGatewayKey ?? process.env["VERCEL_GATEWAY_KEY"];
 
@@ -214,6 +210,9 @@ export class NovaAgent {
     let tokensIn = 0;
     let tokensOut = 0;
     const startMs = Date.now();
+
+    // Track in-flight tool calls for tool_start/tool_done pairing
+    const inflightTools = new Map<string, { name: string; startedAt: number }>();
 
     const historyBlock = formatHistoryBlock(history);
     const systemPromptWithHistory = this.systemPrompt + historyBlock;
@@ -236,16 +235,34 @@ export class NovaAgent {
 
     for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {
       if (sdkMsg.type === "assistant") {
+        // When a new assistant message arrives after tool_use blocks,
+        // it means the tools have completed — emit tool_done for each.
+        if (inflightTools.size > 0) {
+          const now = Date.now();
+          for (const [callId, info] of inflightTools) {
+            yield {
+              type: "tool_done",
+              name: info.name,
+              callId,
+              durationMs: now - info.startedAt,
+            };
+          }
+          inflightTools.clear();
+        }
+
         const content = sdkMsg.message.content;
         for (const block of content) {
           if (block.type === "tool_use") {
+            const callId = (block as { id?: string }).id ?? `call_${Date.now()}`;
             toolCalls.push({
               name: block.name,
               input: block.input as Record<string, unknown>,
               result: null,
             });
+            inflightTools.set(callId, { name: block.name, startedAt: Date.now() });
+            yield { type: "tool_start", name: block.name, callId };
           } else if (block.type === "text" && block.text) {
-            yield { type: "chunk", text: block.text };
+            yield { type: "text_delta", text: block.text };
           }
         }
         const usage = sdkMsg.message.usage;
@@ -254,6 +271,20 @@ export class NovaAgent {
           tokensOut += usage.output_tokens ?? 0;
         }
       } else if (sdkMsg.type === "result") {
+        // Resolve any remaining in-flight tools before the final result
+        if (inflightTools.size > 0) {
+          const now = Date.now();
+          for (const [callId, info] of inflightTools) {
+            yield {
+              type: "tool_done",
+              name: info.name,
+              callId,
+              durationMs: now - info.startedAt,
+            };
+          }
+          inflightTools.clear();
+        }
+
         if (sdkMsg.subtype === "success") {
           resultText = sdkMsg.result;
           stopReason = sdkMsg.stop_reason ?? "end_turn";

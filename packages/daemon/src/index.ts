@@ -6,6 +6,7 @@ import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { initFleetClient } from "./fleet-client.js";
 import { TelegramAdapter } from "./channels/telegram.js";
+import { TelegramStreamWriter } from "./channels/stream-writer.js";
 import { ProactiveWatcher, handleWatcherCallback } from "./features/watcher/index.js";
 import { startBriefingScheduler } from "./features/briefing/scheduler.js";
 import { DreamScheduler } from "./features/dream/index.js";
@@ -324,12 +325,8 @@ export async function main(): Promise<void> {
       );
 
       void (async () => {
-        // Send typing indicator every 4s until the agent responds.
-        // Telegram's "typing" status expires after ~5s, so we refresh it.
-        void telegram!.sendChatAction(msg.chatId, "typing");
-        const typingInterval = setInterval(() => {
-          void telegram!.sendChatAction(msg.chatId, "typing");
-        }, 4000);
+        // Stream writer for progressive draft updates (replaces typing indicator)
+        const writer = new TelegramStreamWriter(telegram!, msg.chatId);
 
         try {
           // ── Smart routing: try Tier 1/2 before Agent SDK ───────────────
@@ -414,12 +411,14 @@ export async function main(): Promise<void> {
                 "Smart-routed response sent",
               );
 
-              clearInterval(typingInterval);
               return;
             }
           }
 
-          // ── Tier 3: Full Agent SDK ─────────────────────────────────────
+          // ── Tier 3: Full Agent SDK (streaming) ─────────────────────────
+
+          // Send initial typing indicator while router/history loads
+          void telegram!.sendChatAction(msg.chatId, "typing");
 
           // Load conversation history for this chat
           const channelKey = `telegram:${msg.chatId}`;
@@ -428,82 +427,57 @@ export async function main(): Promise<void> {
             config.conversationHistoryDepth,
           );
 
-          const response = await agent.processMessage(msg, history);
+          let finalResponse: { text: string; toolCalls: { name: string }[]; stopReason: string } | null = null;
 
-          // Save exchange fire-and-forget — never block the response path
-          void conversationManager.saveExchange(channelKey, msg, {
-            ...msg,
-            senderId: "nova",
-            senderName: "nova",
-            content: response.text,
-            text: response.text,
-          }).catch((saveErr: unknown) => {
-            log.warn(
-              { service: "nova-daemon", chatId: msg.chatId, err: saveErr },
-              "Failed to save conversation exchange",
+          for await (const event of agent.processMessageStream(msg, history)) {
+            switch (event.type) {
+              case "text_delta":
+                writer.onTextDelta(event.text);
+                break;
+              case "tool_start":
+                writer.onToolStart(event.name, event.callId);
+                break;
+              case "tool_done":
+                writer.onToolDone(event.name, event.callId, event.durationMs);
+                break;
+              case "done":
+                finalResponse = event.response;
+                await writer.finalize(event.response.text);
+                break;
+            }
+          }
+
+          if (finalResponse) {
+            // Save exchange fire-and-forget — never block the response path
+            void conversationManager.saveExchange(channelKey, msg, {
+              ...msg,
+              senderId: "nova",
+              senderName: "nova",
+              content: finalResponse.text,
+              text: finalResponse.text,
+            }).catch((saveErr: unknown) => {
+              log.warn(
+                { service: "nova-daemon", chatId: msg.chatId, err: saveErr },
+                "Failed to save conversation exchange",
+              );
+            });
+
+            log.info(
+              {
+                service: "nova-daemon",
+                chatId: msg.chatId,
+                stopReason: finalResponse.stopReason,
+                toolCalls: finalResponse.toolCalls.length,
+              },
+              "Agent response sent (streaming)",
             );
-          });
-
-          // Split long responses into 4096-char chunks (Telegram limit).
-          // Try Markdown first, fall back to stripped plain text per chunk.
-          const MAX_LEN = 4096;
-          const chunks: string[] = [];
-          let remaining = response.text;
-          while (remaining.length > 0) {
-            if (remaining.length <= MAX_LEN) {
-              chunks.push(remaining);
-              break;
-            }
-            // Split at last newline before limit to avoid mid-word breaks
-            let splitAt = remaining.lastIndexOf("\n", MAX_LEN);
-            if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN; // no good newline, hard split
-            chunks.push(remaining.slice(0, splitAt));
-            remaining = remaining.slice(splitAt).replace(/^\n/, "");
           }
-
-          for (const chunk of chunks) {
-            try {
-              await telegram!.sendMessage(msg.chatId, chunk, {
-                parseMode: "Markdown",
-                disablePreview: true,
-              });
-            } catch {
-              // Markdown failed — strip formatting and send plain text
-              try {
-                const plain = chunk
-                  .replace(/\*\*(.+?)\*\*/g, "$1")
-                  .replace(/\*(.+?)\*/g, "$1")
-                  .replace(/`([^`]+)`/g, "$1")
-                  .replace(/```[\s\S]*?```/g, (m) =>
-                    m.replace(/```\w*\n?/g, "").replace(/```/g, ""),
-                  );
-                await telegram!.sendMessage(msg.chatId, plain);
-              } catch (sendErr: unknown) {
-                log.warn(
-                  { service: "nova-daemon", chatId: msg.chatId, err: sendErr },
-                  "sendMessage chunk failed",
-                );
-              }
-            }
-          }
-
-          log.info(
-            {
-              service: "nova-daemon",
-              chatId: msg.chatId,
-              stopReason: response.stopReason,
-              toolCalls: response.toolCalls.length,
-            },
-            "Agent response sent",
-          );
         } catch (err: unknown) {
           log.error(
             { service: "nova-daemon", chatId: msg.chatId, err },
             "Agent processing failed",
           );
-          void telegram!.sendMessage(msg.chatId, "Sorry, something went wrong.");
-        } finally {
-          clearInterval(typingInterval);
+          await writer.abort("Sorry, something went wrong.");
         }
       })();
     });

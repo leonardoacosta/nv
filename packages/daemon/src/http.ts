@@ -151,9 +151,10 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
 
       try {
         for await (const event of agent.processMessageStream(msg, history)) {
-          if (event.type === "chunk") {
+          if (event.type === "text_delta") {
             resetInactivityTimer();
             fullText += event.text;
+            // Keep wire format as "chunk" for backward compatibility with dashboard
             await stream.writeSSE({
               data: JSON.stringify({ type: "chunk", text: event.text }),
             });
@@ -168,6 +169,7 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
               }),
             });
           }
+          // tool_start and tool_done are ignored in SSE output for now
         }
 
         // Save exchange -- fire-and-forget

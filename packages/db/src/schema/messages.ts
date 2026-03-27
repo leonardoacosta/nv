@@ -1,4 +1,4 @@
-import { customType, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { customType, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 const vector = customType<{ data: number[]; driverData: string }>({
   dataType(config) {
@@ -24,6 +24,8 @@ export const messages = pgTable("messages", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   embedding: vector("embedding", { dimensions: 1536 }),
+  threadId: text("thread_id"),
+  replyToMessageId: integer("reply_to_message_id"),
 });
 
 export type Message = typeof messages.$inferSelect;

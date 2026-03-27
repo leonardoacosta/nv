@@ -11,13 +11,13 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Create packages/auth/ workspace package -- package.json with name "@nova/auth", deps: better-auth, @better-auth/api-key, @nova/db (workspace:*), tsconfig.json, src/index.ts with betterAuth() config using drizzleAdapter(db, { provider: "pg", schema }), emailAndPassword enabled, bearer() and apiKey() plugins [owner:api-engineer] [beads:nv-ws86]
-- [ ] [2.2] [P-1] Create packages/auth/src/client.ts -- export authClient via createAuthClient() from better-auth/react, include apiKeyClient() plugin, export signIn, signUp, signOut, useSession convenience methods and Session/User types [owner:api-engineer] [beads:nv-afrs]
-- [ ] [2.3] [P-2] Create packages/auth/src/seed.ts -- idempotent script: create admin user (NOVA_ADMIN_EMAIL / NOVA_ADMIN_PASSWORD env vars), generate API key via auth API, print key to stdout. Add `seed` script to package.json [owner:api-engineer] [beads:nv-bo7k]
-- [ ] [2.4] [P-2] Create apps/dashboard/app/api/auth/[...all]/route.ts -- import auth from @nova/auth, export GET and POST via toNextJsHandler(auth) [owner:api-engineer] [beads:nv-bcul]
-- [ ] [2.5] [P-2] Remove apps/dashboard/app/api/auth/verify/route.ts -- replaced by Better Auth sign-in endpoint [owner:api-engineer] [beads:nv-jsbg]
-- [ ] [2.6] [P-2] Remove apps/dashboard/app/api/auth/logout/route.ts -- replaced by Better Auth sign-out endpoint [owner:api-engineer] [beads:nv-knmc]
-- [ ] [2.7] [P-2] Add @nova/auth dependency to apps/dashboard/package.json [owner:api-engineer] [beads:nv-ve69]
+- [x] [2.1] [P-1] Create packages/auth/ workspace package -- package.json with name "@nova/auth", deps: better-auth, @better-auth/api-key, @nova/db (workspace:*), tsconfig.json, src/index.ts with betterAuth() config using drizzleAdapter(db, { provider: "pg", schema }), emailAndPassword enabled, bearer() and apiKey() plugins [owner:api-engineer] [beads:nv-ws86]
+- [x] [2.2] [P-1] Create packages/auth/src/client.ts -- export authClient via createAuthClient() from better-auth/react, include apiKeyClient() plugin, export signIn, signUp, signOut, useSession convenience methods and Session/User types [owner:api-engineer] [beads:nv-afrs]
+- [x] [2.3] [P-2] Create packages/auth/src/seed.ts -- idempotent script: create admin user (NOVA_ADMIN_EMAIL / NOVA_ADMIN_PASSWORD env vars), generate API key via auth API, print key to stdout. Add `seed` script to package.json [owner:api-engineer] [beads:nv-bo7k]
+- [x] [2.4] [P-2] Create apps/dashboard/app/api/auth/[...all]/route.ts -- import auth from @nova/auth, export GET and POST via toNextJsHandler(auth) [owner:api-engineer] [beads:nv-bcul]
+- [x] [2.5] [P-2] Remove apps/dashboard/app/api/auth/verify/route.ts -- replaced by Better Auth sign-in endpoint [owner:api-engineer] [beads:nv-jsbg]
+- [x] [2.6] [P-2] Remove apps/dashboard/app/api/auth/logout/route.ts -- replaced by Better Auth sign-out endpoint [owner:api-engineer] [beads:nv-knmc]
+- [x] [2.7] [P-2] Add @nova/auth dependency to apps/dashboard/package.json [owner:api-engineer] [beads:nv-ve69]
 
 ## UI Batch
 

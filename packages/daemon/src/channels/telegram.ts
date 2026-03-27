@@ -22,6 +22,9 @@ import { buildMailReply } from "../telegram/commands/mail.js";
 import { buildPimReply } from "../telegram/commands/pim.js";
 import { buildAdoReply } from "../telegram/commands/ado.js";
 import { buildDreamReply, buildDreamStatusReply } from "../telegram/commands/dream.js";
+import { buildBriefReply } from "../telegram/commands/brief.js";
+import { buildStartKeyboard } from "../telegram/commands/start.js";
+import { buildToolsKeyboard } from "../telegram/commands/tools.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -364,6 +367,74 @@ export class TelegramAdapter {
     // Acknowledge immediately to dismiss the Telegram spinner (expires after 60s)
     await this.answerCallbackQuery(query.id);
 
+    const data = query.data ?? "";
+    const chatId = String(query.message?.chat.id ?? 0);
+
+    // Route inline keyboard cmd: callbacks to direct handlers
+    if (data.startsWith("cmd:")) {
+      const cmd = data.slice(4);
+      const [command, ...args] = cmd.split(" ");
+      const argsText = args.join(" ") || undefined;
+
+      switch (command) {
+        case "brief":
+          return void this.handleDirectCommand(chatId, () => buildBriefReply());
+        case "calendar":
+          return void this.handleDirectCommand(chatId, () => buildCalendarReply());
+        case "mail": {
+          let subcommand: string | undefined;
+          let arg: string | undefined;
+          if (argsText) {
+            const spaceIdx = argsText.indexOf(" ");
+            if (spaceIdx === -1) {
+              subcommand = argsText;
+            } else {
+              subcommand = argsText.slice(0, spaceIdx);
+              arg = argsText.slice(spaceIdx + 1).trim();
+            }
+          }
+          return void this.handleDirectCommand(chatId, () => buildMailReply(subcommand, arg));
+        }
+        case "ob":
+          return void this.handleDirectCommand(chatId, () => buildObReply());
+        case "memory":
+          return void this.handleDirectCommand(chatId, () => buildMemoryReply(argsText));
+        case "health":
+          return void this.handleDirectCommand(chatId, () => buildHealthReply());
+        case "teams":
+          return void this.handleDirectCommand(chatId, () => buildTeamsReply());
+        case "ado": {
+          let subcommand: string | undefined;
+          let arg: string | undefined;
+          if (argsText) {
+            const spaceIdx = argsText.indexOf(" ");
+            if (spaceIdx === -1) {
+              subcommand = argsText;
+            } else {
+              subcommand = argsText.slice(0, spaceIdx);
+              arg = argsText.slice(spaceIdx + 1).trim();
+            }
+          }
+          return void this.handleDirectCommand(chatId, () => buildAdoReply(subcommand, arg));
+        }
+        case "pim":
+          return void this.handleDirectCommand(chatId, () => buildPimReply(argsText));
+        case "dream":
+          return void this.handleDirectCommand(chatId, () => buildDreamReply());
+        case "az":
+          return void this.handleDirectCommand(chatId, () => buildAzReply(argsText));
+        case "discord":
+          return void this.handleDirectCommand(chatId, () => buildDiscordReply());
+        case "contacts":
+          return void this.handleDirectCommand(chatId, () => buildContactsReply());
+        case "soul":
+          return void this.handleDirectCommand(chatId, () => buildSoulReply());
+        default:
+          break;
+      }
+    }
+
+    // Existing obligation/reminder callback handling
     if (!this.onMessageCallback) return;
     this.onMessageCallback(normalizeCallbackQuery(query));
   }
@@ -371,25 +442,13 @@ export class TelegramAdapter {
   private registerCommands(): void {
     this.bot
       .setMyCommands([
-        { command: "start", description: "Start Nova and show status" },
-        { command: "help", description: "Show available commands" },
-        { command: "memory", description: "Read a memory topic (/memory [topic])" },
-        { command: "search", description: "Search messages (/search [query])" },
-        { command: "teams", description: "List recent Teams chats" },
-        { command: "calendar", description: "Today's calendar events" },
-        { command: "discord", description: "List Discord servers" },
-        { command: "health", description: "Fleet service health status" },
-        { command: "remind", description: "Set a reminder (/remind [message] [time])" },
-        { command: "ob", description: "List active obligations" },
-        { command: "diary", description: "Today's interaction summary" },
-        { command: "contacts", description: "List contacts" },
-        { command: "soul", description: "Read Nova's personality" },
-        { command: "status", description: "Daemon and fleet status" },
-        { command: "az", description: "Run Azure CLI command (/az vm list)" },
-        { command: "mail", description: "Read Outlook email (/mail, /mail read ID, /mail search query)" },
-        { command: "pim", description: "PIM role status and activation" },
-        { command: "ado", description: "Azure DevOps: work items, PRs, repos" },
-        { command: "dream", description: "Run memory consolidation (/dream, /dream status)" },
+        { command: "start", description: "Dashboard with quick actions" },
+        { command: "brief", description: "Morning briefing + calendar + mail" },
+        { command: "tools", description: "Teams, ADO, PIM, Azure, Discord" },
+        { command: "dream", description: "Memory consolidation" },
+        { command: "status", description: "Fleet health + daemon status" },
+        { command: "remind", description: "Set a reminder (/remind msg time)" },
+        { command: "help", description: "All commands reference" },
       ])
       .catch((err: unknown) => {
         this.log.error({ err }, "Failed to register bot commands");
@@ -542,13 +601,26 @@ export class TelegramAdapter {
       }
     });
 
-    // ── Agent-routed commands (complex — go through onMessageCallback) ──────
-
-    // /start — routes to agent for greeting/status synthesis
+    // /start — inline keyboard dashboard
     this.bot.onText(/^\/start(@\S+)?$/, (msg) => {
-      if (!this.onMessageCallback) return;
-      const normalized = normalizeTextMessage(msg);
-      this.onMessageCallback({ ...normalized, text: "/start", content: "/start" });
+      const chatId = String(msg.chat.id);
+      void this.sendMessage(chatId, "Nova Dashboard", {
+        keyboard: buildStartKeyboard(),
+      });
+    });
+
+    // /brief — morning briefing (calendar + mail + obligations)
+    this.bot.onText(/^\/brief(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.handleDirectCommand(chatId, () => buildBriefReply());
+    });
+
+    // /tools — tool keyboard menu
+    this.bot.onText(/^\/tools(@\S+)?$/, (msg) => {
+      const chatId = String(msg.chat.id);
+      void this.sendMessage(chatId, "Tools", {
+        keyboard: buildToolsKeyboard(),
+      });
     });
   }
 

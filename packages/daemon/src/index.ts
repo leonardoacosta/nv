@@ -197,9 +197,14 @@ export async function main(): Promise<void> {
       );
 
       void (async () => {
-        try {
+        // Send typing indicator every 4s until the agent responds.
+        // Telegram's "typing" status expires after ~5s, so we refresh it.
+        void telegram!.sendChatAction(msg.chatId, "typing");
+        const typingInterval = setInterval(() => {
           void telegram!.sendChatAction(msg.chatId, "typing");
+        }, 4000);
 
+        try {
           // Load conversation history for this chat
           const channelKey = `telegram:${msg.chatId}`;
           const history = await conversationManager.loadHistory(
@@ -256,6 +261,8 @@ export async function main(): Promise<void> {
             "Agent processing failed",
           );
           void telegram!.sendMessage(msg.chatId, "Sorry, something went wrong.");
+        } finally {
+          clearInterval(typingInterval);
         }
       })();
     });

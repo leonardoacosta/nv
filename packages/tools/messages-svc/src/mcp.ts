@@ -20,7 +20,7 @@ export async function startMcpServer(
     "get_recent_messages",
     {
       description:
-        "Retrieve the most recent messages, optionally filtered by channel. Returns messages ordered by created_at descending.",
+        "Get recent conversation messages, optionally filtered by channel. Returns sender, content, and timestamp.",
       inputSchema: z.object({
         channel: z
           .string()
@@ -48,7 +48,7 @@ export async function startMcpServer(
     "search_messages",
     {
       description:
-        "Search messages using ILIKE text matching on content. Optionally filter by channel.",
+        "Full-text search across all stored messages. Filter by channel and limit results.",
       inputSchema: z.object({
         query: z.string().min(1).describe("Search query text"),
         channel: z

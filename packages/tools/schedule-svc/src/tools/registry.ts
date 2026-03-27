@@ -7,7 +7,7 @@ import { startSession, stopSession } from "./sessions.js";
 
 const setReminderTool: ToolDefinition = {
   name: "set_reminder",
-  description: "Set a one-shot reminder that fires at a specified time",
+  description: "Set a one-shot reminder that fires at a specified time. Returns the reminder ID for cancellation.",
   inputSchema: {
     type: "object",
     properties: {
@@ -22,7 +22,7 @@ const setReminderTool: ToolDefinition = {
 
 const cancelReminderTool: ToolDefinition = {
   name: "cancel_reminder",
-  description: "Cancel a pending reminder by its ID",
+  description: "Cancel a pending reminder by its ID. Returns confirmation of cancellation.",
   inputSchema: {
     type: "object",
     properties: {
@@ -36,7 +36,7 @@ const cancelReminderTool: ToolDefinition = {
 
 const listRemindersTool: ToolDefinition = {
   name: "list_reminders",
-  description: "List reminders. By default only active (not cancelled, not delivered) reminders are shown.",
+  description: "List reminders with description and due time. By default shows only active (pending) reminders.",
   inputSchema: {
     type: "object",
     properties: {
@@ -55,7 +55,7 @@ const listRemindersTool: ToolDefinition = {
 
 const addScheduleTool: ToolDefinition = {
   name: "add_schedule",
-  description: "Create a recurring schedule with a cron expression",
+  description: "Create a recurring schedule with a cron expression. Returns the schedule ID.",
   inputSchema: {
     type: "object",
     properties: {
@@ -71,7 +71,7 @@ const addScheduleTool: ToolDefinition = {
 
 const modifyScheduleTool: ToolDefinition = {
   name: "modify_schedule",
-  description: "Update an existing schedule's name, cron expression, action, or enabled state",
+  description: "Update an existing schedule's name, cron expression, action, or enabled state.",
   inputSchema: {
     type: "object",
     properties: {
@@ -101,7 +101,7 @@ const modifyScheduleTool: ToolDefinition = {
 
 const removeScheduleTool: ToolDefinition = {
   name: "remove_schedule",
-  description: "Delete a schedule by its ID",
+  description: "Delete a schedule by its ID. Returns confirmation of deletion.",
   inputSchema: {
     type: "object",
     properties: {
@@ -115,7 +115,7 @@ const removeScheduleTool: ToolDefinition = {
 
 const listSchedulesTool: ToolDefinition = {
   name: "list_schedules",
-  description: "List schedules. By default only enabled schedules are shown.",
+  description: "List schedules with name, cron expression, and status. By default shows only enabled schedules.",
   inputSchema: {
     type: "object",
     properties: {
@@ -133,7 +133,7 @@ const listSchedulesTool: ToolDefinition = {
 
 const startSessionTool: ToolDefinition = {
   name: "start_session",
-  description: "Record the start of a Claude Code session for a project",
+  description: "Record the start of a session for a project. Returns the session ID.",
   inputSchema: {
     type: "object",
     properties: {
@@ -153,7 +153,7 @@ const startSessionTool: ToolDefinition = {
 
 const stopSessionTool: ToolDefinition = {
   name: "stop_session",
-  description: "Stop the most recent running session. Optionally filter by project name.",
+  description: "Stop the most recent running session. Optionally filter by project name. Returns session duration.",
   inputSchema: {
     type: "object",
     properties: {

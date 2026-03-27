@@ -30,7 +30,7 @@ const server = new McpServer({
 server.registerTool(
   "read_memory",
   {
-    description: "Read a memory topic by name. Returns the content and last updated timestamp.",
+    description: "Read a memory file by topic name. Returns the full content. Always check memory before responding.",
     inputSchema: z.object({
       topic: z.string().describe("The memory topic to read"),
     }),
@@ -83,7 +83,7 @@ server.registerTool(
 server.registerTool(
   "write_memory",
   {
-    description: "Write or update a memory topic. Upserts into Postgres and syncs to filesystem.",
+    description: "Create or update a memory file. Upserts by topic name. Use proactively to store useful context.",
     inputSchema: z.object({
       topic: z.string().describe("The memory topic name"),
       content: z.string().describe("The memory content to store"),
@@ -136,7 +136,7 @@ server.registerTool(
 server.registerTool(
   "search_memory",
   {
-    description: "Search memory by semantic similarity (pgvector) or substring match as fallback.",
+    description: "Search memory files by keyword. Returns matching topics with relevance scores.",
     inputSchema: z.object({
       query: z.string().describe("Search query string"),
       limit: z.number().min(1).max(MAX_SEARCH_LIMIT).optional()

@@ -11,7 +11,7 @@ export function registerGraphTools(
     {
       name: "calendar_today",
       description:
-        "Get today's calendar events from Outlook via the CloudPC.",
+        "Get today's Outlook calendar events. Returns event titles, times, and attendees. Authenticated and ready to use.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -23,7 +23,7 @@ export function registerGraphTools(
     {
       name: "calendar_upcoming",
       description:
-        "Get upcoming calendar events from Outlook for the next N days.",
+        "Get upcoming Outlook calendar events for the next N days (default 7). Returns event titles, times, and attendees.",
       inputSchema: {
         type: "object",
         properties: {
@@ -46,7 +46,7 @@ export function registerGraphTools(
     {
       name: "calendar_next",
       description:
-        "Get the next upcoming calendar event from Outlook via the CloudPC.",
+        "Get the next upcoming Outlook calendar event. Returns title, time, and attendees.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -59,7 +59,7 @@ export function registerGraphTools(
     // ── ADO Tools ───────────────────────────────────────────────────
     {
       name: "ado_projects",
-      description: "List Azure DevOps projects.",
+      description: "List Azure DevOps projects you have access to. Returns project names and IDs.",
       inputSchema: {
         type: "object",
         properties: {},
@@ -71,7 +71,7 @@ export function registerGraphTools(
     {
       name: "ado_pipelines",
       description:
-        "List Azure DevOps pipelines, optionally filtered by project.",
+        "List Azure DevOps pipelines, optionally filtered by project name. Returns pipeline names and IDs.",
       inputSchema: {
         type: "object",
         properties: {
@@ -95,7 +95,7 @@ export function registerGraphTools(
     {
       name: "ado_builds",
       description:
-        "Get recent Azure DevOps builds, optionally filtered by project and pipeline.",
+        "List recent Azure DevOps builds with status, optionally filtered by project and pipeline.",
       inputSchema: {
         type: "object",
         properties: {

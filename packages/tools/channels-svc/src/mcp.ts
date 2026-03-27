@@ -20,7 +20,7 @@ export async function startMcpServer(
     "list_channels",
     {
       description:
-        "List available messaging channels and their connection status",
+        "List available messaging channels (Telegram, Discord, Teams, etc.) with connection status.",
       inputSchema: z.object({}),
     },
     async () => {
@@ -37,7 +37,7 @@ export async function startMcpServer(
   server.registerTool(
     "send_to_channel",
     {
-      description: "Send a message to a specific channel",
+      description: "Send a message to a specific channel. Requires operator confirmation for outbound messages.",
       inputSchema: z.object({
         channel: z.string().describe("Channel name"),
         target: z

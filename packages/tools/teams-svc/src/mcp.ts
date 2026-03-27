@@ -23,8 +23,7 @@ export async function startMcpServer(logger: Logger): Promise<void> {
     "teams_list_chats",
     {
       description:
-        "List Microsoft Teams teams and chats. " +
-        "Returns teams, DMs, and group chats accessible from the CloudPC account. " +
+        "List your recent Microsoft Teams chats and DMs. Authenticated and ready to use. " +
         "Use the returned chat ID with teams_read_chat to read messages.",
       inputSchema: z.object({
         limit: z
@@ -46,9 +45,7 @@ export async function startMcpServer(logger: Logger): Promise<void> {
     "teams_read_chat",
     {
       description:
-        "Read recent messages from a Microsoft Teams chat (DM or group chat). " +
-        "Returns sender, timestamp, and content. " +
-        "Use teams_list_chats to find chat IDs.",
+        "Read recent messages from a Teams chat by chat ID. Returns sender, timestamp, and content.",
       inputSchema: z.object({
         chat_id: z
           .string()
@@ -74,9 +71,8 @@ export async function startMcpServer(logger: Logger): Promise<void> {
     "teams_messages",
     {
       description:
-        "Read recent messages from a Microsoft Teams channel. " +
-        "Returns messages with sender and timestamp. " +
-        "Specify channel_name to read a specific channel; omit to read General.",
+        "Read recent messages from a Teams channel. Provide team and channel names. " +
+        "Defaults to the General channel if channel_name is omitted.",
       inputSchema: z.object({
         team_name: z
           .string()
@@ -104,8 +100,7 @@ export async function startMcpServer(logger: Logger): Promise<void> {
     "teams_channels",
     {
       description:
-        "List channels in a Microsoft Teams team. Returns channel names. " +
-        "Uses team name (display name), not team ID.",
+        "List channels in a Teams team. Returns channel names and IDs.",
       inputSchema: z.object({
         team_name: z
           .string()
@@ -123,9 +118,8 @@ export async function startMcpServer(logger: Logger): Promise<void> {
     "teams_presence",
     {
       description:
-        "Check a Microsoft Teams user's presence and availability status. " +
-        "Returns availability (Available, Busy, DoNotDisturb, Away, Offline) and " +
-        "activity (InACall, InAMeeting, Presenting, etc.).",
+        "Check a Teams user's presence/availability status by email or UPN. " +
+        "Returns availability (Available, Busy, Away, Offline, etc.) and activity.",
       inputSchema: z.object({
         user: z
           .string()
@@ -145,9 +139,7 @@ export async function startMcpServer(logger: Logger): Promise<void> {
     "teams_send",
     {
       description:
-        "Send a message to a Microsoft Teams chat. " +
-        "Requires explicit user confirmation before sending. " +
-        "Use teams_list_chats to find chat IDs.",
+        "Send a message to a Teams chat. Requires operator confirmation before sending.",
       inputSchema: z.object({
         chat_id: z
           .string()

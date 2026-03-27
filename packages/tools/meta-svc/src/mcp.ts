@@ -19,7 +19,7 @@ server.registerTool(
   "check_services",
   {
     description:
-      "Ping all tool fleet services and return their health status",
+      "Check the health status of all Nova fleet services. Returns per-service status and latency.",
     inputSchema: z.object({}),
   },
   async () => {
@@ -41,7 +41,7 @@ server.registerTool(
   "self_assessment_run",
   {
     description:
-      "Run a self-assessment reading memory, recent messages, and fleet health",
+      "Run a self-assessment. Gathers memory, recent messages, and service health to generate observations.",
     inputSchema: z.object({}),
   },
   async () => {
@@ -61,7 +61,7 @@ server.registerTool(
 server.registerTool(
   "update_soul",
   {
-    description: "Update Nova's soul document (config/soul.md)",
+    description: "Update Nova's personality/soul file. Always notify the operator when changing this.",
     inputSchema: z.object({
       changes: z
         .string()

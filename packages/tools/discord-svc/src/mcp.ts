@@ -22,9 +22,7 @@ export async function startMcpServer(
     "discord_list_guilds",
     {
       description:
-        "List all Discord servers (guilds) the bot is a member of. " +
-        "Returns server names and IDs. Use this to discover available servers " +
-        "before listing channels or reading messages.",
+        "List Discord servers (guilds) the bot is a member of. Returns server names and IDs.",
       inputSchema: z.object({}),
     },
     async () => {
@@ -40,9 +38,7 @@ export async function startMcpServer(
     "discord_list_channels",
     {
       description:
-        "List text channels in a Discord server, grouped by category. " +
-        "Returns channel names, IDs, and topics. Use discord_list_guilds first " +
-        "to find guild IDs. Only returns text channels (type 0).",
+        "List text channels in a Discord server by guild ID. Returns channel names, IDs, and topics.",
       inputSchema: z.object({
         guild_id: z
           .string()
@@ -64,9 +60,7 @@ export async function startMcpServer(
     "discord_read_messages",
     {
       description:
-        "Read recent messages from a Discord channel. Returns messages " +
-        "newest-first with author, timestamp, and content (truncated to 500 chars). " +
-        "Use discord_list_channels to find channel IDs.",
+        "Read recent messages from a Discord channel. Returns author, timestamp, and content.",
       inputSchema: z.object({
         channel_id: z
           .string()

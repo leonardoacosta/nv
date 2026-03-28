@@ -20,7 +20,6 @@ use crate::agent::{
 };
 use crate::error_recovery::{classify_error, is_retryable, retry_keyboard, user_message as error_user_message};
 use crate::dashboard_client::{DashboardError, ForwardRequest};
-use crate::briefing_store::BriefingStore;
 use crate::cold_start_store::{ColdStartEvent, ColdStartStore};
 use crate::claude::{ClaudeClient, ContentBlock, Message, StopReason, ToolDefinition, ToolResultBlock};
 use crate::conversation::PersistentConversationStore;
@@ -274,8 +273,6 @@ pub struct SharedDeps {
     /// natively — avoiding the broken `--tools-json` CLI flag on this machine.
     /// `None` when `ANTHROPIC_API_KEY` is not set; falls back to `ClaudeClient`.
     pub anthropic_client: Option<crate::anthropic::AnthropicClient>,
-    /// Morning briefing log store. Shared with the HTTP server.
-    pub briefing_store: Option<Arc<BriefingStore>>,
     /// Cold-start timing event store. None if the DB failed to open.
     pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
     /// Contact store for sender identity lookup during message ingestion.

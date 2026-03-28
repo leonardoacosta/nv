@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::sync::Mutex as TokioMutex;
 
-use crate::briefing_store::BriefingStore;
 use crate::cc_sessions::CcSessionManager;
 use crate::cold_start_store::ColdStartStore;
 use crate::contact_store::ContactStore;
@@ -190,8 +189,6 @@ pub struct HttpState {
     pub weekly_budget_usd: f64,
     /// Teams clientState secret for webhook notification validation. None if Teams is not configured.
     pub teams_client_state: Option<String>,
-    /// Morning briefing log store. None if not initialised.
-    pub briefing_store: Option<Arc<BriefingStore>>,
     /// Cold-start timing event store. None if not initialised.
     pub cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
     /// Broadcast channel for dashboard WebSocket events (`/ws/events`).
@@ -254,8 +251,6 @@ pub fn build_router(state: Arc<HttpState>) -> Router {
         .route("/test/ping", get(test_ping_handler))
         .route("/stats", get(stats_handler))
         .route("/webhooks/teams", post(teams_webhook_handler))
-        .route("/api/briefing", get(get_briefing_handler))
-        .route("/api/briefing/history", get(get_briefing_history_handler))
         .route("/api/cold-starts", get(get_cold_starts_handler))
         .route("/api/latency", get(get_latency_handler))
         // Dashboard API
@@ -655,80 +650,6 @@ async fn stats_handler(
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": format!("Failed to open message store: {e}")})),
-            ).into_response()
-        }
-    }
-}
-
-// ── Briefing API ─────────────────────────────────────────────────────
-
-/// Query parameters for `GET /api/briefing/history`.
-#[derive(Debug, Deserialize)]
-pub struct BriefingQuery {
-    /// Maximum number of entries to return (default 10, max 30).
-    pub limit: Option<usize>,
-}
-
-/// GET /api/briefing — return the most recent morning briefing entry.
-///
-/// Returns 200 with the latest `BriefingEntry` as JSON, or 404 if no
-/// briefing has been stored yet.
-async fn get_briefing_handler(
-    State(state): State<Arc<HttpState>>,
-) -> impl IntoResponse {
-    let store = match &state.briefing_store {
-        Some(s) => s,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "briefing store not configured"})),
-            ).into_response();
-        }
-    };
-
-    match store.latest() {
-        Ok(Some(entry)) => (StatusCode::OK, Json(serde_json::to_value(entry).unwrap())).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "no briefing available"})),
-        ).into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to read briefing store");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to read briefing: {e}")})),
-            ).into_response()
-        }
-    }
-}
-
-/// GET /api/briefing/history — return recent morning briefing entries.
-///
-/// Accepts `?limit=N` (1–30, default 10). Returns a JSON array of
-/// `BriefingEntry` objects, newest first.
-async fn get_briefing_history_handler(
-    State(state): State<Arc<HttpState>>,
-    Query(query): Query<BriefingQuery>,
-) -> impl IntoResponse {
-    let store = match &state.briefing_store {
-        Some(s) => s,
-        None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(serde_json::json!({"error": "briefing store not configured"})),
-            ).into_response();
-        }
-    };
-
-    let limit = query.limit.unwrap_or(10).clamp(1, 30);
-
-    match store.list(limit) {
-        Ok(entries) => (StatusCode::OK, Json(serde_json::to_value(entries).unwrap())).into_response(),
-        Err(e) => {
-            tracing::error!(error = %e, "failed to read briefing history");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": format!("Failed to read briefing history: {e}")})),
             ).into_response()
         }
     }
@@ -1738,7 +1659,6 @@ pub async fn run_http_server(
     jira_webhook_state: Option<Arc<JiraWebhookState>>,
     weekly_budget_usd: f64,
     teams_client_state: Option<String>,
-    briefing_store: Option<Arc<BriefingStore>>,
     cold_start_store: Option<Arc<std::sync::Mutex<ColdStartStore>>>,
     event_tx: broadcast::Sender<DaemonEvent>,
     cc_session_manager: Option<CcSessionManager>,
@@ -1761,7 +1681,6 @@ pub async fn run_http_server(
         jira_webhook_state,
         weekly_budget_usd,
         teams_client_state,
-        briefing_store,
         cold_start_store,
         event_tx,
         cc_session_manager,
@@ -2427,7 +2346,6 @@ mod tests {
             jira_webhook_state: None,
             weekly_budget_usd: 50.0,
             teams_client_state: None,
-            briefing_store: None,
             cold_start_store: None,
             event_tx,
             cc_session_manager: None,
@@ -2640,198 +2558,6 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
-    // ── Briefing API tests ────────────────────────────────────────────
-
-    fn setup_with_briefing() -> (Arc<HttpState>, mpsc::UnboundedReceiver<Trigger>, tempfile::TempDir) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let health = Arc::new(HealthState::new());
-        let tmp = tempfile::TempDir::new().unwrap();
-        let db_path = tmp.path().join("messages.db");
-        let _store = MessageStore::init(&db_path).unwrap();
-        let briefing_store = Arc::new(BriefingStore::new(tmp.path()));
-        let (event_tx, _event_rx) = broadcast::channel(64);
-        let state = Arc::new(HttpState {
-            trigger_tx: tx,
-            health,
-            stats_db_path: db_path.clone(),
-            teams_message_buffer: None,
-            teams_client: None,
-            jira_webhook_state: None,
-            weekly_budget_usd: 50.0,
-            teams_client_state: None,
-            briefing_store: Some(briefing_store),
-            cold_start_store: None,
-            contact_store: None,
-            event_tx,
-            cc_session_manager: None,
-            diary: None,
-            dispatcher: None,
-            project_registry: HashMap::new(),
-            config_path: None,
-            memory_base_path: None,
-            activity_buffer: ActivityRingBuffer::new(),
-            tool_dispatch: None,
-            pg_contact_store: None,
-        });
-        (state, rx, tmp)
-    }
-
-    // [5.1] GET /api/briefing returns 404 when store is empty
-    #[tokio::test]
-    async fn briefing_returns_404_when_empty() {
-        let (state, _rx, _tmp) = setup_with_briefing();
-        let app = build_router(state);
-
-        let request = Request::builder()
-            .uri("/api/briefing")
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    }
-
-    // [5.2] GET /api/briefing returns 200 with the latest entry after one is appended
-    #[tokio::test]
-    async fn briefing_returns_latest_entry() {
-        let (tx, rx) = mpsc::unbounded_channel::<Trigger>();
-        let health = Arc::new(HealthState::new());
-        let tmp = tempfile::TempDir::new().unwrap();
-        let db_path = tmp.path().join("messages.db");
-        let _store = MessageStore::init(&db_path).unwrap();
-        let briefing_store = Arc::new(BriefingStore::new(tmp.path()));
-
-        // Pre-populate with one entry.
-        let entry = crate::briefing_store::BriefingEntry::new(
-            "Good morning test",
-            vec![],
-            std::collections::HashMap::new(),
-        );
-        briefing_store.append(&entry).unwrap();
-
-        let (event_tx, _event_rx) = broadcast::channel(64);
-        let state = Arc::new(HttpState {
-            trigger_tx: tx,
-            health,
-            stats_db_path: db_path,
-            teams_message_buffer: None,
-            teams_client: None,
-            jira_webhook_state: None,
-            weekly_budget_usd: 50.0,
-            teams_client_state: None,
-            briefing_store: Some(Arc::clone(&briefing_store)),
-            cold_start_store: None,
-            contact_store: None,
-            event_tx,
-            cc_session_manager: None,
-            diary: None,
-            dispatcher: None,
-            project_registry: HashMap::new(),
-            config_path: None,
-            memory_base_path: None,
-            activity_buffer: ActivityRingBuffer::new(),
-            tool_dispatch: None,
-            pg_contact_store: None,
-        });
-        drop(rx);
-
-        let app = build_router(state);
-
-        let request = Request::builder()
-            .uri("/api/briefing")
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(resp["content"], "Good morning test");
-    }
-
-    // [5.3] GET /api/briefing/history returns array of entries
-    #[tokio::test]
-    async fn briefing_history_returns_entries() {
-        let (tx, rx) = mpsc::unbounded_channel::<Trigger>();
-        let health = Arc::new(HealthState::new());
-        let tmp = tempfile::TempDir::new().unwrap();
-        let db_path = tmp.path().join("messages.db");
-        let _store = MessageStore::init(&db_path).unwrap();
-        let briefing_store = Arc::new(BriefingStore::new(tmp.path()));
-
-        for i in 0..5_usize {
-            let e = crate::briefing_store::BriefingEntry::new(
-                format!("Briefing {i}"),
-                vec![],
-                std::collections::HashMap::new(),
-            );
-            briefing_store.append(&e).unwrap();
-        }
-
-        let (event_tx, _event_rx) = broadcast::channel(64);
-        let state = Arc::new(HttpState {
-            trigger_tx: tx,
-            health,
-            stats_db_path: db_path,
-            teams_message_buffer: None,
-            teams_client: None,
-            jira_webhook_state: None,
-            weekly_budget_usd: 50.0,
-            teams_client_state: None,
-            briefing_store: Some(Arc::clone(&briefing_store)),
-            cold_start_store: None,
-            contact_store: None,
-            event_tx,
-            cc_session_manager: None,
-            diary: None,
-            dispatcher: None,
-            project_registry: HashMap::new(),
-            config_path: None,
-            memory_base_path: None,
-            activity_buffer: ActivityRingBuffer::new(),
-            tool_dispatch: None,
-            pg_contact_store: None,
-        });
-        drop(rx);
-
-        let app = build_router(state);
-
-        let request = Request::builder()
-            .uri("/api/briefing/history?limit=3")
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let entries: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let arr = entries.as_array().unwrap();
-        assert_eq!(arr.len(), 3);
-        // Newest first — last appended was "Briefing 4"
-        assert_eq!(arr[0]["content"], "Briefing 4");
-    }
-
-    // [5.4] GET /api/briefing returns 404 when store is not configured (None)
-    #[tokio::test]
-    async fn briefing_returns_404_when_store_not_configured() {
-        let (state, _rx, _tmp) = setup(); // uses briefing_store: None
-        let app = build_router(state);
-
-        let request = Request::builder()
-            .uri("/api/briefing")
-            .body(Body::empty())
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    }
-
     // ── Memory endpoint tests [4.1] ──────────────────────────────────
 
     fn setup_with_memory() -> (Arc<HttpState>, mpsc::UnboundedReceiver<Trigger>, tempfile::TempDir) {
@@ -2855,7 +2581,6 @@ mod tests {
             jira_webhook_state: None,
             weekly_budget_usd: 50.0,
             teams_client_state: None,
-            briefing_store: None,
             cold_start_store: None,
             event_tx,
             cc_session_manager: None,
@@ -3017,7 +2742,6 @@ mod tests {
             jira_webhook_state: None,
             weekly_budget_usd: 50.0,
             teams_client_state: None,
-            briefing_store: None,
             cold_start_store: None,
             event_tx,
             cc_session_manager: None,
@@ -3080,7 +2804,6 @@ mod tests {
             jira_webhook_state: None,
             weekly_budget_usd: 50.0,
             teams_client_state: None,
-            briefing_store: None,
             cold_start_store: None,
             event_tx,
             cc_session_manager: None,

@@ -14,7 +14,6 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use crate::agent::ChannelRegistry;
-use crate::briefing_store::BriefingEntry;
 use crate::digest::format::format_digest;
 use crate::digest::gather::gather_context;
 use crate::digest::state::{content_hash, DigestStateManager};
@@ -470,10 +469,10 @@ impl Orchestrator {
                 return;
             }
             TriggerClass::Digest => {
-                // MorningBriefing is handled inline — no worker needed.
+                // MorningBriefing is now delegated to the TS daemon; Rust side is a no-op.
                 for trigger in triggers.iter() {
                     if let Trigger::Cron(nv_core::types::CronEvent::MorningBriefing) = trigger {
-                        self.send_morning_briefing().await;
+                        tracing::info!("morning briefing: delegated to TS daemon");
                         return;
                     }
                 }
@@ -2356,99 +2355,6 @@ impl Orchestrator {
             owner = ?new_owner.as_ref().map(|o| o.as_str()),
             "obligation updated via Telegram callback"
         );
-    }
-
-    // ── Morning Briefing Handler ────────────────────────────────────
-
-    /// Send the morning briefing digest — open obligation summary via Telegram.
-    async fn send_morning_briefing(&self) {
-        let Some(store_arc) = &self.deps.obligation_store else {
-            tracing::debug!("morning briefing: no obligation store configured");
-            return;
-        };
-
-        let (by_priority, total_open) = match store_arc.lock() {
-            Ok(store) => {
-                let by_priority = store.count_open_by_priority().unwrap_or_default();
-                let total_open = by_priority.iter().map(|(_, c)| c).sum::<i64>();
-                (by_priority, total_open)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "morning briefing: store mutex poisoned");
-                return;
-            }
-        };
-
-        let mut message = format_morning_briefing(&by_priority, total_open);
-
-        // Inject self-assessment section if there's a recent entry (within last 7 days).
-        if let Some(ref sa_store) = self.deps.self_assessment_store {
-            let seven_days_ago = chrono::Utc::now() - chrono::Duration::days(7);
-            match sa_store.get_latest() {
-                Ok(Some(entry)) if entry.generated_at > seven_days_ago => {
-                    let section = crate::self_assessment::format_briefing_section(&entry);
-                    message.push_str("\n\n");
-                    message.push_str(&section);
-                }
-                Ok(_) => {} // No recent assessment — omit section.
-                Err(e) => {
-                    tracing::warn!(error = %e, "morning briefing: failed to read self-assessment");
-                }
-            }
-        }
-
-        // Persist the briefing entry before sending so the dashboard can read it even
-        // if the Telegram send fails.
-        let mut sources = std::collections::HashMap::new();
-        sources.insert("obligations".to_string(), "ok".to_string());
-        let entry = BriefingEntry::new(message.clone(), vec![], sources);
-
-        if let Some(briefing_store) = &self.deps.briefing_store {
-            if let Err(e) = briefing_store.append(&entry) {
-                tracing::warn!(error = %e, "morning briefing: failed to persist briefing entry (JSONL)");
-            }
-        }
-
-        // Dual-write briefing to Postgres.
-        if let Some(ref pg_pool) = self.deps.pg_pool {
-            if let Some(guard) = pg_pool.client().await {
-                let client = guard.get();
-                let briefing_id: uuid::Uuid = entry.id.parse().unwrap_or_else(|_| uuid::Uuid::new_v4());
-                let generated_at = entry.generated_at.naive_utc();
-                let sources_json = serde_json::to_value(&entry.sources_status)
-                    .unwrap_or(serde_json::Value::Object(Default::default()));
-                let actions_json = serde_json::to_value(&entry.suggested_actions)
-                    .unwrap_or(serde_json::Value::Array(vec![]));
-                if let Err(e) = client
-                    .execute(
-                        "INSERT INTO briefings (id, generated_at, content, sources_status, suggested_actions)
-                         VALUES ($1, $2, $3, $4, $5)",
-                        &[&briefing_id, &generated_at, &entry.content, &sources_json, &actions_json],
-                    )
-                    .await
-                {
-                    tracing::warn!(error = %e, "pg dual-write: briefing insert failed");
-                } else {
-                    tracing::debug!("pg dual-write: briefing persisted");
-                }
-            } else {
-                tracing::warn!("pg dual-write: no Postgres connection for briefing");
-            }
-        }
-
-        if let Some(channel) = self.channels.get("telegram") {
-            let msg = OutboundMessage {
-                channel: "telegram".into(),
-                content: message,
-                reply_to: None,
-                keyboard: None,
-            };
-            if let Err(e) = channel.send_message(msg).await {
-                tracing::warn!(error = %e, "morning briefing: failed to send Telegram message");
-            } else {
-                tracing::info!(total_open, "morning briefing sent");
-            }
-        }
     }
 
     // ── Proactive Follow-Up ──────────────────────────────────────────

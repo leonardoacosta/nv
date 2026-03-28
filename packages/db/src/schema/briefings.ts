@@ -6,6 +6,7 @@ export const briefings = pgTable("briefings", {
   content: text("content").notNull(),
   sourcesStatus: jsonb("sources_status").notNull().default({}),
   suggestedActions: jsonb("suggested_actions").notNull().default([]),
+  blocks: jsonb("blocks"),
 });
 
 export type Briefing = typeof briefings.$inferSelect;

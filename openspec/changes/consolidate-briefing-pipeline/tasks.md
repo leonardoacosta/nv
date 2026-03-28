@@ -4,18 +4,18 @@
 
 ## Rust Retirement Batch
 
-- [ ] [0.1] [P-1] Remove `send_morning_briefing()` from `crates/nv-daemon/src/orchestrator.rs` -- replace the MorningBriefing handler in `TriggerClass::Digest` arm with a log-and-skip: `tracing::info!("morning briefing: delegated to TS daemon"); return;` [owner:api-engineer] [beads:nv-nfzx]
-- [ ] [0.2] [P-1] Remove `crates/nv-daemon/src/briefing_store.rs` module and all `use crate::briefing_store::*` imports across the crate (worker.rs, orchestrator.rs, http.rs, main.rs) [owner:api-engineer] [beads:nv-mypj]
-- [ ] [0.3] [P-1] Remove `briefing_store` field from `HttpState` in `crates/nv-daemon/src/http.rs` and from `WorkerDeps` in `crates/nv-daemon/src/worker.rs`, remove all plumbing that initializes and passes `BriefingStore` through `main.rs` [owner:api-engineer] [beads:nv-4314]
-- [ ] [0.4] [P-1] Remove `get_briefing_handler` and `get_briefing_history_handler` from `crates/nv-daemon/src/http.rs`, remove `.route("/api/briefing", ...)` and `.route("/api/briefing/history", ...)` from `build_router()`, remove `BriefingQuery` struct [owner:api-engineer] [beads:nv-g210]
-- [ ] [0.5] [P-1] Remove briefing-related test helpers (`setup_with_briefing`) and test functions from `crates/nv-daemon/src/http.rs` that reference `BriefingStore` [owner:api-engineer] [beads:nv-dys3]
-- [ ] [0.6] [P-1] Gate: `cargo check -p nv-daemon` passes with zero errors [owner:api-engineer] [beads:nv-jb3c]
+- [x] [0.1] [P-1] Remove `send_morning_briefing()` from `crates/nv-daemon/src/orchestrator.rs` -- replace the MorningBriefing handler in `TriggerClass::Digest` arm with a log-and-skip: `tracing::info!("morning briefing: delegated to TS daemon"); return;` [owner:api-engineer] [beads:nv-nfzx]
+- [x] [0.2] [P-1] Remove `crates/nv-daemon/src/briefing_store.rs` module and all `use crate::briefing_store::*` imports across the crate (worker.rs, orchestrator.rs, http.rs, main.rs) [owner:api-engineer] [beads:nv-mypj]
+- [x] [0.3] [P-1] Remove `briefing_store` field from `HttpState` in `crates/nv-daemon/src/http.rs` and from `WorkerDeps` in `crates/nv-daemon/src/worker.rs`, remove all plumbing that initializes and passes `BriefingStore` through `main.rs` [owner:api-engineer] [beads:nv-4314]
+- [x] [0.4] [P-1] Remove `get_briefing_handler` and `get_briefing_history_handler` from `crates/nv-daemon/src/http.rs`, remove `.route("/api/briefing", ...)` and `.route("/api/briefing/history", ...)` from `build_router()`, remove `BriefingQuery` struct [owner:api-engineer] [beads:nv-g210]
+- [x] [0.5] [P-1] Remove briefing-related test helpers (`setup_with_briefing`) and test functions from `crates/nv-daemon/src/http.rs` that reference `BriefingStore` [owner:api-engineer] [beads:nv-dys3]
+- [x] [0.6] [P-1] Gate: `cargo check -p nv-daemon` passes with zero errors [owner:api-engineer] [beads:nv-jb3c]
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Add `blocks` JSONB column (nullable) to `briefings` table in `packages/db/src/schema/briefings.ts` -- `blocks: jsonb("blocks")` with no default (null when omitted). Update Briefing/NewBriefing inferred types [owner:db-engineer] [beads:nv-cwb1]
-- [ ] [1.2] [P-1] Run `pnpm drizzle-kit generate` in `packages/db/` to produce the migration SQL for the new column [owner:db-engineer] [beads:nv-4n85]
-- [ ] [1.3] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:db-engineer] [beads:nv-heb7]
+- [x] [1.1] [P-1] Add `blocks` JSONB column (nullable) to `briefings` table in `packages/db/src/schema/briefings.ts` -- `blocks: jsonb("blocks")` with no default (null when omitted). Update Briefing/NewBriefing inferred types [owner:db-engineer] [beads:nv-cwb1]
+- [x] [1.2] [P-1] Run `pnpm drizzle-kit generate` in `packages/db/` to produce the migration SQL for the new column [owner:db-engineer] [beads:nv-4n85]
+- [x] [1.3] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:db-engineer] [beads:nv-heb7]
 
 ## API Batch 1: Block Types
 

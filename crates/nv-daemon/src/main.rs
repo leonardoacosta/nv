@@ -5,7 +5,6 @@ mod error_recovery;
 mod agent;
 mod self_assessment;
 mod aggregation;
-mod briefing_store;
 mod cc_sessions;
 mod cold_start_store;
 mod alert_rules;
@@ -963,11 +962,6 @@ async fn main() -> anyhow::Result<()> {
     let stats_db_path = nv_base.join("messages.db");
     let http_weekly_budget = config.agent.weekly_budget_usd;
 
-    // Initialize the morning briefing store.
-    let briefing_store = Arc::new(briefing_store::BriefingStore::new(&nv_base));
-    let briefing_store_for_http = Arc::clone(&briefing_store);
-    tracing::info!("briefing store initialized");
-
     // Initialize contact store (shares messages.db).
     // Two Arc clones are created: one for the HTTP server, one for SharedDeps/workers.
     let contact_store_arc: Option<Arc<contact_store::ContactStore>> =
@@ -1059,7 +1053,6 @@ async fn main() -> anyhow::Result<()> {
             jira_webhook_state,
             http_weekly_budget,
             teams_client_state_for_http,
-            Some(briefing_store_for_http),
             cold_start_store_for_http,
             http_event_tx,
             cc_session_manager_for_http,
@@ -1422,7 +1415,6 @@ async fn main() -> anyhow::Result<()> {
         anthropic_client,
         dashboard_url: config.daemon.as_ref().and_then(|d| d.dashboard_url.clone()),
         dashboard_client,
-        briefing_store: Some(Arc::clone(&briefing_store)),
         cold_start_store,
         contact_store: contact_store_for_workers,
         tool_cache: crate::tool_cache::ToolResultCache::new(),

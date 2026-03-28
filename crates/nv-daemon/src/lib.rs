@@ -16,7 +16,6 @@ mod self_assessment;
 mod contact_store;
 mod error_recovery;
 mod aggregation;
-mod briefing_store;
 mod cc_sessions;
 mod cold_start_store;
 mod agent;

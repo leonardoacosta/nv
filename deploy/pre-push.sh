@@ -225,6 +225,21 @@ else
     RESULTS+=("health: fleet ${FLEET_OK}/${FLEET_TOTAL}")
 fi
 
+# ── E2E Ping Check ────────────────────────────────────────────────────────
+# Only run when daemon was restarted — confirms Telegram message path works.
+if $DAEMON_CHANGED; then
+    PING_SCRIPT="${GIT_ROOT}/packages/e2e/ping-health-check.sh"
+    if [ -x "$PING_SCRIPT" ]; then
+        echo "    Running E2E ping check..."
+        if "$PING_SCRIPT" 2>&1 | sed 's/^/    /'; then
+            RESULTS+=("e2e-ping: OK")
+        else
+            echo "    WARNING: E2E ping check failed — daemon may not be processing messages"
+            RESULTS+=("e2e-ping: DEGRADED")
+        fi
+    fi
+fi
+
 # ── Summary + TTS ──────────────────────────────────────────────────────────
 
 echo ""

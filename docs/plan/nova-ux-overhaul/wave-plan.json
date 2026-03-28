@@ -1,6 +1,6 @@
 {
   "name": "nova-ux-overhaul",
-  "status": "new",
+  "status": "in_progress",
   "mode": "consolidated",
   "created_at": "2026-03-28T12:15:00Z",
   "pre_audit_sha": "8827a4f",
@@ -80,7 +80,7 @@
             "UI": 8,
             "E2E": 9
           },
-          "status": "queued",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -89,7 +89,7 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T13:43:58.304165",
           "merged_at": null
         },
         {
@@ -105,7 +105,7 @@
             "UI": 9,
             "E2E": 1
           },
-          "status": "queued",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -114,7 +114,7 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T13:43:58.304167",
           "merged_at": null
         },
         {
@@ -130,7 +130,7 @@
             "UI": 8,
             "E2E": 8
           },
-          "status": "queued",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -139,7 +139,7 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T13:43:58.304168",
           "merged_at": null
         }
       ],
@@ -325,11 +325,10 @@
   ],
   "failed_specs": [],
   "mega_batch_state": {
-    "current_phase": null,
+    "current_phase": "E2E",
     "phases_completed": [
-      "DB_wave1",
-      "API_wave1",
-      "E2E_wave1"
+      "API_wave2",
+      "UI_wave2"
     ],
     "task_results": {
       "migrate-daemon-writes-to-postgres": {},
@@ -344,7 +343,14 @@
       "consolidate-briefing-pipeline": {}
     },
     "phase_started_at": {
-      "DB_wave1": "2026-03-28T12:46:57.269158"
+      "DB_wave1": "2026-03-28T12:46:57.269158",
+      "API_wave2": "2026-03-28T13:43:58.304158",
+      "UI_wave2": "2026-03-28T13:48:22.257945",
+      "E2E_wave2": "2026-03-28T14:06:46.128138"
+    },
+    "phase_completed_at": {
+      "API_wave2": "2026-03-28T13:48:22.257938",
+      "UI_wave2": "2026-03-28T14:06:46.128132"
     }
   }
 }

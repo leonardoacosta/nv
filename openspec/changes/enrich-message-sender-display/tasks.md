@@ -18,6 +18,6 @@
 
 ## Verify
 
-- [ ] [4.1] `pnpm typecheck` passes across all packages [owner:api-engineer]
+- [x] [4.1] `pnpm typecheck` passes across all packages [owner:api-engineer]
 - [ ] [4.2] `pnpm build` passes [owner:api-engineer]
 - [ ] [4.3] Manual verification: Messages page shows resolved names for Telegram senders (from metadata), "nova" shows branded N badge, raw fallback shows ID unchanged [owner:ui-engineer]

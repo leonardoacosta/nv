@@ -34,6 +34,7 @@ export default function ConfigSourceBadge({ source }: ConfigSourceBadgeProps) {
 
   const badge = (
     <span
+      data-testid={`config-source-badge-${source.source}`}
       className={`inline-flex items-center px-1 py-0.5 rounded text-[9px] font-mono font-bold uppercase border ${style.className} select-none`}
     >
       {style.label}

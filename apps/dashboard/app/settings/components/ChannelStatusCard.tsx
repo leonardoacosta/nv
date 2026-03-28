@@ -88,6 +88,7 @@ export default function ChannelStatusCard({
 
   return (
     <div
+      data-testid={`channel-card-${channel.name.toLowerCase()}`}
       className="surface-card p-4 space-y-3"
       style={{ borderLeft: `3px solid ${accentColor}` }}
     >
@@ -96,6 +97,7 @@ export default function ChannelStatusCard({
         <div className="flex items-center gap-2.5">
           {/* Status dot */}
           <div
+            data-testid="channel-status-dot"
             className={`w-2 h-2 rounded-full shrink-0 ${statusDot}`}
             title={statusLabel}
           />
@@ -110,6 +112,7 @@ export default function ChannelStatusCard({
           type="button"
           disabled={testState === "pending"}
           onClick={() => void handleTest()}
+          data-testid="channel-test-button"
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50 shrink-0"
         >
           {testState === "pending" ? (
@@ -141,6 +144,7 @@ export default function ChannelStatusCard({
       {/* Test result */}
       {testResult && (
         <div
+          data-testid="channel-test-result"
           className={`text-copy-13 ${testResult.valid ? "text-green-700" : "text-red-700"}`}
         >
           {testResult.valid

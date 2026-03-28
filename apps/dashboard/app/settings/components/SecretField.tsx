@@ -54,15 +54,17 @@ export default function SecretField({
   }
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5" data-testid="secret-field">
       {/* Status dot */}
       <div
+        data-testid="secret-field-dot"
         className={`shrink-0 w-2 h-2 rounded-full ${hasValue ? "bg-green-700" : "bg-red-700"}`}
         title={hasValue ? "Value is set" : "Value is not set"}
       />
 
       {/* Masked / revealed display */}
       <div
+        data-testid="secret-field-display"
         className="flex-1 min-w-0 surface-inset flex items-center px-3 py-1.5 cursor-pointer"
         onClick={() => !disabled && setEditing(true)}
         role="button"
@@ -75,7 +77,7 @@ export default function SecretField({
         }}
         title="Click to edit"
       >
-        <span className="text-label-13-mono text-ds-gray-900 tracking-widest select-none truncate">
+        <span data-testid="secret-field-value" className="text-label-13-mono text-ds-gray-900 tracking-widest select-none truncate">
           {revealed ? value : masked}
         </span>
       </div>
@@ -85,6 +87,7 @@ export default function SecretField({
         <button
           type="button"
           disabled={disabled}
+          data-testid="secret-field-reveal-toggle"
           onClick={(e) => {
             e.stopPropagation();
             if (revealed) {

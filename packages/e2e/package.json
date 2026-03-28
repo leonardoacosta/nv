@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "ping": "./ping-health-check.sh"
+    "ping": "./ping-health-check.sh",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^22.0.0"
   }
 }

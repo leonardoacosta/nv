@@ -83,7 +83,7 @@ export default function FieldRow({
 
   if (field.type === "boolean") {
     return (
-      <div className="flex items-start gap-4 px-4 py-3.5 min-h-11">
+      <div className="flex items-start gap-4 px-4 py-3.5 min-h-11" data-testid={`field-row-${field.key}`}>
         <div className="flex-1 min-w-0 pt-0.5">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-label-13 text-ds-gray-1000">{field.label}</span>
@@ -104,6 +104,7 @@ export default function FieldRow({
           aria-checked={Boolean(displayValue)}
           disabled={isEnvLocked}
           onClick={() => onChange(field.key, !displayValue)}
+          data-testid={`field-toggle-${field.key}`}
           className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors shrink-0 mt-0.5 ${
             displayValue ? "bg-ds-gray-700" : "bg-ds-gray-400"
           } ${isEnvLocked ? "opacity-50 cursor-not-allowed" : ""}`}
@@ -120,7 +121,7 @@ export default function FieldRow({
 
   if (field.type === "secret") {
     return (
-      <div className="flex items-start gap-4 px-4 py-3.5 min-h-11">
+      <div className="flex items-start gap-4 px-4 py-3.5 min-h-11" data-testid={`field-row-${field.key}`}>
         <div className="flex-1 min-w-0 pt-0.5">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-label-13 text-ds-gray-1000">{field.label}</span>
@@ -142,7 +143,7 @@ export default function FieldRow({
   }
 
   return (
-    <div className="flex items-start gap-4 px-4 py-3.5 min-h-11">
+    <div className="flex items-start gap-4 px-4 py-3.5 min-h-11" data-testid={`field-row-${field.key}`}>
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-label-13 text-ds-gray-1000">{field.label}</span>
@@ -154,10 +155,10 @@ export default function FieldRow({
           )}
         </div>
         {meta.description && (
-          <p className="text-copy-13 text-ds-gray-700 mt-0.5">{meta.description}</p>
+          <p className="text-copy-13 text-ds-gray-700 mt-0.5" data-testid={`field-description-${field.key}`}>{meta.description}</p>
         )}
         {error && (
-          <p className="text-copy-13 text-red-700 mt-0.5">{error}</p>
+          <p className="text-copy-13 text-red-700 mt-0.5" data-testid={`field-error-${field.key}`}>{error}</p>
         )}
         {!error && meta.patternHint && (
           <p className="text-copy-13 text-ds-gray-700 mt-0.5 font-mono text-[11px]">{meta.patternHint}</p>
@@ -172,6 +173,7 @@ export default function FieldRow({
             disabled={isEnvLocked}
             min={meta.min}
             max={meta.max}
+            data-testid={`field-input-${field.key}`}
             onChange={(e) =>
               onChange(
                 field.key,
@@ -184,7 +186,10 @@ export default function FieldRow({
             } ${error ? "border-red-700/50" : ""}`}
           />
           {meta.unit && (
-            <span className="shrink-0 text-[11px] font-mono text-ds-gray-700 px-1.5 py-1 rounded bg-ds-gray-100 border border-ds-gray-400">
+            <span
+              data-testid={`field-unit-${field.key}`}
+              className="shrink-0 text-[11px] font-mono text-ds-gray-700 px-1.5 py-1 rounded bg-ds-gray-100 border border-ds-gray-400"
+            >
               {meta.unit}
             </span>
           )}

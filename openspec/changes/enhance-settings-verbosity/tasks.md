@@ -30,6 +30,6 @@
 
 ## E2E Batch
 
-- [ ] [4.1] [P-2] Verify field descriptions, unit suffixes, and validation errors render correctly -- field with description shows muted text below label, number field with min/max shows error on out-of-range blur, pattern field shows patternHint error on invalid input, Save button disabled when errors exist [owner:e2e-engineer] [beads:nv-1jgz]
-- [ ] [4.2] [P-2] Verify channel and integration status cards render with test connection flow -- channel card shows connection dot and bot identity, "Test Connection" triggers spinner then result feedback, integration card shows key status badge [owner:e2e-engineer] [beads:nv-vzhd]
-- [ ] [4.3] [P-2] Verify config source badges, secret reveal toggle, and memory summary card -- ENV badge appears on env-overridden fields with disabled input, secret field shows last-4 chars and reveal toggles for 5s, memory summary shows topic count and clickable chips [owner:e2e-engineer] [beads:nv-llp1]
+- [x] [4.1] [P-2] Verify field descriptions, unit suffixes, and validation errors render correctly -- field with description shows muted text below label, number field with min/max shows error on out-of-range blur, pattern field shows patternHint error on invalid input, Save button disabled when errors exist [owner:e2e-engineer] [beads:nv-1jgz]
+- [x] [4.2] [P-2] Verify channel and integration status cards render with test connection flow -- channel card shows connection dot and bot identity, "Test Connection" triggers spinner then result feedback, integration card shows key status badge [owner:e2e-engineer] [beads:nv-vzhd]
+- [x] [4.3] [P-2] Verify config source badges, secret reveal toggle, and memory summary card -- ENV badge appears on env-overridden fields with disabled input, secret field shows last-4 chars and reveal toggles for 5s, memory summary shows topic count and clickable chips [owner:e2e-engineer] [beads:nv-llp1]

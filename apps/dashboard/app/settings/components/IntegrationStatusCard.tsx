@@ -66,12 +66,12 @@ export default function IntegrationStatusCard({
   };
 
   const keyBadge = integration.hasKey ? (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-green-700/10 text-green-700 border border-green-700/30">
+    <span data-testid="integration-key-badge" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-green-700/10 text-green-700 border border-green-700/30">
       <CheckCircle size={9} />
       KEY SET
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-ds-gray-alpha-200 text-ds-gray-700 border border-ds-gray-400">
+    <span data-testid="integration-key-badge" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono bg-ds-gray-alpha-200 text-ds-gray-700 border border-ds-gray-400">
       <AlertCircle size={9} />
       NO KEY
     </span>
@@ -79,6 +79,7 @@ export default function IntegrationStatusCard({
 
   return (
     <div
+      data-testid={`integration-card-${integration.service}`}
       className="surface-card p-4 space-y-3"
       style={{ borderLeft: `3px solid ${accentColor}` }}
     >
@@ -96,6 +97,7 @@ export default function IntegrationStatusCard({
           type="button"
           disabled={testState === "pending" || !integration.hasKey}
           onClick={() => void handleTest()}
+          data-testid="integration-test-button"
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50 shrink-0"
           title={!integration.hasKey ? "API key not configured" : undefined}
         >
@@ -115,6 +117,7 @@ export default function IntegrationStatusCard({
       {/* Test result */}
       {testResult && (
         <div
+          data-testid="integration-test-result"
           className={`text-copy-13 ${testResult.valid ? "text-green-700" : "text-red-700"}`}
         >
           {testResult.valid

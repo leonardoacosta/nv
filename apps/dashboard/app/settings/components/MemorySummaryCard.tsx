@@ -38,14 +38,14 @@ export default function MemorySummaryCard({ data }: MemorySummaryCardProps) {
   const hasMore = data.topics.length > 12;
 
   return (
-    <div className="p-4 space-y-3">
+    <div className="p-4 space-y-3" data-testid="memory-summary-card">
       {/* Stats row */}
       <div className="flex items-center gap-6 text-copy-13">
         <div className="space-y-0.5">
           <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest font-semibold">
             Entries
           </p>
-          <p className="text-label-13 text-ds-gray-1000 font-mono">
+          <p className="text-label-13 text-ds-gray-1000 font-mono" data-testid="memory-entry-count">
             {data.count.toLocaleString()}
           </p>
         </div>
@@ -78,6 +78,7 @@ export default function MemorySummaryCard({ data }: MemorySummaryCardProps) {
               <Link
                 key={topic}
                 href={`/memory?topic=${encodeURIComponent(topic)}`}
+                data-testid="memory-topic-chip"
                 className="inline-flex px-2 py-0.5 rounded-full text-[11px] font-mono bg-ds-gray-alpha-200 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors"
               >
                 {topic}
@@ -98,6 +99,7 @@ export default function MemorySummaryCard({ data }: MemorySummaryCardProps) {
       {/* View all link */}
       <Link
         href="/memory"
+        data-testid="memory-view-all-link"
         className="text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 underline decoration-ds-gray-400 hover:decoration-ds-gray-700 transition-colors"
       >
         View all topics

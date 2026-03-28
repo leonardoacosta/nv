@@ -37,6 +37,28 @@ RUN pnpm --filter @nova/db build && \
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 ENV BETTER_AUTH_SECRET=build-time-placeholder
 RUN pnpm --filter nova-dashboard build
+
+# Preserve the original standalone server.js, then compile our wrapper over it.
+# The wrapper monkey-patches http.createServer to add WS proxy, then loads
+# the original via require("./server.next.js").
+RUN mv apps/dashboard/.next/standalone/apps/dashboard/server.js \
+      apps/dashboard/.next/standalone/apps/dashboard/server.next.js && \
+    cd apps/dashboard && pnpm exec tsc --esModuleInterop --module commonjs \
+      --target ES2017 --moduleResolution node --skipLibCheck \
+      --outDir .next/standalone/apps/dashboard \
+      server.ts
+
+# Resolve http-proxy + deps into standalone node_modules (pnpm symlinks
+# don't survive COPY across stages, so flatten them here).
+RUN cp -rL node_modules/.pnpm/http-proxy@*/node_modules/http-proxy \
+      apps/dashboard/.next/standalone/apps/dashboard/node_modules/http-proxy && \
+    cp -rL node_modules/.pnpm/eventemitter3@*/node_modules/eventemitter3 \
+      apps/dashboard/.next/standalone/apps/dashboard/node_modules/eventemitter3 && \
+    cp -rL node_modules/.pnpm/follow-redirects@*/node_modules/follow-redirects \
+      apps/dashboard/.next/standalone/apps/dashboard/node_modules/follow-redirects && \
+    cp -rL node_modules/.pnpm/requires-port@*/node_modules/requires-port \
+      apps/dashboard/.next/standalone/apps/dashboard/node_modules/requires-port
+
 # Clear build-only env vars so they don't leak to later stages
 ENV DATABASE_URL=
 ENV BETTER_AUTH_SECRET=

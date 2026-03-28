@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Zap,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { parseBriefingSections } from "@/lib/briefing";
@@ -17,6 +18,8 @@ import type {
 } from "@/types/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
+import { BriefingRenderer } from "@/components/blocks/BlockRegistry";
+import type { BriefingBlock } from "@nova/db";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -87,9 +90,7 @@ function BriefingSectionCard({
 }) {
   return (
     <div className="surface-card p-5 space-y-2">
-      <h3 className="text-label-12 text-ds-gray-700">
-        {title}
-      </h3>
+      <h3 className="text-label-12 text-ds-gray-700">{title}</h3>
       <div className="prose prose-sm prose-invert max-w-none text-copy-14 text-ds-gray-1000 leading-relaxed">
         <ReactMarkdown>{body}</ReactMarkdown>
       </div>
@@ -110,10 +111,24 @@ function LoadingSkeleton() {
   );
 }
 
+function StreamingSkeleton({ count }: { count: number }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className="h-24 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400 opacity-60"
+        />
+      ))}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function BriefingPage() {
   const trpc = useTRPC();
+
   // 1. State
   const [entry, setEntry] = useState<BriefingEntry | null>(null);
   const [history, setHistory] = useState<BriefingEntry[]>([]);
@@ -122,10 +137,18 @@ export default function BriefingPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [updateBanner, setUpdateBanner] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [missedToday, setMissedToday] = useState(false);
+  const [missedDismissed, setMissedDismissed] = useState(false);
 
-  // Ref for cleanup
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Streaming state
+  const [streamingBlocks, setStreamingBlocks] = useState<BriefingBlock[]>([]);
+  const [streamingError, setStreamingError] = useState<string | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamExpectedCount, setStreamExpectedCount] = useState(4);
+
+  // Refs for cleanup
   const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Derived: the displayed entry is selectedId from history, or the latest
   const displayEntry =
@@ -164,6 +187,7 @@ export default function BriefingPage() {
       } else if (data.entry) {
         setEntry(data.entry);
       }
+      setMissedToday(data.missedToday ?? false);
       setLoading(false);
     }
     if (latestQuery.error) {
@@ -181,8 +205,11 @@ export default function BriefingPage() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
       if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
     };
   }, []);
 
@@ -194,23 +221,109 @@ export default function BriefingPage() {
   };
 
   const handleGenerate = async () => {
+    // Close any existing SSE connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
     setGenerating(true);
     setError(null);
+    setStreamingError(null);
+    setStreamingBlocks([]);
+    setStreamExpectedCount(4);
+
+    // Attempt SSE stream from daemon
+    const DAEMON_URL =
+      typeof window !== "undefined"
+        ? (process.env.NEXT_PUBLIC_DAEMON_URL ?? "http://localhost:7700")
+        : "http://localhost:7700";
+
     try {
-      await generateMutation.mutateAsync();
+      const es = new EventSource(`${DAEMON_URL}/api/briefing/stream`);
+      eventSourceRef.current = es;
+      setIsStreaming(true);
       setSelectedId(null);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to generate briefing",
-      );
-    } finally {
-      setGenerating(false);
+
+      es.onmessage = (event: MessageEvent<string>) => {
+        try {
+          const parsed = JSON.parse(event.data) as
+            | { type: "block"; index: number; block: BriefingBlock }
+            | { type: "done"; blocks: BriefingBlock[] }
+            | { type: "error"; message: string };
+
+          if (parsed.type === "block") {
+            setStreamingBlocks((prev) => [...prev, parsed.block]);
+          } else if (parsed.type === "done") {
+            setStreamingBlocks(parsed.blocks);
+            setIsStreaming(false);
+            es.close();
+            eventSourceRef.current = null;
+            setGenerating(false);
+            setMissedDismissed(true);
+            // Refresh from DB so page shows persisted briefing
+            void queryClient.invalidateQueries({ queryKey: trpc.briefing.latest.queryKey() });
+            void queryClient.invalidateQueries({ queryKey: trpc.briefing.history.queryKey() });
+          } else if (parsed.type === "error") {
+            setStreamingError(parsed.message);
+            setIsStreaming(false);
+            es.close();
+            eventSourceRef.current = null;
+            setGenerating(false);
+            // Fall back to mutation-based generate
+            setStreamingBlocks([]);
+          }
+        } catch {
+          // Malformed SSE data — ignore individual bad events
+        }
+      };
+
+      es.onerror = () => {
+        // SSE failed — fall back to tRPC mutation
+        es.close();
+        eventSourceRef.current = null;
+        setIsStreaming(false);
+        setStreamingBlocks([]);
+
+        generateMutation.mutate(undefined, {
+          onSuccess: () => {
+            setGenerating(false);
+            setSelectedId(null);
+            setMissedDismissed(true);
+          },
+          onError: (err) => {
+            setError(err.message ?? "Failed to generate briefing");
+            setGenerating(false);
+          },
+        });
+      };
+    } catch {
+      // EventSource not available or DAEMON_URL unreachable — fall back to mutation
+      setIsStreaming(false);
+      try {
+        await generateMutation.mutateAsync();
+        setSelectedId(null);
+        setMissedDismissed(true);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Failed to generate briefing",
+        );
+      } finally {
+        setGenerating(false);
+      }
     }
   };
 
   const handleSelectHistory = (id: string) => {
     setSelectedId(id === selectedId ? null : id);
+    // Clear streaming state when navigating history
+    setStreamingBlocks([]);
+    setIsStreaming(false);
   };
+
+  // Determine what content to render in the main panel
+  const showStreamingBlocks = isStreaming || (generating && streamingBlocks.length > 0);
+  const hasStreamedBlocks = !isStreaming && streamingBlocks.length > 0 && selectedId === null;
 
   // 8. Render
   return (
@@ -256,11 +369,37 @@ export default function BriefingPage() {
         </div>
       </div>
 
+      {/* Missed briefing banner */}
+      {missedToday && !missedDismissed && !generating && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-ds-amber-700/10 border border-ds-amber-700/30 text-ds-amber-700 text-copy-13">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} className="shrink-0" />
+            No briefing generated today. Generate one now?
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleGenerate()}
+            disabled={generating}
+            className="px-2.5 py-1 rounded-md text-label-12 bg-ds-amber-700/20 hover:bg-ds-amber-700/30 border border-ds-amber-700/40 transition-colors shrink-0 disabled:opacity-50"
+          >
+            Generate
+          </button>
+        </div>
+      )}
+
       {/* Update banner */}
       {updateBanner && (
         <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-gray-alpha-100 border border-ds-gray-1000/30 text-ds-gray-1000 text-copy-13">
           <Sun size={14} className="text-ds-gray-1000 shrink-0" />
           Briefing updated
+        </div>
+      )}
+
+      {/* Streaming error banner */}
+      {streamingError && (
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-ds-red-700/10 border border-ds-red-700/30 text-ds-red-700 text-copy-13">
+          <AlertTriangle size={14} className="shrink-0" />
+          Stream error: {streamingError}
         </div>
       )}
 
@@ -300,23 +439,43 @@ export default function BriefingPage() {
           <div className="flex-1 min-w-0 space-y-4">
             {loading ? (
               <LoadingSkeleton />
+            ) : showStreamingBlocks ? (
+              /* Progressive streaming render */
+              <>
+                {streamingBlocks.length > 0 && (
+                  <BriefingRenderer blocks={streamingBlocks} />
+                )}
+                {isStreaming && (
+                  <StreamingSkeleton
+                    count={Math.max(1, streamExpectedCount - streamingBlocks.length)}
+                  />
+                )}
+              </>
+            ) : hasStreamedBlocks ? (
+              /* Streamed blocks before DB refresh completes */
+              <BriefingRenderer blocks={streamingBlocks} />
             ) : !displayEntry ? (
               /* Empty state */
               <p className="text-copy-13 text-ds-gray-900 py-3">No briefing yet today</p>
             ) : (
               <>
-                {/* Section cards */}
-                <div className="space-y-4">
-                  {(displayEntry.content ? parseBriefingSections(displayEntry.content) : []).map(
-                    (section, idx) => (
+                {/* Block-based rendering (generative UI) or markdown fallback */}
+                {displayEntry.blocks && displayEntry.blocks.length > 0 ? (
+                  <BriefingRenderer blocks={displayEntry.blocks} />
+                ) : (
+                  <div className="space-y-4">
+                    {(displayEntry.content
+                      ? parseBriefingSections(displayEntry.content)
+                      : []
+                    ).map((section, idx) => (
                       <BriefingSectionCard
                         key={idx}
                         title={section.title}
                         body={section.body}
                       />
-                    ),
-                  )}
-                </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Suggested actions chips */}
                 {(displayEntry.suggested_actions?.length ?? 0) > 0 && (

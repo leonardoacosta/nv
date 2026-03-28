@@ -225,11 +225,15 @@ export interface BriefingEntry {
   content: string;
   suggested_actions: BriefingAction[];
   sources_status: Record<string, string>;
+  /** Structured blocks from generative UI pipeline. Null for legacy markdown-only entries. */
+  blocks: import("@nova/db").BriefingBlock[] | null;
 }
 
 /** Response from GET /api/briefing — returns latest entry (or null when no briefing exists). */
 export interface BriefingGetResponse {
   entry: BriefingEntry | null;
+  /** True when the briefing window has passed today but no briefing was generated. */
+  missedToday: boolean;
 }
 
 /** Response from GET /api/briefing/history — returns list of past entries. */

@@ -36,6 +36,9 @@ export type { Project, NewProject } from "./schema/projects.js";
 export { settings } from "./schema/settings.js";
 export type { Setting, NewSetting } from "./schema/settings.js";
 
+export { fleetHealthSnapshots } from "./schema/fleet-health-snapshots.js";
+export type { FleetHealthSnapshot, NewFleetHealthSnapshot } from "./schema/fleet-health-snapshots.js";
+
 export { user, authSession, account, verification, apikey } from "./schema/auth.js";
 export type {
   AuthUser, NewAuthUser,

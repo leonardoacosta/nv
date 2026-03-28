@@ -4,8 +4,8 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Create `packages/db/src/schema/fleet-health-snapshots.ts` with `fleet_health_snapshots` table (id uuid PK, service_name text, status text, latency_ms integer, checked_at timestamptz) and index on (service_name, checked_at) [owner:db-engineer]
-- [ ] [1.2] [P-1] Export new schema from `packages/db/src/schema/index.ts` barrel and run `pnpm drizzle-kit generate` to produce migration [owner:db-engineer]
+- [x] [1.1] [P-1] Create `packages/db/src/schema/fleet-health-snapshots.ts` with `fleet_health_snapshots` table (id uuid PK, service_name text, status text, latency_ms integer, checked_at timestamptz) and index on (service_name, checked_at) [owner:db-engineer]
+- [x] [1.2] [P-1] Export new schema from `packages/db/src/schema/index.ts` barrel and run `pnpm drizzle-kit generate` to produce migration [owner:db-engineer]
 
 ## API Batch
 

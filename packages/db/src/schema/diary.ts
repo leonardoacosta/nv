@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { integer, jsonb, numeric, pgTable, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const diary = pgTable("diary", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -13,6 +13,8 @@ export const diary = pgTable("diary", {
   responseLatencyMs: integer("response_latency_ms"),
   routingTier: integer("routing_tier"),
   routingConfidence: real("routing_confidence"),
+  model: text("model"),
+  costUsd: numeric("cost_usd", { precision: 10, scale: 6 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

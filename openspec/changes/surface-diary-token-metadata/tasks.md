@@ -4,8 +4,8 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Add `model` (text, nullable) and `cost_usd` (real, nullable) columns to diary schema in `packages/db/src/schema/diary.ts` [owner:db-engineer] [beads:nv-iw6w]
-- [ ] [1.2] [P-2] Generate Drizzle migration for the two new diary columns via `pnpm drizzle-kit generate` [owner:db-engineer] [beads:nv-j1o0]
+- [x] [1.1] [P-1] Add `model` (text, nullable) and `cost_usd` (real, nullable) columns to diary schema in `packages/db/src/schema/diary.ts` [owner:db-engineer] [beads:nv-iw6w]
+- [x] [1.2] [P-2] Generate Drizzle migration for the two new diary columns via `pnpm drizzle-kit generate` [owner:db-engineer] [beads:nv-j1o0]
 
 ## API Batch
 

@@ -8,19 +8,17 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Bot, Send, User } from "lucide-react";
+import { Bot, Send, User, Loader2 } from "lucide-react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/lib/trpc/react";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import { MarkdownContent } from "@/lib/markdown";
 import { channelAccentColor } from "@/lib/channel-colors";
-// apiFetch retained for SSE streaming chat, history, and Telegram polling
-// (no tRPC chat router exists)
+// apiFetch retained for SSE streaming chat and Telegram polling
+// (no tRPC chat router exists for send/SSE)
 import { apiFetch } from "@/lib/api-client";
-import type {
-  StoredMessage,
-  MessagesGetResponse,
-  ChatSSEEvent,
-} from "@/types/api";
+import type { StoredMessage, ChatSSEEvent } from "@/types/api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,35 +190,6 @@ function TransportBadge({ mode }: { mode: TransportMode }) {
 }
 
 // ---------------------------------------------------------------------------
-// Loading skeleton
-// ---------------------------------------------------------------------------
-
-function ChatSkeleton() {
-  return (
-    <div className="flex-1 flex flex-col gap-4 p-4">
-      {Array.from({ length: 8 }).map((_, i) => {
-        const isRight = i % 3 === 0;
-        return (
-          <div
-            key={i}
-            className={`flex ${isRight ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className="animate-pulse rounded-lg bg-ds-gray-300"
-              style={{
-                width: `${35 + ((i * 17) % 40)}%`,
-                height: `${36 + ((i * 7) % 24)}px`,
-                opacity: 1 - i * 0.08,
-              }}
-            />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // SSE stream reader
 // ---------------------------------------------------------------------------
 
@@ -311,55 +280,92 @@ async function pollForTelegramResponse(
 // ---------------------------------------------------------------------------
 
 export default function ChatPage() {
-  // State [3.2]
-  const [messages, setMessages] = useState<StoredMessage[]>([]);
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  // --- Local state ---
+  const [pendingMessages, setPendingMessages] = useState<StoredMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [sending, setSending] = useState(false);
   const [streamingText, setStreamingText] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [transportMode, setTransportMode] = useState<TransportMode>("direct");
-  const [loading, setLoading] = useState(true);
   const [telegramPolling, setTelegramPolling] = useState(false);
 
-  // Refs [3.7]
+  // --- Refs ---
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll [3.7]
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  // --- Infinite query for chat history ---
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    error: historyError,
+    refetch,
+  } = useInfiniteQuery(
+    trpc.message.chatHistory.infiniteQueryOptions(
+      { limit: 25 },
+      {
+        getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      },
+    ),
+  );
 
-  // Scroll on mount, new messages, streaming updates
+  // --- Merged message list: pending (newest) on top in col-reverse layout ---
+  // flex-col-reverse means the DOM order is reversed visually:
+  // pendingMessages appear at the visual bottom, history pages above.
+  const historyMessages = data?.pages.flatMap((page) => page.messages) ?? [];
+  const allMessages = [...pendingMessages, ...historyMessages];
+
+  // --- IntersectionObserver for upward pagination ---
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, streamingText, scrollToBottom]);
+    if (!sentinelRef.current || !scrollRef.current) return;
 
-  // Initial message load [3.3]
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch("/api/chat/history");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as MessagesGetResponse;
-      // History comes newest first — reverse for chat (oldest at top)
-      setMessages((data.messages ?? []).reverse());
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load chat history",
-      );
-    } finally {
-      setLoading(false);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      {
+        root: scrollRef.current,
+        rootMargin: "200px 0px 0px 0px",
+      },
+    );
+
+    observer.observe(sentinelRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
+
+  // --- Scroll to bottom (col-reverse: scrollTop = 0) ---
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
     }
   }, []);
 
+  // --- Sync pending messages against cache after refetch ---
   useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
+    if (!data?.pages[0]) return;
+    const cachedIds = new Set(
+      data.pages[0].messages.map((m) => `${m.timestamp}-${m.sender}`),
+    );
+    setPendingMessages((prev) =>
+      prev.filter(
+        (pm) => !cachedIds.has(`${pm.timestamp}-${pm.sender}`),
+      ),
+    );
+  }, [data?.pages]);
 
-  // Auto-grow textarea [3.8]
+  // --- Auto-grow textarea ---
   const handleTextareaInput = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -369,14 +375,14 @@ export default function ChatPage() {
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
   }, []);
 
-  // Send message [3.5]
+  // --- Send message ---
   const handleSend = useCallback(
     async (e?: FormEvent) => {
       e?.preventDefault();
       const trimmed = inputValue.trim();
       if (!trimmed || sending) return;
 
-      // Append user message optimistically
+      // Optimistically append user message to pending
       const userMsg: StoredMessage = {
         id: Date.now(),
         timestamp: new Date().toISOString(),
@@ -389,11 +395,14 @@ export default function ChatPage() {
         tokens_out: null,
         type: "conversation",
       };
-      setMessages((prev) => [...prev, userMsg]);
+      setPendingMessages((prev) => [userMsg, ...prev]);
       setInputValue("");
       setSending(true);
       setStreamingText("");
-      setError(null);
+      setSendError(null);
+
+      // Scroll to bottom after sending
+      scrollToBottom();
 
       // Reset textarea height
       if (textareaRef.current) {
@@ -407,7 +416,7 @@ export default function ChatPage() {
           body: JSON.stringify({ message: trimmed }),
         });
 
-        // Telegram fallback on 503 [3.9]
+        // Telegram fallback on 503
         if (res.status === 503) {
           setTransportMode("telegram");
           setTelegramPolling(true);
@@ -416,11 +425,15 @@ export default function ChatPage() {
           await pollForTelegramResponse(
             sentAt,
             (novaReply) => {
-              setMessages((prev) => [...prev, novaReply]);
+              setPendingMessages((prev) => [novaReply, ...prev]);
               setTelegramPolling(false);
+              // Invalidate to sync server state
+              void queryClient.invalidateQueries({
+                queryKey: trpc.message.chatHistory.queryKey(),
+              });
             },
             () => {
-              setError("Telegram response timed out. Nova may still reply shortly.");
+              setSendError("Telegram response timed out. Nova may still reply shortly.");
               setTelegramPolling(false);
             },
           );
@@ -433,7 +446,7 @@ export default function ChatPage() {
           throw new Error(`HTTP ${res.status}`);
         }
 
-        // SSE streaming [3.5]
+        // SSE streaming
         setTransportMode("direct");
         let accumulated = "";
 
@@ -444,7 +457,7 @@ export default function ChatPage() {
             setStreamingText(accumulated);
           },
           (fullText) => {
-            // Append complete Nova message
+            // Append complete Nova message to pending
             const novaMsg: StoredMessage = {
               id: Date.now() + 1,
               timestamp: new Date().toISOString(),
@@ -457,26 +470,30 @@ export default function ChatPage() {
               tokens_out: null,
               type: "conversation",
             };
-            setMessages((prev) => [...prev, novaMsg]);
+            setPendingMessages((prev) => [novaMsg, ...prev]);
             setStreamingText("");
+            // Sync server state after Nova responds
+            void queryClient.invalidateQueries({
+              queryKey: trpc.message.chatHistory.queryKey(),
+            });
           },
           (errMsg) => {
-            setError(errMsg);
+            setSendError(errMsg);
             setStreamingText("");
           },
         );
       } catch (err) {
-        setError(
+        setSendError(
           err instanceof Error ? err.message : "Failed to send message",
         );
       } finally {
         setSending(false);
       }
     },
-    [inputValue, sending],
+    [inputValue, sending, scrollToBottom, queryClient, trpc],
   );
 
-  // Keyboard handling [3.8]
+  // --- Keyboard handling ---
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -487,31 +504,56 @@ export default function ChatPage() {
     [handleSend],
   );
 
-  // [3.11] Wrap in PageShell
+  // Combine errors — show history error unless there's a send error
+  const displayError = sendError ?? (historyError?.message ?? null);
+
+  // --- Render ---
   return (
     <PageShell title="Chat" subtitle="Talk to Nova directly">
       <div className="flex flex-col h-[calc(100vh-12rem)]">
         {/* Error banner */}
-        {error && (
+        {displayError && (
           <div className="shrink-0 mb-3">
             <ErrorBanner
               message="Chat error"
-              detail={error}
-              onRetry={() => setError(null)}
+              detail={displayError}
+              onRetry={sendError ? () => setSendError(null) : () => void refetch()}
             />
           </div>
         )}
 
-        {/* Messages container [3.7] */}
+        {/* Messages container — flex-col-reverse so newest is at bottom */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto min-h-0"
+          className="flex-1 overflow-y-auto min-h-0 flex flex-col-reverse"
+          style={{ overflowAnchor: "auto" }}
         >
-          {loading ? (
-            <ChatSkeleton />
+          {isLoading ? (
+            // Skeleton — rendered inside col-reverse so it appears at top
+            <div className="flex flex-col gap-4 p-4">
+              {Array.from({ length: 8 }).map((_, i) => {
+                const isRight = i % 3 === 0;
+                return (
+                  <div
+                    key={i}
+                    className={`flex ${isRight ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className="animate-pulse rounded-lg bg-ds-gray-300"
+                      style={{
+                        width: `${35 + ((i * 17) % 40)}%`,
+                        height: `${36 + ((i * 7) % 24)}px`,
+                        opacity: 1 - i * 0.08,
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           ) : (
             <div className="flex flex-col gap-3 py-4">
-              {messages.length === 0 && !sending && (
+              {/* Empty state */}
+              {allMessages.length === 0 && !sending && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Bot size={32} className="text-ds-gray-700 mb-3" />
                   <p className="text-copy-13 text-ds-gray-900">
@@ -520,17 +562,12 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Message bubbles [3.4] */}
-              {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))}
-
-              {/* Streaming / typing indicator [3.6] */}
+              {/* Streaming / typing indicator */}
               {sending && !telegramPolling && (
                 <StreamingBubble text={streamingText} />
               )}
 
-              {/* Telegram polling indicator [3.9] */}
+              {/* Telegram polling indicator */}
               {telegramPolling && (
                 <div className="flex gap-2.5 justify-start">
                   <div className="w-7 h-7 rounded-full bg-ds-gray-300 flex items-center justify-center shrink-0 mt-1">
@@ -547,13 +584,25 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Scroll anchor */}
-              <div ref={bottomRef} />
+              {/* All messages (pending + history) */}
+              {allMessages.map((msg, idx) => (
+                <MessageBubble key={`${msg.id}-${idx}`} message={msg} />
+              ))}
+
+              {/* Load-more spinner while fetching next page */}
+              {isFetchingNextPage && (
+                <div className="flex justify-center py-3">
+                  <Loader2 size={16} className="animate-spin text-ds-gray-700" />
+                </div>
+              )}
+
+              {/* Sentinel for IntersectionObserver — above oldest messages */}
+              <div ref={sentinelRef} className="h-px" />
             </div>
           )}
         </div>
 
-        {/* Input bar [3.8] */}
+        {/* Input bar */}
         <div className="shrink-0 border-t border-ds-gray-400 pt-3">
           <form
             onSubmit={(e) => void handleSend(e)}
@@ -574,7 +623,7 @@ export default function ChatPage() {
                 className="w-full resize-none rounded-lg border border-ds-gray-400 bg-ds-gray-100 px-3.5 py-2.5 text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden focus:border-ds-gray-700 transition-colors disabled:opacity-50"
                 style={{ maxHeight: "96px" }}
               />
-              {/* Transport mode indicator [3.10] */}
+              {/* Transport mode indicator */}
               <div className="absolute right-2 bottom-1">
                 <TransportBadge mode={transportMode} />
               </div>

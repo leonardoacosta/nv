@@ -1,8 +1,8 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { db } from "@nova/db";
-import { reminders, schedules, sessions, briefings, settings, } from "@nova/db";
+import { reminders, schedules, sessions, briefings, settings, obligations, memory, messages, } from "@nova/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 // ── Cron helpers ─────────────────────────────────────────────────────
 function computeNextRun(cronExpr, lastRunAt) {
@@ -344,6 +344,148 @@ export const automationRouter = createTRPCRouter({
         if (input.quiet_end !== undefined)
             watcherOverrides.quiet_end = input.quiet_end;
         return getWatcherState();
+    }),
+    /**
+     * Assemble a preview of the prompt context that would be sent to Nova for a
+     * given automation type (watcher | briefing).
+     *
+     * Queries obligations, memory, and messages with a 5-second per-source
+     * timeout via Promise.allSettled. Each section reports its own status
+     * (ok / unavailable / empty) so the UI can surface partial failures.
+     */
+    previewContext: protectedProcedure
+        .input(z.object({ type: z.enum(["watcher", "briefing"]) }))
+        .query(async () => {
+        const ACTIVE_OBLIGATION_STATUSES = ["open", "in_progress", "pending"];
+        const TIMEOUT_MS = 5_000;
+        function withTimeout(promise) {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), TIMEOUT_MS)),
+            ]);
+        }
+        const [obligationsResult, memoryResult, messagesResult] = await Promise.allSettled([
+            withTimeout(db
+                .select()
+                .from(obligations)
+                .where(inArray(obligations.status, [...ACTIVE_OBLIGATION_STATUSES]))
+                .orderBy(desc(obligations.updatedAt))
+                .limit(20)),
+            withTimeout(db
+                .select()
+                .from(memory)
+                .orderBy(desc(memory.updatedAt))
+                .limit(10)),
+            withTimeout(db
+                .select()
+                .from(messages)
+                .orderBy(desc(messages.createdAt))
+                .limit(50)),
+        ]);
+        // ── Obligations ──────────────────────────────────────────────────────
+        const obligationItems = obligationsResult.status === "fulfilled" ? obligationsResult.value : [];
+        const obligationStatus = obligationsResult.status === "rejected"
+            ? "unavailable"
+            : obligationItems.length === 0
+                ? "empty"
+                : "ok";
+        const countByStatus = {};
+        for (const ob of obligationItems) {
+            countByStatus[ob.status] = (countByStatus[ob.status] ?? 0) + 1;
+        }
+        const mappedObligations = obligationItems.map((ob) => ({
+            id: ob.id,
+            detectedAction: ob.detectedAction,
+            status: ob.status,
+            priority: ob.priority,
+            sourceChannel: ob.sourceChannel,
+            deadline: ob.deadline?.toISOString() ?? null,
+            createdAt: ob.createdAt.toISOString(),
+        }));
+        // ── Memory ───────────────────────────────────────────────────────────
+        const memoryItems = memoryResult.status === "fulfilled" ? memoryResult.value : [];
+        const memoryStatus = memoryResult.status === "rejected"
+            ? "unavailable"
+            : memoryItems.length === 0
+                ? "empty"
+                : "ok";
+        const mappedMemory = memoryItems.map((m) => ({
+            topic: m.topic,
+            contentPreview: m.content.slice(0, 200),
+        }));
+        // ── Messages ─────────────────────────────────────────────────────────
+        const messageRows = messagesResult.status === "fulfilled" ? messagesResult.value : [];
+        const messageStatus = messagesResult.status === "rejected"
+            ? "unavailable"
+            : messageRows.length === 0
+                ? "empty"
+                : "ok";
+        // Group by channel
+        const channelMap = new Map();
+        for (const msg of messageRows) {
+            const ch = msg.channel ?? "unknown";
+            const existing = channelMap.get(ch);
+            if (!existing) {
+                channelMap.set(ch, {
+                    count: 1,
+                    latest: msg.content.slice(0, 120),
+                });
+            }
+            else {
+                existing.count += 1;
+            }
+        }
+        const byChannel = Array.from(channelMap.entries()).map(([channel, { count: msgCount, latest }]) => ({
+            channel,
+            count: msgCount,
+            latestPreview: latest,
+        }));
+        // Known channel names (for the pills UI)
+        const KNOWN_CHANNELS = [
+            "telegram",
+            "discord",
+            "teams",
+            "email",
+            "dashboard",
+        ];
+        const channelInfos = KNOWN_CHANNELS.map((name) => {
+            const entry = channelMap.get(name);
+            return {
+                name,
+                messageCount: entry?.count ?? 0,
+                active: (entry?.count ?? 0) > 0,
+            };
+        });
+        // Also include any non-standard channels present in the data
+        for (const [name, { count: msgCount }] of channelMap.entries()) {
+            if (!KNOWN_CHANNELS.includes(name)) {
+                channelInfos.push({ name, messageCount: msgCount, active: true });
+            }
+        }
+        // ── Stats ────────────────────────────────────────────────────────────
+        const stats = {
+            totalObligations: obligationItems.length,
+            activeReminders: 0, // not queried in this lightweight endpoint
+            memoryTopics: memoryItems.length,
+        };
+        return {
+            obligations: {
+                status: obligationStatus,
+                items: mappedObligations,
+                countByStatus,
+            },
+            memory: {
+                status: memoryStatus,
+                items: mappedMemory,
+            },
+            messages: {
+                status: messageStatus,
+                byChannel,
+            },
+            channels: channelInfos,
+            stats,
+            assembledAt: new Date().toISOString(),
+        };
     }),
 });
 //# sourceMappingURL=automation.js.map

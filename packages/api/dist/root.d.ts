@@ -366,6 +366,28 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             };
             meta: object;
         }>;
+        chatHistory: import("@trpc/server").TRPCQueryProcedure<{
+            input: {
+                limit?: number | undefined;
+                cursor?: string | undefined;
+            };
+            output: {
+                messages: {
+                    id: number;
+                    timestamp: string;
+                    direction: string;
+                    channel: string;
+                    sender: string;
+                    content: string;
+                    response_time_ms: number | null;
+                    tokens_in: number | null;
+                    tokens_out: number | null;
+                    type: "conversation" | "tool-call" | "system";
+                }[];
+                nextCursor: string | null;
+            };
+            meta: object;
+        }>;
     }>>;
     session: import("@trpc/server").TRPCBuiltRouter<{
         ctx: import("./trpc.js").TRPCContext;
@@ -621,6 +643,53 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                 quiet_start: string;
                 quiet_end: string;
                 last_run_at: string | null;
+            };
+            meta: object;
+        }>;
+        previewContext: import("@trpc/server").TRPCQueryProcedure<{
+            input: {
+                type: "watcher" | "briefing";
+            };
+            output: {
+                obligations: {
+                    status: "ok" | "unavailable" | "empty";
+                    items: {
+                        id: string;
+                        detectedAction: string;
+                        status: string;
+                        priority: number;
+                        sourceChannel: string;
+                        deadline: string | null;
+                        createdAt: string;
+                    }[];
+                    countByStatus: Record<string, number>;
+                };
+                memory: {
+                    status: "ok" | "unavailable" | "empty";
+                    items: {
+                        topic: string;
+                        contentPreview: string;
+                    }[];
+                };
+                messages: {
+                    status: "ok" | "unavailable" | "empty";
+                    byChannel: {
+                        channel: string;
+                        count: number;
+                        latestPreview: string | null;
+                    }[];
+                };
+                channels: {
+                    name: string;
+                    messageCount: number;
+                    active: boolean;
+                }[];
+                stats: {
+                    totalObligations: number;
+                    activeReminders: number;
+                    memoryTopics: number;
+                };
+                assembledAt: string;
             };
             meta: object;
         }>;
@@ -1293,6 +1362,28 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
             };
             meta: object;
         }>;
+        chatHistory: import("@trpc/server").TRPCQueryProcedure<{
+            input: {
+                limit?: number | undefined;
+                cursor?: string | undefined;
+            };
+            output: {
+                messages: {
+                    id: number;
+                    timestamp: string;
+                    direction: string;
+                    channel: string;
+                    sender: string;
+                    content: string;
+                    response_time_ms: number | null;
+                    tokens_in: number | null;
+                    tokens_out: number | null;
+                    type: "conversation" | "tool-call" | "system";
+                }[];
+                nextCursor: string | null;
+            };
+            meta: object;
+        }>;
     }>>;
     session: import("@trpc/server").TRPCBuiltRouter<{
         ctx: import("./trpc.js").TRPCContext;
@@ -1548,6 +1639,53 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
                 quiet_start: string;
                 quiet_end: string;
                 last_run_at: string | null;
+            };
+            meta: object;
+        }>;
+        previewContext: import("@trpc/server").TRPCQueryProcedure<{
+            input: {
+                type: "watcher" | "briefing";
+            };
+            output: {
+                obligations: {
+                    status: "ok" | "unavailable" | "empty";
+                    items: {
+                        id: string;
+                        detectedAction: string;
+                        status: string;
+                        priority: number;
+                        sourceChannel: string;
+                        deadline: string | null;
+                        createdAt: string;
+                    }[];
+                    countByStatus: Record<string, number>;
+                };
+                memory: {
+                    status: "ok" | "unavailable" | "empty";
+                    items: {
+                        topic: string;
+                        contentPreview: string;
+                    }[];
+                };
+                messages: {
+                    status: "ok" | "unavailable" | "empty";
+                    byChannel: {
+                        channel: string;
+                        count: number;
+                        latestPreview: string | null;
+                    }[];
+                };
+                channels: {
+                    name: string;
+                    messageCount: number;
+                    active: boolean;
+                }[];
+                stats: {
+                    totalObligations: number;
+                    activeReminders: number;
+                    memoryTopics: number;
+                };
+                assembledAt: string;
             };
             meta: object;
         }>;

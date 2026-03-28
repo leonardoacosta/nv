@@ -587,6 +587,69 @@ export interface ChannelStatus {
   direction: "bidirectional" | "inbound" | "outbound";
 }
 
+// ── Automations Prompt Preview (tRPC automation.previewContext) ────────────
+
+/** A single obligation item in the preview context. */
+export interface ContextObligationItem {
+  id: string;
+  detectedAction: string;
+  status: string;
+  priority: number;
+  sourceChannel: string;
+  deadline: string | null;
+  createdAt: string;
+}
+
+/** Obligation section of the preview context. */
+export interface ContextObligationSummary {
+  status: "ok" | "unavailable" | "empty";
+  items: ContextObligationItem[];
+  countByStatus: Record<string, number>;
+}
+
+/** A single memory item in the preview context. */
+export interface ContextMemoryItem {
+  topic: string;
+  contentPreview: string;
+}
+
+/** Messages section of the preview context. */
+export interface ContextChannelSummary {
+  channel: string;
+  count: number;
+  latestPreview: string | null;
+}
+
+/** Per-channel info for the channel pills UI. */
+export interface ChannelInfo {
+  name: string;
+  messageCount: number;
+  active: boolean;
+}
+
+/** Stats summary in the preview context. */
+export interface ContextStats {
+  totalObligations: number;
+  activeReminders: number;
+  memoryTopics: number;
+}
+
+/** Top-level response from tRPC automation.previewContext. */
+export interface AutomationContextPreview {
+  obligations: ContextObligationSummary;
+  memory: {
+    status: "ok" | "unavailable" | "empty";
+    items: ContextMemoryItem[];
+  };
+  messages: {
+    status: "ok" | "unavailable" | "empty";
+    byChannel: ContextChannelSummary[];
+  };
+  channels: ChannelInfo[];
+  stats: ContextStats;
+  assembledAt: string;
+}
+
 // ── GET /api/sessions/analytics ───────────────────────────────────────────
 
 /** Daily session count entry used in the sessions_7d sparkline. */

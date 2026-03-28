@@ -9,24 +9,23 @@ import {
   RefreshCw,
   Timer,
   AlertTriangle,
-  Info,
   Send,
   ArrowRight,
   Activity,
   Loader2,
-  Mail,
   Server,
   MonitorPlay,
-  Clock,
   ExternalLink,
-  Terminal,
+  Plus,
+  ChevronDown,
+  ChevronRight,
+  Circle,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
 import ErrorBanner from "@/components/layout/ErrorBanner";
-import QuerySkeleton from "@/components/layout/QuerySkeleton";
-import StatStrip from "@/components/StatStrip";
 import {
   useDaemonEvents,
   useDaemonStatus,
@@ -34,14 +33,12 @@ import {
 import type {
   ActivityFeedEvent,
   ActivityFeedGetResponse,
-  CcSessionSummary,
-  CcSessionsGetResponse,
   ObligationsGetResponse,
   MessagesGetResponse,
-  StoredMessage,
   BriefingGetResponse,
   FleetHealthResponse,
   SessionsGetResponse,
+  ActionItem,
 } from "@/types/api";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
@@ -55,6 +52,7 @@ interface ApiObligation {
   detected_action: string;
   owner?: string;
   status?: string;
+  updated_at?: string;
 }
 
 interface WsActivityEvent {
@@ -64,14 +62,10 @@ interface WsActivityEvent {
   ts: number;
 }
 
-interface MessageGroup {
-  sender: string;
-  channel: string;
-  timestamp: string;
-  preview: string;
+interface CategoryBadge {
+  type: "message" | "obligation" | "session" | "system";
+  newCount: number;
 }
-
-type FeedCategory = "all" | "message" | "session" | "obligation" | "system";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,7 +98,7 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-/** Maps a feed event to a severity tier for visual weight. Uses the API severity field. */
+/** Maps a feed event to a severity tier for visual weight. */
 function getEventSeverity(event: ActivityFeedEvent): "error" | "warning" | "routine" {
   if (event.severity === "error") return "error";
   if (event.severity === "warning") return "warning";
@@ -143,57 +137,512 @@ function getViewLink(type: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// PriorityBanner
+// ActionItems — top priority panel
 // ---------------------------------------------------------------------------
 
-function PriorityBanner({
-  pendingCount,
-  briefingAvailable,
-  briefingTime,
+function ActionItems({
+  obligations,
+  messages,
+  oblLoading,
+  msgLoading,
 }: {
-  pendingCount: number;
-  briefingAvailable: boolean;
-  briefingTime: string | null;
+  obligations: ApiObligation[];
+  messages: { sender: string; timestamp: string; content: string }[];
+  oblLoading: boolean;
+  msgLoading: boolean;
 }) {
-  if (pendingCount > 0) {
+  const [expanded, setExpanded] = useState(false);
+  const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
+
+  // Build action items from data
+  const items: ActionItem[] = [];
+
+  // Pending obligations
+  for (const ob of obligations) {
+    if (ob.status === "open" || ob.status === "in_progress") {
+      items.push({
+        id: ob.id,
+        severity: "warning",
+        category: "obligation",
+        summary: ob.detected_action,
+        link: "/obligations",
+      });
+    }
+  }
+
+  // Unread messages (last 4h, not from nova)
+  const unreadMessages = messages.filter(
+    (m) => m.sender !== "nova" && new Date(m.timestamp).getTime() >= fourHoursAgo,
+  );
+  for (const msg of unreadMessages.slice(0, 5)) {
+    items.push({
+      id: msg.timestamp,
+      severity: "warning",
+      category: "message",
+      summary: msg.content.length > 80 ? `${msg.content.slice(0, 80)}...` : msg.content,
+      link: "/messages",
+    });
+  }
+
+  const loading = oblLoading || msgLoading;
+  const displayItems = expanded ? items.slice(0, 10) : items.slice(0, 5);
+  const remaining = items.length - 5;
+
+  if (loading) {
     return (
-      <Link
-        href="/obligations"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg text-copy-13 bg-amber-700/10 border border-amber-700/25"
-      >
-        <AlertTriangle size={14} className="text-amber-700 shrink-0" />
-        <span className="text-amber-700">
-          {pendingCount} obligation{pendingCount !== 1 ? "s" : ""} need{pendingCount === 1 ? "s" : ""} attention
-        </span>
-        <ArrowRight size={12} className="ml-auto text-amber-700/60" />
-      </Link>
+      <div className="flex flex-col gap-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-8 animate-pulse rounded bg-ds-gray-100" />
+        ))}
+      </div>
     );
   }
 
-  if (briefingAvailable) {
+  if (items.length === 0) {
     return (
-      <Link
-        href="/briefing"
-        className="flex items-center gap-2 px-3 py-2 rounded-lg text-copy-13 bg-blue-700/10 border border-blue-700/25"
-      >
-        <Info size={14} className="text-blue-700 shrink-0" />
-        <span className="text-blue-700">
-          Briefing available{briefingTime ? ` — last generated ${briefingTime}` : ""}
-        </span>
-        <ArrowRight size={12} className="ml-auto text-blue-700/60" />
-      </Link>
+      <p className="text-copy-13 text-ds-gray-700 py-2">
+        All clear — no pending obligations or unread messages
+      </p>
     );
   }
 
-  return null;
+  return (
+    <div className="flex flex-col divide-y divide-ds-gray-400">
+      {displayItems.map((item) => (
+        <Link
+          key={item.id}
+          href={item.link}
+          className="flex items-center gap-2 py-2 hover:bg-ds-gray-alpha-100 transition-colors px-1 -mx-1 rounded"
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              item.severity === "error" ? "bg-red-700" : "bg-amber-700"
+            }`}
+          />
+          <span className={`text-label-12 shrink-0 ${
+            item.category === "obligation" ? "text-amber-700" : "text-blue-700"
+          }`}>
+            {item.category}
+          </span>
+          <span className="text-copy-13 text-ds-gray-1000 flex-1 min-w-0 truncate">
+            {item.summary}
+          </span>
+          <ArrowRight size={11} className="text-ds-gray-700 shrink-0" />
+        </Link>
+      ))}
+      {!expanded && remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 py-2 text-left transition-colors"
+        >
+          {remaining} more...
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
-// ObligationBar — full-width quick-add input
+// NovaStatus — compact horizontal status row
 // ---------------------------------------------------------------------------
 
-function ObligationBar() {
+function NovaStatus({
+  fleetData,
+  automationData,
+  briefingData,
+  loading,
+}: {
+  fleetData: FleetHealthResponse | undefined;
+  automationData: { watcher?: { enabled: boolean; interval_minutes: number }; reminders?: unknown[] } | undefined;
+  briefingData: BriefingGetResponse | undefined;
+  loading: boolean;
+}) {
+  if (loading) {
+    return <div className="h-12 animate-pulse rounded-lg bg-ds-gray-100 border border-ds-gray-400" />;
+  }
+
+  const channels = fleetData?.channels ?? [];
+  const watcher = automationData?.watcher;
+  const briefingEntry = briefingData?.entry;
+  const lastBriefingTime = briefingEntry
+    ? formatRelativeTime(briefingEntry.generated_at)
+    : "None";
+
+  return (
+    <div className="flex items-stretch border border-ds-gray-400 rounded-lg overflow-hidden">
+      {/* Channels */}
+      <div className="flex-1 px-3 py-2 flex flex-col gap-1">
+        <span className="text-label-12 text-ds-gray-700">Channels</span>
+        <div className="flex flex-wrap gap-2">
+          {channels.length === 0 ? (
+            <span className="text-copy-13 font-mono text-ds-gray-700">—</span>
+          ) : (
+            channels.map((ch) => (
+              <span key={ch.name} className="flex items-center gap-1 text-copy-13">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    ch.status === "configured" ? "bg-green-700" : "bg-ds-gray-500"
+                  }`}
+                />
+                <span className="font-mono capitalize text-ds-gray-900">{ch.name}</span>
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="border-r border-ds-gray-400" />
+
+      {/* Watcher */}
+      <div className="flex-1 px-3 py-2 flex flex-col gap-1">
+        <span className="text-label-12 text-ds-gray-700">Watcher</span>
+        <span className="text-copy-13 font-mono text-ds-gray-900">
+          {watcher
+            ? watcher.enabled
+              ? `On / every ${watcher.interval_minutes}m`
+              : "Disabled"
+            : "—"}
+        </span>
+      </div>
+
+      {/* Divider */}
+      <div className="border-r border-ds-gray-400" />
+
+      {/* Last briefing */}
+      <div className="flex-1 px-3 py-2 flex flex-col gap-1">
+        <span className="text-label-12 text-ds-gray-700">Last Briefing</span>
+        <span
+          className="text-copy-13 font-mono text-ds-gray-900"
+          suppressHydrationWarning
+        >
+          {lastBriefingTime}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// EventDetailPanel — expandable row detail
+// ---------------------------------------------------------------------------
+
+function EventDetailPanel({
+  type,
+  time,
+  summary,
+}: {
+  type: string;
+  time: string;
+  summary: string;
+}) {
+  return (
+    <div className="px-4 py-2 bg-ds-gray-alpha-100 border-t border-ds-gray-400 flex flex-col gap-1.5">
+      <p className="text-copy-13 text-ds-gray-1000 leading-snug">{summary}</p>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-label-12 px-1.5 py-0.5 rounded bg-ds-gray-200 text-ds-gray-900 border border-ds-gray-400">
+          {type}
+        </span>
+        <span
+          className="text-copy-13 text-ds-gray-700 font-mono tabular-nums"
+          suppressHydrationWarning
+        >
+          {new Date(time).toLocaleString()}
+        </span>
+        <Link
+          href={getViewLink(type)}
+          className="flex items-center gap-1 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors ml-auto"
+        >
+          View
+          <ExternalLink size={11} />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CategoryGroup — single group with header + collapsible events
+// ---------------------------------------------------------------------------
+
+interface MergedFeedEvent {
+  id: string;
+  type: string;
+  time: string;
+  summary: string;
+  severity: "error" | "warning" | "routine";
+  isWs?: boolean;
+}
+
+interface CategoryGroupProps {
+  type: "message" | "obligation" | "session" | "system";
+  events: MergedFeedEvent[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  newCount: number;
+  onBadgeClick: () => void;
+}
+
+function CategoryGroup({
+  type,
+  events,
+  isExpanded,
+  onToggle,
+  newCount,
+  onBadgeClick,
+}: CategoryGroupProps) {
+  const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
+
+  if (events.length === 0) return null;
+
+  const displayLabel =
+    type === "message"
+      ? "Messages"
+      : type === "obligation"
+        ? "Obligations"
+        : type === "session"
+          ? "Sessions"
+          : "System";
+
+  const icon = type === "message"
+    ? <MessageSquare size={13} className="text-ds-gray-700 shrink-0" />
+    : type === "obligation"
+      ? <CheckSquare size={13} className="text-ds-gray-700 shrink-0" />
+      : type === "session"
+        ? <MonitorPlay size={13} className="text-ds-gray-700 shrink-0" />
+        : <Activity size={13} className="text-ds-gray-700 shrink-0" />;
+
+  // Compute a short summary text
+  const summaryText = (() => {
+    if (type === "message") {
+      const inbound = events.filter((e) => !e.isWs && e.summary.toLowerCase().includes("inbound")).length;
+      return `${events.length} message${events.length !== 1 ? "s" : ""}`;
+    }
+    return `${events.length} event${events.length !== 1 ? "s" : ""}`;
+  })();
+
+  const mostRecent = events[0];
+  const visibleEvents = isExpanded ? events.slice(0, 50) : events.slice(0, 3);
+
+  return (
+    <div className="border-b border-ds-gray-400 last:border-b-0">
+      {/* Group header */}
+      <div className="flex items-center gap-2 py-1.5 px-1">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex items-center gap-2 flex-1 min-w-0 hover:text-ds-gray-1000 transition-colors text-left"
+        >
+          {isExpanded ? (
+            <ChevronDown size={13} className="text-ds-gray-700 shrink-0" />
+          ) : (
+            <ChevronRight size={13} className="text-ds-gray-700 shrink-0" />
+          )}
+          {icon}
+          <span className="text-label-13 text-ds-gray-900 font-medium">{displayLabel}</span>
+          <span className="text-label-12 font-mono text-ds-gray-700 px-1.5 py-0.5 rounded bg-ds-gray-alpha-100">
+            {events.length}
+          </span>
+          <span className="text-copy-13 text-ds-gray-700 flex-1 min-w-0 truncate">
+            {summaryText}
+          </span>
+        </button>
+        <div className="flex items-center gap-2">
+          {newCount > 0 && (
+            <button
+              type="button"
+              onClick={onBadgeClick}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-700/15 text-blue-700 text-label-12 hover:bg-blue-700/25 transition-colors"
+            >
+              {newCount} new
+            </button>
+          )}
+          {mostRecent && (
+            <span
+              className="text-copy-13 text-ds-gray-700 font-mono tabular-nums shrink-0"
+              suppressHydrationWarning
+            >
+              {formatRelativeTime(mostRecent.time)}
+            </span>
+          )}
+          <Link
+            href={getViewLink(type)}
+            className="text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
+          >
+            <ExternalLink size={11} />
+          </Link>
+        </div>
+      </div>
+
+      {/* Events (compact rows) */}
+      {visibleEvents.map((ev) => {
+        const { rowBg, leftBorder } = getSeverityConfig(ev.severity);
+        const isDetailExpanded = expandedEventId === ev.id;
+
+        return (
+          <div key={ev.id} className={rowBg}>
+            <button
+              type="button"
+              onClick={() => setExpandedEventId(isDetailExpanded ? null : ev.id)}
+              className={[
+                "w-full flex items-center gap-2 py-1 pl-8 pr-1 hover:bg-ds-gray-alpha-100 transition-colors text-left",
+                leftBorder,
+              ].join(" ")}
+            >
+              <span
+                className="shrink-0 text-copy-13 text-ds-gray-900 font-mono w-12 text-right tabular-nums"
+                suppressHydrationWarning
+              >
+                {formatFeedTimestamp(ev.time)}
+              </span>
+              <FeedEventIcon type={ev.type} severity={ev.severity} />
+              <span className="flex-1 min-w-0 text-copy-13 text-ds-gray-1000 truncate">
+                {ev.summary}
+              </span>
+              <span
+                className="shrink-0 text-copy-13 text-ds-gray-700 tabular-nums"
+                suppressHydrationWarning
+              >
+                {formatRelativeTime(ev.time)}
+              </span>
+            </button>
+            {isDetailExpanded && (
+              <EventDetailPanel
+                type={ev.type}
+                time={ev.time}
+                summary={ev.summary}
+              />
+            )}
+          </div>
+        );
+      })}
+
+      {isExpanded && events.length > 50 && (
+        <p className="text-copy-13 text-ds-gray-700 pl-8 py-1">
+          + {events.length - 50} more events
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GroupedActivitySummaries
+// ---------------------------------------------------------------------------
+
+function GroupedActivitySummaries({
+  events,
+  wsEvents,
+  loading,
+  badgeCounters,
+  onBadgeReset,
+}: {
+  events: ActivityFeedEvent[];
+  wsEvents: WsActivityEvent[];
+  loading: boolean;
+  badgeCounters: Record<string, number>;
+  onBadgeReset: (type: string) => void;
+}) {
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-px">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-10 animate-pulse rounded bg-ds-gray-100" />
+        ))}
+      </div>
+    );
+  }
+
+  // Build merged event list
+  const allMerged: MergedFeedEvent[] = [];
+
+  for (const ws of wsEvents) {
+    allMerged.push({
+      id: `ws-${ws.id}`,
+      type: ws.type,
+      time: new Date(ws.ts).toISOString(),
+      summary: ws.label,
+      severity: "routine",
+      isWs: true,
+    });
+  }
+
+  for (const ev of events) {
+    allMerged.push({
+      id: ev.id,
+      type: ev.type,
+      time: ev.timestamp,
+      summary: ev.summary,
+      severity: getEventSeverity(ev),
+    });
+  }
+
+  // Group by type — map diary to "system"
+  const groups: Record<string, MergedFeedEvent[]> = {
+    message: [],
+    obligation: [],
+    session: [],
+    system: [],
+  };
+
+  for (const ev of allMerged) {
+    const key = ev.type === "diary" ? "system" : ev.type;
+    if (key in groups) {
+      groups[key]!.push(ev);
+    }
+  }
+
+  // Sort each group by time desc
+  for (const key of Object.keys(groups)) {
+    groups[key]!.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  }
+
+  const groupOrder: ("message" | "obligation" | "session" | "system")[] = [
+    "message",
+    "obligation",
+    "session",
+    "system",
+  ];
+
+  const handleToggle = (type: string) => {
+    setExpandedGroup((prev) => (prev === type ? null : type));
+  };
+
+  const hasAnyEvents = groupOrder.some((t) => (groups[t]?.length ?? 0) > 0);
+
+  if (!hasAnyEvents) {
+    return (
+      <p className="text-copy-13 text-ds-gray-700 py-3">No activity in the feed</p>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-ds-gray-400 border border-ds-gray-400 rounded-lg overflow-hidden">
+      {groupOrder.map((type) => (
+        <CategoryGroup
+          key={type}
+          type={type}
+          events={groups[type] ?? []}
+          isExpanded={expandedGroup === type}
+          onToggle={() => handleToggle(type)}
+          newCount={badgeCounters[type] ?? 0}
+          onBadgeClick={() => onBadgeReset(type)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// QuickAdd — collapsible obligation input
+// ---------------------------------------------------------------------------
+
+function QuickAdd() {
   const trpc = useTRPC();
+  const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [result, setResult] = useState<"success" | "error" | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -204,7 +653,10 @@ function ObligationBar() {
       onSuccess: () => {
         setInput("");
         setResult("success");
-        setTimeout(() => setResult(null), 2000);
+        setTimeout(() => {
+          setResult(null);
+          setOpen(false);
+        }, 1500);
         void queryClient.invalidateQueries({ queryKey: trpc.obligation.list.queryKey() });
         void queryClient.invalidateQueries({ queryKey: trpc.system.activityFeed.queryKey() });
       },
@@ -230,367 +682,64 @@ function ObligationBar() {
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 border border-ds-gray-400 rounded-lg px-3 py-1.5">
-        <CheckSquare size={14} className="text-ds-gray-700 shrink-0" />
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleCreate();
-          }}
-          placeholder="Add obligation..."
-          className="flex-1 min-w-0 bg-transparent text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden"
-          disabled={creating}
-        />
+      {!open ? (
         <button
           type="button"
-          onClick={handleCreate}
-          disabled={creating || !input.trim()}
-          className="flex items-center justify-center px-2 py-0.5 rounded text-label-12 border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 py-2 px-3 border border-ds-gray-400 rounded-lg text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors w-full text-left"
         >
-          {creating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+          <Plus size={13} className="shrink-0" />
+          Add obligation...
         </button>
-      </div>
-      {result === "success" && (
-        <p className="text-copy-13 text-green-700 px-1">Created</p>
-      )}
-      {result === "error" && (
-        <p className="text-copy-13 text-red-700 px-1">{errorMsg}</p>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CategoryPills — filter tabs above feed
-// ---------------------------------------------------------------------------
-
-const PILL_LABELS: { key: FeedCategory; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "message", label: "Messages" },
-  { key: "session", label: "Sessions" },
-  { key: "obligation", label: "Obligations" },
-  { key: "system", label: "System" },
-];
-
-function getCategoryCount(
-  events: ActivityFeedEvent[],
-  wsEvents: WsActivityEvent[],
-  category: FeedCategory,
-): number {
-  if (category === "all") return events.length + wsEvents.length;
-  if (category === "system") return events.filter((e) => e.type === "diary").length;
-  return events.filter((e) => e.type === category).length;
-}
-
-function CategoryPills({
-  active,
-  onChange,
-  events,
-  wsEvents,
-}: {
-  active: FeedCategory;
-  onChange: (c: FeedCategory) => void;
-  events: ActivityFeedEvent[];
-  wsEvents: WsActivityEvent[];
-}) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {PILL_LABELS.map(({ key, label }) => {
-        const count = getCategoryCount(events, wsEvents, key);
-        const isActive = active === key;
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => onChange(key)}
-            className={[
-              "text-label-12 px-2.5 py-1 rounded-full border transition-colors",
-              isActive
-                ? "bg-ds-gray-alpha-200 border-ds-gray-1000/40 text-ds-gray-1000"
-                : "text-ds-gray-700 border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500",
-            ].join(" ")}
-          >
-            {label} ({count})
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ActivityFeedSection — density-pass rework
-// ---------------------------------------------------------------------------
-
-interface MergedFeedEvent {
-  id: string;
-  type: string;
-  time: string;
-  summary: string;
-  severity: "error" | "warning" | "routine";
-  isWs?: boolean;
-}
-
-function ActivityFeedSection({
-  events,
-  wsEvents,
-  loading,
-  category,
-}: {
-  events: ActivityFeedEvent[];
-  wsEvents: WsActivityEvent[];
-  loading: boolean;
-  category: FeedCategory;
-}) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-px">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-7 animate-pulse rounded bg-ds-gray-100" />
-        ))}
-      </div>
-    );
-  }
-
-  // Build merged list
-  const merged: MergedFeedEvent[] = [];
-
-  for (const ws of wsEvents) {
-    merged.push({
-      id: `ws-${ws.id}`,
-      type: ws.type,
-      time: new Date(ws.ts).toISOString(),
-      summary: ws.label,
-      severity: "routine",
-      isWs: true,
-    });
-  }
-
-  for (const ev of events) {
-    merged.push({
-      id: ev.id,
-      type: ev.type,
-      time: ev.timestamp,
-      summary: ev.summary,
-      severity: getEventSeverity(ev),
-    });
-  }
-
-  // Apply category filter
-  const filtered = merged.filter((ev) => {
-    if (category === "all") return true;
-    if (category === "system") return ev.type === "diary";
-    return ev.type === category;
-  });
-
-  if (filtered.length === 0) {
-    return (
-      <p className="text-copy-13 text-ds-gray-900 py-3">No events in this category</p>
-    );
-  }
-
-  return (
-    <div className="divide-y divide-ds-gray-400">
-      {filtered.map((ev) => {
-        const { rowBg, leftBorder } = getSeverityConfig(ev.severity);
-        const isExpanded = expandedId === ev.id;
-
-        return (
-          <div key={ev.id} className={rowBg}>
-            {/* Main row — single horizontal line */}
+      ) : (
+        <div className="flex flex-col gap-1.5 border border-ds-gray-400 rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2">
+            <CheckSquare size={14} className="text-ds-gray-700 shrink-0" />
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreate();
+                if (e.key === "Escape") {
+                  setOpen(false);
+                  setInput("");
+                }
+              }}
+              placeholder="Add obligation..."
+              className="flex-1 min-w-0 bg-transparent text-copy-13 text-ds-gray-1000 placeholder:text-ds-gray-700 focus:outline-hidden"
+              disabled={creating}
+              autoFocus
+            />
             <button
               type="button"
-              onClick={() => setExpandedId(isExpanded ? null : ev.id)}
-              className={[
-                "w-full flex items-center gap-2 py-1 px-1 hover:bg-ds-gray-alpha-100 transition-colors text-left",
-                leftBorder,
-              ].join(" ")}
+              onClick={handleCreate}
+              disabled={creating || !input.trim()}
+              className="flex items-center justify-center px-2 py-0.5 rounded text-label-12 border border-ds-gray-400 text-ds-gray-900 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-40"
             >
-              <span
-                className="shrink-0 text-copy-13 text-ds-gray-900 font-mono w-12 text-right tabular-nums"
-                suppressHydrationWarning
-              >
-                {formatFeedTimestamp(ev.time)}
-              </span>
-              <FeedEventIcon type={ev.type} severity={ev.severity} />
-              <span className="flex-1 min-w-0 text-copy-13 text-ds-gray-1000 truncate">
-                {ev.summary}
-              </span>
-              <span
-                className="shrink-0 text-copy-13 text-ds-gray-700 tabular-nums"
-                suppressHydrationWarning
-              >
-                {formatRelativeTime(ev.time)}
-              </span>
+              {creating ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
             </button>
-
-            {/* Expandable detail panel */}
-            {isExpanded && (
-              <div className="px-4 py-2 bg-ds-gray-alpha-100 border-t border-ds-gray-400 flex flex-col gap-1.5">
-                <p className="text-copy-13 text-ds-gray-1000 leading-snug">{ev.summary}</p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className="text-label-12 px-1.5 py-0.5 rounded bg-ds-gray-200 text-ds-gray-900 border border-ds-gray-400">
-                    {ev.type}
-                  </span>
-                  <span
-                    className="text-copy-13 text-ds-gray-700 font-mono tabular-nums"
-                    suppressHydrationWarning
-                  >
-                    {new Date(ev.time).toLocaleString()}
-                  </span>
-                  <Link
-                    href={getViewLink(ev.type)}
-                    className="flex items-center gap-1 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors ml-auto"
-                  >
-                    View
-                    <ExternalLink size={11} />
-                  </Link>
-                </div>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setInput("");
+                setResult(null);
+              }}
+              className="flex items-center justify-center w-6 h-6 rounded text-ds-gray-700 hover:text-ds-gray-1000 transition-colors"
+            >
+              <X size={13} />
+            </button>
           </div>
-        );
-      })}
+          {result === "success" && (
+            <p className="text-copy-13 text-green-700 px-1">Created</p>
+          )}
+          {result === "error" && (
+            <p className="text-copy-13 text-red-700 px-1">{errorMsg}</p>
+          )}
+        </div>
+      )}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// RecentConversations
-// ---------------------------------------------------------------------------
-
-function RecentConversations({
-  recentMessages,
-  loading,
-}: {
-  recentMessages: StoredMessage[];
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-1">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-10 animate-pulse rounded bg-ds-gray-100" />
-        ))}
-      </div>
-    );
-  }
-
-  // Group consecutive messages by sender
-  const groups: MessageGroup[] = [];
-  let currentGroup: { sender: string; channel: string; messages: StoredMessage[] } | null = null;
-
-  for (const msg of recentMessages) {
-    if (currentGroup && currentGroup.sender === msg.sender) {
-      currentGroup.messages.push(msg);
-    } else {
-      if (currentGroup) {
-        const first = currentGroup.messages[0]!;
-        const preview = first.content.length > 120 ? `${first.content.slice(0, 120)}...` : first.content;
-        groups.push({
-          sender: currentGroup.sender,
-          channel: currentGroup.channel,
-          timestamp: first.timestamp,
-          preview,
-        });
-      }
-      currentGroup = { sender: msg.sender, channel: msg.channel, messages: [msg] };
-    }
-  }
-  if (currentGroup) {
-    const first = currentGroup.messages[0]!;
-    const preview = first.content.length > 120 ? `${first.content.slice(0, 120)}...` : first.content;
-    groups.push({
-      sender: currentGroup.sender,
-      channel: currentGroup.channel,
-      timestamp: first.timestamp,
-      preview,
-    });
-  }
-
-  const topGroups = groups.slice(0, 5);
-
-  if (topGroups.length === 0) {
-    return (
-      <p className="text-copy-13 text-ds-gray-900 py-3">No recent conversations</p>
-    );
-  }
-
-  return (
-    <div className="divide-y divide-ds-gray-400">
-      {topGroups.map((group, i) => (
-        <Link
-          key={i}
-          href="/messages"
-          className="flex items-center gap-3 py-2 hover:bg-ds-gray-100/50 transition-colors"
-        >
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-label-14 text-ds-gray-1000">{group.sender}</span>
-              <span className="text-copy-13 font-mono text-ds-gray-700 px-1.5 py-0.5 rounded bg-ds-gray-100">
-                {group.channel}
-              </span>
-              <span
-                className="text-copy-13 text-ds-gray-700 font-mono ml-auto shrink-0"
-                suppressHydrationWarning
-              >
-                {formatFeedTimestamp(group.timestamp)}
-              </span>
-            </div>
-            <p className="text-copy-13 text-ds-gray-900 truncate mt-0.5">{group.preview}</p>
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// CcSessionsWidget — compact card for the home page
-// ---------------------------------------------------------------------------
-
-function CcSessionsWidget() {
-  const trpc = useTRPC();
-  const { data, isLoading } = useQuery(trpc.session.ccSessions.queryOptions());
-  const sessions = data?.sessions ?? [];
-  const running = sessions.filter((s) => s.state === "running").length;
-
-  if (isLoading) {
-    return (
-      <div className="h-16 animate-pulse rounded-xl bg-ds-gray-100 border border-ds-gray-400" />
-    );
-  }
-
-  if (sessions.length === 0) return null;
-
-  return (
-    <Link
-      href="/sessions"
-      className="flex items-center gap-3 px-4 py-3 rounded-xl surface-card hover:border-ds-gray-1000/40 transition-colors"
-    >
-      <div className="flex items-center gap-2">
-        <Terminal size={14} className="text-ds-gray-1000" />
-        <span className="text-label-14 font-medium text-ds-gray-1000">
-          CC Sessions
-        </span>
-      </div>
-      <div className="flex items-center gap-2 ml-auto">
-        {running > 0 && (
-          <span className="flex items-center gap-1.5 text-copy-13 text-green-700">
-            <span className="inline-block size-2 rounded-full bg-green-700 animate-pulse" />
-            {running} running
-          </span>
-        )}
-        <span className="text-copy-13 text-ds-gray-900">
-          {sessions.length} total
-        </span>
-        <ArrowRight size={12} className="text-ds-gray-700" />
-      </div>
-    </Link>
   );
 }
 
@@ -604,7 +753,7 @@ export default function DashboardPage() {
   const [wsEvents, setWsEvents] = useState<WsActivityEvent[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [, setTick] = useState(0);
-  const [feedCategory, setFeedCategory] = useState<FeedCategory>("all");
+  const [badgeCounters, setBadgeCounters] = useState<Record<string, number>>({});
   const wsIdRef = useRef(0);
   const queryClient = useQueryClient();
 
@@ -612,7 +761,7 @@ export default function DashboardPage() {
   const daemonStatus = useDaemonStatus();
   const isDisconnected = daemonStatus !== "connected";
 
-  // --- 3. WebSocket subscription — prepend events ---
+  // --- 3. WebSocket subscription — increment badge counters instead of prepending ---
   useDaemonEvents((ev) => {
     const label =
       typeof ev.payload === "object" &&
@@ -620,6 +769,8 @@ export default function DashboardPage() {
       "label" in ev.payload
         ? String((ev.payload as { label?: unknown }).label)
         : ev.type;
+
+    // Add to ws events for feed display
     setWsEvents((prev) =>
       [
         {
@@ -629,11 +780,18 @@ export default function DashboardPage() {
           ts: ev.ts,
         },
         ...prev,
-      ].slice(0, 10),
+      ].slice(0, 50),
     );
+
+    // Increment badge counter for the category
+    const catKey = ev.type === "diary" ? "system" : ev.type;
+    setBadgeCounters((prev) => ({
+      ...prev,
+      [catKey]: (prev[catKey] ?? 0) + 1,
+    }));
   });
 
-  // --- 4. Queries (tRPC with independent refetch intervals) ---
+  // --- 4. Queries ---
   const refetchOpts = { refetchInterval: autoRefresh ? 10_000 : false as const };
   const feedQuery = useQuery(
     trpc.system.activityFeed.queryOptions(undefined, refetchOpts),
@@ -650,75 +808,26 @@ export default function DashboardPage() {
   const fleetQuery = useQuery(
     trpc.system.fleetStatus.queryOptions(undefined, refetchOpts),
   );
-  const sessionsQuery = useQuery(
-    trpc.session.list.queryOptions({}, refetchOpts),
+  const automationQuery = useQuery(
+    trpc.automation.getAll.queryOptions(undefined, refetchOpts),
   );
 
-  // --- 5. Derived values from queries ---
+  // --- 5. Derived values ---
   const feedData = feedQuery.data as ActivityFeedGetResponse | undefined;
   const feedEvents = feedData?.events ?? [];
   const oblData = oblQuery.data as ObligationsGetResponse | undefined;
   const obligations = (oblData?.obligations ?? []) as ApiObligation[];
-  const msgData = msgQuery.data as MessagesGetResponse | undefined;
-  const recentMessages = (msgData?.messages ?? []).slice(0, 10) as StoredMessage[];
-  const allMessages = (msgData?.messages ?? []) as StoredMessage[];
-
+  const msgData = msgQuery.data as { messages: { sender: string; timestamp: string; content: string }[] } | undefined;
+  const allMessages = msgData?.messages ?? [];
   const briefData = briefQuery.data as BriefingGetResponse | undefined;
-  const briefingEntry = briefData?.entry;
-  const briefingAvailable = !!briefingEntry;
-  const briefingTime = briefingEntry
-    ? new Date(briefingEntry.generated_at).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-
   const fleetRaw = fleetQuery.data as FleetHealthResponse | undefined;
-  const fleetData = fleetRaw?.fleet;
-  const fleetHealthy = fleetData?.healthy_count ?? null;
-  const fleetTotal = fleetData?.total_count ?? null;
-  const fleetStatus = fleetData?.status ?? null;
+  const automationRaw = automationQuery.data as {
+    watcher?: { enabled: boolean; interval_minutes: number };
+    reminders?: unknown[];
+  } | undefined;
 
-  const sessData = sessionsQuery.data as SessionsGetResponse | undefined;
-  const sessionsList = sessData?.sessions ?? [];
-  const activeSessions = sessionsList.filter(
-    (s) => s.status === "running" || s.status === "active",
-  ).length;
-
-  const loading = feedQuery.isLoading && oblQuery.isLoading && msgQuery.isLoading;
+  const loading = feedQuery.isLoading || oblQuery.isLoading;
   const error = feedQuery.error ?? oblQuery.error ?? null;
-
-  const pendingObligations = obligations.filter(
-    (o) => !o.status || o.status === "open" || o.status === "in_progress",
-  );
-  const pendingNova = pendingObligations.filter((o) => !o.owner || o.owner === "nova").length;
-  const pendingLeo = pendingObligations.filter((o) => o.owner === "leo").length;
-
-  // Unread messages: sender !== "nova" in last 4h
-  const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
-  const unreadMessages = allMessages.filter(
-    (m) => m.sender !== "nova" && new Date(m.timestamp).getTime() >= fourHoursAgo,
-  );
-  const unreadByChannel: Record<string, number> = {};
-  for (const m of unreadMessages) {
-    unreadByChannel[m.channel] = (unreadByChannel[m.channel] ?? 0) + 1;
-  }
-  const channelBreakdown = Object.entries(unreadByChannel)
-    .map(([ch, n]) => `${ch.slice(0, 2).toUpperCase()}: ${n}`)
-    .join(" / ");
-
-  // Fleet health dot
-  const fleetDot =
-    fleetStatus === "healthy"
-      ? "bg-green-700"
-      : fleetStatus === "degraded"
-        ? "bg-amber-700"
-        : fleetStatus === "unhealthy"
-          ? "bg-red-700"
-          : "bg-ds-gray-600";
-
-  // Next briefing label
-  const nextBriefingLabel = briefingAvailable ? "Available" : "No schedule";
 
   const lastFetchedAt = feedQuery.dataUpdatedAt || Date.now();
   const updatedAgo = formatSecondsAgo(Date.now() - lastFetchedAt);
@@ -730,45 +839,11 @@ export default function DashboardPage() {
     void queryClient.invalidateQueries();
   };
 
-  // --- 7. Stat strip cells ---
-  const statCells = [
-    {
-      icon: <Mail size={14} />,
-      label: "Unread Messages",
-      value: String(unreadMessages.length),
-      sublabel: channelBreakdown || undefined,
-    },
-    {
-      icon: <CheckSquare size={14} />,
-      label: "Pending Obligations",
-      value: String(pendingObligations.length),
-      sublabel: `Nova: ${pendingNova} / Leo: ${pendingLeo}`,
-    },
-    {
-      icon: (
-        <span className="flex items-center gap-1">
-          <Server size={14} />
-          <span className={`inline-block size-2 rounded-full ${fleetDot}`} />
-        </span>
-      ),
-      label: "Fleet Health",
-      value:
-        fleetHealthy !== null && fleetTotal !== null
-          ? `${fleetHealthy}/${fleetTotal} up`
-          : "\u2014",
-    },
-    {
-      icon: <MonitorPlay size={14} />,
-      label: "Active Sessions",
-      value: String(activeSessions),
-    },
-    {
-      icon: <Clock size={14} />,
-      label: "Next Briefing",
-      value: nextBriefingLabel,
-      sublabel: briefingAvailable && briefingTime ? `generated ${briefingTime}` : undefined,
-    },
-  ];
+  // --- 7. Badge reset handler ---
+  const handleBadgeReset = (type: string) => {
+    setBadgeCounters((prev) => ({ ...prev, [type]: 0 }));
+    void queryClient.invalidateQueries({ queryKey: trpc.system.activityFeed.queryKey() });
+  };
 
   // --- 8. Header action ---
   const headerAction = (
@@ -812,68 +887,70 @@ export default function DashboardPage() {
   // --- 9. Render ---
   return (
     <PageShell title="Command Center" action={headerAction}>
-      <div className={`flex flex-col gap-4 animate-fade-in-up transition-opacity ${isDisconnected ? "opacity-50" : ""}`}>
+      <div
+        className={`flex flex-col animate-fade-in-up transition-opacity ${isDisconnected ? "opacity-50" : ""}`}
+      >
         {error && (
-          <ErrorBanner
-            message="Failed to load dashboard data"
-            detail={error.message}
-            onRetry={handleRefreshAll}
-          />
+          <div className="border-b border-ds-gray-400 pb-4 mb-4">
+            <ErrorBanner
+              message="Failed to load dashboard data"
+              detail={error.message}
+              onRetry={handleRefreshAll}
+            />
+          </div>
         )}
 
-        {/* Priority Banner */}
-        <PriorityBanner
-          pendingCount={pendingObligations.length}
-          briefingAvailable={briefingAvailable}
-          briefingTime={briefingTime}
-        />
-
-        {/* Stat Strip — full width */}
-        <StatStrip cells={statCells} />
-
-        {/* CC Sessions Widget */}
-        <CcSessionsWidget />
-
-        {/* Activity Feed — full width */}
-        <div className="flex flex-col gap-2">
+        {/* Action Items */}
+        <div className="border-b border-ds-gray-400 pb-4 mb-4">
           <SectionHeader
-            label="Activity Feed"
-            count={feedEvents.length + wsEvents.length}
+            label="Action Items"
+            count={
+              obligations.filter((o) => o.status === "open" || o.status === "in_progress").length
+            }
           />
-          {/* Filter pills */}
-          <CategoryPills
-            active={feedCategory}
-            onChange={setFeedCategory}
-            events={feedEvents}
-            wsEvents={wsEvents}
-          />
-          {/* Quick-add obligation bar */}
-          <ObligationBar />
-          {/* Feed rows */}
-          <ActivityFeedSection
-            events={feedEvents}
-            wsEvents={wsEvents}
-            loading={loading}
-            category={feedCategory}
-          />
+          <div className="mt-2">
+            <ActionItems
+              obligations={obligations}
+              messages={allMessages}
+              oblLoading={oblQuery.isLoading}
+              msgLoading={msgQuery.isLoading}
+            />
+          </div>
         </div>
 
-        {/* Recent Conversations — full width */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <SectionHeader
-              label="Recent Conversations"
-              count={recentMessages.length}
+        {/* Nova Status */}
+        <div className="border-b border-ds-gray-400 pb-4 mb-4">
+          <SectionHeader label="Nova Status" />
+          <div className="mt-2">
+            <NovaStatus
+              fleetData={fleetRaw}
+              automationData={automationRaw}
+              briefingData={briefData}
+              loading={fleetQuery.isLoading || automationQuery.isLoading}
             />
-            <Link
-              href="/messages"
-              className="flex items-center gap-1 text-copy-13 text-ds-gray-900 hover:text-ds-gray-1000 transition-colors"
-            >
-              All messages
-              <ArrowRight size={12} />
-            </Link>
           </div>
-          <RecentConversations recentMessages={recentMessages} loading={loading} />
+        </div>
+
+        {/* Activity Summaries */}
+        <div className="border-b border-ds-gray-400 pb-4 mb-4">
+          <SectionHeader
+            label="Activity"
+            count={feedEvents.length + wsEvents.length}
+          />
+          <div className="mt-2">
+            <GroupedActivitySummaries
+              events={feedEvents}
+              wsEvents={wsEvents}
+              loading={loading}
+              badgeCounters={badgeCounters}
+              onBadgeReset={handleBadgeReset}
+            />
+          </div>
+        </div>
+
+        {/* Quick Add */}
+        <div className="pb-4">
+          <QuickAdd />
         </div>
       </div>
     </PageShell>

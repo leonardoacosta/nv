@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   RefreshCw,
@@ -17,6 +17,10 @@ import {
   ChevronRight,
   Plus,
   Check,
+  X,
+  Clock,
+  Database,
+  MessageSquare,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
 import SectionHeader from "@/components/layout/SectionHeader";
@@ -26,11 +30,11 @@ import type {
   AutomationReminder,
   AutomationSchedule,
   AutomationWatcher,
-  AutomationSettingsResponse,
+  AutomationContextPreview,
 } from "@/types/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
-// apiFetch retained for reminder creation (no tRPC procedure exists yet)
+// apiFetch retained for reminder creation and watcher patch (no tRPC procedures yet)
 import { apiFetch } from "@/lib/api-client";
 
 // ── Cron-to-human helper ─────────────────────────────────────────────────────
@@ -926,6 +930,513 @@ function SchedulesTab({
   );
 }
 
+// ── ChannelPills ─────────────────────────────────────────────────────────────
+
+function ChannelPills({
+  channels,
+}: {
+  channels: AutomationContextPreview["channels"];
+}) {
+  const CHANNEL_COLORS: Record<string, string> = {
+    telegram: "#229ED9",
+    discord: "#5865F2",
+    teams: "#6264A7",
+    email: "#D97706",
+    dashboard: "#10B981",
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {channels.map((ch) => {
+        const color = CHANNEL_COLORS[ch.name] ?? "#6B7280";
+        const active = ch.active;
+        return (
+          <span
+            key={ch.name}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-label-12 transition-colors ${
+              active
+                ? "border-ds-gray-500 bg-ds-gray-alpha-100"
+                : "border-ds-gray-400 opacity-40"
+            }`}
+          >
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: active ? color : "#6B7280" }}
+            />
+            <span
+              className="capitalize"
+              style={{ color: active ? color : undefined }}
+            >
+              {ch.name}
+            </span>
+            {active && (
+              <span className="text-ds-gray-700 font-mono tabular-nums">
+                {ch.messageCount}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── PromptPreviewDrawer ───────────────────────────────────────────────────────
+
+interface PromptPreviewDrawerProps {
+  open: boolean;
+  onClose: () => void;
+  automationType: "watcher" | "briefing";
+  customPrompt: string;
+}
+
+function PromptPreviewDrawer({
+  open,
+  onClose,
+  automationType,
+  customPrompt,
+}: PromptPreviewDrawerProps) {
+  const trpc = useTRPC();
+  const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Time range and filter state
+  const [timeRange, setTimeRange] = useState<"1h" | "6h" | "12h" | "24h" | "7d">("24h");
+  const [statusFilter, setStatusFilter] = useState<string[]>(["open", "in_progress"]);
+  const [channelFilter, setChannelFilter] = useState<string[]>([]);
+
+  const { data, isLoading, error, refetch } = useQuery(
+    trpc.automation.previewContext.queryOptions(
+      { type: automationType },
+      { enabled: open },
+    ),
+  );
+
+  const preview = data as AutomationContextPreview | undefined;
+
+  // Initialize channel filter from data when first loaded
+  useEffect(() => {
+    if (preview && channelFilter.length === 0) {
+      setChannelFilter(preview.channels.filter((c) => c.active).map((c) => c.name));
+    }
+  }, [preview, channelFilter.length]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  // Client-side filtering
+  const filteredObligations = preview?.obligations.items.filter((item) =>
+    statusFilter.includes(item.status),
+  ) ?? [];
+
+  const filteredChannels = preview?.messages.byChannel.filter((ch) =>
+    channelFilter.includes(ch.channel),
+  ) ?? [];
+
+  const systemPreamble =
+    automationType === "watcher"
+      ? `You are Nova, a proactive AI assistant. Review the following context and identify any items requiring follow-up, escalation, or attention.`
+      : `You are Nova, a proactive AI assistant. Generate a comprehensive morning briefing summarizing the day's obligations, recent activity, and key information from memory.`;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40 animate-backdrop-fade-in"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Drawer */}
+      <div
+        ref={drawerRef}
+        className="fixed inset-y-0 right-0 z-50 w-full max-w-[560px] bg-ds-gray-50 border-l border-ds-gray-400 flex flex-col animate-slide-in-from-right overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Prompt preview — ${automationType}`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-ds-gray-400 shrink-0">
+          <div>
+            <h2 className="text-label-14 font-semibold text-ds-gray-1000 capitalize">
+              {automationType} Prompt Preview
+            </h2>
+            {preview && (
+              <p className="text-copy-13 text-ds-gray-700 mt-0.5" suppressHydrationWarning>
+                Assembled {new Date(preview.assembledAt).toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-2 py-1 rounded text-label-12 text-ds-gray-700 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={11} className={isLoading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex items-center justify-center w-7 h-7 rounded text-ds-gray-700 hover:text-ds-gray-1000 hover:bg-ds-gray-alpha-100 transition-colors"
+              aria-label="Close drawer"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Filter controls */}
+        <div className="px-5 py-3 border-b border-ds-gray-400 bg-ds-gray-alpha-50 shrink-0 flex flex-wrap gap-3">
+          {/* Time range */}
+          <div className="flex items-center gap-1.5">
+            <Clock size={11} className="text-ds-gray-700" />
+            <span className="text-label-12 text-ds-gray-700">Range:</span>
+            <div className="flex gap-px">
+              {(["1h", "6h", "12h", "24h", "7d"] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setTimeRange(r)}
+                  className={`px-2 py-0.5 text-label-12 border transition-colors first:rounded-l last:rounded-r ${
+                    timeRange === r
+                      ? "bg-ds-gray-alpha-200 border-ds-gray-1000/40 text-ds-gray-1000"
+                      : "border-ds-gray-400 text-ds-gray-700 hover:text-ds-gray-1000"
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Obligation status chips */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-label-12 text-ds-gray-700">Status:</span>
+            <div className="flex gap-1">
+              {["open", "in_progress", "proposed_done"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() =>
+                    setStatusFilter((prev) =>
+                      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
+                    )
+                  }
+                  className={`px-2 py-0.5 rounded-full text-label-12 border transition-colors ${
+                    statusFilter.includes(s)
+                      ? "bg-ds-gray-alpha-200 border-ds-gray-1000/40 text-ds-gray-1000"
+                      : "border-ds-gray-400 text-ds-gray-700"
+                  }`}
+                >
+                  {s.replace("_", " ")}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+          {isLoading && (
+            <div className="flex flex-col gap-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-20 animate-pulse rounded-lg bg-ds-gray-100 border border-ds-gray-400" />
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <ErrorBanner
+              message="Failed to load preview context"
+              detail={error.message}
+              onRetry={() => void refetch()}
+            />
+          )}
+
+          {preview && !isLoading && (
+            <>
+              {/* System prompt preamble */}
+              <section>
+                <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide mb-2">System Preamble</h3>
+                <pre className="text-copy-13 text-ds-gray-900 bg-ds-gray-100 border border-ds-gray-400 rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed">
+                  {systemPreamble}
+                </pre>
+              </section>
+
+              {/* Custom prompt */}
+              {customPrompt && (
+                <section>
+                  <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide mb-2">Custom Prompt</h3>
+                  <pre className="text-copy-13 text-ds-gray-1000 bg-blue-700/5 border border-blue-700/20 rounded-lg px-3 py-2.5 whitespace-pre-wrap leading-relaxed">
+                    {customPrompt}
+                  </pre>
+                </section>
+              )}
+
+              {/* Channel pills */}
+              <section>
+                <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide mb-2">Channels in Context</h3>
+                <ChannelPills channels={preview.channels} />
+              </section>
+
+              {/* Obligations */}
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide">
+                    Obligations
+                    {preview.obligations.status !== "ok" && (
+                      <span className="ml-2 text-amber-700 normal-case">
+                        ({preview.obligations.status})
+                      </span>
+                    )}
+                  </h3>
+                  <span className="text-label-12 text-ds-gray-700 font-mono">
+                    {filteredObligations.length} items
+                  </span>
+                </div>
+                {filteredObligations.length === 0 ? (
+                  <p className="text-copy-13 text-ds-gray-700 py-2">No obligations match the current filters.</p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {filteredObligations.slice(0, 10).map((ob) => (
+                      <div
+                        key={ob.id}
+                        className="flex items-start gap-2 px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400"
+                      >
+                        <span className={`text-label-12 px-1.5 py-0.5 rounded shrink-0 ${
+                          ob.status === "in_progress"
+                            ? "bg-blue-700/15 text-blue-700"
+                            : "bg-amber-700/15 text-amber-700"
+                        }`}>
+                          {ob.status.replace("_", " ")}
+                        </span>
+                        <span className="text-copy-13 text-ds-gray-1000 flex-1 min-w-0 truncate">
+                          {ob.detectedAction}
+                        </span>
+                      </div>
+                    ))}
+                    {filteredObligations.length > 10 && (
+                      <p className="text-copy-13 text-ds-gray-700 px-1">
+                        + {filteredObligations.length - 10} more
+                      </p>
+                    )}
+                  </div>
+                )}
+              </section>
+
+              {/* Memory */}
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide">
+                    Memory Topics
+                    {preview.memory.status !== "ok" && (
+                      <span className="ml-2 text-amber-700 normal-case">
+                        ({preview.memory.status})
+                      </span>
+                    )}
+                  </h3>
+                  <span className="text-label-12 text-ds-gray-700 font-mono">
+                    {preview.memory.items.length} topics
+                  </span>
+                </div>
+                {preview.memory.items.length === 0 ? (
+                  <p className="text-copy-13 text-ds-gray-700 py-2">No memory topics loaded.</p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {preview.memory.items.map((m) => (
+                      <div
+                        key={m.topic}
+                        className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400"
+                      >
+                        <p className="text-label-12 text-ds-gray-700">{m.topic}</p>
+                        <p className="text-copy-13 text-ds-gray-900 truncate">{m.contentPreview}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Messages by channel */}
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide">
+                    Messages by Channel
+                    {preview.messages.status !== "ok" && (
+                      <span className="ml-2 text-amber-700 normal-case">
+                        ({preview.messages.status})
+                      </span>
+                    )}
+                  </h3>
+                </div>
+                {filteredChannels.length === 0 ? (
+                  <p className="text-copy-13 text-ds-gray-700 py-2">No messages from selected channels.</p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {filteredChannels.map((ch) => (
+                      <div
+                        key={ch.channel}
+                        className="flex items-start gap-2 px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400"
+                      >
+                        <span className="text-label-12 text-ds-gray-700 capitalize shrink-0 w-20">{ch.channel}</span>
+                        <span className="text-label-12 font-mono text-ds-gray-700 shrink-0">{ch.count}</span>
+                        {ch.latestPreview && (
+                          <span className="text-copy-13 text-ds-gray-900 flex-1 min-w-0 truncate">
+                            {ch.latestPreview}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {/* Stats */}
+              <section>
+                <h3 className="text-label-12 text-ds-gray-700 uppercase tracking-wide mb-2">Stats</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-center">
+                    <p className="text-label-12 text-ds-gray-700">Obligations</p>
+                    <p className="text-copy-13 font-mono text-ds-gray-1000">{preview.stats.totalObligations}</p>
+                  </div>
+                  <div className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-center">
+                    <p className="text-label-12 text-ds-gray-700">Reminders</p>
+                    <p className="text-copy-13 font-mono text-ds-gray-1000">{preview.stats.activeReminders}</p>
+                  </div>
+                  <div className="px-3 py-2 rounded-lg bg-ds-gray-100 border border-ds-gray-400 text-center">
+                    <p className="text-label-12 text-ds-gray-700">Memory</p>
+                    <p className="text-copy-13 font-mono text-ds-gray-1000">{preview.stats.memoryTopics}</p>
+                  </div>
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── ContextSummaryBar ─────────────────────────────────────────────────────────
+
+function ContextSummaryBar({
+  automationType,
+}: {
+  automationType: "watcher" | "briefing";
+}) {
+  const trpc = useTRPC();
+  const { data } = useQuery(
+    trpc.automation.previewContext.queryOptions(
+      { type: automationType },
+      { refetchInterval: 30_000 },
+    ),
+  );
+  const preview = data as AutomationContextPreview | undefined;
+
+  if (!preview) return null;
+
+  const openCount = preview.obligations.countByStatus["open"] ?? 0;
+  const inProgressCount = preview.obligations.countByStatus["in_progress"] ?? 0;
+  const totalMessages = preview.messages.byChannel.reduce((sum, ch) => sum + ch.count, 0);
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-copy-13 text-ds-gray-700">
+      <span className="flex items-center gap-1">
+        <Database size={11} />
+        <span>{openCount} open, {inProgressCount} in progress</span>
+      </span>
+      <span className="text-ds-gray-400">|</span>
+      <span className="flex items-center gap-1">
+        <MessageSquare size={11} />
+        <span>{totalMessages} messages</span>
+      </span>
+      <span className="text-ds-gray-400">|</span>
+      <span className="flex items-center gap-1">
+        <Clock size={11} />
+        <span suppressHydrationWarning>
+          {new Date(preview.assembledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+// ── RemindersObligationsInfoCard ──────────────────────────────────────────────
+
+function RemindersObligationsInfoCard() {
+  const STORAGE_KEY = "nova-obligations-info-dismissed";
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(STORAGE_KEY) !== null;
+  });
+  const [hasVisited, setHasVisited] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem(STORAGE_KEY) !== null;
+  });
+
+  const handleToggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    if (next) {
+      localStorage.setItem(STORAGE_KEY, "1");
+      setHasVisited(true);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-ds-gray-400 bg-ds-gray-alpha-100">
+      <button
+        type="button"
+        onClick={handleToggle}
+        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-ds-gray-alpha-100 transition-colors rounded-lg text-left"
+      >
+        <div className="relative">
+          <Info size={13} className="text-ds-gray-700 shrink-0" />
+          {!hasVisited && (
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-blue-700 animate-pulse" />
+          )}
+        </div>
+        <span className="text-copy-13 text-ds-gray-900 flex-1">
+          Obligations vs Reminders — what&apos;s the difference?
+        </span>
+        {collapsed ? (
+          <ChevronRight size={13} className="text-ds-gray-700 shrink-0" />
+        ) : (
+          <ChevronDown size={13} className="text-ds-gray-700 shrink-0" />
+        )}
+      </button>
+      {!collapsed && (
+        <div className="px-4 pb-3 flex flex-col gap-2">
+          <div>
+            <p className="text-label-12 text-ds-gray-700 font-medium mb-1">Obligations</p>
+            <p className="text-copy-13 text-ds-gray-900">
+              Detected commitments with a full lifecycle: open → in_progress → proposed_done → done.
+              Nova tracks progress and can execute follow-up actions.
+            </p>
+          </div>
+          <div>
+            <p className="text-label-12 text-ds-gray-700 font-medium mb-1">Reminders (Alerts)</p>
+            <p className="text-copy-13 text-ds-gray-900">
+              One-shot alerts delivered to a channel at a specified time. Optionally linked to an
+              obligation. No lifecycle — delivered once, then done.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── AutomationsPage ──────────────────────────────────────────────────────────
 
 type ScheduledTab = "reminders" | "schedules";
@@ -935,6 +1446,10 @@ export default function AutomationsPage() {
   const queryClient = useQueryClient();
   const [actionPending, setActionPending] = useState<string | null>(null);
   const [scheduledTab, setScheduledTab] = useState<ScheduledTab>("reminders");
+  // Drawer state for prompt preview
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerAutomationType, setDrawerAutomationType] = useState<"watcher" | "briefing">("watcher");
+  const [drawerCustomPrompt, setDrawerCustomPrompt] = useState("");
 
   const automationsQuery = useQuery(
     trpc.automation.getAll.queryOptions(undefined, { refetchInterval: 30_000 }),
@@ -1027,6 +1542,20 @@ export default function AutomationsPage() {
   // Sessions count for cross-link
   const sessionCount = data?.active_sessions.length ?? 0;
 
+  // Open preview drawer
+  const openPreview = useCallback(
+    (type: "watcher" | "briefing") => {
+      const prompt =
+        type === "watcher"
+          ? (settings["watcher_prompt"] ?? "")
+          : (settings["briefing_prompt"] ?? "");
+      setDrawerAutomationType(type);
+      setDrawerCustomPrompt(prompt);
+      setDrawerOpen(true);
+    },
+    [settings],
+  );
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -1086,22 +1615,35 @@ export default function AutomationsPage() {
           {/* ── Top row: Watcher + Briefing ──────────────────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
+              {/* Context summary bar for watcher */}
+              <ContextSummaryBar automationType="watcher" />
               <WatcherCard
                 watcher={data.watcher}
                 onUpdate={patchWatcher}
                 promptValue={settings["watcher_prompt"] ?? ""}
                 onPromptSave={(value) => saveSetting("watcher_prompt", value)}
               />
-              {/* View Watcher Sessions (task 3.4) */}
-              <Link
-                href="/sessions?command=proactive-followup"
-                className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
-              >
-                <ExternalLink size={12} />
-                View Watcher Sessions
-              </Link>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => openPreview("watcher")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
+                >
+                  <Eye size={13} />
+                  Preview Prompt
+                </button>
+                <Link
+                  href="/sessions?command=proactive-followup"
+                  className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
+                >
+                  <ExternalLink size={12} />
+                  View Sessions
+                </Link>
+              </div>
             </div>
             <div className="flex flex-col gap-2">
+              {/* Context summary bar for briefing */}
+              <ContextSummaryBar automationType="briefing" />
               <BriefingCard
                 lastGeneratedAt={data.briefing.last_generated_at}
                 nextGeneration={data.briefing.next_generation}
@@ -1112,14 +1654,23 @@ export default function AutomationsPage() {
                 onPromptSave={(value) => saveSetting("briefing_prompt", value)}
                 onHourSave={(hour) => saveSetting("briefing_hour", String(hour))}
               />
-              {/* View Briefing Sessions (task 3.4) */}
-              <Link
-                href="/sessions?command=morning-briefing"
-                className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
-              >
-                <ExternalLink size={12} />
-                View Briefing Sessions
-              </Link>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => openPreview("briefing")}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-button-14 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors"
+                >
+                  <Eye size={13} />
+                  Preview Prompt
+                </button>
+                <Link
+                  href="/sessions?command=morning-briefing"
+                  className="flex items-center gap-1 text-copy-13 text-ds-gray-700 hover:text-ds-gray-1000 transition-colors hover:underline underline-offset-2"
+                >
+                  <ExternalLink size={12} />
+                  View Sessions
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -1138,11 +1689,16 @@ export default function AutomationsPage() {
               statusLabel="Scheduled automations"
             />
 
+            {/* Reminders vs Obligations info card */}
+            <div className="mt-2 mb-3">
+              <RemindersObligationsInfoCard />
+            </div>
+
             {/* Segmented control tabs */}
-            <div className="flex gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit mt-2 mb-4">
+            <div className="flex gap-1 p-1 rounded-lg bg-ds-gray-100 border border-ds-gray-400 w-fit mb-4">
               {(
                 [
-                  { key: "reminders" as const, icon: <Bell size={13} />, label: "Reminders", count: data.reminders.length },
+                  { key: "reminders" as const, icon: <Bell size={13} />, label: "Reminders (Alerts)", count: data.reminders.length },
                   { key: "schedules" as const, icon: <Calendar size={13} />, label: "Schedules", count: data.schedules.length },
                 ] as const
               ).map((t) => (
@@ -1180,6 +1736,14 @@ export default function AutomationsPage() {
           </section>
         </div>
       )}
+
+      {/* Prompt Preview Drawer */}
+      <PromptPreviewDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        automationType={drawerAutomationType}
+        customPrompt={drawerCustomPrompt}
+      />
     </PageShell>
   );
 }

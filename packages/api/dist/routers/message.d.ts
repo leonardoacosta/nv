@@ -36,5 +36,36 @@ export declare const messageRouter: import("@trpc/server").TRPCBuiltRouter<{
         };
         meta: object;
     }>;
+    /**
+     * Cursor-based pagination for the chat history page.
+     * Returns messages in reverse chronological order (newest first) so the
+     * UI can use `flex-col-reverse` and load older pages upward.
+     *
+     * Filters to conversation-type messages only (excludes tool-call/system).
+     * When `cursor` (ISO datetime) is provided, returns messages older than it.
+     * Returns `nextCursor` (oldest row's createdAt ISO) when more pages exist.
+     */
+    chatHistory: import("@trpc/server").TRPCQueryProcedure<{
+        input: {
+            limit?: number | undefined;
+            cursor?: string | undefined;
+        };
+        output: {
+            messages: {
+                id: number;
+                timestamp: string;
+                direction: string;
+                channel: string;
+                sender: string;
+                content: string;
+                response_time_ms: number | null;
+                tokens_in: number | null;
+                tokens_out: number | null;
+                type: "conversation" | "tool-call" | "system";
+            }[];
+            nextCursor: string | null;
+        };
+        meta: object;
+    }>;
 }>>;
 //# sourceMappingURL=message.d.ts.map

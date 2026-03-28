@@ -178,5 +178,60 @@ export declare const automationRouter: import("@trpc/server").TRPCBuiltRouter<{
         };
         meta: object;
     }>;
+    /**
+     * Assemble a preview of the prompt context that would be sent to Nova for a
+     * given automation type (watcher | briefing).
+     *
+     * Queries obligations, memory, and messages with a 5-second per-source
+     * timeout via Promise.allSettled. Each section reports its own status
+     * (ok / unavailable / empty) so the UI can surface partial failures.
+     */
+    previewContext: import("@trpc/server").TRPCQueryProcedure<{
+        input: {
+            type: "watcher" | "briefing";
+        };
+        output: {
+            obligations: {
+                status: "ok" | "unavailable" | "empty";
+                items: {
+                    id: string;
+                    detectedAction: string;
+                    status: string;
+                    priority: number;
+                    sourceChannel: string;
+                    deadline: string | null;
+                    createdAt: string;
+                }[];
+                countByStatus: Record<string, number>;
+            };
+            memory: {
+                status: "ok" | "unavailable" | "empty";
+                items: {
+                    topic: string;
+                    contentPreview: string;
+                }[];
+            };
+            messages: {
+                status: "ok" | "unavailable" | "empty";
+                byChannel: {
+                    channel: string;
+                    count: number;
+                    latestPreview: string | null;
+                }[];
+            };
+            channels: {
+                name: string;
+                messageCount: number;
+                active: boolean;
+            }[];
+            stats: {
+                totalObligations: number;
+                activeReminders: number;
+                memoryTopics: number;
+            };
+            assembledAt: string;
+        };
+        meta: object;
+    }>;
 }>>;
 //# sourceMappingURL=automation.d.ts.map

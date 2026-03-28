@@ -9,6 +9,21 @@ const ADO_BASE = `https://dev.azure.com/${ADO_ORG}`;
 const API_VERSION = "7.0";
 const ADO_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798";
 
+/**
+ * Build a PowerShell snippet that acquires an ADO token and calls Invoke-RestMethod.
+ * Used as SSH fallback when SOCKS proxy is unavailable.
+ */
+function adoRestCall(apiPath: string, queryParams: string = ""): string {
+  const url = `${ADO_BASE}/${apiPath}`;
+  const fullUrl = queryParams ? `${url}?${queryParams}&api-version=${API_VERSION}` : `${url}?api-version=${API_VERSION}`;
+  return [
+    `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+    `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+    `$h = @{ Authorization = 'Bearer ' + $token }`,
+    `Invoke-RestMethod -Uri '${fullUrl}' -Headers $h | ConvertTo-Json -Depth 10 -Compress`,
+  ].join("; ");
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function buildUrl(path: string, query?: Record<string, string | number>): string {
@@ -139,10 +154,10 @@ export async function adoRepos(
   project?: string,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
-    let cmd = `az repos list --organization https://dev.azure.com/${ADO_ORG}`;
-    if (project) cmd += ` --project '${sanitize(project)}'`;
-    cmd += ` -o json 2>$null`;
-    return sshAdoCommand(config.cloudpcHost, cmd);
+    const proj = project ? sanitize(project) : undefined;
+    const path = proj ? `${proj}/_apis/git/repositories` : `_apis/git/repositories`;
+    const ps = adoRestCall(path);
+    return sshAdoCommand(config.cloudpcHost, ps);
   }
 
   const path = project
@@ -160,11 +175,14 @@ export async function adoPullRequests(
   status?: string,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
-    let cmd = `az repos pr list --organization https://dev.azure.com/${ADO_ORG}`;
-    if (project) cmd += ` --project '${sanitize(project)}'`;
-    if (status) cmd += ` --status ${sanitize(status)}`;
-    cmd += ` -o json 2>$null`;
-    return sshAdoCommand(config.cloudpcHost, cmd);
+    const proj = project ? sanitize(project) : undefined;
+    const path = proj
+      ? `${proj}/_apis/git/pullrequests`
+      : `_apis/git/pullrequests`;
+    let queryStr = "";
+    if (status) queryStr = `searchCriteria.status=${sanitize(status)}`;
+    const ps = adoRestCall(path, queryStr);
+    return sshAdoCommand(config.cloudpcHost, ps);
   }
 
   const path = project

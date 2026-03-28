@@ -113,9 +113,15 @@ export function normalizeTextMessage(msg: TelegramBot.Message): Message {
   const chatId = String(msg.chat.id);
   const senderId = String(msg.from?.id ?? 0);
   const senderName = msg.from?.first_name ?? "Unknown";
-  const text = msg.text ?? "";
+  const rawText = msg.text ?? "";
   const timestamp = new Date(msg.date * 1000);
   const replyToMessageId = msg.reply_to_message?.message_id;
+
+  // Prepend quoted message content so the agent knows what "this" refers to
+  const quotedText = msg.reply_to_message?.text;
+  const text = quotedText
+    ? `[Quoting: "${quotedText}"]\n${rawText}`
+    : rawText;
 
   return {
     id: randomUUID(),
@@ -156,11 +162,17 @@ export async function normalizeVoiceMessage(
     }
   }
 
+  // Prepend quoted message content for voice replies
+  const quotedText = msg.reply_to_message?.text;
+  const text = quotedText
+    ? `[Quoting: "${quotedText}"]`
+    : "";
+
   return {
     id: randomUUID(),
     channel: "telegram",
     chatId,
-    text: "",
+    text,
     type: "voice",
     from: normalizeUser(msg.from),
     timestamp,
@@ -175,7 +187,7 @@ export async function normalizeVoiceMessage(
     threadId: undefined,
     senderId,
     senderName,
-    content: "",
+    content: text,
     receivedAt: timestamp,
   };
 }
@@ -184,10 +196,15 @@ export function normalizePhotoMessage(msg: TelegramBot.Message): Message {
   const chatId = String(msg.chat.id);
   const senderId = String(msg.from?.id ?? 0);
   const senderName = msg.from?.first_name ?? "Unknown";
-  const text = msg.caption ?? "";
+  const rawText = msg.caption ?? "";
   const timestamp = new Date(msg.date * 1000);
   const fileIds = (msg.photo ?? []).map((p) => p.file_id);
   const replyToMessageId = msg.reply_to_message?.message_id;
+
+  const quotedText = msg.reply_to_message?.text;
+  const text = quotedText
+    ? `[Quoting: "${quotedText}"]\n${rawText}`
+    : rawText;
 
   return {
     id: randomUUID(),

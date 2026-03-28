@@ -731,3 +731,30 @@ export interface UpdateProjectRequest {
   category?: ProjectCategory;
   status?: ProjectStatus;
 }
+
+// ── Home Command Center (declutter-home-command-center) ───────────────────
+
+/**
+ * A single actionable item derived from obligations, messages, or automations.
+ * Rendered in the ActionItems panel on the home dashboard.
+ */
+export interface ActionItem {
+  id: string;
+  severity: "error" | "warning";
+  category: "obligation" | "message" | "automation";
+  summary: string;
+  /** Deep link to the relevant page (e.g. "/obligations", "/messages"). */
+  link: string;
+}
+
+/**
+ * A grouped summary of activity feed events for a single category.
+ * Used by GroupedActivitySummaries to render collapsed/expanded sections.
+ */
+export interface CategorySummary {
+  type: "message" | "obligation" | "session" | "system";
+  count: number;
+  summaryText: string;
+  latestTimestamp: string;
+  items: ActivityFeedEvent[];
+}

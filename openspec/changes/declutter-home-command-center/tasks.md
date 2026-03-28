@@ -4,7 +4,7 @@
 
 ## API Batch
 
-- [ ] [1.1] [P-1] Add `ActionItem` and `CategorySummary` types to `apps/dashboard/types/api.ts` -- `ActionItem: { id: string; severity: "error" | "warning"; category: "obligation" | "message" | "automation"; summary: string; link: string }`, `CategorySummary: { type: "message" | "obligation" | "session" | "system"; count: number; summaryText: string; latestTimestamp: string; items: ActivityFeedEvent[] }` [owner:api-engineer] [beads:nv-zpxt]
+- [x] [1.1] [P-1] Add `ActionItem` and `CategorySummary` types to `apps/dashboard/types/api.ts` -- `ActionItem: { id: string; severity: "error" | "warning"; category: "obligation" | "message" | "automation"; summary: string; link: string }`, `CategorySummary: { type: "message" | "obligation" | "session" | "system"; count: number; summaryText: string; latestTimestamp: string; items: ActivityFeedEvent[] }` [owner:api-engineer] [beads:nv-zpxt]
 
 ## UI Batch
 

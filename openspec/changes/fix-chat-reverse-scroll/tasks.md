@@ -6,7 +6,7 @@ No schema changes required.
 
 ## API Batch: tRPC Cursor Procedure
 
-- [ ] [1.1] [P-1] Add `chatHistory` procedure to `packages/api/src/routers/message.ts` -- cursor-based query with input `{ limit: z.number().int().min(1).max(50).default(25), cursor: z.string().datetime().optional() }`; when cursor is provided, query `WHERE created_at < cursor ORDER BY created_at DESC LIMIT limit + 1`; when no cursor, `ORDER BY created_at DESC LIMIT limit + 1`; filter to `metadata->>'type' = 'conversation'` OR `metadata->>'type' IS NULL` (exclude tool-call and system messages); if `rows.length > limit`, pop the extra row and set `nextCursor` to oldest row's `createdAt` ISO string; return `{ messages: StoredMessage[], nextCursor: string | null }` [owner:api-engineer]
+- [x] [1.1] [P-1] Add `chatHistory` procedure to `packages/api/src/routers/message.ts` -- cursor-based query with input `{ limit: z.number().int().min(1).max(50).default(25), cursor: z.string().datetime().optional() }`; when cursor is provided, query `WHERE created_at < cursor ORDER BY created_at DESC LIMIT limit + 1`; when no cursor, `ORDER BY created_at DESC LIMIT limit + 1`; filter to `metadata->>'type' = 'conversation'` OR `metadata->>'type' IS NULL` (exclude tool-call and system messages); if `rows.length > limit`, pop the extra row and set `nextCursor` to oldest row's `createdAt` ISO string; return `{ messages: StoredMessage[], nextCursor: string | null }` [owner:api-engineer]
 
 ## UI Batch: Chat Page Rewrite
 

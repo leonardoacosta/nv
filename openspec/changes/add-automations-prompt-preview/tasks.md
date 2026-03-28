@@ -8,7 +8,7 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Add `automation.previewContext` tRPC procedure in `packages/api/src/routers/automation.ts`. Input: `{ type: "watcher" | "briefing" }`. Query obligations (status IN open, in_progress, pending; limit 20), memory (latest 10 by updated_at), messages (latest 50, all channels), and obligation stats (counts by status). Use `Promise.allSettled` with 5s timeout per query. Return `{ obligations: { items, countByStatus }, memory: { items: [{ topic, contentPreview }] }, messages: { byChannel: [{ channel, count, latestPreview }] }, channels: [{ name, messageCount, active }], stats: { totalObligations, activeReminders, memoryTopics }, assembledAt: ISO string }`. Include source status per section (ok/unavailable/empty). [owner:api-engineer] [beads:nv-1rzz]
+- [x] [2.1] [P-1] Add `automation.previewContext` tRPC procedure in `packages/api/src/routers/automation.ts`. Input: `{ type: "watcher" | "briefing" }`. Query obligations (status IN open, in_progress, pending; limit 20), memory (latest 10 by updated_at), messages (latest 50, all channels), and obligation stats (counts by status). Use `Promise.allSettled` with 5s timeout per query. Return `{ obligations: { items, countByStatus }, memory: { items: [{ topic, contentPreview }] }, messages: { byChannel: [{ channel, count, latestPreview }] }, channels: [{ name, messageCount, active }], stats: { totalObligations, activeReminders, memoryTopics }, assembledAt: ISO string }`. Include source status per section (ok/unavailable/empty). [owner:api-engineer] [beads:nv-1rzz]
 
 ## UI Batch
 

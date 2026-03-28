@@ -252,6 +252,12 @@ export interface StoredMessage {
   tokens_out: number | null;
   /** Message type derived from metadata.type JSONB field. Defaults to "conversation". */
   type: "conversation" | "tool-call" | "system";
+  /** Resolved sender identity. Populated server-side by message.list. Optional for backward compatibility with code that constructs StoredMessage locally. */
+  senderResolved?: {
+    displayName: string;
+    avatarInitial: string;
+    source: "contact" | "telegram-meta" | "memory" | "raw";
+  };
 }
 
 export interface MessagesGetResponse {

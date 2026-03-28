@@ -77,10 +77,21 @@ export default function ProjectsPage() {
     }),
   );
 
-  // 5. Refresh handler -- extract then re-fetch
+  const materializeMutation = useMutation(
+    trpc.project.materialize.mutationOptions({
+      onSuccess: (result) => {
+        if (result.created > 0 || result.updated > 0) {
+          console.info(`Projects: ${result.created} created, ${result.updated} updated`);
+        }
+      },
+    }),
+  );
+
+  // 5. Refresh handler -- materialize first, then extract, then re-fetch
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
+      await materializeMutation.mutateAsync();
       await extractMutation.mutateAsync();
     } catch {
       // fetchProjects handles its own error
@@ -135,12 +146,16 @@ export default function ProjectsPage() {
       <button
         type="button"
         onClick={() => void handleRefresh()}
-        disabled={refreshing || loading}
+        disabled={refreshing || loading || materializeMutation.isPending || extractMutation.isPending}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 border border-ds-gray-400 hover:text-ds-gray-1000 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
       >
         <RefreshCw
           size={12}
-          className={refreshing ? "animate-spin" : ""}
+          className={
+            refreshing || materializeMutation.isPending || extractMutation.isPending
+              ? "animate-spin"
+              : ""
+          }
         />
         Refresh
       </button>

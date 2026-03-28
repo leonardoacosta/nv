@@ -18,8 +18,6 @@ import {
   Clock,
   Zap,
   Gauge,
-  ChevronDown,
-  ChevronUp,
   ArrowUp,
 } from "lucide-react";
 import PageShell from "@/components/layout/PageShell";
@@ -28,7 +26,6 @@ import { channelAccentColor } from "@/lib/channel-colors";
 import { useQuery } from "@tanstack/react-query";
 import type { StoredMessage, MessagesGetResponse } from "@/types/api";
 import { useTRPC } from "@/lib/trpc/react";
-import { trpcClient } from "@/lib/trpc/client";
 // apiFetch retained for infinite scroll append (append-to-state pattern)
 import { apiFetch } from "@/lib/api-client";
 
@@ -96,45 +93,6 @@ function isInRange(iso: string, range: DateRange): boolean {
     return ts >= startOfDay.getTime();
   }
   return ts >= now - 7 * 24 * 60 * 60 * 1000;
-}
-
-// ---------------------------------------------------------------------------
-// Contact resolver hook
-// ---------------------------------------------------------------------------
-
-function useContactResolver(messages: StoredMessage[]) {
-  const cacheRef = useRef<Map<string, string>>(new Map());
-  const [, forceUpdate] = useState(0);
-
-  useEffect(() => {
-    const unique = Array.from(new Set(messages.map((m) => m.sender).filter(Boolean)));
-    const uncached = unique.filter((s) => !cacheRef.current.has(s));
-    if (uncached.length === 0) return;
-
-    void trpcClient.contact.resolve
-      .mutate({ senders: uncached })
-      .then((data: Record<string, string> | null) => {
-        if (!data) return;
-        // Cache all resolved names, mark unresolved ones with empty to avoid refetch
-        for (const s of uncached) {
-          cacheRef.current.set(s, data[s] ?? s);
-        }
-        forceUpdate((n) => n + 1);
-      })
-      .catch(() => {
-        // On failure mark as unresolved so we don't loop
-        for (const s of uncached) {
-          cacheRef.current.set(s, s);
-        }
-      });
-  }, [messages]);
-
-  const resolve = useCallback(
-    (sender: string): string => cacheRef.current.get(sender) ?? sender,
-    [],
-  );
-
-  return resolve;
 }
 
 // ---------------------------------------------------------------------------
@@ -265,22 +223,36 @@ interface MessageRowDenseProps {
   expanded: boolean;
   active: boolean;
   onToggle: () => void;
-  resolvedName: string;
   measureRef: (el: HTMLElement | null) => void;
 }
+
+type SenderSource = "contact" | "telegram-meta" | "memory" | "raw";
+
+const SOURCE_LABEL: Record<SenderSource, string | null> = {
+  contact: "(via contacts)",
+  "telegram-meta": "(via Telegram)",
+  memory: "(via memory)",
+  raw: null,
+};
 
 function MessageRowDense({
   msg,
   expanded,
   active,
   onToggle,
-  resolvedName,
   measureRef,
 }: MessageRowDenseProps) {
   const isInbound = msg.direction === "inbound";
   const channelKey = msg.channel.toLowerCase();
   const cIcon = channelIcon(channelKey);
   const accent = channelAccentColor(channelKey);
+  const resolved = msg.senderResolved ?? {
+    displayName: msg.sender,
+    avatarInitial: msg.sender[0]?.toUpperCase() ?? "?",
+    source: "raw" as SenderSource,
+  };
+  const { displayName, avatarInitial, source } = resolved;
+  const isNova = msg.sender === "nova";
 
   return (
     <div
@@ -310,9 +282,19 @@ function MessageRowDense({
         {/* Channel icon */}
         <div className="shrink-0">{cIcon}</div>
 
+        {/* Avatar initial badge */}
+        <div
+          className="shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white hidden md:flex"
+          style={{
+            backgroundColor: isNova ? "#6366f1" : accent,
+          }}
+        >
+          {avatarInitial}
+        </div>
+
         {/* Resolved sender name */}
-        <span className="shrink-0 text-copy-13 text-ds-gray-1000 font-medium w-[72px] truncate hidden md:inline">
-          {resolvedName || "\u2014"}
+        <span className="shrink-0 text-copy-13 text-ds-gray-1000 font-medium w-[64px] truncate hidden md:inline">
+          {displayName || "\u2014"}
         </span>
 
         {/* Message preview */}
@@ -363,7 +345,14 @@ function MessageRowDense({
             </div>
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Sender</p>
-              <p className="text-copy-13 font-medium text-ds-gray-1000">{msg.sender || "\u2014"}</p>
+              <p className="text-copy-13 font-medium text-ds-gray-1000">
+                {displayName || "\u2014"}
+                {SOURCE_LABEL[source] && (
+                  <span className="ml-1.5 text-[10px] font-normal text-ds-gray-700">
+                    {SOURCE_LABEL[source]}
+                  </span>
+                )}
+              </p>
             </div>
             <div className="space-y-0.5">
               <p className="text-[10px] text-ds-gray-900 uppercase tracking-widest">Timestamp</p>
@@ -610,10 +599,7 @@ export default function MessagesPage() {
     }
   }, [initialQuery.data]);
 
-  // 3. Contact resolver
-  const resolveContact = useContactResolver(allMessages);
-
-  // 4. Load more (append) — uses raw apiFetch since it appends to local state
+  // 3. Load more (append) — uses raw apiFetch since it appends to local state
   const fetchMoreMessages = useCallback(
     async () => {
       setLoadingMore(true);
@@ -920,7 +906,6 @@ export default function MessagesPage() {
                   const msgRow = row;
                   const msgActiveIdx = messageVirtualRows.findIndex((r) => r.msg.id === msgRow.msg.id);
                   const isActive = activeIndex === msgActiveIdx;
-                  const resolvedName = resolveContact(msgRow.msg.sender);
 
                   return (
                     <div
@@ -946,7 +931,6 @@ export default function MessagesPage() {
                           setActiveIndex(msgActiveIdx);
                           rowVirtualizer.measure();
                         }}
-                        resolvedName={resolvedName}
                         measureRef={(el) => {
                           if (el) {
                             const domEl = el as unknown as HTMLElement & { dataset: DOMStringMap };

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Users, Search, AlertCircle, RefreshCw } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   DiscoveredContact,
   ContactRelationship,
@@ -81,9 +81,25 @@ export default function ContactsPage() {
   const loading = discoveredQuery.isLoading;
   const error = discoveredQuery.error;
 
+  // Materialize mutation — syncs contacts from memory, then re-fetches
+  const materializeMutation = useMutation(
+    trpc.contact.materialize.mutationOptions({
+      onSuccess: (result) => {
+        void queryClient.invalidateQueries({
+          queryKey: trpc.contact.discovered.queryKey(),
+        });
+        void queryClient.invalidateQueries({
+          queryKey: trpc.contact.relationships.queryKey(),
+        });
+        if (result.created > 0 || result.updated > 0) {
+          console.info(`Contacts: ${result.created} created, ${result.updated} updated`);
+        }
+      },
+    }),
+  );
+
   const fetchData = () => {
-    void queryClient.invalidateQueries({ queryKey: trpc.contact.discovered.queryKey() });
-    void queryClient.invalidateQueries({ queryKey: trpc.contact.relationships.queryKey() });
+    void materializeMutation.mutateAsync();
   };
 
   // Debounced search
@@ -143,12 +159,16 @@ export default function ContactsPage() {
           <button
             type="button"
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || materializeMutation.isPending}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
           >
             <RefreshCw
               size={14}
-              className={discoveredQuery.isFetching ? "animate-spin" : ""}
+              className={
+                materializeMutation.isPending || discoveredQuery.isFetching
+                  ? "animate-spin"
+                  : ""
+              }
             />
             Refresh
           </button>

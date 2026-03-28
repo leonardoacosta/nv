@@ -10,11 +10,11 @@
 
 ## UI Batch
 
-- [ ] [3.1] [P-1] Update `StoredMessage` type in `apps/dashboard/types/api.ts` — add `senderResolved: { displayName: string; avatarInitial: string; source: "contact" | "telegram-meta" | "memory" | "raw" }` field [owner:ui-engineer]
-- [ ] [3.2] [P-1] Remove `useContactResolver` hook from `apps/dashboard/app/messages/page.tsx` — delete the hook (lines 105-138), the `trpcClient.contact.resolve.mutate` call, and the `resolvedName` variable passed to `MessageRowDense`; replace with direct `msg.senderResolved.displayName` usage [owner:ui-engineer]
-- [ ] [3.3] [P-1] Add sender avatar initial badge to `MessageRowDense` — render a 20px circular badge showing `senderResolved.avatarInitial` in the channel accent color; for outbound (nova) messages use a fixed brand color with "N"; position before sender name in the dense row [owner:ui-engineer]
-- [ ] [3.4] [P-2] Show resolution source in expanded message detail — in the expanded section's Sender field, append a subtle "(via contacts)" / "(via Telegram)" / "(via memory)" label based on `senderResolved.source`; raw source shows no label [owner:ui-engineer]
-- [ ] [3.5] [P-2] Update `apps/dashboard/lib/entity-resolution/people-parser.ts` — replace implementation with a re-export from `@nova/api` (or keep as-is if API package is not directly importable from dashboard); ensure no other dashboard code breaks [owner:ui-engineer]
+- [x] [3.1] [P-1] Update `StoredMessage` type in `apps/dashboard/types/api.ts` — add `senderResolved: { displayName: string; avatarInitial: string; source: "contact" | "telegram-meta" | "memory" | "raw" }` field [owner:ui-engineer]
+- [x] [3.2] [P-1] Remove `useContactResolver` hook from `apps/dashboard/app/messages/page.tsx` — delete the hook (lines 105-138), the `trpcClient.contact.resolve.mutate` call, and the `resolvedName` variable passed to `MessageRowDense`; replace with direct `msg.senderResolved.displayName` usage [owner:ui-engineer]
+- [x] [3.3] [P-1] Add sender avatar initial badge to `MessageRowDense` — render a 20px circular badge showing `senderResolved.avatarInitial` in the channel accent color; for outbound (nova) messages use a fixed brand color with "N"; position before sender name in the dense row [owner:ui-engineer]
+- [x] [3.4] [P-2] Show resolution source in expanded message detail — in the expanded section's Sender field, append a subtle "(via contacts)" / "(via Telegram)" / "(via memory)" label based on `senderResolved.source`; raw source shows no label [owner:ui-engineer]
+- [x] [3.5] [P-2] Update `apps/dashboard/lib/entity-resolution/people-parser.ts` — replace implementation with a re-export from `@nova/api` (or keep as-is if API package is not directly importable from dashboard); ensure no other dashboard code breaks [owner:ui-engineer]
 
 ## Verify
 

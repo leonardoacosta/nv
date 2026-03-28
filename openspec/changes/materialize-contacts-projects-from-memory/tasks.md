@@ -23,10 +23,10 @@ _No schema changes required -- uses existing `contacts`, `projects`, and `memory
 
 ## UI Batch
 
-- [ ] **T6** `ui-engineer` — Rewire contacts page Refresh button [depends: T4]
+- [x] **T6** `ui-engineer` — Rewire contacts page Refresh button [depends: T4]
   Modify `apps/dashboard/app/contacts/page.tsx`: add `useMutation(trpc.contact.materialize.mutationOptions(...))`. On Refresh click, call materialize mutation, then invalidate `contact.discovered` and `contact.list` query keys. Show toast with results (created/updated counts). Keep the RefreshCw spinner during the mutation.
 
-- [ ] **T7** `ui-engineer` — Rewire projects page Refresh button [depends: T5]
+- [x] **T7** `ui-engineer` — Rewire projects page Refresh button [depends: T5]
   Modify `apps/dashboard/app/projects/page.tsx`: add `useMutation(trpc.project.materialize.mutationOptions(...))`. Change `handleRefresh` to call materialize first, then extract, then re-fetch. Show toast with materialization results. Keep the RefreshCw spinner across both mutations.
 
 ## Daemon Batch

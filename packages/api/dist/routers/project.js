@@ -4,6 +4,7 @@ import { TRPCError } from "@trpc/server";
 import { db } from "@nova/db";
 import { projects, obligations, sessions, memory, messages, diary, } from "@nova/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { materializeProjects } from "../lib/materialize-projects.js";
 const DEFAULT_PROJECTS = [{ code: "nv", path: "~/dev/nv" }];
 const ACTIVE_OBLIGATION_STATUSES = ["open", "in_progress"];
 function formatDuration(start, stop) {
@@ -227,6 +228,13 @@ export const projectRouter = createTRPCRouter({
             created_at: created.createdAt.toISOString(),
             updated_at: created.updatedAt.toISOString(),
         };
+    }),
+    /**
+     * Materialize projects from daemon registry and projects-* memory topics.
+     * Upserts new projects and enriches existing ones with path/description.
+     */
+    materialize: protectedProcedure.mutation(async () => {
+        return materializeProjects();
     }),
     /**
      * Extract and assemble knowledge documents for all projects.

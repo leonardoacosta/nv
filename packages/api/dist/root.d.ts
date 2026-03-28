@@ -214,6 +214,11 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             };
             meta: object;
         }>;
+        materialize: import("@trpc/server").TRPCMutationProcedure<{
+            input: void;
+            output: import("./lib/materialize-contacts.js").MaterializeResult;
+            meta: object;
+        }>;
         discovered: import("@trpc/server").TRPCQueryProcedure<{
             input: void;
             output: {
@@ -275,14 +280,27 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                     channel_source: string;
                     slug: string;
                     tools_called: string[];
+                    tools_detail: import("./routers/diary.js").ToolCallDetail[];
                     result_summary: string;
                     response_latency_ms: number;
                     tokens_in: number;
                     tokens_out: number;
+                    model: string | null;
+                    cost_usd: number | null;
                 }[];
                 total: number;
                 distinct_channels: number;
                 last_interaction_at: string;
+                aggregates: {
+                    total_tokens_in: number;
+                    total_tokens_out: number;
+                    total_cost_usd: number | null;
+                    avg_latency_ms: number;
+                    tool_frequency: {
+                        name: string;
+                        count: number;
+                    }[];
+                };
             };
             meta: object;
         }>;
@@ -297,6 +315,7 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             input: void;
             output: {
                 entry: null;
+                missedToday: boolean;
             } | {
                 entry: {
                     id: string;
@@ -304,7 +323,99 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                     content: string;
                     suggested_actions: import("./routers/briefing.js").BriefingAction[];
                     sources_status: Record<string, string>;
+                    blocks: ({
+                        type: "section";
+                        data: {
+                            body: string;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "status_table";
+                        data: {
+                            columns: string[];
+                            rows: Record<string, string>[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "metric_card";
+                        data: {
+                            value: string | number;
+                            label: string;
+                            unit?: string | undefined;
+                            trend?: "flat" | "up" | "down" | undefined;
+                            delta?: string | undefined;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "timeline";
+                        data: {
+                            events: {
+                                time: string;
+                                label: string;
+                                detail?: string | undefined;
+                                severity?: "info" | "warning" | "error" | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "action_group";
+                        data: {
+                            actions: {
+                                label: string;
+                                status?: "pending" | "completed" | "dismissed" | undefined;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "kv_list";
+                        data: {
+                            items: {
+                                value: string;
+                                key: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "alert";
+                        data: {
+                            message: string;
+                            severity: "info" | "warning" | "error";
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "source_pills";
+                        data: {
+                            sources: {
+                                status: "ok" | "unavailable" | "empty";
+                                name: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pr_list";
+                        data: {
+                            prs: {
+                                status: "open" | "merged" | "closed";
+                                title: string;
+                                repo: string;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pipeline_table";
+                        data: {
+                            pipelines: {
+                                status: "pending" | "success" | "failed" | "running";
+                                name: string;
+                                duration?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    })[] | null;
                 };
+                missedToday: boolean;
             };
             meta: object;
         }>;
@@ -319,6 +430,97 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                     content: string;
                     suggested_actions: import("./routers/briefing.js").BriefingAction[];
                     sources_status: Record<string, string>;
+                    blocks: ({
+                        type: "section";
+                        data: {
+                            body: string;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "status_table";
+                        data: {
+                            columns: string[];
+                            rows: Record<string, string>[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "metric_card";
+                        data: {
+                            value: string | number;
+                            label: string;
+                            unit?: string | undefined;
+                            trend?: "flat" | "up" | "down" | undefined;
+                            delta?: string | undefined;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "timeline";
+                        data: {
+                            events: {
+                                time: string;
+                                label: string;
+                                detail?: string | undefined;
+                                severity?: "info" | "warning" | "error" | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "action_group";
+                        data: {
+                            actions: {
+                                label: string;
+                                status?: "pending" | "completed" | "dismissed" | undefined;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "kv_list";
+                        data: {
+                            items: {
+                                value: string;
+                                key: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "alert";
+                        data: {
+                            message: string;
+                            severity: "info" | "warning" | "error";
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "source_pills";
+                        data: {
+                            sources: {
+                                status: "ok" | "unavailable" | "empty";
+                                name: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pr_list";
+                        data: {
+                            prs: {
+                                status: "open" | "merged" | "closed";
+                                title: string;
+                                repo: string;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pipeline_table";
+                        data: {
+                            pipelines: {
+                                status: "pending" | "success" | "failed" | "running";
+                                name: string;
+                                duration?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    })[] | null;
                 }[];
             };
             meta: object;
@@ -359,6 +561,11 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                     tokens_in: null;
                     tokens_out: null;
                     type: "conversation" | "tool-call" | "system";
+                    senderResolved: {
+                        displayName: string;
+                        avatarInitial: string;
+                        source: "contact" | "telegram-meta" | "memory" | "raw";
+                    };
                 }[];
                 total: number;
                 limit: number;
@@ -761,22 +968,70 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             input: void;
             output: {
                 fleet: {
-                    status: string;
+                    status: "unknown" | "healthy" | "degraded";
                     services: {
-                        status: "unknown";
-                        latency_ms: number | null;
                         name: string;
                         url: string;
                         port: number;
+                        status: "healthy" | "unreachable" | "unknown";
+                        latency_ms: number | null;
                         tools: string[];
+                        last_checked: string | null;
+                        uptime_secs: number | null;
                     }[];
                     healthy_count: number;
                     total_count: number;
                 };
                 channels: {
                     name: string;
-                    status: "configured";
-                    direction: "bidirectional";
+                    status: "configured" | "unknown" | "connected" | "disconnected" | "unconfigured";
+                    direction: "bidirectional" | "inbound" | "outbound";
+                    messages_24h: number | null;
+                    messages_per_hour: number | null;
+                }[];
+            };
+            meta: object;
+        }>;
+        channelVolume: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                channels: {
+                    total_24h: number;
+                    hourly: {
+                        hour: string;
+                        count: number;
+                    }[];
+                    name: string;
+                }[];
+            };
+            meta: object;
+        }>;
+        errorRates: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                total_24h: number;
+                hourly: {
+                    hour: string;
+                    count: number;
+                }[];
+                by_type: {
+                    event_type: string;
+                    count: number;
+                }[];
+            };
+            meta: object;
+        }>;
+        fleetHistory: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                services: {
+                    name: string;
+                    snapshots: {
+                        time: string;
+                        status: string;
+                        latency_ms: number | null;
+                    }[];
+                    uptime_pct_24h: number;
                 }[];
             };
             meta: object;
@@ -829,6 +1084,66 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
             output: {
                 topic: string;
                 written: number;
+            };
+            meta: object;
+        }>;
+        configSources: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: import("./routers/system.js").ConfigSourceEntry[];
+            meta: object;
+        }>;
+        channelStatus: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                name: string;
+                connected: boolean;
+                error: string | null;
+                identity: {
+                    username?: string;
+                    displayName?: string;
+                } | null;
+                lastMessageAt: string | null;
+            }[];
+            meta: object;
+        }>;
+        testChannel: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                channel: string;
+                target: string;
+            };
+            output: {
+                valid: boolean;
+                error: null;
+                latencyMs: number;
+            } | {
+                valid: boolean;
+                error: string;
+                latencyMs: number;
+            };
+            meta: object;
+        }>;
+        testIntegration: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                service: "anthropic" | "openai" | "elevenlabs" | "github" | "sentry" | "posthog";
+            };
+            output: {
+                valid: boolean;
+                error: string;
+                latencyMs: number;
+            } | {
+                valid: boolean;
+                error: null;
+                latencyMs: number;
+            };
+            meta: object;
+        }>;
+        memorySummary: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                count: number;
+                topics: string[];
+                lastWriteAt: string | null;
+                totalSizeBytes: number;
             };
             meta: object;
         }>;
@@ -934,6 +1249,11 @@ export declare const appRouter: import("@trpc/server").TRPCBuiltRouter<{
                 created_at: string;
                 updated_at: string;
             };
+            meta: object;
+        }>;
+        materialize: import("@trpc/server").TRPCMutationProcedure<{
+            input: void;
+            output: import("./lib/materialize-projects.js").MaterializeResult;
             meta: object;
         }>;
         extract: import("@trpc/server").TRPCMutationProcedure<{
@@ -1210,6 +1530,11 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
             };
             meta: object;
         }>;
+        materialize: import("@trpc/server").TRPCMutationProcedure<{
+            input: void;
+            output: import("./lib/materialize-contacts.js").MaterializeResult;
+            meta: object;
+        }>;
         discovered: import("@trpc/server").TRPCQueryProcedure<{
             input: void;
             output: {
@@ -1271,14 +1596,27 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
                     channel_source: string;
                     slug: string;
                     tools_called: string[];
+                    tools_detail: import("./routers/diary.js").ToolCallDetail[];
                     result_summary: string;
                     response_latency_ms: number;
                     tokens_in: number;
                     tokens_out: number;
+                    model: string | null;
+                    cost_usd: number | null;
                 }[];
                 total: number;
                 distinct_channels: number;
                 last_interaction_at: string;
+                aggregates: {
+                    total_tokens_in: number;
+                    total_tokens_out: number;
+                    total_cost_usd: number | null;
+                    avg_latency_ms: number;
+                    tool_frequency: {
+                        name: string;
+                        count: number;
+                    }[];
+                };
             };
             meta: object;
         }>;
@@ -1293,6 +1631,7 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
             input: void;
             output: {
                 entry: null;
+                missedToday: boolean;
             } | {
                 entry: {
                     id: string;
@@ -1300,7 +1639,99 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
                     content: string;
                     suggested_actions: import("./routers/briefing.js").BriefingAction[];
                     sources_status: Record<string, string>;
+                    blocks: ({
+                        type: "section";
+                        data: {
+                            body: string;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "status_table";
+                        data: {
+                            columns: string[];
+                            rows: Record<string, string>[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "metric_card";
+                        data: {
+                            value: string | number;
+                            label: string;
+                            unit?: string | undefined;
+                            trend?: "flat" | "up" | "down" | undefined;
+                            delta?: string | undefined;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "timeline";
+                        data: {
+                            events: {
+                                time: string;
+                                label: string;
+                                detail?: string | undefined;
+                                severity?: "info" | "warning" | "error" | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "action_group";
+                        data: {
+                            actions: {
+                                label: string;
+                                status?: "pending" | "completed" | "dismissed" | undefined;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "kv_list";
+                        data: {
+                            items: {
+                                value: string;
+                                key: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "alert";
+                        data: {
+                            message: string;
+                            severity: "info" | "warning" | "error";
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "source_pills";
+                        data: {
+                            sources: {
+                                status: "ok" | "unavailable" | "empty";
+                                name: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pr_list";
+                        data: {
+                            prs: {
+                                status: "open" | "merged" | "closed";
+                                title: string;
+                                repo: string;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pipeline_table";
+                        data: {
+                            pipelines: {
+                                status: "pending" | "success" | "failed" | "running";
+                                name: string;
+                                duration?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    })[] | null;
                 };
+                missedToday: boolean;
             };
             meta: object;
         }>;
@@ -1315,6 +1746,97 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
                     content: string;
                     suggested_actions: import("./routers/briefing.js").BriefingAction[];
                     sources_status: Record<string, string>;
+                    blocks: ({
+                        type: "section";
+                        data: {
+                            body: string;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "status_table";
+                        data: {
+                            columns: string[];
+                            rows: Record<string, string>[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "metric_card";
+                        data: {
+                            value: string | number;
+                            label: string;
+                            unit?: string | undefined;
+                            trend?: "flat" | "up" | "down" | undefined;
+                            delta?: string | undefined;
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "timeline";
+                        data: {
+                            events: {
+                                time: string;
+                                label: string;
+                                detail?: string | undefined;
+                                severity?: "info" | "warning" | "error" | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "action_group";
+                        data: {
+                            actions: {
+                                label: string;
+                                status?: "pending" | "completed" | "dismissed" | undefined;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "kv_list";
+                        data: {
+                            items: {
+                                value: string;
+                                key: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "alert";
+                        data: {
+                            message: string;
+                            severity: "info" | "warning" | "error";
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "source_pills";
+                        data: {
+                            sources: {
+                                status: "ok" | "unavailable" | "empty";
+                                name: string;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pr_list";
+                        data: {
+                            prs: {
+                                status: "open" | "merged" | "closed";
+                                title: string;
+                                repo: string;
+                                url?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    } | {
+                        type: "pipeline_table";
+                        data: {
+                            pipelines: {
+                                status: "pending" | "success" | "failed" | "running";
+                                name: string;
+                                duration?: string | undefined;
+                            }[];
+                        };
+                        title?: string | undefined;
+                    })[] | null;
                 }[];
             };
             meta: object;
@@ -1355,6 +1877,11 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
                     tokens_in: null;
                     tokens_out: null;
                     type: "conversation" | "tool-call" | "system";
+                    senderResolved: {
+                        displayName: string;
+                        avatarInitial: string;
+                        source: "contact" | "telegram-meta" | "memory" | "raw";
+                    };
                 }[];
                 total: number;
                 limit: number;
@@ -1757,22 +2284,70 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
             input: void;
             output: {
                 fleet: {
-                    status: string;
+                    status: "unknown" | "healthy" | "degraded";
                     services: {
-                        status: "unknown";
-                        latency_ms: number | null;
                         name: string;
                         url: string;
                         port: number;
+                        status: "healthy" | "unreachable" | "unknown";
+                        latency_ms: number | null;
                         tools: string[];
+                        last_checked: string | null;
+                        uptime_secs: number | null;
                     }[];
                     healthy_count: number;
                     total_count: number;
                 };
                 channels: {
                     name: string;
-                    status: "configured";
-                    direction: "bidirectional";
+                    status: "configured" | "unknown" | "connected" | "disconnected" | "unconfigured";
+                    direction: "bidirectional" | "inbound" | "outbound";
+                    messages_24h: number | null;
+                    messages_per_hour: number | null;
+                }[];
+            };
+            meta: object;
+        }>;
+        channelVolume: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                channels: {
+                    total_24h: number;
+                    hourly: {
+                        hour: string;
+                        count: number;
+                    }[];
+                    name: string;
+                }[];
+            };
+            meta: object;
+        }>;
+        errorRates: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                total_24h: number;
+                hourly: {
+                    hour: string;
+                    count: number;
+                }[];
+                by_type: {
+                    event_type: string;
+                    count: number;
+                }[];
+            };
+            meta: object;
+        }>;
+        fleetHistory: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                services: {
+                    name: string;
+                    snapshots: {
+                        time: string;
+                        status: string;
+                        latency_ms: number | null;
+                    }[];
+                    uptime_pct_24h: number;
                 }[];
             };
             meta: object;
@@ -1825,6 +2400,66 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
             output: {
                 topic: string;
                 written: number;
+            };
+            meta: object;
+        }>;
+        configSources: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: import("./routers/system.js").ConfigSourceEntry[];
+            meta: object;
+        }>;
+        channelStatus: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                name: string;
+                connected: boolean;
+                error: string | null;
+                identity: {
+                    username?: string;
+                    displayName?: string;
+                } | null;
+                lastMessageAt: string | null;
+            }[];
+            meta: object;
+        }>;
+        testChannel: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                channel: string;
+                target: string;
+            };
+            output: {
+                valid: boolean;
+                error: null;
+                latencyMs: number;
+            } | {
+                valid: boolean;
+                error: string;
+                latencyMs: number;
+            };
+            meta: object;
+        }>;
+        testIntegration: import("@trpc/server").TRPCMutationProcedure<{
+            input: {
+                service: "anthropic" | "openai" | "elevenlabs" | "github" | "sentry" | "posthog";
+            };
+            output: {
+                valid: boolean;
+                error: string;
+                latencyMs: number;
+            } | {
+                valid: boolean;
+                error: null;
+                latencyMs: number;
+            };
+            meta: object;
+        }>;
+        memorySummary: import("@trpc/server").TRPCQueryProcedure<{
+            input: void;
+            output: {
+                count: number;
+                topics: string[];
+                lastWriteAt: string | null;
+                totalSizeBytes: number;
             };
             meta: object;
         }>;
@@ -1930,6 +2565,11 @@ export declare const createCaller: import("@trpc/server").TRPCRouterCaller<{
                 created_at: string;
                 updated_at: string;
             };
+            meta: object;
+        }>;
+        materialize: import("@trpc/server").TRPCMutationProcedure<{
+            input: void;
+            output: import("./lib/materialize-projects.js").MaterializeResult;
             meta: object;
         }>;
         extract: import("@trpc/server").TRPCMutationProcedure<{

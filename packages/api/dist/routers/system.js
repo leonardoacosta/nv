@@ -1,8 +1,9 @@
-import { desc, eq, gte, sql } from "drizzle-orm";
+import { desc, eq, gte, lt, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@nova/db";
-import { contacts, diary, memory, messages, obligations, sessions, } from "@nova/db";
+import { contacts, diary, fleetHealthSnapshots, memory, messages, obligations, sessionEvents, sessions, } from "@nova/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { fleetFetch } from "../lib/fleet.js";
 const FLEET_SERVICES = [
     { name: "tool-router", url: "http://127.0.0.1:4100", port: 4100, tools: [] },
     {
@@ -95,10 +96,11 @@ const FLEET_SERVICES = [
     },
 ];
 const KNOWN_CHANNELS = [
-    { name: "Telegram", status: "configured", direction: "bidirectional" },
-    { name: "Discord", status: "configured", direction: "bidirectional" },
-    { name: "Microsoft Teams", status: "configured", direction: "bidirectional" },
+    { name: "Telegram", status: "configured", direction: "bidirectional", messages_24h: null, messages_per_hour: null },
+    { name: "Discord", status: "configured", direction: "bidirectional", messages_24h: null, messages_per_hour: null },
+    { name: "Microsoft Teams", status: "configured", direction: "bidirectional", messages_24h: null, messages_per_hour: null },
 ];
+// ── Helpers ───────────────────────────────────────────────────────────────
 function getObligationSeverity(status) {
     const lower = status.toLowerCase();
     if (lower.includes("failed") || lower.includes("error"))
@@ -181,22 +183,230 @@ export const systemRouter = createTRPCRouter({
         };
     }),
     /**
-     * Fleet service registry (static, no HTTP calls).
+     * Fleet service status — calls meta-svc /services for live health data.
+     * Falls back to static registry with status "unknown" if meta-svc is unreachable.
+     * Also inserts health snapshots for historical uptime tracking.
      */
-    fleetStatus: protectedProcedure.query(() => {
-        const services = FLEET_SERVICES.map((svc) => ({
-            ...svc,
-            status: "unknown",
-            latency_ms: null,
-        }));
+    fleetStatus: protectedProcedure.query(async () => {
+        const checkedAt = new Date();
+        let services;
+        try {
+            // Call meta-svc /services for live health probes
+            const metaResponse = await fleetFetch("meta-svc", "/services");
+            const lastChecked = checkedAt.toISOString();
+            services = metaResponse.services.map((svc) => {
+                // Extract port from URL
+                let port = 0;
+                try {
+                    port = parseInt(new URL(svc.url).port, 10) || 0;
+                }
+                catch {
+                    // leave port as 0 if URL is unparseable
+                }
+                // Map "unhealthy" to "unreachable" (dashboard has 3 states)
+                const mappedStatus = svc.status === "healthy"
+                    ? "healthy"
+                    : "unreachable";
+                // Merge tools from static registry
+                const staticEntry = FLEET_SERVICES.find((f) => f.name === svc.name);
+                return {
+                    name: svc.name,
+                    url: svc.url,
+                    port: staticEntry?.port ?? port,
+                    status: mappedStatus,
+                    latency_ms: svc.latency_ms,
+                    tools: staticEntry?.tools ?? [],
+                    last_checked: lastChecked,
+                    uptime_secs: svc.uptime_secs ?? null,
+                };
+            });
+            // Insert health snapshots for historical uptime (fire-and-forget)
+            void (async () => {
+                try {
+                    const snapshotValues = services.map((svc) => ({
+                        serviceName: svc.name,
+                        status: svc.status,
+                        latencyMs: svc.latency_ms ?? null,
+                        checkedAt,
+                    }));
+                    if (snapshotValues.length > 0) {
+                        await db.insert(fleetHealthSnapshots).values(snapshotValues);
+                    }
+                    // Delete snapshots older than 7 days
+                    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+                    await db
+                        .delete(fleetHealthSnapshots)
+                        .where(lt(fleetHealthSnapshots.checkedAt, sevenDaysAgo));
+                }
+                catch {
+                    // Snapshot write failure is non-critical
+                }
+            })();
+        }
+        catch {
+            // meta-svc unreachable — fall back to static registry
+            services = FLEET_SERVICES.map((svc) => ({
+                ...svc,
+                status: "unknown",
+                latency_ms: null,
+                last_checked: null,
+                uptime_secs: null,
+            }));
+        }
+        // Fetch channel status from daemon /channels/status
+        let channels;
+        try {
+            const daemonChannels = await fleetFetch("daemon", "/channels/status");
+            channels = daemonChannels.map((ch) => ({
+                name: ch.name,
+                status: (["connected", "configured", "disconnected", "unconfigured"].includes(ch.status)
+                    ? ch.status
+                    : "unknown"),
+                direction: (["bidirectional", "inbound", "outbound"].includes(ch.direction)
+                    ? ch.direction
+                    : "bidirectional"),
+                messages_24h: null,
+                messages_per_hour: null,
+            }));
+        }
+        catch {
+            // Daemon unreachable — fall back to static channels
+            channels = KNOWN_CHANNELS.map((ch) => ({
+                ...ch,
+                messages_24h: null,
+                messages_per_hour: null,
+            }));
+        }
+        const healthyCount = services.filter((s) => s.status === "healthy").length;
         return {
             fleet: {
-                status: "unknown",
+                status: healthyCount === services.length
+                    ? "healthy"
+                    : healthyCount === 0
+                        ? "unknown"
+                        : "degraded",
                 services,
-                healthy_count: 0,
+                healthy_count: healthyCount,
                 total_count: services.length,
             },
-            channels: KNOWN_CHANNELS,
+            channels,
+        };
+    }),
+    /**
+     * Channel volume: message counts per channel over the last 24h, bucketed by hour.
+     */
+    channelVolume: protectedProcedure.query(async () => {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const rows = await db
+            .select({
+            channel: messages.channel,
+            hour: sql `date_trunc('hour', ${messages.createdAt})::text`,
+            count: sql `count(*)::int`,
+        })
+            .from(messages)
+            .where(gte(messages.createdAt, twentyFourHoursAgo))
+            .groupBy(messages.channel, sql `date_trunc('hour', ${messages.createdAt})`)
+            .orderBy(messages.channel, sql `date_trunc('hour', ${messages.createdAt})`);
+        // Group by channel
+        const channelMap = new Map();
+        for (const row of rows) {
+            if (!channelMap.has(row.channel)) {
+                channelMap.set(row.channel, { total_24h: 0, hourly: [] });
+            }
+            const entry = channelMap.get(row.channel);
+            entry.total_24h += row.count;
+            entry.hourly.push({ hour: row.hour, count: row.count });
+        }
+        return {
+            channels: Array.from(channelMap.entries()).map(([name, data]) => ({
+                name,
+                ...data,
+            })),
+        };
+    }),
+    /**
+     * Error rates: session_events with error/tool_error types in last 24h,
+     * grouped by hour and event type.
+     */
+    errorRates: protectedProcedure.query(async () => {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const [hourlyRows, byTypeRows] = await Promise.all([
+            db
+                .select({
+                hour: sql `date_trunc('hour', ${sessionEvents.createdAt})::text`,
+                count: sql `count(*)::int`,
+            })
+                .from(sessionEvents)
+                .where(sql `${sessionEvents.eventType} IN ('error', 'tool_error') AND ${sessionEvents.createdAt} >= ${twentyFourHoursAgo}`)
+                .groupBy(sql `date_trunc('hour', ${sessionEvents.createdAt})`)
+                .orderBy(sql `date_trunc('hour', ${sessionEvents.createdAt})`),
+            db
+                .select({
+                event_type: sessionEvents.eventType,
+                count: sql `count(*)::int`,
+            })
+                .from(sessionEvents)
+                .where(sql `${sessionEvents.eventType} IN ('error', 'tool_error') AND ${sessionEvents.createdAt} >= ${twentyFourHoursAgo}`)
+                .groupBy(sessionEvents.eventType)
+                .orderBy(desc(sql `count(*)`)),
+        ]);
+        const total_24h = hourlyRows.reduce((sum, row) => sum + row.count, 0);
+        return {
+            total_24h,
+            hourly: hourlyRows,
+            by_type: byTypeRows,
+        };
+    }),
+    /**
+     * Fleet history: last 24h of fleet health snapshots, downsampled to 15-min buckets.
+     * Returns uptime percentage per service.
+     */
+    fleetHistory: protectedProcedure.query(async () => {
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        // Downsample to 15-minute buckets, taking worst status per bucket
+        const rows = await db
+            .select({
+            serviceName: fleetHealthSnapshots.serviceName,
+            bucket: sql `date_trunc('minute', ${fleetHealthSnapshots.checkedAt} - (EXTRACT(MINUTE FROM ${fleetHealthSnapshots.checkedAt})::int % 15) * INTERVAL '1 minute')::text`,
+            // Worst status: unreachable > unhealthy > healthy
+            worstStatus: sql `
+          CASE
+            WHEN bool_or(${fleetHealthSnapshots.status} = 'unreachable') THEN 'unreachable'
+            WHEN bool_or(${fleetHealthSnapshots.status} = 'unhealthy') THEN 'unhealthy'
+            ELSE 'healthy'
+          END
+        `,
+            avgLatencyMs: sql `avg(${fleetHealthSnapshots.latencyMs})::int`,
+        })
+            .from(fleetHealthSnapshots)
+            .where(gte(fleetHealthSnapshots.checkedAt, twentyFourHoursAgo))
+            .groupBy(fleetHealthSnapshots.serviceName, sql `date_trunc('minute', ${fleetHealthSnapshots.checkedAt} - (EXTRACT(MINUTE FROM ${fleetHealthSnapshots.checkedAt})::int % 15) * INTERVAL '1 minute')`)
+            .orderBy(fleetHealthSnapshots.serviceName, sql `date_trunc('minute', ${fleetHealthSnapshots.checkedAt} - (EXTRACT(MINUTE FROM ${fleetHealthSnapshots.checkedAt})::int % 15) * INTERVAL '1 minute')`);
+        // Group by service name
+        const serviceMap = new Map();
+        for (const row of rows) {
+            if (!serviceMap.has(row.serviceName)) {
+                serviceMap.set(row.serviceName, { snapshots: [], healthy_buckets: 0, total_buckets: 0 });
+            }
+            const entry = serviceMap.get(row.serviceName);
+            entry.snapshots.push({
+                time: row.bucket,
+                status: row.worstStatus,
+                latency_ms: row.avgLatencyMs,
+            });
+            entry.total_buckets++;
+            if (row.worstStatus === "healthy") {
+                entry.healthy_buckets++;
+            }
+        }
+        return {
+            services: Array.from(serviceMap.entries()).map(([name, data]) => ({
+                name,
+                snapshots: data.snapshots,
+                uptime_pct_24h: data.total_buckets > 0
+                    ? Math.round((data.healthy_buckets / data.total_buckets) * 100)
+                    : 0,
+            })),
         };
     }),
     /**
@@ -342,6 +552,238 @@ export const systemRouter = createTRPCRouter({
             },
         });
         return { topic: input.topic, written: input.content.length };
+    }),
+    /**
+     * Config sources: proxy GET /config/sources from the Rust daemon.
+     * Returns which env var, TOML file, or default resolved each config key.
+     * Falls back to an empty array if the daemon endpoint is not yet available.
+     */
+    configSources: protectedProcedure.query(async () => {
+        try {
+            const sources = await fleetFetch("daemon", "/config/sources");
+            return Array.isArray(sources) ? sources : [];
+        }
+        catch {
+            // Daemon endpoint not yet implemented — return empty so UI degrades gracefully
+            return [];
+        }
+    }),
+    /**
+     * Channel status: call channels-svc /channels for live connection status
+     * and enrich each channel with lastMessageAt from the messages table.
+     * Falls back to the static registry on error.
+     */
+    channelStatus: protectedProcedure.query(async () => {
+        // Fetch live channel status from channels-svc
+        let liveChannels = [];
+        try {
+            liveChannels = await fleetFetch("channels-svc", "/channels");
+        }
+        catch {
+            // channels-svc unreachable — fall back to static registry
+            liveChannels = KNOWN_CHANNELS.map((c) => ({
+                name: c.name,
+                connected: false,
+                error: "channels-svc unreachable",
+            }));
+        }
+        // Fetch last message timestamps per channel from DB
+        const lastMessageRows = await db
+            .select({
+            channel: messages.channel,
+            lastAt: max(messages.createdAt),
+        })
+            .from(messages)
+            .groupBy(messages.channel);
+        const lastMessageByChannel = new Map();
+        for (const row of lastMessageRows) {
+            lastMessageByChannel.set(row.channel, row.lastAt ? row.lastAt.toISOString() : null);
+        }
+        return liveChannels.map((ch) => ({
+            name: ch.name,
+            connected: ch.connected,
+            error: ch.error ?? null,
+            identity: ch.identity ?? null,
+            lastMessageAt: lastMessageByChannel.get(ch.name.toLowerCase()) ??
+                lastMessageByChannel.get(ch.name) ??
+                null,
+        }));
+    }),
+    /**
+     * Test channel: send a test message via channels-svc /send.
+     */
+    testChannel: protectedProcedure
+        .input(z.object({
+        channel: z.string().min(1),
+        target: z.string().min(1),
+    }))
+        .mutation(async ({ input }) => {
+        const start = Date.now();
+        try {
+            await fleetFetch("channels-svc", "/send", {
+                method: "POST",
+                body: JSON.stringify({
+                    channel: input.channel,
+                    target: input.target,
+                    message: `[Nova] Connection test at ${new Date().toISOString()}`,
+                }),
+            });
+            return {
+                valid: true,
+                error: null,
+                latencyMs: Date.now() - start,
+            };
+        }
+        catch (err) {
+            return {
+                valid: false,
+                error: err instanceof Error ? err.message : "Unknown error",
+                latencyMs: Date.now() - start,
+            };
+        }
+    }),
+    /**
+     * Test integration: validate an external service API key by making a
+     * lightweight server-side request. Keys are never sent to the browser.
+     */
+    testIntegration: protectedProcedure
+        .input(z.object({
+        service: z.enum([
+            "anthropic",
+            "openai",
+            "elevenlabs",
+            "github",
+            "sentry",
+            "posthog",
+        ]),
+    }))
+        .mutation(async ({ input }) => {
+        const start = Date.now();
+        const INTEGRATIONS = {
+            anthropic: {
+                url: "https://api.anthropic.com/v1/models",
+                envVar: "ANTHROPIC_API_KEY",
+                authHeader: (key) => `x-api-key ${key}`,
+            },
+            openai: {
+                url: "https://api.openai.com/v1/models",
+                envVar: "OPENAI_API_KEY",
+                authHeader: (key) => `Bearer ${key}`,
+            },
+            elevenlabs: {
+                url: "https://api.elevenlabs.io/v1/voices",
+                envVar: "ELEVENLABS_API_KEY",
+                authHeader: (key) => `xi-api-key ${key}`,
+            },
+            github: {
+                url: "https://api.github.com/user",
+                envVar: "GITHUB_TOKEN",
+                authHeader: (key) => `Bearer ${key}`,
+            },
+            sentry: {
+                url: "https://sentry.io/api/0/",
+                envVar: "SENTRY_AUTH_TOKEN",
+                authHeader: (key) => `Bearer ${key}`,
+            },
+            posthog: {
+                url: "https://app.posthog.com/api/feature_flags/?token=",
+                envVar: "POSTHOG_API_KEY",
+            },
+        };
+        const config = INTEGRATIONS[input.service];
+        if (!config) {
+            return {
+                valid: false,
+                error: `Unknown service: ${input.service}`,
+                latencyMs: 0,
+            };
+        }
+        const apiKey = process.env[config.envVar];
+        if (!apiKey) {
+            return {
+                valid: false,
+                error: `${config.envVar} is not set`,
+                latencyMs: 0,
+            };
+        }
+        try {
+            const headers = {
+                Accept: "application/json",
+            };
+            if (config.authHeader) {
+                // Split "scheme key" into Authorization header
+                const [scheme, ...rest] = config.authHeader(apiKey).split(" ");
+                if (scheme && rest.length > 0) {
+                    // Some APIs use custom header names (e.g., xi-api-key)
+                    if (scheme === "x-api-key" ||
+                        scheme === "xi-api-key") {
+                        headers[scheme] = rest.join(" ");
+                    }
+                    else {
+                        headers["Authorization"] = `${scheme} ${rest.join(" ")}`;
+                    }
+                }
+            }
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8_000);
+            let url = config.url;
+            if (input.service === "posthog") {
+                url = `${config.url}${apiKey}`;
+            }
+            const response = await fetch(url, {
+                headers,
+                signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            if (response.ok || response.status === 200) {
+                return {
+                    valid: true,
+                    error: null,
+                    latencyMs: Date.now() - start,
+                };
+            }
+            return {
+                valid: false,
+                error: `HTTP ${response.status}`,
+                latencyMs: Date.now() - start,
+            };
+        }
+        catch (err) {
+            return {
+                valid: false,
+                error: err instanceof Error ? err.message : "Network error",
+                latencyMs: Date.now() - start,
+            };
+        }
+    }),
+    /**
+     * Memory summary: returns topic count, topic names, last write timestamp,
+     * and total content size in bytes.
+     */
+    memorySummary: protectedProcedure.query(async () => {
+        const [countRow, topicsRow, lastWriteRow, sizeRow] = await Promise.all([
+            db
+                .select({ count: sql `count(*)::int` })
+                .from(memory)
+                .then((rows) => rows[0]),
+            db.select({ topic: memory.topic }).from(memory),
+            db
+                .select({ lastWriteAt: max(memory.updatedAt) })
+                .from(memory)
+                .then((rows) => rows[0]),
+            db
+                .select({
+                totalSizeBytes: sql `SUM(LENGTH(content))::int`,
+            })
+                .from(memory)
+                .then((rows) => rows[0]),
+        ]);
+        return {
+            count: countRow?.count ?? 0,
+            topics: topicsRow.map((r) => r.topic),
+            lastWriteAt: lastWriteRow?.lastWriteAt?.toISOString() ?? null,
+            totalSizeBytes: sizeRow?.totalSizeBytes ?? 0,
+        };
     }),
 });
 //# sourceMappingURL=system.js.map

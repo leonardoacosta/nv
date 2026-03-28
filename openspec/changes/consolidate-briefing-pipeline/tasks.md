@@ -72,10 +72,10 @@
 
 ## E2E Verification
 
-- [ ] [8.1] `cargo check -p nv-daemon` passes (Rust briefing retirement) [owner:api-engineer] [beads:nv-7y3p]
-- [ ] [8.2] `tsc --noEmit` passes for @nova/db (blocks schema + migration) [owner:api-engineer] [beads:nv-y0rv]
-- [ ] [8.3] `tsc --noEmit` passes for daemon (synthesizer, runner, SSE, scheduler) [owner:api-engineer] [beads:nv-vyak]
-- [ ] [8.4] `pnpm build` passes for dashboard (block components, briefing page) [owner:ui-engineer] [beads:nv-kjov]
+- [x] [8.1] `cargo check -p nv-daemon` passes (Rust briefing retirement) [owner:api-engineer] [beads:nv-7y3p]
+- [x] [8.2] `tsc --noEmit` passes for @nova/db (blocks schema + migration) [owner:api-engineer] [beads:nv-y0rv]
+- [x] [8.3] `tsc --noEmit` passes for daemon (synthesizer, runner, SSE, scheduler) [owner:api-engineer] [beads:nv-vyak]
+- [x] [8.4] `pnpm build` passes for dashboard (block components, briefing page) [owner:ui-engineer] [beads:nv-kjov]
 - [ ] [8.5] [user] Manual: trigger "Generate Now" from dashboard, verify blocks render progressively via SSE stream [beads:nv-sqnc]
 - [ ] [8.6] [user] Manual: view an old briefing from history rail, verify markdown fallback renders correctly [beads:nv-exnb]
 - [ ] [8.7] [user] Manual: verify Telegram receives markdown content (not JSON) when briefing is generated [beads:nv-z5qe]

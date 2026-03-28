@@ -29,6 +29,11 @@ export declare const messageRouter: import("@trpc/server").TRPCBuiltRouter<{
                 tokens_in: null;
                 tokens_out: null;
                 type: "conversation" | "tool-call" | "system";
+                senderResolved: {
+                    displayName: string;
+                    avatarInitial: string;
+                    source: "contact" | "telegram-meta" | "memory" | "raw";
+                };
             }[];
             total: number;
             limit: number;

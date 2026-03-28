@@ -85,6 +85,15 @@ export declare const projectRouter: import("@trpc/server").TRPCBuiltRouter<{
         meta: object;
     }>;
     /**
+     * Materialize projects from daemon registry and projects-* memory topics.
+     * Upserts new projects and enriches existing ones with path/description.
+     */
+    materialize: import("@trpc/server").TRPCMutationProcedure<{
+        input: void;
+        output: import("../lib/materialize-projects.js").MaterializeResult;
+        meta: object;
+    }>;
+    /**
      * Extract and assemble knowledge documents for all projects.
      */
     extract: import("@trpc/server").TRPCMutationProcedure<{

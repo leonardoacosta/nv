@@ -1,8 +1,8 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { db } from "@nova/db";
-import { briefings } from "@nova/db";
+import { briefings, settings } from "@nova/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 function mapBriefingRow(row) {
     return {
@@ -11,11 +11,44 @@ function mapBriefingRow(row) {
         content: row.content,
         suggested_actions: row.suggestedActions ?? [],
         sources_status: row.sourcesStatus ?? {},
+        blocks: row.blocks ?? null,
     };
+}
+/**
+ * Reads briefing_hour from the settings table.
+ * Defaults to 7 if not set or invalid.
+ */
+async function getBriefingHour() {
+    const [setting] = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.key, "briefing_hour"));
+    if (!setting)
+        return 7;
+    const parsed = parseInt(setting.value, 10);
+    return isNaN(parsed) ? 7 : parsed;
+}
+/**
+ * Returns true if:
+ * - Current time is past briefingHour + 1 (e.g., 08:00 when briefingHour = 7)
+ * - The latest briefing was NOT generated today
+ */
+function computeMissedToday(latestGeneratedAt, briefingHour) {
+    const now = new Date();
+    const currentHour = now.getHours();
+    if (currentHour < briefingHour + 1) {
+        return false;
+    }
+    if (!latestGeneratedAt) {
+        return true;
+    }
+    const todayStr = now.toISOString().slice(0, 10);
+    const latestDateStr = latestGeneratedAt.toISOString().slice(0, 10);
+    return latestDateStr !== todayStr;
 }
 export const briefingRouter = createTRPCRouter({
     /**
-     * Get the latest briefing.
+     * Get the latest briefing with missedToday flag.
      */
     latest: protectedProcedure.query(async () => {
         const [latest] = await db
@@ -23,10 +56,13 @@ export const briefingRouter = createTRPCRouter({
             .from(briefings)
             .orderBy(desc(briefings.generatedAt))
             .limit(1);
+        const briefingHour = await getBriefingHour();
+        const latestGeneratedAt = latest?.generatedAt ?? null;
+        const missedToday = computeMissedToday(latestGeneratedAt, briefingHour);
         if (!latest) {
-            return { entry: null };
+            return { entry: null, missedToday };
         }
-        return { entry: mapBriefingRow(latest) };
+        return { entry: mapBriefingRow(latest), missedToday };
     }),
     /**
      * Get briefing history.

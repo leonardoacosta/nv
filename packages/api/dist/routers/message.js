@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@nova/db";
 import { messages } from "@nova/db";
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { resolveSenders } from "../lib/sender-resolver.js";
 export const messageRouter = createTRPCRouter({
     /**
      * List messages with channel/direction/sort/type/limit/offset filters.
@@ -53,22 +54,61 @@ export const messageRouter = createTRPCRouter({
                 .where(where),
         ]);
         const total = countResult[0]?.total ?? 0;
+        // Collect unique sender+channel pairs for batch resolution
+        const senderInputs = [];
+        const senderKeySet = new Set();
+        for (const row of rows) {
+            const rawSender = row.sender ?? "unknown";
+            const channel = row.channel ?? "unknown";
+            // "nova" is always outbound — resolve to a fixed brand entry
+            if (rawSender === "nova")
+                continue;
+            const key = `${channel}:${rawSender}`;
+            if (!senderKeySet.has(key)) {
+                senderKeySet.add(key);
+                senderInputs.push({
+                    raw: rawSender,
+                    channel,
+                    metadata: row.metadata,
+                });
+            }
+        }
+        const resolved = await resolveSenders(senderInputs);
         const mapped = rows.map((row, idx) => {
             const metadata = row.metadata;
             const messageType = typeof metadata?.type === "string"
                 ? metadata.type
                 : "conversation";
+            const rawSender = row.sender ?? "unknown";
+            const channel = row.channel ?? "unknown";
+            let senderResolved;
+            if (rawSender === "nova") {
+                senderResolved = {
+                    displayName: "Nova",
+                    avatarInitial: "N",
+                    source: "raw",
+                };
+            }
+            else {
+                const resolution = resolved.get(`${channel}:${rawSender}`);
+                senderResolved = resolution ?? {
+                    displayName: rawSender,
+                    avatarInitial: rawSender[0]?.toUpperCase() ?? "?",
+                    source: "raw",
+                };
+            }
             return {
                 id: idx + input.offset,
                 timestamp: row.createdAt.toISOString(),
-                direction: row.sender === "nova" ? "outbound" : "inbound",
-                channel: row.channel ?? "unknown",
-                sender: row.sender ?? "unknown",
+                direction: rawSender === "nova" ? "outbound" : "inbound",
+                channel,
+                sender: rawSender,
                 content: row.content,
                 response_time_ms: null,
                 tokens_in: null,
                 tokens_out: null,
                 type: messageType,
+                senderResolved,
             };
         });
         return {

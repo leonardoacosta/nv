@@ -97,6 +97,15 @@ export declare const contactRouter: import("@trpc/server").TRPCBuiltRouter<{
         meta: object;
     }>;
     /**
+     * Materialize contacts from the "people" memory topic.
+     * Parses PersonProfile records and upserts them into the contacts table.
+     */
+    materialize: import("@trpc/server").TRPCMutationProcedure<{
+        input: void;
+        output: import("../lib/materialize-contacts.js").MaterializeResult;
+        meta: object;
+    }>;
+    /**
      * Get discovered contacts from message data.
      */
     discovered: import("@trpc/server").TRPCQueryProcedure<{

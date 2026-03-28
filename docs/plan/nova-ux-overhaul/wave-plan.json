@@ -1,6 +1,6 @@
 {
   "name": "nova-ux-overhaul",
-  "status": "in_progress",
+  "status": "completed",
   "mode": "consolidated",
   "created_at": "2026-03-28T12:15:00Z",
   "pre_audit_sha": "8827a4f",
@@ -298,7 +298,7 @@
             "UI": 18,
             "E2E": 19
           },
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -307,8 +307,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T15:11:29.695821",
+          "merged_at": "2026-03-28T15:39:50.850921"
         }
       ],
       "total_tasks": 54
@@ -316,12 +316,13 @@
   ],
   "current_wave": 5,
   "started_at": "2026-03-28T12:46:41.639231",
-  "completed_at": null,
+  "completed_at": "2026-03-28T15:39:50.850910",
   "completed_waves": [
     1,
     2,
     3,
-    4
+    4,
+    5
   ],
   "completed_specs": [
     "migrate-daemon-writes-to-postgres",
@@ -332,16 +333,17 @@
     "enrich-message-sender-display",
     "enhance-settings-verbosity",
     "surface-diary-token-metadata",
-    "wire-fleet-health-status"
+    "wire-fleet-health-status",
+    "consolidate-briefing-pipeline"
   ],
   "failed_specs": [],
   "mega_batch_state": {
     "current_phase": null,
     "phases_completed": [
-      "DB_wave4",
-      "API_wave4",
-      "UI_wave4",
-      "E2E_wave4"
+      "DB_wave5",
+      "API_wave5",
+      "UI_wave5",
+      "E2E_wave5"
     ],
     "task_results": {
       "migrate-daemon-writes-to-postgres": {},
@@ -366,7 +368,11 @@
       "DB_wave4": "2026-03-28T14:42:07.757284",
       "API_wave4": "2026-03-28T14:43:55.041634",
       "UI_wave4": "2026-03-28T14:55:28.372353",
-      "E2E_wave4": "2026-03-28T15:04:39.628911"
+      "E2E_wave4": "2026-03-28T15:04:39.628911",
+      "DB_wave5": "2026-03-28T15:11:29.695815",
+      "API_wave5": "2026-03-28T15:17:44.002044",
+      "UI_wave5": "2026-03-28T15:25:51.237967",
+      "E2E_wave5": "2026-03-28T15:34:26.182356"
     },
     "phase_completed_at": {
       "API_wave2": "2026-03-28T13:48:22.257938",
@@ -375,7 +381,10 @@
       "UI_wave3": "2026-03-28T14:32:12.385456",
       "DB_wave4": "2026-03-28T14:43:55.041629",
       "API_wave4": "2026-03-28T14:55:28.372347",
-      "UI_wave4": "2026-03-28T15:04:39.628904"
+      "UI_wave4": "2026-03-28T15:04:39.628904",
+      "DB_wave5": "2026-03-28T15:17:44.002037",
+      "API_wave5": "2026-03-28T15:25:51.237960",
+      "UI_wave5": "2026-03-28T15:34:26.182348"
     }
   }
 }

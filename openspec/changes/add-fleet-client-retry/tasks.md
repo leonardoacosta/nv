@@ -16,4 +16,4 @@
 
 ## E2E Batch
 
-- [ ] [4.1] [P-2] Test: verify fleetPost/fleetGet retries once on 503 and succeeds, does not retry on 4xx, and throws after two consecutive 5xx failures [owner:e2e-engineer]
+- [x] [4.1] [P-2] Test: verify fleetPost/fleetGet retries once on 503 and succeeds, does not retry on 4xx, and throws after two consecutive 5xx failures [owner:e2e-engineer]

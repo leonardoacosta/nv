@@ -17,11 +17,11 @@
 (No UI tasks)
 
 ## E2E Batch
-- [ ] [4.1] Test: circuit breaker transitions CLOSED -> OPEN after consecutive failure threshold [owner:e2e-engineer]
-- [ ] [4.2] Test: OPEN circuit returns 503 immediately with correct JSON body and Retry-After header [owner:e2e-engineer]
-- [ ] [4.3] Test: OPEN -> HALF_OPEN after cooldown, probe request allowed through [owner:e2e-engineer]
-- [ ] [4.4] Test: HALF_OPEN -> CLOSED on probe success, HALF_OPEN -> OPEN on probe failure [owner:e2e-engineer]
-- [ ] [4.5] Test: error rate threshold triggers OPEN within sliding window [owner:e2e-engineer]
-- [ ] [4.6] Test: 4xx downstream responses are NOT counted as failures [owner:e2e-engineer]
-- [ ] [4.7] Test: GET /health response includes circuitBreakerState per service [owner:e2e-engineer]
-- [ ] [4.8] Test: GET /metrics returns per-service counters and uptime [owner:e2e-engineer]
+- [x] [4.1] Test: circuit breaker transitions CLOSED -> OPEN after consecutive failure threshold [owner:e2e-engineer]
+- [x] [4.2] Test: OPEN circuit returns 503 immediately with correct JSON body and Retry-After header [owner:e2e-engineer]
+- [x] [4.3] Test: OPEN -> HALF_OPEN after cooldown, probe request allowed through [owner:e2e-engineer]
+- [x] [4.4] Test: HALF_OPEN -> CLOSED on probe success, HALF_OPEN -> OPEN on probe failure [owner:e2e-engineer]
+- [x] [4.5] Test: error rate threshold triggers OPEN within sliding window [owner:e2e-engineer]
+- [x] [4.6] Test: 4xx downstream responses are NOT counted as failures [owner:e2e-engineer]
+- [x] [4.7] Test: GET /health response includes circuitBreakerState per service [owner:e2e-engineer]
+- [x] [4.8] Test: GET /metrics returns per-service counters and uptime [owner:e2e-engineer]

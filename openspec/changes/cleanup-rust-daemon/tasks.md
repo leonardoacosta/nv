@@ -20,5 +20,5 @@
 
 ## E2E Batch
 
-- [ ] [4.1] [P-2] Verify deploy scripts are syntactically valid — run `bash -n deploy/install.sh` and `bash -n deploy/install-ts.sh`, confirm no parse errors [owner:e2e-engineer]
-- [ ] [4.2] [P-2] Verify no dangling Rust references remain — grep for `nv-daemon`, `cargo build`, `RUST_LOG`, `target/release` across the repo (excluding `openspec/changes/archive/`), confirm zero matches in active code [owner:e2e-engineer]
+- [x] [4.1] [P-2] Verify deploy scripts are syntactically valid — run `bash -n deploy/install.sh` and `bash -n deploy/install-ts.sh`, confirm no parse errors [owner:e2e-engineer]
+- [x] [4.2] [P-2] Verify no dangling Rust references remain — grep for `nv-daemon`, `cargo build`, `RUST_LOG`, `target/release` across the repo (excluding `openspec/changes/archive/`), confirm zero matches in active code [owner:e2e-engineer]

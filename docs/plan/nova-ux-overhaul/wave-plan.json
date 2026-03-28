@@ -80,7 +80,7 @@
             "UI": 8,
             "E2E": 9
           },
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -90,7 +90,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T13:43:58.304165",
-          "merged_at": null
+          "merged_at": "2026-03-28T14:08:40.606149"
         },
         {
           "name": "add-automations-prompt-preview",
@@ -105,7 +105,7 @@
             "UI": 9,
             "E2E": 1
           },
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -115,7 +115,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T13:43:58.304167",
-          "merged_at": null
+          "merged_at": "2026-03-28T14:08:40.606156"
         },
         {
           "name": "declutter-home-command-center",
@@ -130,7 +130,7 @@
             "UI": 8,
             "E2E": 8
           },
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -140,7 +140,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T13:43:58.304168",
-          "merged_at": null
+          "merged_at": "2026-03-28T14:08:40.606157"
         }
       ],
       "total_tasks": 46
@@ -314,21 +314,26 @@
       "total_tasks": 54
     }
   ],
-  "current_wave": 2,
+  "current_wave": 3,
   "started_at": "2026-03-28T12:46:41.639231",
   "completed_at": null,
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
-    "migrate-daemon-writes-to-postgres"
+    "migrate-daemon-writes-to-postgres",
+    "fix-chat-reverse-scroll",
+    "add-automations-prompt-preview",
+    "declutter-home-command-center"
   ],
   "failed_specs": [],
   "mega_batch_state": {
-    "current_phase": "E2E",
+    "current_phase": null,
     "phases_completed": [
       "API_wave2",
-      "UI_wave2"
+      "UI_wave2",
+      "E2E_wave2"
     ],
     "task_results": {
       "migrate-daemon-writes-to-postgres": {},

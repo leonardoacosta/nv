@@ -58,6 +58,11 @@ pnpm --filter @nova/db build
 echo "    Building packages/daemon..."
 pnpm --filter @nova/daemon build
 
+# Run pending Drizzle migrations against the live database.
+# Uses the same Doppler project/config as the systemd service.
+echo "==> Running database migrations..."
+(cd "${PROJECT_DIR}/packages/db" && doppler run --project nova --config prd -- pnpm db:migrate)
+
 echo "==> Installing to ${INSTALL_DIR}..."
 
 # Remove any prior install so pnpm does not encounter a stale node_modules

@@ -1,0 +1,8 @@
+{
+  "name": "@nova/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "ping": "./ping-health-check.sh"
+  }
+}

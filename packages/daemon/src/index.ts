@@ -517,6 +517,19 @@ export async function main(): Promise<void> {
         return;
       }
 
+      // ── Ping intercept (E2E health probe) ────────────────────────────
+      const PING_RE = /^ping$/i;
+      if (PING_RE.test(data.trim())) {
+        log.info(
+          { service: "nova-daemon", chatId: msg.chatId },
+          "Ping received — replying pong",
+        );
+        void telegram!.sendMessage(msg.chatId, "pong", {
+          replyToMessageId: msg.metadata.messageId as number,
+        });
+        return;
+      }
+
       void (async () => {
         try {
           // ── Smart routing: try Tier 1/2 before Agent SDK ───────────────

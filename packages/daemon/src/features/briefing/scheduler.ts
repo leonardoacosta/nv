@@ -16,17 +16,66 @@ const BRIEFING_HOUR = 7;
  * - On first startup during the briefing hour, if no briefing exists for today,
  *   it fires immediately (catches missed briefings from restarts).
  * - Fires `runMorningBriefing` as fire-and-forget — errors are logged but never thrown.
+ * - After briefingHour + 1, checks for missed briefing and sends Telegram alert
+ *   if no briefing exists for today. Alerts at most once per day.
  *
  * Returns a cleanup function that clears the interval.
  */
 export function startBriefingScheduler(deps: BriefingDeps): () => void {
   // In-memory guard for the current tick only — the DB is the source of truth
   let firingInProgress = false;
+  // In-memory guard: track which date we've already sent a missed-briefing alert
+  let missedAlertSentDate: string | null = null;
 
   async function checkAndFire(): Promise<void> {
     const now = new Date();
+    const currentHour = now.getHours();
+    const todayStr = now.toISOString().slice(0, 10);
 
-    if (now.getHours() !== BRIEFING_HOUR) {
+    // ── Missed-briefing detection ────────────────────────────────────────────
+    // Check after briefingHour + 1 (e.g., 08:00 if briefingHour is 7)
+    if (
+      currentHour >= BRIEFING_HOUR + 1 &&
+      missedAlertSentDate !== todayStr
+    ) {
+      try {
+        const missedCheck = await deps.pool.query<{ count: string }>(
+          `SELECT count(*) as count FROM briefings
+           WHERE generated_at::date = CURRENT_DATE`,
+        );
+        const briefingCount = parseInt(missedCheck.rows[0]?.count ?? "0", 10);
+
+        if (briefingCount === 0) {
+          // Mark as alerted for today before sending to prevent duplicates on rapid polls
+          missedAlertSentDate = todayStr;
+
+          deps.logger.warn(
+            { date: todayStr, briefingHour: BRIEFING_HOUR },
+            "Missed-briefing alert: no briefing generated today",
+          );
+
+          if (deps.telegram && deps.telegramChatId) {
+            void deps.telegram
+              .sendMessage(
+                deps.telegramChatId,
+                `No morning briefing was generated today. The daemon may have been offline at ${BRIEFING_HOUR}:00. Use the dashboard 'Generate Now' button to create one.`,
+                { parseMode: "Markdown", disablePreview: true },
+              )
+              .catch((err: unknown) => {
+                deps.logger.warn({ err }, "Missed-briefing: failed to send Telegram alert");
+              });
+          }
+        } else {
+          // Briefing exists — mark today as handled to stop checking until tomorrow
+          missedAlertSentDate = todayStr;
+        }
+      } catch (err: unknown) {
+        deps.logger.error({ err }, "Missed-briefing check: DB query failed");
+      }
+    }
+
+    // ── Morning briefing fire ────────────────────────────────────────────────
+    if (currentHour !== BRIEFING_HOUR) {
       return;
     }
 
@@ -51,7 +100,6 @@ export function startBriefingScheduler(deps: BriefingDeps): () => void {
       return;
     }
 
-    const todayStr = now.toISOString().slice(0, 10);
     firingInProgress = true;
 
     deps.logger.info(

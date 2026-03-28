@@ -6,6 +6,8 @@ import type { Config } from "../../config.js";
 import { buildMcpServers, buildAllowedTools } from "../../brain/mcp-config.js";
 import { getEntriesByDate } from "../diary/reader.js";
 import type { DiaryEntryItem } from "../diary/reader.js";
+import { BriefingBlocksSchema } from "@nova/db";
+import type { BriefingBlock, BriefingBlocks } from "@nova/db";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +64,7 @@ export interface SuggestedAction {
 export interface SynthesisResult {
   content: string;
   suggestedActions: SuggestedAction[];
+  blocks: BriefingBlock[] | null;
 }
 
 // ─── Timeout helper ───────────────────────────────────────────────────────────
@@ -210,7 +213,119 @@ function buildStaticSummary(context: GatheredContext): SynthesisResult {
   return {
     content: lines.join("\n"),
     suggestedActions: [],
+    blocks: null,
   };
+}
+
+// ─── blocksToMarkdown ─────────────────────────────────────────────────────────
+
+/**
+ * Converts a validated BriefingBlock[] to a markdown string suitable for
+ * Telegram delivery.
+ */
+export function blocksToMarkdown(blocks: BriefingBlocks): string {
+  const parts: string[] = [];
+
+  for (const block of blocks) {
+    if (block.title) {
+      parts.push(`### ${block.title}`);
+    }
+
+    switch (block.type) {
+      case "section": {
+        parts.push(block.data.body);
+        break;
+      }
+
+      case "status_table": {
+        const { columns, rows } = block.data;
+        if (columns.length > 0) {
+          // Header row
+          parts.push(`| ${columns.join(" | ")} |`);
+          parts.push(`| ${columns.map(() => "---").join(" | ")} |`);
+          // Data rows
+          for (const row of rows) {
+            const cells = columns.map((col) => row[col] ?? "");
+            parts.push(`| ${cells.join(" | ")} |`);
+          }
+        }
+        break;
+      }
+
+      case "metric_card": {
+        const { label, value, unit, trend, delta } = block.data;
+        const unitStr = unit ? ` ${unit}` : "";
+        const trendStr = trend === "up" ? " ^" : trend === "down" ? " v" : "";
+        const deltaStr = delta ? ` (${delta})` : "";
+        parts.push(`**${label}:** ${value}${unitStr}${trendStr}${deltaStr}`);
+        break;
+      }
+
+      case "timeline": {
+        for (const event of block.data.events) {
+          const severityPrefix =
+            event.severity === "error" ? "[ERROR] " :
+            event.severity === "warning" ? "[WARN] " : "";
+          const detail = event.detail ? ` — ${event.detail}` : "";
+          parts.push(`- \`${event.time}\` ${severityPrefix}${event.label}${detail}`);
+        }
+        break;
+      }
+
+      case "action_group": {
+        for (const action of block.data.actions) {
+          const status = action.status ? ` [${action.status}]` : "";
+          const url = action.url ? ` (${action.url})` : "";
+          parts.push(`- ${action.label}${status}${url}`);
+        }
+        break;
+      }
+
+      case "kv_list": {
+        for (const item of block.data.items) {
+          parts.push(`**${item.key}:** ${item.value}`);
+        }
+        break;
+      }
+
+      case "alert": {
+        const prefix =
+          block.data.severity === "error" ? "ERROR" :
+          block.data.severity === "warning" ? "WARNING" : "INFO";
+        parts.push(`> [${prefix}] ${block.data.message}`);
+        break;
+      }
+
+      case "source_pills": {
+        const pills = block.data.sources.map((s) => {
+          const dot = s.status === "ok" ? "✓" : s.status === "unavailable" ? "✗" : "~";
+          return `${dot} ${s.name}`;
+        });
+        parts.push(pills.join("  "));
+        break;
+      }
+
+      case "pr_list": {
+        for (const pr of block.data.prs) {
+          const url = pr.url ? ` — ${pr.url}` : "";
+          parts.push(`- [${pr.status}] \`${pr.repo}\` ${pr.title}${url}`);
+        }
+        break;
+      }
+
+      case "pipeline_table": {
+        for (const pipeline of block.data.pipelines) {
+          const duration = pipeline.duration ? ` (${pipeline.duration})` : "";
+          parts.push(`- [${pipeline.status}] ${pipeline.name}${duration}`);
+        }
+        break;
+      }
+    }
+
+    parts.push(""); // blank line between blocks
+  }
+
+  return parts.join("\n").trim();
 }
 
 // ─── synthesizeBriefing ───────────────────────────────────────────────────────
@@ -289,44 +404,75 @@ function buildBriefingPrompt(context: GatheredContext): string {
   return sections.join("\n");
 }
 
-const BRIEFING_SYSTEM_PROMPT = `You are Nova's morning briefing synthesizer. Your job is to produce a clear, concise morning briefing from the context provided.
+const BRIEFING_SYSTEM_PROMPT = `You are Nova's morning briefing synthesizer. Your job is to produce a structured morning briefing as a JSON array of typed blocks.
 
-Structure your response with these sections (use ### headers):
-1. **Messages** — summarise unread/new messages grouped by channel (telegram, teams, discord) with sender highlights.
-2. **Obligations** — summarise the active obligations by priority. Highlight anything urgent or overdue.
-3. **Calendar** — summarise today's calendar events and schedule.
-4. **Overnight Activity** — summarise overnight Nova activity (tools used, interaction count, channels active).
-5. **Memory Highlights** — surface the most relevant memory entries for today's context.
-6. **Suggested Actions** — list 2-5 concrete actions as a JSON array at the very end of your response.
+Output ONLY a raw JSON array — no markdown code fences, no explanation, no preamble. The response must be valid JSON that can be parsed directly.
 
-For the Suggested Actions, end your response with a JSON block in this exact format:
-\`\`\`json
-[{"label":"Action description","url":"optional-url"}]
-\`\`\`
+Each block has this shape:
+{
+  "type": "<block_type>",
+  "title": "<optional title string>",
+  "data": { ... type-specific fields ... }
+}
 
-Keep the briefing under 500 words. Be direct and actionable.`;
+Available block types and their data shapes:
 
-function parseSuggestedActions(text: string): SuggestedAction[] {
-  try {
-    const match = /```json\s*([\s\S]*?)```/.exec(text);
-    if (!match?.[1]) return [];
-    const parsed = JSON.parse(match[1]) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (item): item is SuggestedAction =>
-          typeof item === "object" &&
-          item !== null &&
-          "label" in item &&
-          typeof (item as { label: unknown }).label === "string",
-      )
-      .map((item) => ({
-        label: item.label,
-        url: typeof item.url === "string" ? item.url : undefined,
-      }));
-  } catch {
-    return [];
+1. "section" — prose text
+   data: { "body": "string" }
+
+2. "status_table" — tabular data with named columns
+   data: { "columns": ["Col1","Col2"], "rows": [{"Col1":"v1","Col2":"v2"}] }
+
+3. "metric_card" — a single KPI metric
+   data: { "label": "string", "value": "string|number", "unit": "string (optional)", "trend": "up|down|flat (optional)", "delta": "string (optional)" }
+
+4. "timeline" — chronological events
+   data: { "events": [{ "time": "HH:MM", "label": "string", "detail": "string (optional)", "severity": "info|warning|error (optional)" }] }
+
+5. "action_group" — actionable items
+   data: { "actions": [{ "label": "string", "url": "string (optional)", "status": "pending|completed|dismissed (optional)" }] }
+
+6. "kv_list" — key-value pairs
+   data: { "items": [{ "key": "string", "value": "string" }] }
+
+7. "alert" — highlighted message with severity
+   data: { "severity": "info|warning|error", "message": "string" }
+
+8. "source_pills" — data source availability status
+   data: { "sources": [{ "name": "string", "status": "ok|unavailable|empty" }] }
+
+9. "pr_list" — pull request list
+   data: { "prs": [{ "title": "string", "repo": "string", "url": "string (optional)", "status": "open|merged|closed" }] }
+
+10. "pipeline_table" — CI/CD pipeline status
+    data: { "pipelines": [{ "name": "string", "status": "success|failed|running|pending", "duration": "string (optional)" }] }
+
+Structure your briefing with these blocks (in order):
+1. A "section" block titled "Messages" summarising unread/new messages by channel
+2. A "status_table" or "timeline" block titled "Obligations" showing active items by priority
+3. A "timeline" block titled "Calendar" for today's scheduled events
+4. A "section" block titled "Overnight Activity" summarising Nova's overnight interactions
+5. A "kv_list" or "section" block titled "Memory Highlights" surfacing relevant memory entries
+6. An "action_group" block titled "Suggested Actions" with 2-5 concrete next actions
+
+Be direct and concise. Total content should cover the key information without padding.`;
+
+/**
+ * Extract SuggestedAction[] from action_group blocks.
+ */
+function extractSuggestedActions(blocks: BriefingBlock[]): SuggestedAction[] {
+  const actions: SuggestedAction[] = [];
+  for (const block of blocks) {
+    if (block.type === "action_group") {
+      for (const action of block.data.actions) {
+        actions.push({
+          label: action.label,
+          url: action.url,
+        });
+      }
+    }
   }
+  return actions;
 }
 
 export async function synthesizeBriefing(
@@ -373,12 +519,17 @@ export async function synthesizeBriefing(
       SYNTHESIS_TIMEOUT_MS,
     );
 
-    const suggestedActions = parseSuggestedActions(result);
-
-    // Strip the JSON block from the displayed content
-    const content = result.replace(/```json[\s\S]*?```/g, "").trim();
-
-    return { content, suggestedActions };
+    // Attempt JSON parsing + Zod validation
+    try {
+      const parsed = JSON.parse(result) as unknown;
+      const validated = BriefingBlocksSchema.parse(parsed);
+      const suggestedActions = extractSuggestedActions(validated);
+      const content = blocksToMarkdown(validated);
+      return { content, suggestedActions, blocks: validated };
+    } catch (parseErr) {
+      logger.warn({ err: parseErr }, "Briefing JSON parse/validation failed — falling back to static summary");
+      return buildStaticSummary(context);
+    }
   } catch (err) {
     logger.warn({ err }, "AI synthesis failed — falling back to static summary");
     return buildStaticSummary(context);

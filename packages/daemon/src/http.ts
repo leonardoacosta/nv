@@ -9,6 +9,7 @@ import type { Config } from "./config.js";
 import type { Message } from "./types.js";
 import type { Logger } from "./logger.js";
 import type { BriefingDeps } from "./features/briefing/synthesizer.js";
+import { gatherContext, synthesizeBriefing, blocksToMarkdown } from "./features/briefing/synthesizer.js";
 import { runMorningBriefing } from "./features/briefing/runner.js";
 import { runDream, getDreamStatus } from "./features/dream/index.js";
 
@@ -84,6 +85,78 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
         500,
       );
     }
+  });
+
+  // ── GET /api/briefing/stream ────────────────────────────────────────────────
+  app.get("/api/briefing/stream", (c) => {
+    if (!deps.briefingDeps) {
+      return c.json({ error: "Briefing system not configured" }, 503);
+    }
+
+    const briefingDeps = deps.briefingDeps;
+
+    return streamSSE(c, async (stream) => {
+      try {
+        const context = await gatherContext(briefingDeps);
+        const synthesis = await synthesizeBriefing(context, briefingDeps);
+
+        const blocks = synthesis.blocks ?? [];
+
+        // Stream individual blocks
+        for (let i = 0; i < blocks.length; i++) {
+          const block = blocks[i];
+          await stream.writeSSE({
+            data: JSON.stringify({ type: "block", index: i, block }),
+          });
+        }
+
+        // Persist to DB
+        const pool = briefingDeps.pool;
+        const result = await pool.query<{ id: string; generated_at: Date }>(
+          `INSERT INTO briefings (content, sources_status, suggested_actions, blocks)
+           VALUES ($1, $2, $3, $4)
+           RETURNING id, generated_at`,
+          [
+            synthesis.content,
+            JSON.stringify(context.sourcesStatus),
+            JSON.stringify(synthesis.suggestedActions),
+            synthesis.blocks !== null ? JSON.stringify(synthesis.blocks) : null,
+          ],
+        );
+
+        const row = result.rows[0];
+
+        // Send done event with full block array
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "done", blocks }),
+        });
+
+        // Send Telegram notification (fire-and-forget)
+        if (row && briefingDeps.telegram && briefingDeps.telegramChatId) {
+          const TELEGRAM_MAX_LEN = 4096;
+          const DASHBOARD_SUFFIX = "\n\n... [view full briefing on dashboard]";
+          const content =
+            synthesis.content.length <= TELEGRAM_MAX_LEN
+              ? synthesis.content
+              : synthesis.content.slice(0, TELEGRAM_MAX_LEN - DASHBOARD_SUFFIX.length) + DASHBOARD_SUFFIX;
+
+          void briefingDeps.telegram
+            .sendMessage(briefingDeps.telegramChatId, content, {
+              parseMode: "Markdown",
+              disablePreview: true,
+            })
+            .catch((err: unknown) => {
+              logger.warn({ err }, "Briefing stream: failed to send Telegram notification");
+            });
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Briefing generation failed";
+        logger.error({ err }, "GET /api/briefing/stream error");
+        await stream.writeSSE({
+          data: JSON.stringify({ type: "error", message }),
+        });
+      }
+    });
   });
 
   // ── POST /chat ─────────────────────────────────────────────────────────────

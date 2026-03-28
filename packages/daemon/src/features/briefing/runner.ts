@@ -43,13 +43,14 @@ export async function runMorningBriefing(deps: BriefingDeps): Promise<BriefingRo
   const synthesis = await synthesizeBriefing(context, deps);
 
   const result = await pool.query<BriefingRow>(
-    `INSERT INTO briefings (content, sources_status, suggested_actions)
-     VALUES ($1, $2, $3)
+    `INSERT INTO briefings (content, sources_status, suggested_actions, blocks)
+     VALUES ($1, $2, $3, $4)
      RETURNING id, generated_at`,
     [
       synthesis.content,
       JSON.stringify(context.sourcesStatus),
       JSON.stringify(synthesis.suggestedActions),
+      synthesis.blocks !== null ? JSON.stringify(synthesis.blocks) : null,
     ],
   );
 

@@ -14,60 +14,165 @@
           "path": "openspec/changes/cleanup-rust-daemon",
           "pattern": "E",
           "task_count": 7,
-          "batches": { "DB": 0, "API": 5, "UI": 0, "E2E": 2 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 5,
+            "UI": 0,
+            "E2E": 2
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:41:36.190138"
         },
         {
           "name": "add-channels-svc",
           "path": "openspec/changes/add-channels-svc",
           "pattern": "C",
           "task_count": 2,
-          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 2,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:30:28.233817"
         },
         {
           "name": "add-discord-svc",
           "path": "openspec/changes/add-discord-svc",
           "pattern": "C",
           "task_count": 2,
-          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 2,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:30:28.246936"
         },
         {
           "name": "add-meta-svc",
           "path": "openspec/changes/add-meta-svc",
           "pattern": "C",
           "task_count": 1,
-          "batches": { "DB": 0, "API": 1, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 1,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:30:28.260525"
         },
         {
           "name": "add-memory-svc",
           "path": "openspec/changes/add-memory-svc",
           "pattern": "C",
           "task_count": 2,
-          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 2,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:30:28.273326"
         },
         {
           "name": "add-fleet-client-retry",
           "path": "openspec/changes/add-fleet-client-retry",
           "pattern": "C",
           "task_count": 2,
-          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 2,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:41:36.190147"
         },
         {
           "name": "add-circuit-breaking",
           "path": "openspec/changes/add-circuit-breaking",
           "pattern": "C",
           "task_count": 16,
-          "batches": { "DB": 0, "API": 8, "UI": 0, "E2E": 8 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 8,
+            "UI": 0,
+            "E2E": 8
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-28T18:41:36.190148"
         }
       ],
       "total_tasks": 32,
-      "rationale": "Isolated infrastructure — deploy scripts, new tool services, tool-router resilience. Zero daemon/src/ conflicts."
+      "rationale": "Isolated infrastructure \u2014 deploy scripts, new tool services, tool-router resilience. Zero daemon/src/ conflicts."
     },
     {
       "wave": 2,
@@ -77,32 +182,92 @@
           "path": "openspec/changes/add-tool-self-registration",
           "pattern": "C",
           "task_count": 9,
-          "batches": { "DB": 0, "API": 5, "UI": 0, "E2E": 4 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 5,
+            "UI": 0,
+            "E2E": 4
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "consolidate-memory-storage",
           "path": "openspec/changes/consolidate-memory-storage",
           "pattern": "C",
           "task_count": 11,
-          "batches": { "DB": 0, "API": 8, "UI": 0, "E2E": 3 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 8,
+            "UI": 0,
+            "E2E": 3
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "add-unified-config-schema",
           "path": "openspec/changes/add-unified-config-schema",
           "pattern": "C",
           "task_count": 8,
-          "batches": { "DB": 0, "API": 5, "UI": 0, "E2E": 3 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 5,
+            "UI": 0,
+            "E2E": 3
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "fix-tool-timing",
           "path": "openspec/changes/fix-tool-timing",
           "pattern": "E",
           "task_count": 2,
-          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 2,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         }
       ],
       "total_tasks": 30,
@@ -116,36 +281,96 @@
           "path": "openspec/changes/add-persistent-watcher-config",
           "pattern": "C",
           "task_count": 4,
-          "batches": { "DB": 0, "API": 3, "UI": 0, "E2E": 1 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 3,
+            "UI": 0,
+            "E2E": 1
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "fix-silent-errors",
           "path": "openspec/changes/fix-silent-errors",
           "pattern": "E",
           "task_count": 4,
-          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 4,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "extract-callback-router",
           "path": "openspec/changes/extract-callback-router",
           "pattern": "E",
           "task_count": 4,
-          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 4,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "extract-agent-query-factory",
           "path": "openspec/changes/extract-agent-query-factory",
           "pattern": "E",
           "task_count": 8,
-          "batches": { "DB": 0, "API": 8, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 8,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         }
       ],
       "total_tasks": 20,
-      "rationale": "Daemon hardening — config persistence, error handling, callback routing, agent query factory. Different feature areas within daemon/src/."
+      "rationale": "Daemon hardening \u2014 config persistence, error handling, callback routing, agent query factory. Different feature areas within daemon/src/."
     },
     {
       "wave": 4,
@@ -155,16 +380,46 @@
           "path": "openspec/changes/deduplicate-shared-utils",
           "pattern": "E",
           "task_count": 4,
-          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 4,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "add-digest-observability",
           "path": "openspec/changes/add-digest-observability",
           "pattern": "C",
           "task_count": 16,
-          "batches": { "DB": 3, "API": 9, "UI": 0, "E2E": 4 },
-          "status": "pending"
+          "batches": {
+            "DB": 3,
+            "API": 9,
+            "UI": 0,
+            "E2E": 4
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         }
       ],
       "total_tasks": 20,
@@ -178,20 +433,50 @@
           "path": "openspec/changes/wire-conversation-history",
           "pattern": "C",
           "task_count": 2,
-          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 2,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "revive-obligations",
           "path": "openspec/changes/revive-obligations",
           "pattern": "B",
           "task_count": 4,
-          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 4,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         }
       ],
       "total_tasks": 6,
-      "rationale": "Conversation history wiring + obligation revival. Small wave but necessary — both touch daemon/src/ areas modified by waves 3-4."
+      "rationale": "Conversation history wiring + obligation revival. Small wave but necessary \u2014 both touch daemon/src/ areas modified by waves 3-4."
     },
     {
       "wave": 6,
@@ -201,20 +486,105 @@
           "path": "openspec/changes/add-universal-obligation-detection",
           "pattern": "D",
           "task_count": 17,
-          "batches": { "DB": 2, "API": 9, "UI": 0, "E2E": 6 },
-          "status": "pending"
+          "batches": {
+            "DB": 2,
+            "API": 9,
+            "UI": 0,
+            "E2E": 6
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         },
         {
           "name": "add-response-streaming",
           "path": "openspec/changes/add-response-streaming",
           "pattern": "C",
           "task_count": 6,
-          "batches": { "DB": 0, "API": 6, "UI": 0, "E2E": 0 },
-          "status": "pending"
+          "batches": {
+            "DB": 0,
+            "API": 6,
+            "UI": 0,
+            "E2E": 0
+          },
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
         }
       ],
       "total_tasks": 23,
       "rationale": "Universal obligation detection (depends on revived obligations from wave 5) + response streaming (depends on agent refactors from waves 3-4). Different subsystems."
     }
-  ]
+  ],
+  "current_wave": 2,
+  "started_at": "2026-03-28T18:29:42.186762",
+  "completed_at": null,
+  "completed_waves": [
+    1
+  ],
+  "completed_specs": [
+    "cleanup-rust-daemon",
+    "add-channels-svc",
+    "add-discord-svc",
+    "add-meta-svc",
+    "add-memory-svc",
+    "add-fleet-client-retry",
+    "add-circuit-breaking"
+  ],
+  "failed_specs": [],
+  "pre_audit_sha": "a58519b",
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [
+      "API_wave1",
+      "E2E_wave1"
+    ],
+    "task_results": {
+      "cleanup-rust-daemon": {},
+      "add-channels-svc": {},
+      "add-discord-svc": {},
+      "add-meta-svc": {},
+      "add-memory-svc": {},
+      "add-fleet-client-retry": {},
+      "add-circuit-breaking": {},
+      "add-tool-self-registration": {},
+      "consolidate-memory-storage": {},
+      "add-unified-config-schema": {},
+      "fix-tool-timing": {},
+      "add-persistent-watcher-config": {},
+      "fix-silent-errors": {},
+      "extract-callback-router": {},
+      "extract-agent-query-factory": {},
+      "deduplicate-shared-utils": {},
+      "add-digest-observability": {},
+      "wire-conversation-history": {},
+      "revive-obligations": {},
+      "add-universal-obligation-detection": {},
+      "add-response-streaming": {}
+    },
+    "phase_started_at": {
+      "API_wave1": "2026-03-28T18:30:36.909867",
+      "E2E_wave1": "2026-03-28T18:36:19.459170"
+    },
+    "phase_completed_at": {
+      "API_wave1": "2026-03-28T18:36:07.956506",
+      "E2E_wave1": "2026-03-28T18:41:20.794853"
+    }
+  }
 }

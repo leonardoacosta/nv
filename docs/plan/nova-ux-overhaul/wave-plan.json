@@ -161,7 +161,7 @@
             "UI": 2,
             "E2E": 1
           },
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -170,8 +170,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T14:08:51.906214",
+          "merged_at": "2026-03-28T14:41:57.978049"
         },
         {
           "name": "enrich-message-sender-display",
@@ -186,7 +186,7 @@
             "UI": 5,
             "E2E": 3
           },
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -195,8 +195,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T14:08:51.906216",
+          "merged_at": "2026-03-28T14:41:57.978056"
         },
         {
           "name": "enhance-settings-verbosity",
@@ -211,7 +211,7 @@
             "UI": 10,
             "E2E": 3
           },
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -220,8 +220,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T14:08:51.906217",
+          "merged_at": "2026-03-28T14:41:57.978057"
         }
       ],
       "total_tasks": 39
@@ -314,26 +314,30 @@
       "total_tasks": 54
     }
   ],
-  "current_wave": 3,
+  "current_wave": 4,
   "started_at": "2026-03-28T12:46:41.639231",
   "completed_at": null,
   "completed_waves": [
     1,
-    2
+    2,
+    3
   ],
   "completed_specs": [
     "migrate-daemon-writes-to-postgres",
     "fix-chat-reverse-scroll",
     "add-automations-prompt-preview",
-    "declutter-home-command-center"
+    "declutter-home-command-center",
+    "materialize-contacts-projects-from-memory",
+    "enrich-message-sender-display",
+    "enhance-settings-verbosity"
   ],
   "failed_specs": [],
   "mega_batch_state": {
     "current_phase": null,
     "phases_completed": [
-      "API_wave2",
-      "UI_wave2",
-      "E2E_wave2"
+      "API_wave3",
+      "UI_wave3",
+      "E2E_wave3"
     ],
     "task_results": {
       "migrate-daemon-writes-to-postgres": {},
@@ -351,11 +355,16 @@
       "DB_wave1": "2026-03-28T12:46:57.269158",
       "API_wave2": "2026-03-28T13:43:58.304158",
       "UI_wave2": "2026-03-28T13:48:22.257945",
-      "E2E_wave2": "2026-03-28T14:06:46.128138"
+      "E2E_wave2": "2026-03-28T14:06:46.128138",
+      "API_wave3": "2026-03-28T14:08:51.906208",
+      "UI_wave3": "2026-03-28T14:18:24.576330",
+      "E2E_wave3": "2026-03-28T14:32:12.385461"
     },
     "phase_completed_at": {
       "API_wave2": "2026-03-28T13:48:22.257938",
-      "UI_wave2": "2026-03-28T14:06:46.128132"
+      "UI_wave2": "2026-03-28T14:06:46.128132",
+      "API_wave3": "2026-03-28T14:18:24.576323",
+      "UI_wave3": "2026-03-28T14:32:12.385456"
     }
   }
 }

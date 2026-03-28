@@ -53,17 +53,58 @@ function adoRestCall(apiPath: string, queryParams: string = ""): string {
   ].join("; ");
 }
 
+// ── Response trimmers ─────────────────────────────────────────────────
+
+/** Trim verbose list response, extracting only selected fields. */
+function trimList<T>(raw: string, mapper: (item: Record<string, unknown>) => T): string {
+  try {
+    const data = JSON.parse(raw);
+    const items = Array.isArray(data) ? data : data.value ?? [];
+    return JSON.stringify(items.map(mapper));
+  } catch {
+    return raw;
+  }
+}
+
+const trimProjects = (raw: string) =>
+  trimList(raw, (p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    state: p.state,
+  }));
+
+const trimPipelines = (raw: string) =>
+  trimList(raw, (p) => ({
+    id: p.id,
+    name: p.name,
+    folder: p.folder,
+  }));
+
+const trimBuilds = (raw: string) =>
+  trimList(raw, (b) => ({
+    id: b.id,
+    buildNumber: b.buildNumber,
+    status: b.status,
+    result: b.result,
+    startTime: b.startTime,
+    finishTime: b.finishTime,
+    sourceBranch: b.sourceBranch,
+    pipeline: (b.definition as Record<string, unknown>)?.name,
+  }));
+
 // ── Tool implementations ───────────────────────────────────────────────
 
 /**
  * List Azure DevOps projects.
  */
-export async function adoProjects(config: ServiceConfig): Promise<string> {
+export async function adoProjects(config: ServiceConfig, limit: number = 50): Promise<string> {
   if (!(await isSocksAvailable())) {
-    const ps = adoRestCall("_apis/projects");
-    return sshAdoCommand(config.cloudpcHost, ps);
+    const ps = adoRestCall("_apis/projects", `$top=${limit}`);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps);
+    return trimProjects(raw);
   }
-  return adoGet(config, "_apis/projects");
+  return trimProjects(await adoGet(config, "_apis/projects", { $top: String(limit) }));
 }
 
 /**
@@ -72,13 +113,15 @@ export async function adoProjects(config: ServiceConfig): Promise<string> {
 export async function adoPipelines(
   config: ServiceConfig,
   project?: string,
+  limit: number = 50,
 ): Promise<string> {
   const proj = sanitize(project ?? "Wholesale Architecture");
   if (!(await isSocksAvailable())) {
-    const ps = adoRestCall(`${proj}/_apis/pipelines`);
-    return sshAdoCommand(config.cloudpcHost, ps);
+    const ps = adoRestCall(`${proj}/_apis/pipelines`, `$top=${limit}`);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps);
+    return trimPipelines(raw);
   }
-  return adoGet(config, `${encodeURIComponent(proj)}/_apis/pipelines`);
+  return trimPipelines(await adoGet(config, `${encodeURIComponent(proj)}/_apis/pipelines`, { $top: String(limit) }));
 }
 
 /**
@@ -97,9 +140,11 @@ export async function adoBuilds(
       query += `&definitions=${sanitize(pipeline)}`;
     }
     const ps = adoRestCall(`${proj}/_apis/build/builds`, query);
-    return sshAdoCommand(config.cloudpcHost, ps);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps);
+    return trimBuilds(raw);
   }
   const query: Record<string, string> = { $top: String(limit) };
   if (pipeline) query["definitions"] = sanitize(pipeline);
-  return adoGet(config, `${encodeURIComponent(proj)}/_apis/build/builds`, query);
+  const raw = await adoGet(config, `${encodeURIComponent(proj)}/_apis/build/builds`, query);
+  return trimBuilds(raw);
 }

@@ -1,0 +1,220 @@
+{
+  "name": "nova-audit-remediation",
+  "status": "pending",
+  "mode": "consolidated",
+  "created_at": "2026-03-28T20:00:00Z",
+  "branch": "main",
+  "decisions": [],
+  "waves": [
+    {
+      "wave": 1,
+      "specs": [
+        {
+          "name": "cleanup-rust-daemon",
+          "path": "openspec/changes/cleanup-rust-daemon",
+          "pattern": "E",
+          "task_count": 7,
+          "batches": { "DB": 0, "API": 5, "UI": 0, "E2E": 2 },
+          "status": "pending"
+        },
+        {
+          "name": "add-channels-svc",
+          "path": "openspec/changes/add-channels-svc",
+          "pattern": "C",
+          "task_count": 2,
+          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "add-discord-svc",
+          "path": "openspec/changes/add-discord-svc",
+          "pattern": "C",
+          "task_count": 2,
+          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "add-meta-svc",
+          "path": "openspec/changes/add-meta-svc",
+          "pattern": "C",
+          "task_count": 1,
+          "batches": { "DB": 0, "API": 1, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "add-memory-svc",
+          "path": "openspec/changes/add-memory-svc",
+          "pattern": "C",
+          "task_count": 2,
+          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "add-fleet-client-retry",
+          "path": "openspec/changes/add-fleet-client-retry",
+          "pattern": "C",
+          "task_count": 2,
+          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "add-circuit-breaking",
+          "path": "openspec/changes/add-circuit-breaking",
+          "pattern": "C",
+          "task_count": 16,
+          "batches": { "DB": 0, "API": 8, "UI": 0, "E2E": 8 },
+          "status": "pending"
+        }
+      ],
+      "total_tasks": 32,
+      "rationale": "Isolated infrastructure — deploy scripts, new tool services, tool-router resilience. Zero daemon/src/ conflicts."
+    },
+    {
+      "wave": 2,
+      "specs": [
+        {
+          "name": "add-tool-self-registration",
+          "path": "openspec/changes/add-tool-self-registration",
+          "pattern": "C",
+          "task_count": 9,
+          "batches": { "DB": 0, "API": 5, "UI": 0, "E2E": 4 },
+          "status": "pending"
+        },
+        {
+          "name": "consolidate-memory-storage",
+          "path": "openspec/changes/consolidate-memory-storage",
+          "pattern": "C",
+          "task_count": 11,
+          "batches": { "DB": 0, "API": 8, "UI": 0, "E2E": 3 },
+          "status": "pending"
+        },
+        {
+          "name": "add-unified-config-schema",
+          "path": "openspec/changes/add-unified-config-schema",
+          "pattern": "C",
+          "task_count": 8,
+          "batches": { "DB": 0, "API": 5, "UI": 0, "E2E": 3 },
+          "status": "pending"
+        },
+        {
+          "name": "fix-tool-timing",
+          "path": "openspec/changes/fix-tool-timing",
+          "pattern": "E",
+          "task_count": 2,
+          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        }
+      ],
+      "total_tasks": 30,
+      "rationale": "Tool self-registration (depends on wave 1 services), memory consolidation, config schema, stream-writer fix. All in different packages."
+    },
+    {
+      "wave": 3,
+      "specs": [
+        {
+          "name": "add-persistent-watcher-config",
+          "path": "openspec/changes/add-persistent-watcher-config",
+          "pattern": "C",
+          "task_count": 4,
+          "batches": { "DB": 0, "API": 3, "UI": 0, "E2E": 1 },
+          "status": "pending"
+        },
+        {
+          "name": "fix-silent-errors",
+          "path": "openspec/changes/fix-silent-errors",
+          "pattern": "E",
+          "task_count": 4,
+          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "extract-callback-router",
+          "path": "openspec/changes/extract-callback-router",
+          "pattern": "E",
+          "task_count": 4,
+          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "extract-agent-query-factory",
+          "path": "openspec/changes/extract-agent-query-factory",
+          "pattern": "E",
+          "task_count": 8,
+          "batches": { "DB": 0, "API": 8, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        }
+      ],
+      "total_tasks": 20,
+      "rationale": "Daemon hardening — config persistence, error handling, callback routing, agent query factory. Different feature areas within daemon/src/."
+    },
+    {
+      "wave": 4,
+      "specs": [
+        {
+          "name": "deduplicate-shared-utils",
+          "path": "openspec/changes/deduplicate-shared-utils",
+          "pattern": "E",
+          "task_count": 4,
+          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "add-digest-observability",
+          "path": "openspec/changes/add-digest-observability",
+          "pattern": "C",
+          "task_count": 16,
+          "batches": { "DB": 3, "API": 9, "UI": 0, "E2E": 4 },
+          "status": "pending"
+        }
+      ],
+      "total_tasks": 20,
+      "rationale": "Utility dedup (stream-writer, format, runner) + digest observability (suppress, scheduler, new schema). Different files within daemon features."
+    },
+    {
+      "wave": 5,
+      "specs": [
+        {
+          "name": "wire-conversation-history",
+          "path": "openspec/changes/wire-conversation-history",
+          "pattern": "C",
+          "task_count": 2,
+          "batches": { "DB": 0, "API": 2, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        },
+        {
+          "name": "revive-obligations",
+          "path": "openspec/changes/revive-obligations",
+          "pattern": "B",
+          "task_count": 4,
+          "batches": { "DB": 0, "API": 4, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        }
+      ],
+      "total_tasks": 6,
+      "rationale": "Conversation history wiring + obligation revival. Small wave but necessary — both touch daemon/src/ areas modified by waves 3-4."
+    },
+    {
+      "wave": 6,
+      "specs": [
+        {
+          "name": "add-universal-obligation-detection",
+          "path": "openspec/changes/add-universal-obligation-detection",
+          "pattern": "D",
+          "task_count": 17,
+          "batches": { "DB": 2, "API": 9, "UI": 0, "E2E": 6 },
+          "status": "pending"
+        },
+        {
+          "name": "add-response-streaming",
+          "path": "openspec/changes/add-response-streaming",
+          "pattern": "C",
+          "task_count": 6,
+          "batches": { "DB": 0, "API": 6, "UI": 0, "E2E": 0 },
+          "status": "pending"
+        }
+      ],
+      "total_tasks": 23,
+      "rationale": "Universal obligation detection (depends on revived obligations from wave 5) + response streaming (depends on agent refactors from waves 3-4). Different subsystems."
+    }
+  ]
+}

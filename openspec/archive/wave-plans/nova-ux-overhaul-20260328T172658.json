@@ -1,0 +1,390 @@
+{
+  "name": "nova-ux-overhaul",
+  "status": "completed",
+  "mode": "consolidated",
+  "created_at": "2026-03-28T12:15:00Z",
+  "pre_audit_sha": "8827a4f",
+  "branch": "main",
+  "decisions": [
+    {
+      "date": "2026-03-28",
+      "decision": "Execute all 5 waves, override 40-task and single-spec guardrails",
+      "rationale": "User approved. Waves 2,4,5 slightly over 40 tasks. Waves 1,5 single-spec due to Rust conflicts and spec size.",
+      "source": "user",
+      "affected_waves": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "affected_specs": [
+        "migrate-daemon-writes-to-postgres",
+        "fix-chat-reverse-scroll",
+        "add-automations-prompt-preview",
+        "declutter-home-command-center",
+        "materialize-contacts-projects-from-memory",
+        "enrich-message-sender-display",
+        "enhance-settings-verbosity",
+        "surface-diary-token-metadata",
+        "wire-fleet-health-status",
+        "consolidate-briefing-pipeline"
+      ]
+    }
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "specs": [
+        {
+          "name": "migrate-daemon-writes-to-postgres",
+          "path": "openspec/changes/migrate-daemon-writes-to-postgres",
+          "pipeline_id": "4bfd82a1-f61c-47d1-b3bd-d3c057d15cfd",
+          "beads_epic": "nv-l5fb",
+          "pattern": "D",
+          "task_count": 20,
+          "batches": {
+            "DB": 3,
+            "API": 13,
+            "UI": 0,
+            "E2E": 4
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T12:46:57.269165",
+          "merged_at": "2026-03-28T13:10:49.427636"
+        }
+      ],
+      "total_tasks": 20
+    },
+    {
+      "wave": 2,
+      "specs": [
+        {
+          "name": "fix-chat-reverse-scroll",
+          "path": "openspec/changes/fix-chat-reverse-scroll",
+          "pipeline_id": "fix-chat-reverse-scroll-20260328",
+          "beads_epic": "none",
+          "pattern": "B",
+          "task_count": 18,
+          "batches": {
+            "DB": 0,
+            "API": 1,
+            "UI": 8,
+            "E2E": 9
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T13:43:58.304165",
+          "merged_at": "2026-03-28T14:08:40.606149"
+        },
+        {
+          "name": "add-automations-prompt-preview",
+          "path": "openspec/changes/add-automations-prompt-preview",
+          "pipeline_id": "6c88f91d-48a7-4ceb-a319-cb84ac7fefc8",
+          "beads_epic": "nv-cpc5",
+          "pattern": "B",
+          "task_count": 11,
+          "batches": {
+            "DB": 0,
+            "API": 1,
+            "UI": 9,
+            "E2E": 1
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T13:43:58.304167",
+          "merged_at": "2026-03-28T14:08:40.606156"
+        },
+        {
+          "name": "declutter-home-command-center",
+          "path": "openspec/changes/declutter-home-command-center",
+          "pipeline_id": "feat-declutter-home-1774716859",
+          "beads_epic": "nv-pgus",
+          "pattern": "B",
+          "task_count": 17,
+          "batches": {
+            "DB": 0,
+            "API": 1,
+            "UI": 8,
+            "E2E": 8
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T13:43:58.304168",
+          "merged_at": "2026-03-28T14:08:40.606157"
+        }
+      ],
+      "total_tasks": 46
+    },
+    {
+      "wave": 3,
+      "specs": [
+        {
+          "name": "materialize-contacts-projects-from-memory",
+          "path": "openspec/changes/materialize-contacts-projects-from-memory",
+          "pipeline_id": "materialize-20260328",
+          "beads_epic": "none",
+          "pattern": "B",
+          "task_count": 8,
+          "batches": {
+            "DB": 0,
+            "API": 5,
+            "UI": 2,
+            "E2E": 1
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T14:08:51.906214",
+          "merged_at": "2026-03-28T14:41:57.978049"
+        },
+        {
+          "name": "enrich-message-sender-display",
+          "path": "openspec/changes/enrich-message-sender-display",
+          "pipeline_id": "enrich-messages-20260328",
+          "beads_epic": "nv-f4sd",
+          "pattern": "B",
+          "task_count": 12,
+          "batches": {
+            "DB": 0,
+            "API": 4,
+            "UI": 5,
+            "E2E": 3
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T14:08:51.906216",
+          "merged_at": "2026-03-28T14:41:57.978056"
+        },
+        {
+          "name": "enhance-settings-verbosity",
+          "path": "openspec/changes/enhance-settings-verbosity",
+          "pipeline_id": "72d3b1f0-91eb-4d5f-acb9-a4a843f71361",
+          "beads_epic": "nv-zcm7",
+          "pattern": "B",
+          "task_count": 19,
+          "batches": {
+            "DB": 0,
+            "API": 6,
+            "UI": 10,
+            "E2E": 3
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T14:08:51.906217",
+          "merged_at": "2026-03-28T14:41:57.978057"
+        }
+      ],
+      "total_tasks": 39
+    },
+    {
+      "wave": 4,
+      "specs": [
+        {
+          "name": "surface-diary-token-metadata",
+          "path": "openspec/changes/surface-diary-token-metadata",
+          "pipeline_id": "feature-surface-diary-token-metadata-20260328",
+          "beads_epic": "nv-75rh",
+          "pattern": "B",
+          "task_count": 19,
+          "batches": {
+            "DB": 2,
+            "API": 10,
+            "UI": 4,
+            "E2E": 3
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T14:42:07.757296",
+          "merged_at": "2026-03-28T15:11:03.653149"
+        },
+        {
+          "name": "wire-fleet-health-status",
+          "path": "openspec/changes/wire-fleet-health-status",
+          "pipeline_id": "wire-fleet-health-20260328",
+          "beads_epic": "none",
+          "pattern": "B",
+          "task_count": 23,
+          "batches": {
+            "DB": 1,
+            "API": 7,
+            "UI": 10,
+            "E2E": 5
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T14:42:07.757298",
+          "merged_at": "2026-03-28T15:11:03.653156"
+        }
+      ],
+      "total_tasks": 42
+    },
+    {
+      "wave": 5,
+      "specs": [
+        {
+          "name": "consolidate-briefing-pipeline",
+          "path": "openspec/changes/consolidate-briefing-pipeline",
+          "pipeline_id": "feature-1774717563459",
+          "beads_epic": "nv-1wq6",
+          "pattern": "A",
+          "task_count": 54,
+          "batches": {
+            "DB": 3,
+            "API": 14,
+            "UI": 18,
+            "E2E": 19
+          },
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T15:11:29.695821",
+          "merged_at": "2026-03-28T15:39:50.850921"
+        }
+      ],
+      "total_tasks": 54
+    }
+  ],
+  "current_wave": 5,
+  "started_at": "2026-03-28T12:46:41.639231",
+  "completed_at": "2026-03-28T15:39:50.850910",
+  "completed_waves": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "completed_specs": [
+    "migrate-daemon-writes-to-postgres",
+    "fix-chat-reverse-scroll",
+    "add-automations-prompt-preview",
+    "declutter-home-command-center",
+    "materialize-contacts-projects-from-memory",
+    "enrich-message-sender-display",
+    "enhance-settings-verbosity",
+    "surface-diary-token-metadata",
+    "wire-fleet-health-status",
+    "consolidate-briefing-pipeline"
+  ],
+  "failed_specs": [],
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [
+      "DB_wave5",
+      "API_wave5",
+      "UI_wave5",
+      "E2E_wave5"
+    ],
+    "task_results": {
+      "migrate-daemon-writes-to-postgres": {},
+      "fix-chat-reverse-scroll": {},
+      "add-automations-prompt-preview": {},
+      "declutter-home-command-center": {},
+      "materialize-contacts-projects-from-memory": {},
+      "enrich-message-sender-display": {},
+      "enhance-settings-verbosity": {},
+      "surface-diary-token-metadata": {},
+      "wire-fleet-health-status": {},
+      "consolidate-briefing-pipeline": {}
+    },
+    "phase_started_at": {
+      "DB_wave1": "2026-03-28T12:46:57.269158",
+      "API_wave2": "2026-03-28T13:43:58.304158",
+      "UI_wave2": "2026-03-28T13:48:22.257945",
+      "E2E_wave2": "2026-03-28T14:06:46.128138",
+      "API_wave3": "2026-03-28T14:08:51.906208",
+      "UI_wave3": "2026-03-28T14:18:24.576330",
+      "E2E_wave3": "2026-03-28T14:32:12.385461",
+      "DB_wave4": "2026-03-28T14:42:07.757284",
+      "API_wave4": "2026-03-28T14:43:55.041634",
+      "UI_wave4": "2026-03-28T14:55:28.372353",
+      "E2E_wave4": "2026-03-28T15:04:39.628911",
+      "DB_wave5": "2026-03-28T15:11:29.695815",
+      "API_wave5": "2026-03-28T15:17:44.002044",
+      "UI_wave5": "2026-03-28T15:25:51.237967",
+      "E2E_wave5": "2026-03-28T15:34:26.182356"
+    },
+    "phase_completed_at": {
+      "API_wave2": "2026-03-28T13:48:22.257938",
+      "UI_wave2": "2026-03-28T14:06:46.128132",
+      "API_wave3": "2026-03-28T14:18:24.576323",
+      "UI_wave3": "2026-03-28T14:32:12.385456",
+      "DB_wave4": "2026-03-28T14:43:55.041629",
+      "API_wave4": "2026-03-28T14:55:28.372347",
+      "UI_wave4": "2026-03-28T15:04:39.628904",
+      "DB_wave5": "2026-03-28T15:17:44.002037",
+      "API_wave5": "2026-03-28T15:25:51.237960",
+      "UI_wave5": "2026-03-28T15:34:26.182348"
+    }
+  }
+}

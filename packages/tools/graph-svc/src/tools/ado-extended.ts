@@ -24,6 +24,54 @@ function adoRestCall(apiPath: string, queryParams: string = ""): string {
   ].join("; ");
 }
 
+// ── Response trimmers ─────────────────────────────────────────────────
+
+/** Trim verbose list response, extracting only selected fields. */
+function trimList<T>(raw: string, mapper: (item: Record<string, unknown>) => T): string {
+  try {
+    const data = JSON.parse(raw);
+    const items = Array.isArray(data) ? data : data.value ?? [];
+    return JSON.stringify(items.map(mapper));
+  } catch {
+    return raw;
+  }
+}
+
+const trimPrs = (raw: string) =>
+  trimList(raw, (pr) => ({
+    id: pr.pullRequestId,
+    title: pr.title,
+    status: pr.status,
+    createdBy: (pr.createdBy as Record<string, unknown>)?.displayName,
+    sourceBranch: pr.sourceRefName,
+    targetBranch: pr.targetRefName,
+    creationDate: pr.creationDate,
+    url: pr.url,
+  }));
+
+const trimRepos = (raw: string) =>
+  trimList(raw, (r) => ({
+    id: r.id,
+    name: r.name,
+    defaultBranch: r.defaultBranch,
+    size: r.size,
+    webUrl: r.webUrl,
+  }));
+
+const trimCommits = (raw: string) =>
+  trimList(raw, (c) => ({
+    commitId: typeof c.commitId === "string" ? c.commitId.slice(0, 8) : c.commitId,
+    author: (c.author as Record<string, unknown>)?.name,
+    date: (c.author as Record<string, unknown>)?.date,
+    comment: typeof c.comment === "string" ? c.comment.slice(0, 120) : c.comment,
+  }));
+
+const trimBranches = (raw: string) =>
+  trimList(raw, (b) => ({
+    name: typeof b.name === "string" ? b.name.replace(/^refs\/heads\//, "") : b.name,
+    objectId: typeof b.objectId === "string" ? b.objectId.slice(0, 8) : b.objectId,
+  }));
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function buildUrl(path: string, query?: Record<string, string | number>): string {
@@ -152,18 +200,21 @@ export async function adoWorkItems(
 export async function adoRepos(
   config: ServiceConfig,
   project?: string,
+  limit: number = 50,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
     const proj = project ? sanitize(project) : undefined;
     const path = proj ? `${proj}/_apis/git/repositories` : `_apis/git/repositories`;
-    const ps = adoRestCall(path);
-    return sshAdoCommand(config.cloudpcHost, ps);
+    const ps = adoRestCall(path, `$top=${limit}`);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps);
+    return trimRepos(raw);
   }
 
   const path = project
     ? `${encodeURIComponent(sanitize(project))}/_apis/git/repositories`
     : `_apis/git/repositories`;
-  return adoSocksGet(config, path);
+  const raw = await adoSocksGet(config, path, { $top: limit });
+  return trimRepos(raw);
 }
 
 /**
@@ -173,24 +224,27 @@ export async function adoPullRequests(
   config: ServiceConfig,
   project?: string,
   status?: string,
+  limit: number = 25,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
     const proj = project ? sanitize(project) : undefined;
     const path = proj
       ? `${proj}/_apis/git/pullrequests`
       : `_apis/git/pullrequests`;
-    let queryStr = "";
-    if (status) queryStr = `searchCriteria.status=${sanitize(status)}`;
+    let queryStr = `$top=${limit}`;
+    if (status) queryStr += `&searchCriteria.status=${sanitize(status)}`;
     const ps = adoRestCall(path, queryStr);
-    return sshAdoCommand(config.cloudpcHost, ps);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps);
+    return trimPrs(raw);
   }
 
   const path = project
     ? `${encodeURIComponent(sanitize(project))}/_apis/git/pullrequests`
     : `_apis/git/pullrequests`;
-  const query: Record<string, string> = {};
+  const query: Record<string, string | number> = { $top: limit };
   if (status) query["searchCriteria.status"] = sanitize(status);
-  return adoSocksGet(config, path, query);
+  const raw = await adoSocksGet(config, path, query);
+  return trimPrs(raw);
 }
 
 /**
@@ -226,14 +280,18 @@ export async function adoCommits(
   limit: number = 20,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
-    const cmd = `az devops invoke --organization https://dev.azure.com/${ADO_ORG} --area git --resource commits --api-version 7.1${project ? ` --route-parameters project='${sanitize(project)}' repositoryId='${sanitize(repoName)}'` : ""} --query-parameters \\$top=${limit} -o json 2>$null`;
-    return sshAdoCommand(config.cloudpcHost, cmd, 45_000);
+    const proj = project ? sanitize(project) : "Wholesale Architecture";
+    const path = `${sanitize(proj)}/_apis/git/repositories/${sanitize(repoName)}/commits`;
+    const ps = adoRestCall(path, `$top=${limit}`);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps, 45_000);
+    return trimCommits(raw);
   }
 
   const path = project
     ? `${encodeURIComponent(sanitize(project))}/_apis/git/repositories/${encodeURIComponent(sanitize(repoName))}/commits`
     : `_apis/git/repositories/${encodeURIComponent(sanitize(repoName))}/commits`;
-  return adoSocksGet(config, path, { $top: limit });
+  const raw = await adoSocksGet(config, path, { $top: limit });
+  return trimCommits(raw);
 }
 
 /**
@@ -303,8 +361,15 @@ export async function adoRepoUpdate(
   defaultBranch: string,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
-    const cmd = `az repos update --organization https://dev.azure.com/${ADO_ORG} --repository '${sanitize(repoName)}' --project '${sanitize(project)}' --default-branch '${sanitize(defaultBranch)}' -o json 2>$null`;
-    return sshAdoCommand(config.cloudpcHost, cmd);
+    const ps = [
+      `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+      `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+      `$h = @{ Authorization = 'Bearer ' + $token; 'Content-Type' = 'application/json' }`,
+      `$repo = Invoke-RestMethod -Uri '${ADO_BASE}/${sanitize(project)}/_apis/git/repositories/${sanitize(repoName)}?api-version=${API_VERSION}' -Headers $h`,
+      `$body = @{ defaultBranch = 'refs/heads/${sanitize(defaultBranch)}' } | ConvertTo-Json -Compress`,
+      `Invoke-RestMethod -Method PATCH -Uri '${ADO_BASE}/${sanitize(project)}/_apis/git/repositories/$($repo.id)?api-version=${API_VERSION}' -Headers $h -Body $body | ConvertTo-Json -Depth 10 -Compress`,
+    ].join("; ");
+    return sshAdoCommand(config.cloudpcHost, ps);
   }
 
   // GET repo first to find its ID, then PATCH
@@ -380,18 +445,23 @@ export async function adoBranches(
   config: ServiceConfig,
   repoName: string,
   project?: string,
+  limit: number = 50,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
-    let cmd = `az repos ref list --organization https://dev.azure.com/${ADO_ORG} --repository '${sanitize(repoName)}'`;
-    if (project) cmd += ` --project '${sanitize(project)}'`;
-    cmd += ` --filter heads -o json 2>$null`;
-    return sshAdoCommand(config.cloudpcHost, cmd);
+    const proj = project ? sanitize(project) : undefined;
+    const repoPath = proj
+      ? `${sanitize(proj)}/_apis/git/repositories/${sanitize(repoName)}/refs`
+      : `_apis/git/repositories/${sanitize(repoName)}/refs`;
+    const ps = adoRestCall(repoPath, `filter=heads/&$top=${limit}`);
+    const raw = await sshAdoCommand(config.cloudpcHost, ps);
+    return trimBranches(raw);
   }
 
   const path = project
     ? `${encodeURIComponent(sanitize(project))}/_apis/git/repositories/${encodeURIComponent(sanitize(repoName))}/refs`
     : `_apis/git/repositories/${encodeURIComponent(sanitize(repoName))}/refs`;
-  return adoSocksGet(config, path, { filter: "heads/" });
+  const raw = await adoSocksGet(config, path, { filter: "heads/", $top: limit });
+  return trimBranches(raw);
 }
 
 /**
@@ -403,8 +473,13 @@ export async function adoRepoDelete(
   project: string,
 ): Promise<string> {
   if (!(await isSocksAvailable())) {
-    const cmd = `az repos delete --organization https://dev.azure.com/${ADO_ORG} --id '${sanitize(repoId)}' --project '${sanitize(project)}' --yes -o json 2>$null`;
-    return sshAdoCommand(config.cloudpcHost, cmd);
+    const ps = [
+      `$token = az account get-access-token --resource ${ADO_RESOURCE} --query accessToken -o tsv 2>$null`,
+      `if (-not $token) { Write-Error 'Token failed'; exit 1 }`,
+      `$h = @{ Authorization = 'Bearer ' + $token }`,
+      `Invoke-RestMethod -Method DELETE -Uri '${ADO_BASE}/${sanitize(project)}/_apis/git/repositories/${sanitize(repoId)}?api-version=${API_VERSION}' -Headers $h`,
+    ].join("; ");
+    return sshAdoCommand(config.cloudpcHost, ps);
   }
 
   return adoSocksDelete(config, `${encodeURIComponent(sanitize(project))}/_apis/git/repositories/${encodeURIComponent(sanitize(repoId))}`);

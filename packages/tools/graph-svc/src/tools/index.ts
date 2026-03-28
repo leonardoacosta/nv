@@ -65,11 +65,22 @@ export function registerGraphTools(
       description: "List Azure DevOps projects you have access to. Returns project names and IDs.",
       inputSchema: {
         type: "object",
-        properties: {},
+        properties: {
+          limit: {
+            type: "integer",
+            description: "Max results to return (default 50).",
+            minimum: 1,
+            maximum: 100,
+          },
+        },
         required: [],
         additionalProperties: false,
       },
-      handler: async () => adoProjects(config),
+      handler: async (input) => {
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : undefined;
+        return adoProjects(config, limit);
+      },
     },
     {
       name: "ado_pipelines",
@@ -83,6 +94,12 @@ export function registerGraphTools(
             description:
               "Project name to filter pipelines by. If omitted, lists all.",
           },
+          limit: {
+            type: "integer",
+            description: "Max results to return (default 50).",
+            minimum: 1,
+            maximum: 100,
+          },
         },
         required: [],
         additionalProperties: false,
@@ -92,7 +109,9 @@ export function registerGraphTools(
           typeof input["project"] === "string"
             ? input["project"]
             : undefined;
-        return adoPipelines(config, project);
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : undefined;
+        return adoPipelines(config, project, limit);
       },
     },
     {
@@ -261,6 +280,12 @@ export function registerGraphTools(
             type: "string",
             description: "Project name to filter by.",
           },
+          limit: {
+            type: "integer",
+            description: "Max results to return (default 50).",
+            minimum: 1,
+            maximum: 100,
+          },
         },
         required: [],
         additionalProperties: false,
@@ -270,7 +295,9 @@ export function registerGraphTools(
           typeof input["project"] === "string"
             ? input["project"]
             : undefined;
-        return adoRepos(config, project);
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : undefined;
+        return adoRepos(config, project, limit);
       },
     },
     {
@@ -289,6 +316,10 @@ export function registerGraphTools(
             description:
               "PR status filter (active, completed, abandoned).",
           },
+          limit: {
+            type: "integer",
+            description: "Max results to return (default 25).",
+          },
         },
         required: [],
         additionalProperties: false,
@@ -302,7 +333,11 @@ export function registerGraphTools(
           typeof input["status"] === "string"
             ? input["status"]
             : undefined;
-        return adoPullRequests(config, project, status);
+        const limit =
+          typeof input["limit"] === "number"
+            ? input["limit"]
+            : undefined;
+        return adoPullRequests(config, project, status, limit);
       },
     },
     {
@@ -555,6 +590,12 @@ export function registerGraphTools(
             type: "string",
             description: "Project name.",
           },
+          limit: {
+            type: "integer",
+            description: "Max branches to return (default 50).",
+            minimum: 1,
+            maximum: 200,
+          },
         },
         required: ["repo"],
         additionalProperties: false,
@@ -564,7 +605,9 @@ export function registerGraphTools(
         if (typeof repo !== "string" || !repo) throw new Error("repo is required");
         const project =
           typeof input["project"] === "string" ? input["project"] : undefined;
-        return adoBranches(config, repo, project);
+        const limit =
+          typeof input["limit"] === "number" ? input["limit"] : undefined;
+        return adoBranches(config, repo, project, limit);
       },
     },
     {

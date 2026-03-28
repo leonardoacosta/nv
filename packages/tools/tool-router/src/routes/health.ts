@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import type { Logger } from "pino";
 
+import type { CircuitBreaker, CircuitState } from "../circuit-breaker.js";
 import { getAllServices } from "../registry.js";
 
 const HEALTH_TIMEOUT_MS = 3000;
@@ -9,6 +10,7 @@ interface ServiceHealth {
   status: "healthy" | "unreachable";
   url: string;
   latency_ms: number | null;
+  circuitBreakerState: CircuitState;
 }
 
 /**
@@ -17,12 +19,20 @@ interface ServiceHealth {
  * Calls GET {serviceUrl}/health on each registered service in parallel,
  * with a 3-second per-service timeout.
  *
+ * After each check, updates circuit breaker state:
+ *   - 200 response → breaker.onSuccess()
+ *   - unreachable / non-200 → breaker.onFailure()
+ *
  * Returns aggregate status:
  *   "healthy"   — all services responded 200
  *   "degraded"  — at least one unreachable or non-200
  *   "unhealthy" — zero services responded
  */
-export function healthRoute(app: Hono, logger: Logger): void {
+export function healthRoute(
+  app: Hono,
+  logger: Logger,
+  breakers: Map<string, CircuitBreaker>,
+): void {
   app.get("/health", async (c) => {
     const services = getAllServices();
     const uniqueServices = new Map<string, string>();
@@ -36,6 +46,7 @@ export function healthRoute(app: Hono, logger: Logger): void {
 
     const checks = Array.from(uniqueServices.entries()).map(
       async ([serviceName, serviceUrl]) => {
+        const breaker = breakers.get(serviceName);
         const start = Date.now();
         try {
           const controller = new AbortController();
@@ -49,13 +60,31 @@ export function healthRoute(app: Hono, logger: Logger): void {
           const latency = Date.now() - start;
 
           if (resp.ok) {
-            results[serviceName] = { status: "healthy", url: serviceUrl, latency_ms: latency };
+            breaker?.onSuccess();
+            results[serviceName] = {
+              status: "healthy",
+              url: serviceUrl,
+              latency_ms: latency,
+              circuitBreakerState: breaker?.state ?? "CLOSED",
+            };
             healthyCount++;
           } else {
-            results[serviceName] = { status: "unreachable", url: serviceUrl, latency_ms: latency };
+            breaker?.onFailure();
+            results[serviceName] = {
+              status: "unreachable",
+              url: serviceUrl,
+              latency_ms: latency,
+              circuitBreakerState: breaker?.state ?? "CLOSED",
+            };
           }
         } catch {
-          results[serviceName] = { status: "unreachable", url: serviceUrl, latency_ms: null };
+          breaker?.onFailure();
+          results[serviceName] = {
+            status: "unreachable",
+            url: serviceUrl,
+            latency_ms: null,
+            circuitBreakerState: breaker?.state ?? "CLOSED",
+          };
         }
       },
     );

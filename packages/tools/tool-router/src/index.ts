@@ -4,9 +4,12 @@ import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import pino from "pino";
 
+import { CircuitBreaker } from "./circuit-breaker.js";
 import { dispatchRoute } from "./routes/dispatch.js";
 import { healthRoute } from "./routes/health.js";
+import { metricsRoute } from "./routes/metrics.js";
 import { registryRoute } from "./routes/registry.js";
+import { getAllServices } from "./registry.js";
 
 const PORT = parseInt(process.env["PORT"] ?? "4100", 10);
 const isDev = process.env["NODE_ENV"] !== "production";
@@ -24,6 +27,17 @@ const logger = pino({
     : {}),
 });
 
+// Build per-service circuit breakers from the registry.
+// All services start CLOSED (optimistic — no assumed failures on startup).
+const breakers = new Map<string, CircuitBreaker>();
+for (const svc of getAllServices()) {
+  const breaker = new CircuitBreaker(svc.serviceName);
+  breaker.onStateChange = (from, to, reason) => {
+    logger.warn({ service: svc.serviceName, from, to, reason }, `Circuit ${to} for ${svc.serviceName}: ${reason}`);
+  };
+  breakers.set(svc.serviceName, breaker);
+}
+
 const app = new Hono();
 
 // Middleware
@@ -40,8 +54,9 @@ app.onError((err, c) => {
 });
 
 // Routes
-dispatchRoute(app, logger);
-healthRoute(app, logger);
+dispatchRoute(app, logger, breakers);
+healthRoute(app, logger, breakers);
+metricsRoute(app, breakers);
 registryRoute(app);
 
 // Start server

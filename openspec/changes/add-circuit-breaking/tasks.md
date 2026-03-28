@@ -4,14 +4,14 @@
 (No DB tasks)
 
 ## API Batch
-- [ ] [2.1] [P-1] Create `CircuitBreaker` class with state machine (CLOSED/OPEN/HALF_OPEN), ring buffer sliding window, and `allowRequest()`/`onSuccess()`/`onFailure()`/`forceState()`/`snapshot()` methods in `packages/tools/tool-router/src/circuit-breaker.ts` [owner:api-engineer]
-- [ ] [2.2] [P-1] Create `CircuitBreakerConfig` type with defaults and `CircuitBreakerSnapshot` type in `packages/tools/tool-router/src/circuit-breaker.ts` [owner:api-engineer]
-- [ ] [2.3] [P-2] Modify `packages/tools/tool-router/src/index.ts` to instantiate `Map<string, CircuitBreaker>` from registry services and pass to route handlers [owner:api-engineer]
-- [ ] [2.4] [P-2] Modify `packages/tools/tool-router/src/routes/dispatch.ts` to check `allowRequest()` before forwarding, return 503 with `Retry-After` header when OPEN, call `onSuccess()`/`onFailure()` based on downstream response status [owner:api-engineer]
-- [ ] [2.5] [P-2] Extend `packages/tools/tool-router/src/routes/health.ts` to accept breakers map, update breaker states from health check results, and include `circuitBreakerState` per service in GET /health response [owner:api-engineer]
-- [ ] [2.6] [P-2] Create `packages/tools/tool-router/src/routes/metrics.ts` with GET /metrics endpoint exposing per-service counters (totalRequests, totalFailures, circuitTrips, lastTripAt, circuitState) and uptime [owner:api-engineer]
-- [ ] [2.7] [P-3] Wire `/metrics` route in `packages/tools/tool-router/src/index.ts` [owner:api-engineer]
-- [ ] [2.8] [P-3] Add WARN-level logging for circuit state transitions (CLOSED->OPEN, OPEN->HALF_OPEN, HALF_OPEN->CLOSED) [owner:api-engineer]
+- [x] [2.1] [P-1] Create `CircuitBreaker` class with state machine (CLOSED/OPEN/HALF_OPEN), ring buffer sliding window, and `allowRequest()`/`onSuccess()`/`onFailure()`/`forceState()`/`snapshot()` methods in `packages/tools/tool-router/src/circuit-breaker.ts` [owner:api-engineer]
+- [x] [2.2] [P-1] Create `CircuitBreakerConfig` type with defaults and `CircuitBreakerSnapshot` type in `packages/tools/tool-router/src/circuit-breaker.ts` [owner:api-engineer]
+- [x] [2.3] [P-2] Modify `packages/tools/tool-router/src/index.ts` to instantiate `Map<string, CircuitBreaker>` from registry services and pass to route handlers [owner:api-engineer]
+- [x] [2.4] [P-2] Modify `packages/tools/tool-router/src/routes/dispatch.ts` to check `allowRequest()` before forwarding, return 503 with `Retry-After` header when OPEN, call `onSuccess()`/`onFailure()` based on downstream response status [owner:api-engineer]
+- [x] [2.5] [P-2] Extend `packages/tools/tool-router/src/routes/health.ts` to accept breakers map, update breaker states from health check results, and include `circuitBreakerState` per service in GET /health response [owner:api-engineer]
+- [x] [2.6] [P-2] Create `packages/tools/tool-router/src/routes/metrics.ts` with GET /metrics endpoint exposing per-service counters (totalRequests, totalFailures, circuitTrips, lastTripAt, circuitState) and uptime [owner:api-engineer]
+- [x] [2.7] [P-3] Wire `/metrics` route in `packages/tools/tool-router/src/index.ts` [owner:api-engineer]
+- [x] [2.8] [P-3] Add WARN-level logging for circuit state transitions (CLOSED->OPEN, OPEN->HALF_OPEN, HALF_OPEN->CLOSED) [owner:api-engineer]
 
 ## UI Batch
 (No UI tasks)

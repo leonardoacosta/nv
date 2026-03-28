@@ -3,6 +3,7 @@ import { createLogger } from "./logger.js";
 const log = createLogger("fleet-client");
 
 const TIMEOUT_MS = 5000;
+const RETRY_BACKOFF_MS = 500;
 
 export class FleetClientError extends Error {
   constructor(
@@ -39,12 +40,12 @@ export function initFleetClient(toolRouterUrl: string): void {
 }
 
 /**
- * GET request to a fleet service.
+ * Single-attempt GET request to a fleet service.
+ * Throws FleetClientError on non-2xx or network failure.
  */
-export async function fleetGet(port: number, path: string, timeoutMs?: number): Promise<unknown> {
-  const url = `${_baseUrl}:${port}${path}`;
+async function fleetGetOnce(url: string, timeoutMs: number): Promise<unknown> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs ?? TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -54,10 +55,42 @@ export async function fleetGet(port: number, path: string, timeoutMs?: number): 
     });
 
     if (!res.ok) {
-      throw new FleetClientError(
-        `${res.status} ${res.statusText} from ${url}`,
-        res.status,
-      );
+      throw new FleetClientError(`${res.status} ${res.statusText} from ${url}`, res.status);
+    }
+
+    return await res.json();
+  } catch (err) {
+    if (err instanceof FleetClientError) throw err;
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new FleetClientError(`Timeout after ${timeoutMs}ms: ${url}`, 504);
+    }
+    throw new FleetClientError(
+      `Fleet request failed: ${url} - ${err instanceof Error ? err.message : String(err)}`,
+      503,
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Single-attempt POST request to a fleet service.
+ * Throws FleetClientError on non-2xx or network failure.
+ */
+async function fleetPostOnce(url: string, body: unknown): Promise<unknown> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new FleetClientError(`${res.status} ${res.statusText} from ${url}`, res.status);
     }
 
     return await res.json();
@@ -76,7 +109,30 @@ export async function fleetGet(port: number, path: string, timeoutMs?: number): 
 }
 
 /**
+ * GET request to a fleet service.
+ * Retries once after 500ms backoff on 5xx responses.
+ * 4xx responses are thrown immediately without retry.
+ */
+export async function fleetGet(port: number, path: string, timeoutMs?: number): Promise<unknown> {
+  const url = `${_baseUrl}:${port}${path}`;
+  const effectiveTimeout = timeoutMs ?? TIMEOUT_MS;
+
+  try {
+    return await fleetGetOnce(url, effectiveTimeout);
+  } catch (err) {
+    if (err instanceof FleetClientError && err.status >= 500) {
+      log.warn({ url, status: err.status, attempt: 1 }, "Fleet GET failed with 5xx, retrying after backoff");
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+      return await fleetGetOnce(url, effectiveTimeout);
+    }
+    throw err;
+  }
+}
+
+/**
  * POST request to a fleet service.
+ * Retries once after 500ms backoff on 5xx responses.
+ * 4xx responses are thrown immediately without retry.
  */
 export async function fleetPost(
   port: number,
@@ -84,35 +140,15 @@ export async function fleetPost(
   body: unknown,
 ): Promise<unknown> {
   const url = `${_baseUrl}:${port}${path}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      throw new FleetClientError(
-        `${res.status} ${res.statusText} from ${url}`,
-        res.status,
-      );
-    }
-
-    return await res.json();
+    return await fleetPostOnce(url, body);
   } catch (err) {
-    if (err instanceof FleetClientError) throw err;
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new FleetClientError(`Timeout after ${TIMEOUT_MS}ms: ${url}`, 504);
+    if (err instanceof FleetClientError && err.status >= 500) {
+      log.warn({ url, status: err.status, attempt: 1 }, "Fleet POST failed with 5xx, retrying after backoff");
+      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+      return await fleetPostOnce(url, body);
     }
-    throw new FleetClientError(
-      `Fleet request failed: ${url} - ${err instanceof Error ? err.message : String(err)}`,
-      503,
-    );
-  } finally {
-    clearTimeout(timer);
+    throw err;
   }
 }

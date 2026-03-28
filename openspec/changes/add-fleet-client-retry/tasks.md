@@ -8,7 +8,7 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-2] Refactor fleet-client.ts: extract `fleetRequest()` single-attempt helper, add 5xx retry loop with 500ms backoff and warn logging in both `fleetPost()` and `fleetGet()` [owner:api-engineer]
+- [x] [2.1] [P-2] Refactor fleet-client.ts: extract `fleetRequest()` single-attempt helper, add 5xx retry loop with 500ms backoff and warn logging in both `fleetPost()` and `fleetGet()` [owner:api-engineer]
 
 ## UI Batch
 

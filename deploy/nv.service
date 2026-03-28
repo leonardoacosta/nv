@@ -4,16 +4,15 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=notify
-NotifyAccess=all
-ExecStart=%h/.local/bin/doppler run --fallback=true --project nova --config prd -- %h/.local/bin/nv-daemon
+Type=simple
+ExecStart=doppler run --project nova --config prd -- node %h/.local/lib/nova-ts/packages/daemon/dist/index.js
 Restart=on-failure
 RestartSec=5s
-WatchdogSec=120
 TimeoutStopSec=30
-Environment=RUST_LOG=info
+Environment=NODE_ENV=production
 Environment=HOME=%h
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/share/pnpm:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h/.local/lib/nova-ts
 LimitNOFILE=4096
 MemoryMax=2G
 TasksMax=512

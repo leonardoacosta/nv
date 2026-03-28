@@ -2,29 +2,17 @@
 set -euo pipefail
 
 # NV Install Script
-# Builds from source, installs binaries, and sets up the systemd user service.
+# Thin wrapper — delegates to the TypeScript daemon deployment pipeline.
 # Idempotent -- safe to re-run after code changes.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-INSTALL_DIR="${HOME}/.local/bin"
 SERVICE_DIR="${HOME}/.config/systemd/user"
 NV_DIR="${HOME}/.nv"
 CONFIG_DIR="${HOME}/.config/nv"
-HEALTH_PORT="${NV_HEALTH_PORT:-8400}"
 
-echo "==> Stopping running services..."
-systemctl --user stop nv.service nv-discord-relay.service nv-teams-relay.service 2>/dev/null || true
-
-echo "==> Building NV (release)..."
-cd "$PROJECT_DIR"
-cargo build --release -p nv-daemon -p nv-cli
-
-echo "==> Installing binaries to ${INSTALL_DIR}..."
-mkdir -p "$INSTALL_DIR"
-cp target/release/nv-daemon "$INSTALL_DIR/nv-daemon"
-cp target/release/nv-cli "$INSTALL_DIR/nv"
-chmod +x "$INSTALL_DIR/nv-daemon" "$INSTALL_DIR/nv"
+echo "==> Stopping running relay services..."
+systemctl --user stop nv-discord-relay.service nv-teams-relay.service 2>/dev/null || true
 
 echo "==> Creating NV directories..."
 mkdir -p "$NV_DIR"/{state,memory,logs}
@@ -96,14 +84,10 @@ echo "==> Setting up Teams webhook relay..."
 cp "$PROJECT_DIR/relays/teams/nv-teams-relay.service" "$SERVICE_DIR/"
 echo "    Teams relay service installed (port ${TEAMS_WEBHOOK_PORT:-8401})"
 
-# ── systemd Services ────────────────────────────────────────────────
+# ── systemd Relay Services ───────────────────────────────────────────
 
-echo "==> Installing systemd services..."
-mkdir -p "$SERVICE_DIR"
-cp "$SCRIPT_DIR/nv.service" "$SERVICE_DIR/nv.service"
-
+echo "==> Configuring relay services..."
 systemctl --user daemon-reload
-systemctl --user enable nv.service
 
 # Enable relays if tokens are configured
 if grep -q "DISCORD_BOT_TOKEN" "$NV_DIR/env" 2>/dev/null; then
@@ -122,29 +106,23 @@ else
     echo "    Teams relay: skipped (add TEAMS_WEBHOOK_SECRET to ~/.nv/env to enable)"
 fi
 
-echo "==> Restarting NV service..."
-systemctl --user restart nv.service
+# ── Delegate to TypeScript daemon install ───────────────────────────
 
-echo "==> Waiting for services to start..."
-sleep 3
+echo ""
+echo "==> Delegating to TypeScript daemon install..."
+bash "$SCRIPT_DIR/install-ts.sh"
 
 # ── Verify ───────────────────────────────────────────────────────────
 
 echo "==> Verifying..."
 
-ACTIVE=$(systemctl --user is-active nv.service 2>/dev/null || true)
+ACTIVE=$(systemctl --user is-active nova-ts.service 2>/dev/null || true)
 if [ "$ACTIVE" = "active" ]; then
-    echo "    nv-daemon: active"
+    echo "    nova-ts.service: active"
 else
-    echo "    nv-daemon: $ACTIVE (expected 'active')"
-    echo "    Check logs: journalctl --user -u nv -n 50"
+    echo "    nova-ts.service: $ACTIVE (expected 'active')"
+    echo "    Check logs: journalctl --user -u nova-ts.service -n 50"
     exit 1
-fi
-
-if curl -sf "http://127.0.0.1:${HEALTH_PORT}/health" > /dev/null 2>&1; then
-    echo "    health endpoint: ok"
-else
-    echo "    health endpoint: not responding (may still be initializing)"
 fi
 
 DISCORD_ACTIVE=$(systemctl --user is-active nv-discord-relay.service 2>/dev/null || true)
@@ -155,11 +133,9 @@ echo "    teams relay: $TEAMS_ACTIVE"
 
 echo ""
 echo "NV installed successfully."
-echo "  Binaries:   $INSTALL_DIR/nv-daemon, $INSTALL_DIR/nv"
 echo "  Config:     $NV_DIR/nv.toml"
-echo "  Services:   nv.service, nv-discord-relay.service, nv-teams-relay.service"
-echo "  Logs:       journalctl --user -u nv -f"
-echo "  Status:     nv status"
+echo "  Services:   nova-ts.service, nv-discord-relay.service, nv-teams-relay.service"
+echo "  Logs:       journalctl --user -u nova-ts.service -f"
 echo ""
 echo "  Power Automate → POST http://$(hostname):${TEAMS_WEBHOOK_PORT:-8401}/"
 echo ""

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Hono } from "hono";
 import type { Logger } from "pino";
 
+import type { CircuitBreaker } from "./circuit-breaker.js";
 import { dispatchRoute } from "./routes/dispatch.js";
 import { healthRoute } from "./routes/health.js";
 import { registryRoute } from "./routes/registry.js";
@@ -19,10 +20,13 @@ const noopLogger: Logger = {
   child: () => noopLogger,
 } as unknown as Logger;
 
+// Empty breakers map — no circuit breakers active in unit tests
+const noBreakers = new Map<string, CircuitBreaker>();
+
 function createTestApp(): Hono {
   const app = new Hono();
-  dispatchRoute(app, noopLogger);
-  healthRoute(app, noopLogger);
+  dispatchRoute(app, noopLogger, noBreakers);
+  healthRoute(app, noopLogger, noBreakers);
   registryRoute(app);
   return app;
 }

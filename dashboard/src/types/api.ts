@@ -1,8 +1,7 @@
 /**
  * Canonical TypeScript response types for the NV daemon API.
  *
- * All types are derived from the Axum handler definitions in
- * `crates/nv-daemon/src/dashboard.rs` and `crates/nv-daemon/src/http.rs`.
+ * All types are derived from the TypeScript daemon HTTP handler definitions.
  * Do not guess shapes — read the backend before adding types here.
  */
 

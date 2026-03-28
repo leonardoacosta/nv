@@ -644,12 +644,12 @@ export async function main(): Promise<void> {
                 const writer = new TelegramStreamWriter(telegram!, msg.chatId, telegramMessageId);
 
                 try {
-                  // Load conversation history scoped to this thread
+                  // Load conversation history — always channel-scoped.
+                  // Thread routing controls queue ordering, not conversation context.
                   const channelKey = `telegram:${msg.chatId}`;
                   const history = await conversationManager.loadHistory(
                     channelKey,
                     config.conversationHistoryDepth,
-                    threadId,
                   );
 
                   let finalResponse: { text: string; toolCalls: { name: string }[]; stopReason: string } | null = null;

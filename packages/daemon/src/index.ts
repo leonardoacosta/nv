@@ -22,7 +22,7 @@ import { KeywordRouter } from "./brain/keyword-router.js";
 import { EmbeddingRouter } from "./brain/embedding-router.js";
 import { MessageRouter, formatToolResponse } from "./brain/router.js";
 import { fleetPost } from "./fleet-client.js";
-import { writeEntry } from "./features/diary/writer.js";
+import { writeEntry, buildToolCallDetail } from "./features/diary/writer.js";
 import {
   ObligationStore,
   ObligationExecutor,
@@ -48,6 +48,7 @@ import {
 import { serve } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
 import { createHttpApp } from "./http.js";
+import type { ChannelRegistryEntry } from "./http.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -341,6 +342,28 @@ export async function main(): Promise<void> {
     );
   }
 
+  // ── Channel registry ──────────────────────────────────────────────────────
+
+  const channelRegistry: ChannelRegistryEntry[] = [
+    {
+      name: "Telegram",
+      status: telegram !== null ? "connected" : (telegramToken ? "configured" : "unconfigured"),
+      direction: "bidirectional",
+    },
+    // Discord and Microsoft Teams are currently managed via channels-svc,
+    // not as direct daemon adapters — report as unconfigured until wired.
+    {
+      name: "Discord",
+      status: "unconfigured",
+      direction: "bidirectional",
+    },
+    {
+      name: "Microsoft Teams",
+      status: "unconfigured",
+      direction: "bidirectional",
+    },
+  ];
+
   // ── HTTP server (Hono) ───────────────────────────────────────────────────
 
   const httpApp = createHttpApp({
@@ -349,6 +372,7 @@ export async function main(): Promise<void> {
     config,
     logger: log,
     briefingDeps: briefingDeps ?? undefined,
+    channelRegistry,
   });
 
   let httpServer: ServerType | null = null;
@@ -596,10 +620,13 @@ export async function main(): Promise<void> {
                 channel: msg.channel,
                 slug: msg.content.slice(0, 50),
                 content: responseText,
-                toolsUsed: route.tool ? [route.tool] : [],
+                toolsUsed: route.tool
+                  ? [buildToolCallDetail(route.tool, {}, null)]
+                  : [],
                 responseLatencyMs: elapsed,
                 routingTier: route.tier,
                 routingConfidence: route.confidence,
+                model: config.agent.model,
               });
 
               log.info(

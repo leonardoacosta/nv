@@ -9,16 +9,16 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Create `packages/daemon/src/features/diary/pricing.ts` with `estimateCost(model, tokensIn, tokensOut)` returning `number | null` using static pricing table for opus-4-6, sonnet-4-5, haiku-3-5 [owner:api-engineer] [beads:nv-srcp]
-- [ ] [2.2] [P-1] Extend `DiaryWriteInput` in `packages/daemon/src/features/diary/writer.ts` with `model?: string`, `costUsd?: number`, and change `toolsUsed` from `string[]` to `Array<{name: string; input_summary: string; duration_ms: number | null}> | string[]` [owner:api-engineer] [beads:nv-oa14]
-- [ ] [2.3] [P-1] Update `writeEntry()` in `packages/daemon/src/features/diary/writer.ts` to persist `model` and `costUsd` columns [owner:api-engineer] [beads:nv-2pjc]
-- [ ] [2.4] [P-1] Update Zod schemas in `packages/validators/src/diary.ts` to accept both legacy `string[]` and new `ToolCallDetail[]` shapes for `toolsUsed`, plus `model` and `costUsd` [owner:api-engineer] [beads:nv-8amp]
-- [ ] [2.5] [P-2] Update `processMessage()` in `packages/daemon/src/brain/agent.ts` (~line 165) to pass structured `toolCalls` with `{name, input_summary, duration_ms}`, `model`, and `costUsd` to `writeEntry()` -- add per-tool timing to non-streaming path [owner:api-engineer] [beads:nv-6c8z]
-- [ ] [2.6] [P-2] Update `processMessageStream()` in `packages/daemon/src/brain/agent.ts` (~line 304) to pass structured `toolCalls` with `{name, input_summary, duration_ms}` from `inflightTools`, `model`, and `costUsd` to `writeEntry()` [owner:api-engineer] [beads:nv-hjth]
-- [ ] [2.7] [P-2] Update keyword router diary write in `packages/daemon/src/index.ts` (~line 593) to pass `model` and structured tool details [owner:api-engineer] [beads:nv-nypw]
-- [ ] [2.8] [P-2] Add normalizer in tRPC `diary.list` procedure (`packages/api/src/routers/diary.ts`) to handle both legacy `string[]` and new `ToolCallDetail[]` rows, emitting a unified shape in the response [owner:api-engineer] [beads:nv-2h2n]
-- [ ] [2.9] [P-2] Add aggregate computation to tRPC `diary.list` procedure: `total_tokens_in`, `total_tokens_out`, `total_cost_usd`, `avg_latency_ms`, `tool_frequency` (top 10) [owner:api-engineer] [beads:nv-w7a6]
-- [ ] [2.10] [P-2] Extend `DiaryEntryItem` in `apps/dashboard/types/api.ts` with `model`, `cost_usd`, and `tools_detail` fields; add `DiaryAggregates` interface; extend `DiaryGetResponse` with `aggregates` [owner:api-engineer] [beads:nv-4uct]
+- [x] [2.1] [P-1] Create `packages/daemon/src/features/diary/pricing.ts` with `estimateCost(model, tokensIn, tokensOut)` returning `number | null` using static pricing table for opus-4-6, sonnet-4-5, haiku-3-5 [owner:api-engineer] [beads:nv-srcp]
+- [x] [2.2] [P-1] Extend `DiaryWriteInput` in `packages/daemon/src/features/diary/writer.ts` with `model?: string`, `costUsd?: number`, and change `toolsUsed` from `string[]` to `Array<{name: string; input_summary: string; duration_ms: number | null}> | string[]` [owner:api-engineer] [beads:nv-oa14]
+- [x] [2.3] [P-1] Update `writeEntry()` in `packages/daemon/src/features/diary/writer.ts` to persist `model` and `costUsd` columns [owner:api-engineer] [beads:nv-2pjc]
+- [x] [2.4] [P-1] Update Zod schemas in `packages/validators/src/diary.ts` to accept both legacy `string[]` and new `ToolCallDetail[]` shapes for `toolsUsed`, plus `model` and `costUsd` [owner:api-engineer] [beads:nv-8amp]
+- [x] [2.5] [P-2] Update `processMessage()` in `packages/daemon/src/brain/agent.ts` (~line 165) to pass structured `toolCalls` with `{name, input_summary, duration_ms}`, `model`, and `costUsd` to `writeEntry()` -- add per-tool timing to non-streaming path [owner:api-engineer] [beads:nv-6c8z]
+- [x] [2.6] [P-2] Update `processMessageStream()` in `packages/daemon/src/brain/agent.ts` (~line 304) to pass structured `toolCalls` with `{name, input_summary, duration_ms}` from `inflightTools`, `model`, and `costUsd` to `writeEntry()` [owner:api-engineer] [beads:nv-hjth]
+- [x] [2.7] [P-2] Update keyword router diary write in `packages/daemon/src/index.ts` (~line 593) to pass `model` and structured tool details [owner:api-engineer] [beads:nv-nypw]
+- [x] [2.8] [P-2] Add normalizer in tRPC `diary.list` procedure (`packages/api/src/routers/diary.ts`) to handle both legacy `string[]` and new `ToolCallDetail[]` rows, emitting a unified shape in the response [owner:api-engineer] [beads:nv-2h2n]
+- [x] [2.9] [P-2] Add aggregate computation to tRPC `diary.list` procedure: `total_tokens_in`, `total_tokens_out`, `total_cost_usd`, `avg_latency_ms`, `tool_frequency` (top 10) [owner:api-engineer] [beads:nv-w7a6]
+- [x] [2.10] [P-2] Extend `DiaryEntryItem` in `apps/dashboard/types/api.ts` with `model`, `cost_usd`, and `tools_detail` fields; add `DiaryAggregates` interface; extend `DiaryGetResponse` with `aggregates` [owner:api-engineer] [beads:nv-4uct]
 
 ## UI Batch
 

@@ -14,12 +14,25 @@ import { runDream, getDreamStatus } from "./features/dream/index.js";
 
 const startedAt = Date.now();
 
+export type ChannelAdapterStatus =
+  | "connected"
+  | "configured"
+  | "disconnected"
+  | "unconfigured";
+
+export interface ChannelRegistryEntry {
+  name: string;
+  status: ChannelAdapterStatus;
+  direction: "bidirectional" | "inbound" | "outbound";
+}
+
 export interface HttpServerDeps {
   agent: NovaAgent;
   conversationManager: ConversationManager;
   config: Config;
   logger: Logger;
   briefingDeps?: BriefingDeps;
+  channelRegistry?: ChannelRegistryEntry[];
 }
 
 export function createHttpApp(deps: HttpServerDeps): Hono {
@@ -47,6 +60,12 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
       service: "nova-daemon",
       uptime_secs: Math.floor((Date.now() - startedAt) / 1000),
     });
+  });
+
+  // ── GET /channels/status ───────────────────────────────────────────────────
+  app.get("/channels/status", (c) => {
+    const registry = deps.channelRegistry ?? [];
+    return c.json(registry);
   });
 
   // ── POST /briefing/generate ─────────────────────────────────────────────────

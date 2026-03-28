@@ -540,6 +540,13 @@ export interface RelationshipsResponse {
 
 // ── GET /api/diary ─────────────────────────────────────────────────────────
 
+/** Structured detail for a single tool call within a diary entry. */
+export interface ToolCallDetail {
+  name: string;
+  input_summary: string;
+  duration_ms: number | null;
+}
+
 /** A single diary entry. Source: Drizzle query on diary table. */
 export interface DiaryEntryItem {
   time: string;
@@ -547,11 +554,30 @@ export interface DiaryEntryItem {
   trigger_source: string;
   channel_source: string;
   slug: string;
+  /** Flat list of tool names (backward compat). */
   tools_called: string[];
+  /** Structured tool call details (new format). */
+  tools_detail: ToolCallDetail[];
   result_summary: string;
   response_latency_ms: number;
   tokens_in: number;
   tokens_out: number;
+  /** Claude model used, e.g. "claude-opus-4-6". Null for legacy entries. */
+  model: string | null;
+  /** Estimated cost in USD. Null when model is unknown or entry predates cost tracking. */
+  cost_usd: number | null;
+}
+
+/** Daily aggregate statistics for a diary query window. */
+export interface DiaryAggregates {
+  total_tokens_in: number;
+  total_tokens_out: number;
+  /** Total estimated cost in USD, or null if no cost data available. */
+  total_cost_usd: number | null;
+  /** Average response latency in ms across entries with latency data. */
+  avg_latency_ms: number;
+  /** Top 10 tools by call frequency, descending. */
+  tool_frequency: { name: string; count: number }[];
 }
 
 /** Response from GET /api/diary. */
@@ -561,6 +587,7 @@ export interface DiaryGetResponse {
   total: number;
   distinct_channels: number;
   last_interaction_at: string | null;
+  aggregates: DiaryAggregates;
 }
 
 // ── GET /api/fleet-status ────────────────────────────────────────────────
@@ -573,6 +600,8 @@ export interface FleetServiceStatus {
   status: "healthy" | "unreachable" | "unknown";
   latency_ms: number | null;
   tools: string[];
+  last_checked: string | null;
+  uptime_secs: number | null;
 }
 
 /** Fleet health aggregation. */
@@ -589,8 +618,35 @@ export interface FleetHealthResponse {
 /** Status of a single channel. */
 export interface ChannelStatus {
   name: string;
-  status: "configured" | "unknown";
+  status: "configured" | "unknown" | "connected" | "disconnected" | "unconfigured";
   direction: "bidirectional" | "inbound" | "outbound";
+  messages_24h: number | null;
+  messages_per_hour: number | null;
+}
+
+/** Response from tRPC system.errorRates. */
+export interface ErrorRateResponse {
+  total_24h: number;
+  hourly: { hour: string; count: number }[];
+  by_type: { event_type: string; count: number }[];
+}
+
+/** Response from tRPC system.channelVolume. */
+export interface ChannelVolumeResponse {
+  channels: {
+    name: string;
+    total_24h: number;
+    hourly: { hour: string; count: number }[];
+  }[];
+}
+
+/** Response from tRPC system.fleetHistory. */
+export interface FleetHistoryResponse {
+  services: {
+    name: string;
+    snapshots: { time: string; status: string; latency_ms: number | null }[];
+    uptime_pct_24h: number;
+  }[];
 }
 
 // ── Automations Prompt Preview (tRPC automation.previewContext) ────────────

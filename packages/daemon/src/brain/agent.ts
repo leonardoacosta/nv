@@ -6,6 +6,8 @@ import type { Message } from "../types.js";
 import { logger } from "../logger.js";
 import type { AgentResponse, StreamEvent, ToolCall } from "./types.js";
 import { writeEntry } from "../features/diary/index.js";
+import { buildToolCallDetail } from "../features/diary/writer.js";
+import { estimateCost } from "../features/diary/pricing.js";
 import { buildMcpServers, buildAllowedTools } from "./mcp-config.js";
 import type { DreamScheduler } from "../features/dream/scheduler.js";
 
@@ -161,6 +163,9 @@ export class NovaAgent {
 
     const responseLatencyMs = Date.now() - startMs;
 
+    const model = this.config.agent.model;
+    const costUsd = estimateCost(model, tokensIn, tokensOut) ?? undefined;
+
     // Write diary entry — fire-and-forget, never disrupts response path
     void writeEntry({
       triggerType: "message",
@@ -168,10 +173,14 @@ export class NovaAgent {
       channel: message.channel,
       slug: message.content.slice(0, 50),
       content: resultText,
-      toolsUsed: toolCalls.map((t) => t.name),
+      toolsUsed: toolCalls.map((t) =>
+        buildToolCallDetail(t.name, t.input ?? {}, null),
+      ),
       tokensIn: tokensIn > 0 ? tokensIn : undefined,
       tokensOut: tokensOut > 0 ? tokensOut : undefined,
       responseLatencyMs,
+      model,
+      costUsd,
     });
 
     // Increment dream interaction counter
@@ -206,6 +215,8 @@ export class NovaAgent {
     }
 
     const toolCalls: ToolCall[] = [];
+    // Parallel array to toolCalls, populated as tool_done events fire
+    const toolCallDetails: { name: string; input: Record<string, unknown>; duration_ms: number | null }[] = [];
     let resultText = "";
     let stopReason = "end_turn";
     let tokensIn = 0;
@@ -213,7 +224,7 @@ export class NovaAgent {
     const startMs = Date.now();
 
     // Track in-flight tool calls for tool_start/tool_done pairing
-    const inflightTools = new Map<string, { name: string; startedAt: number }>();
+    const inflightTools = new Map<string, { name: string; startedAt: number; input: Record<string, unknown> }>();
 
     const historyBlock = formatHistoryBlock(history);
     const systemPromptWithHistory = this.systemPrompt + historyBlock;
@@ -242,11 +253,13 @@ export class NovaAgent {
         if (inflightTools.size > 0) {
           const now = Date.now();
           for (const [callId, info] of inflightTools) {
+            const durationMs = now - info.startedAt;
+            toolCallDetails.push({ name: info.name, input: info.input, duration_ms: durationMs });
             yield {
               type: "tool_done",
               name: info.name,
               callId,
-              durationMs: now - info.startedAt,
+              durationMs,
             };
           }
           inflightTools.clear();
@@ -256,12 +269,13 @@ export class NovaAgent {
         for (const block of content) {
           if (block.type === "tool_use") {
             const callId = (block as { id?: string }).id ?? `call_${Date.now()}`;
+            const blockInput = block.input as Record<string, unknown>;
             toolCalls.push({
               name: block.name,
-              input: block.input as Record<string, unknown>,
+              input: blockInput,
               result: null,
             });
-            inflightTools.set(callId, { name: block.name, startedAt: Date.now() });
+            inflightTools.set(callId, { name: block.name, startedAt: Date.now(), input: blockInput });
             yield { type: "tool_start", name: block.name, callId };
           } else if (block.type === "text" && block.text) {
             yield { type: "text_delta", text: block.text };
@@ -277,11 +291,13 @@ export class NovaAgent {
         if (inflightTools.size > 0) {
           const now = Date.now();
           for (const [callId, info] of inflightTools) {
+            const durationMs = now - info.startedAt;
+            toolCallDetails.push({ name: info.name, input: info.input, duration_ms: durationMs });
             yield {
               type: "tool_done",
               name: info.name,
               callId,
-              durationMs: now - info.startedAt,
+              durationMs,
             };
           }
           inflightTools.clear();
@@ -300,6 +316,16 @@ export class NovaAgent {
 
     const responseLatencyMs = Date.now() - startMs;
 
+    const streamModel = this.config.agent.model;
+    const streamCostUsd = estimateCost(streamModel, tokensIn, tokensOut) ?? undefined;
+
+    // For tools that never got a tool_done event (e.g. non-streaming path),
+    // fall back to the toolCalls array with null duration
+    const structuredTools =
+      toolCallDetails.length > 0
+        ? toolCallDetails.map((d) => buildToolCallDetail(d.name, d.input, d.duration_ms))
+        : toolCalls.map((t) => buildToolCallDetail(t.name, t.input ?? {}, null));
+
     // Write diary entry -- fire-and-forget
     void writeEntry({
       triggerType: "message",
@@ -307,10 +333,12 @@ export class NovaAgent {
       channel: message.channel,
       slug: message.content.slice(0, 50),
       content: resultText,
-      toolsUsed: toolCalls.map((t) => t.name),
+      toolsUsed: structuredTools,
       tokensIn: tokensIn > 0 ? tokensIn : undefined,
       tokensOut: tokensOut > 0 ? tokensOut : undefined,
       responseLatencyMs,
+      model: streamModel,
+      costUsd: streamCostUsd,
     });
 
     yield {

@@ -1,13 +1,15 @@
-import { count, desc, eq, gte, ilike, max, sql } from "drizzle-orm";
+import { count, desc, eq, gte, ilike, lt, max, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@nova/db";
 import {
   contacts,
   diary,
+  fleetHealthSnapshots,
   memory,
   messages,
   obligations,
+  sessionEvents,
   sessions,
 } from "@nova/db";
 
@@ -116,9 +118,9 @@ const FLEET_SERVICES: FleetServiceEntry[] = [
 ];
 
 const KNOWN_CHANNELS = [
-  { name: "Telegram", status: "configured" as const, direction: "bidirectional" as const },
-  { name: "Discord", status: "configured" as const, direction: "bidirectional" as const },
-  { name: "Microsoft Teams", status: "configured" as const, direction: "bidirectional" as const },
+  { name: "Telegram", status: "configured" as const, direction: "bidirectional" as const, messages_24h: null as number | null, messages_per_hour: null as number | null },
+  { name: "Discord", status: "configured" as const, direction: "bidirectional" as const, messages_24h: null as number | null, messages_per_hour: null as number | null },
+  { name: "Microsoft Teams", status: "configured" as const, direction: "bidirectional" as const, messages_24h: null as number | null, messages_per_hour: null as number | null },
 ];
 
 // ── Shared types ──────────────────────────────────────────────────────────
@@ -217,23 +219,294 @@ export const systemRouter = createTRPCRouter({
   }),
 
   /**
-   * Fleet service registry (static, no HTTP calls).
+   * Fleet service status — calls meta-svc /services for live health data.
+   * Falls back to static registry with status "unknown" if meta-svc is unreachable.
+   * Also inserts health snapshots for historical uptime tracking.
    */
-  fleetStatus: protectedProcedure.query(() => {
-    const services = FLEET_SERVICES.map((svc) => ({
-      ...svc,
-      status: "unknown" as const,
-      latency_ms: null as number | null,
-    }));
+  fleetStatus: protectedProcedure.query(async () => {
+    const checkedAt = new Date();
+    let services: {
+      name: string;
+      url: string;
+      port: number;
+      status: "healthy" | "unreachable" | "unknown";
+      latency_ms: number | null;
+      tools: string[];
+      last_checked: string | null;
+      uptime_secs: number | null;
+    }[];
+
+    try {
+      // Call meta-svc /services for live health probes
+      const metaResponse = await fleetFetch<{
+        services: {
+          name: string;
+          url: string;
+          status: "healthy" | "unhealthy" | "unreachable";
+          latency_ms: number;
+          uptime_secs?: number;
+          error?: string;
+        }[];
+        summary: unknown;
+      }>("meta-svc", "/services");
+
+      const lastChecked = checkedAt.toISOString();
+
+      services = metaResponse.services.map((svc) => {
+        // Extract port from URL
+        let port = 0;
+        try {
+          port = parseInt(new URL(svc.url).port, 10) || 0;
+        } catch {
+          // leave port as 0 if URL is unparseable
+        }
+
+        // Map "unhealthy" to "unreachable" (dashboard has 3 states)
+        const mappedStatus =
+          svc.status === "healthy"
+            ? "healthy"
+            : ("unreachable" as const);
+
+        // Merge tools from static registry
+        const staticEntry = FLEET_SERVICES.find((f) => f.name === svc.name);
+
+        return {
+          name: svc.name,
+          url: svc.url,
+          port: staticEntry?.port ?? port,
+          status: mappedStatus,
+          latency_ms: svc.latency_ms,
+          tools: staticEntry?.tools ?? [],
+          last_checked: lastChecked,
+          uptime_secs: svc.uptime_secs ?? null,
+        };
+      });
+
+      // Insert health snapshots for historical uptime (fire-and-forget)
+      void (async () => {
+        try {
+          const snapshotValues = services.map((svc) => ({
+            serviceName: svc.name,
+            status: svc.status,
+            latencyMs: svc.latency_ms ?? null,
+            checkedAt,
+          }));
+
+          if (snapshotValues.length > 0) {
+            await db.insert(fleetHealthSnapshots).values(snapshotValues);
+          }
+
+          // Delete snapshots older than 7 days
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          await db
+            .delete(fleetHealthSnapshots)
+            .where(lt(fleetHealthSnapshots.checkedAt, sevenDaysAgo));
+        } catch {
+          // Snapshot write failure is non-critical
+        }
+      })();
+    } catch {
+      // meta-svc unreachable — fall back to static registry
+      services = FLEET_SERVICES.map((svc) => ({
+        ...svc,
+        status: "unknown" as const,
+        latency_ms: null,
+        last_checked: null,
+        uptime_secs: null,
+      }));
+    }
+
+    // Fetch channel status from daemon /channels/status
+    let channels: {
+      name: string;
+      status: "configured" | "unknown" | "connected" | "disconnected" | "unconfigured";
+      direction: "bidirectional" | "inbound" | "outbound";
+      messages_24h: number | null;
+      messages_per_hour: number | null;
+    }[];
+
+    try {
+      const daemonChannels = await fleetFetch<
+        { name: string; status: string; direction: string }[]
+      >("daemon", "/channels/status");
+
+      channels = daemonChannels.map((ch) => ({
+        name: ch.name,
+        status: (["connected", "configured", "disconnected", "unconfigured"].includes(ch.status)
+          ? ch.status
+          : "unknown") as "configured" | "unknown" | "connected" | "disconnected" | "unconfigured",
+        direction: (["bidirectional", "inbound", "outbound"].includes(ch.direction)
+          ? ch.direction
+          : "bidirectional") as "bidirectional" | "inbound" | "outbound",
+        messages_24h: null,
+        messages_per_hour: null,
+      }));
+    } catch {
+      // Daemon unreachable — fall back to static channels
+      channels = KNOWN_CHANNELS.map((ch) => ({
+        ...ch,
+        messages_24h: null,
+        messages_per_hour: null,
+      }));
+    }
+
+    const healthyCount = services.filter((s) => s.status === "healthy").length;
 
     return {
       fleet: {
-        status: "unknown",
+        status:
+          healthyCount === services.length
+            ? ("healthy" as const)
+            : healthyCount === 0
+              ? ("unknown" as const)
+              : ("degraded" as const),
         services,
-        healthy_count: 0,
+        healthy_count: healthyCount,
         total_count: services.length,
       },
-      channels: KNOWN_CHANNELS,
+      channels,
+    };
+  }),
+
+  /**
+   * Channel volume: message counts per channel over the last 24h, bucketed by hour.
+   */
+  channelVolume: protectedProcedure.query(async () => {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        channel: messages.channel,
+        hour: sql<string>`date_trunc('hour', ${messages.createdAt})::text`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(messages)
+      .where(gte(messages.createdAt, twentyFourHoursAgo))
+      .groupBy(messages.channel, sql`date_trunc('hour', ${messages.createdAt})`)
+      .orderBy(messages.channel, sql`date_trunc('hour', ${messages.createdAt})`);
+
+    // Group by channel
+    const channelMap = new Map<
+      string,
+      { total_24h: number; hourly: { hour: string; count: number }[] }
+    >();
+
+    for (const row of rows) {
+      if (!channelMap.has(row.channel)) {
+        channelMap.set(row.channel, { total_24h: 0, hourly: [] });
+      }
+      const entry = channelMap.get(row.channel)!;
+      entry.total_24h += row.count;
+      entry.hourly.push({ hour: row.hour, count: row.count });
+    }
+
+    return {
+      channels: Array.from(channelMap.entries()).map(([name, data]) => ({
+        name,
+        ...data,
+      })),
+    };
+  }),
+
+  /**
+   * Error rates: session_events with error/tool_error types in last 24h,
+   * grouped by hour and event type.
+   */
+  errorRates: protectedProcedure.query(async () => {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const [hourlyRows, byTypeRows] = await Promise.all([
+      db
+        .select({
+          hour: sql<string>`date_trunc('hour', ${sessionEvents.createdAt})::text`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(sessionEvents)
+        .where(
+          sql`${sessionEvents.eventType} IN ('error', 'tool_error') AND ${sessionEvents.createdAt} >= ${twentyFourHoursAgo}`,
+        )
+        .groupBy(sql`date_trunc('hour', ${sessionEvents.createdAt})`)
+        .orderBy(sql`date_trunc('hour', ${sessionEvents.createdAt})`),
+      db
+        .select({
+          event_type: sessionEvents.eventType,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(sessionEvents)
+        .where(
+          sql`${sessionEvents.eventType} IN ('error', 'tool_error') AND ${sessionEvents.createdAt} >= ${twentyFourHoursAgo}`,
+        )
+        .groupBy(sessionEvents.eventType)
+        .orderBy(desc(sql`count(*)`)),
+    ]);
+
+    const total_24h = hourlyRows.reduce((sum, row) => sum + row.count, 0);
+
+    return {
+      total_24h,
+      hourly: hourlyRows,
+      by_type: byTypeRows,
+    };
+  }),
+
+  /**
+   * Fleet history: last 24h of fleet health snapshots, downsampled to 15-min buckets.
+   * Returns uptime percentage per service.
+   */
+  fleetHistory: protectedProcedure.query(async () => {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Downsample to 15-minute buckets, taking worst status per bucket
+    const rows = await db
+      .select({
+        serviceName: fleetHealthSnapshots.serviceName,
+        bucket: sql<string>`date_trunc('minute', ${fleetHealthSnapshots.checkedAt} - (EXTRACT(MINUTE FROM ${fleetHealthSnapshots.checkedAt})::int % 15) * INTERVAL '1 minute')::text`,
+        // Worst status: unreachable > unhealthy > healthy
+        worstStatus: sql<string>`
+          CASE
+            WHEN bool_or(${fleetHealthSnapshots.status} = 'unreachable') THEN 'unreachable'
+            WHEN bool_or(${fleetHealthSnapshots.status} = 'unhealthy') THEN 'unhealthy'
+            ELSE 'healthy'
+          END
+        `,
+        avgLatencyMs: sql<number | null>`avg(${fleetHealthSnapshots.latencyMs})::int`,
+      })
+      .from(fleetHealthSnapshots)
+      .where(gte(fleetHealthSnapshots.checkedAt, twentyFourHoursAgo))
+      .groupBy(fleetHealthSnapshots.serviceName, sql`date_trunc('minute', ${fleetHealthSnapshots.checkedAt} - (EXTRACT(MINUTE FROM ${fleetHealthSnapshots.checkedAt})::int % 15) * INTERVAL '1 minute')`)
+      .orderBy(fleetHealthSnapshots.serviceName, sql`date_trunc('minute', ${fleetHealthSnapshots.checkedAt} - (EXTRACT(MINUTE FROM ${fleetHealthSnapshots.checkedAt})::int % 15) * INTERVAL '1 minute')`);
+
+    // Group by service name
+    const serviceMap = new Map<
+      string,
+      { snapshots: { time: string; status: string; latency_ms: number | null }[]; healthy_buckets: number; total_buckets: number }
+    >();
+
+    for (const row of rows) {
+      if (!serviceMap.has(row.serviceName)) {
+        serviceMap.set(row.serviceName, { snapshots: [], healthy_buckets: 0, total_buckets: 0 });
+      }
+      const entry = serviceMap.get(row.serviceName)!;
+      entry.snapshots.push({
+        time: row.bucket,
+        status: row.worstStatus,
+        latency_ms: row.avgLatencyMs,
+      });
+      entry.total_buckets++;
+      if (row.worstStatus === "healthy") {
+        entry.healthy_buckets++;
+      }
+    }
+
+    return {
+      services: Array.from(serviceMap.entries()).map(([name, data]) => ({
+        name,
+        snapshots: data.snapshots,
+        uptime_pct_24h:
+          data.total_buckets > 0
+            ? Math.round((data.healthy_buckets / data.total_buckets) * 100)
+            : 0,
+      })),
     };
   }),
 

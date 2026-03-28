@@ -572,6 +572,7 @@ impl Orchestrator {
             };
 
             let obligation_store = self.deps.obligation_store.clone();
+            let pg_ob_store = self.deps.pg_obligation_store.clone();
             let telegram_client = self.telegram_client.clone();
             let telegram_chat_id = self.telegram_chat_id;
             let research_deps = Arc::clone(&self.deps);
@@ -599,6 +600,7 @@ impl Orchestrator {
                         };
 
                         // Store the obligation — lock is held briefly, dropped before any await.
+                        let new_ob_for_pg = new_ob.clone();
                         let store_result = if let Some(store_arc) = obligation_store {
                             match store_arc.lock() {
                                 Ok(store) => match store.create(new_ob) {
@@ -627,6 +629,13 @@ impl Orchestrator {
                             None
                         };
                         // MutexGuard is dropped above; now safe to await.
+
+                        // Dual-write to Postgres (fire-and-forget).
+                        if let Some(ref pg_store) = pg_ob_store {
+                            if let Err(e) = pg_store.create(&new_ob_for_pg).await {
+                                tracing::warn!(error = %e, "pg dual-write: obligation create failed");
+                            }
+                        }
 
                         // Notify via Telegram for P0-P1 obligations with card + keyboard
                         if let Some(ob) = store_result {
@@ -769,6 +778,13 @@ impl Orchestrator {
                         .as_ref()
                         .and_then(|arc| arc.lock().ok())
                         .map(|store| store.update_detected_action(&ob_id, &new_text));
+
+                    // Dual-write to Postgres.
+                    if let Some(ref pg_store) = self.deps.pg_obligation_store {
+                        if let Err(e) = pg_store.update_detected_action(&ob_id, &new_text).await {
+                            tracing::warn!(error = %e, "pg dual-write: update_detected_action failed");
+                        }
+                    }
 
                     match update_result {
                         Some(Ok(true)) => {
@@ -2107,6 +2123,15 @@ impl Orchestrator {
                     Ok(Some(ob)) => {
                         match store.update_status(&ob.id, &ObligationStatus::Done) {
                             Ok(_) => {
+                                // Dual-write to Postgres (fire-and-forget).
+                                if let Some(pg_store) = self.deps.pg_obligation_store.clone() {
+                                    let ob_id = ob.id.clone();
+                                    tokio::spawn(async move {
+                                        if let Err(e) = pg_store.update_status(&ob_id, &ObligationStatus::Done).await {
+                                            tracing::warn!(error = %e, "pg dual-write: cmd_ob_done failed");
+                                        }
+                                    });
+                                }
                                 let action: String = ob.detected_action.chars().take(80).collect();
                                 let action = if ob.detected_action.len() > 80 {
                                     format!("{action}...")
@@ -2190,7 +2215,8 @@ impl Orchestrator {
             deadline: None,
         };
 
-        match store_arc.lock() {
+        let new_ob_for_pg = new_ob.clone();
+        let result = match store_arc.lock() {
             Ok(store) => {
                 match store.create(new_ob) {
                     Ok(ob) => {
@@ -2209,7 +2235,18 @@ impl Orchestrator {
                 tracing::warn!(error = %e, "cmd_ob_create: store mutex poisoned");
                 "\u{274C} Failed to access obligation store.".to_string()
             }
+        };
+
+        // Dual-write to Postgres (fire-and-forget).
+        if let Some(pg_store) = self.deps.pg_obligation_store.clone() {
+            tokio::spawn(async move {
+                if let Err(e) = pg_store.create(&new_ob_for_pg).await {
+                    tracing::warn!(error = %e, "pg dual-write: cmd_ob_create failed");
+                }
+            });
         }
+
+        result
     }
 
     /// /ob status — one-line summary of obligation counts by owner and status.
@@ -2277,6 +2314,20 @@ impl Orchestrator {
                 false
             }
         };
+
+        // Dual-write to Postgres.
+        if let Some(ref pg_store) = self.deps.pg_obligation_store {
+            let pg_result = if let Some(ref owner) = new_owner {
+                pg_store
+                    .update_status_and_owner(obligation_id, &new_status, owner)
+                    .await
+            } else {
+                pg_store.update_status(obligation_id, &new_status).await
+            };
+            if let Err(e) = pg_result {
+                tracing::warn!(error = %e, id = obligation_id, "pg dual-write: obligation callback update failed");
+            }
+        }
 
         if !updated {
             tracing::warn!(id = obligation_id, "obligation callback: obligation not found");
@@ -2348,12 +2399,40 @@ impl Orchestrator {
 
         // Persist the briefing entry before sending so the dashboard can read it even
         // if the Telegram send fails.
+        let mut sources = std::collections::HashMap::new();
+        sources.insert("obligations".to_string(), "ok".to_string());
+        let entry = BriefingEntry::new(message.clone(), vec![], sources);
+
         if let Some(briefing_store) = &self.deps.briefing_store {
-            let mut sources = std::collections::HashMap::new();
-            sources.insert("obligations".to_string(), "ok".to_string());
-            let entry = BriefingEntry::new(message.clone(), vec![], sources);
             if let Err(e) = briefing_store.append(&entry) {
-                tracing::warn!(error = %e, "morning briefing: failed to persist briefing entry");
+                tracing::warn!(error = %e, "morning briefing: failed to persist briefing entry (JSONL)");
+            }
+        }
+
+        // Dual-write briefing to Postgres.
+        if let Some(ref pg_pool) = self.deps.pg_pool {
+            if let Some(guard) = pg_pool.client().await {
+                let client = guard.get();
+                let briefing_id: uuid::Uuid = entry.id.parse().unwrap_or_else(|_| uuid::Uuid::new_v4());
+                let generated_at = entry.generated_at.naive_utc();
+                let sources_json = serde_json::to_value(&entry.sources_status)
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let actions_json = serde_json::to_value(&entry.suggested_actions)
+                    .unwrap_or(serde_json::Value::Array(vec![]));
+                if let Err(e) = client
+                    .execute(
+                        "INSERT INTO briefings (id, generated_at, content, sources_status, suggested_actions)
+                         VALUES ($1, $2, $3, $4, $5)",
+                        &[&briefing_id, &generated_at, &entry.content, &sources_json, &actions_json],
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, "pg dual-write: briefing insert failed");
+                } else {
+                    tracing::debug!("pg dual-write: briefing persisted");
+                }
+            } else {
+                tracing::warn!("pg dual-write: no Postgres connection for briefing");
             }
         }
 
@@ -2676,6 +2755,29 @@ impl Orchestrator {
                 return;
             }
         };
+
+        // Dual-write to Postgres.
+        if let Some(ref pg_store) = self.deps.pg_obligation_store {
+            let pg_result = match action {
+                "done" => {
+                    pg_store
+                        .update_status(ob_id, &nv_core::types::ObligationStatus::Done)
+                        .await
+                        .map(|_| ())
+                }
+                "snooze" => pg_store.snooze(ob_id).await.map(|_| ()),
+                "dismiss" => {
+                    pg_store
+                        .update_status(ob_id, &nv_core::types::ObligationStatus::Dismissed)
+                        .await
+                        .map(|_| ())
+                }
+                _ => Ok(()),
+            };
+            if let Err(e) = pg_result {
+                tracing::warn!(error = %e, action, ob_id, "pg dual-write: followup callback failed");
+            }
+        }
 
         let reply = match result {
             Ok(msg) => msg.to_string(),

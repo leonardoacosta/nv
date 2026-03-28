@@ -312,6 +312,15 @@ pub struct SharedDeps {
     /// `AnthropicClient` or `ClaudeClient`. `None` when the sidecar failed to
     /// start at daemon startup (falls back to existing clients).
     pub sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
+    /// Shared Postgres connection pool for dual-write migration.
+    /// `None` when `pg_write_enabled=false` or `DATABASE_URL` not set.
+    pub pg_pool: Option<crate::pg_pool::PgPool>,
+    /// Postgres-backed obligation store for dual-write.
+    pub pg_obligation_store: Option<crate::pg_obligation_store::PgObligationStore>,
+    /// Postgres-backed contact store for dual-write.
+    pub pg_contact_store: Option<crate::pg_contact_store::PgContactStore>,
+    /// Buffered Postgres writer for session events.
+    pub pg_session_event_writer: Option<crate::pg_session_events::PgSessionEventWriter>,
 }
 
 // ── Slug Generation ─────────────────────────────────────────────────

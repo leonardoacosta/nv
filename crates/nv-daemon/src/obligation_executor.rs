@@ -200,9 +200,9 @@ pub async fn execute_obligation(
         .await;
 
         // Update last_attempt_at regardless of sidecar result.
+        let now = chrono::Utc::now();
         if let Some(store_arc) = &deps.obligation_store {
             if let Ok(store) = store_arc.lock() {
-                let now = chrono::Utc::now();
                 if let Err(e) = store.update_last_attempt_at(&obligation.id, &now) {
                     tracing::warn!(
                         obligation_id = %obligation.id,
@@ -210,6 +210,12 @@ pub async fn execute_obligation(
                         "failed to update last_attempt_at"
                     );
                 }
+            }
+        }
+        // Dual-write to Postgres.
+        if let Some(ref pg_store) = deps.pg_obligation_store {
+            if let Err(e) = pg_store.update_last_attempt_at(&obligation.id, &now).await {
+                tracing::warn!(error = %e, "pg dual-write: update_last_attempt_at failed");
             }
         }
 
@@ -332,9 +338,9 @@ pub async fn execute_obligation(
     .await;
 
     // Update last_attempt_at regardless of result (enables cooldown).
+    let now = Utc::now();
     if let Some(store_arc) = &deps.obligation_store {
         if let Ok(store) = store_arc.lock() {
-            let now = Utc::now();
             if let Err(e) = store.update_last_attempt_at(&obligation.id, &now) {
                 tracing::warn!(
                     obligation_id = %obligation.id,
@@ -342,6 +348,12 @@ pub async fn execute_obligation(
                     "failed to update last_attempt_at"
                 );
             }
+        }
+    }
+    // Dual-write to Postgres.
+    if let Some(ref pg_store) = deps.pg_obligation_store {
+        if let Err(e) = pg_store.update_last_attempt_at(&obligation.id, &now).await {
+            tracing::warn!(error = %e, "pg dual-write: update_last_attempt_at failed");
         }
     }
 
@@ -583,6 +595,18 @@ pub async fn handle_execution_result(
                     }
                 }
             }
+            // Dual-write to Postgres.
+            if let Some(ref pg_store) = deps.pg_obligation_store {
+                if let Err(e) = pg_store
+                    .update_status(
+                        &obligation.id,
+                        &nv_core::types::ObligationStatus::ProposedDone,
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, "pg dual-write: proposed_done status failed");
+                }
+            }
 
             // Send Telegram summary with confirm/reopen keyboard.
             if let Some(chat_id) = telegram_chat_id {
@@ -674,6 +698,18 @@ pub async fn handle_execution_result(
                     ) {
                         tracing::warn!(error = %e, "failed to set in_progress status");
                     }
+                }
+            }
+            // Dual-write to Postgres.
+            if let Some(ref pg_store) = deps.pg_obligation_store {
+                if let Err(e) = pg_store
+                    .update_status(
+                        &obligation.id,
+                        &nv_core::types::ObligationStatus::InProgress,
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, "pg dual-write: in_progress status failed");
                 }
             }
 

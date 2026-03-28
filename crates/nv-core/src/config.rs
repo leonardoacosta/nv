@@ -614,6 +614,15 @@ pub struct DaemonConfig {
     /// Default: 24 hours.  Set to 0 to disable expiry.
     #[serde(default = "default_conversation_ttl_hours")]
     pub conversation_ttl_hours: u64,
+    /// Enable Postgres dual-write for obligations, contacts, sessions, and
+    /// briefings. Default: `true`. Set to `false` to disable PG writes without
+    /// code changes (SQLite/JSONL remain the primary stores).
+    #[serde(default = "default_pg_write_enabled")]
+    pub pg_write_enabled: bool,
+}
+
+fn default_pg_write_enabled() -> bool {
+    true
 }
 
 // ── Proactive Watcher Config ─────────────────────────────────────────

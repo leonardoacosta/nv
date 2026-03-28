@@ -29,6 +29,10 @@ mod persona;
 mod team_agent;
 mod obligation_store;
 mod orchestrator;
+mod pg_pool;
+mod pg_obligation_store;
+mod pg_contact_store;
+mod pg_session_events;
 mod query;
 mod reminders;
 mod proactive_watcher;
@@ -689,12 +693,52 @@ async fn main() -> anyhow::Result<()> {
             None
         };
 
+    // ── Postgres connection pool (dual-write migration) ──────────────
+    let pg_write_enabled = config
+        .daemon
+        .as_ref()
+        .map(|d| d.pg_write_enabled)
+        .unwrap_or(true);
+
+    let pg_pool = if pg_write_enabled {
+        match std::env::var("DATABASE_URL") {
+            Ok(url) => {
+                let pool = pg_pool::PgPool::connect(&url).await;
+                tracing::info!(pg_write_enabled, "PgPool initialized for dual-write");
+                Some(pool)
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "pg_write_enabled=true but DATABASE_URL not set — Postgres writes disabled"
+                );
+                None
+            }
+        }
+    } else {
+        tracing::info!("pg_write_enabled=false — Postgres dual-write disabled");
+        None
+    };
+
+    let pg_obligation_store = pg_pool
+        .as_ref()
+        .map(|p| pg_obligation_store::PgObligationStore::new(p.clone()));
+    let pg_contact_store = pg_pool
+        .as_ref()
+        .map(|p| pg_contact_store::PgContactStore::new(p.clone()));
+    let pg_contact_store_for_http = pg_contact_store.clone();
+    let pg_session_event_writer = pg_pool
+        .as_ref()
+        .map(|p| pg_session_events::PgSessionEventWriter::new(p.clone()));
+
     // Build CcSessionManager from team_agents config (if configured).
     // Created early so it can be shared with the HTTP server and SharedDeps.
     let cc_session_manager: Option<cc_sessions::CcSessionManager> =
         if let Some(ta_config) = &config.team_agents {
             let dispatcher = team_agent::TeamAgentDispatcher::new(ta_config);
-            let mgr = cc_sessions::CcSessionManager::new(dispatcher);
+            let mut mgr = cc_sessions::CcSessionManager::new(dispatcher);
+            if let Some(ref pool) = pg_pool {
+                mgr = mgr.with_pg_pool(pool.clone());
+            }
             mgr.spawn_health_monitor();
             tracing::info!("CcSessionManager initialized with health monitor");
             Some(mgr)
@@ -1027,6 +1071,7 @@ async fn main() -> anyhow::Result<()> {
             memory_base_path_for_http,
             activity_buffer,
             Some(tool_dispatch),
+            pg_contact_store_for_http,
         )
         .await
         {
@@ -1390,6 +1435,10 @@ async fn main() -> anyhow::Result<()> {
         obligation_event_tx,
         activity_buffer: activity_buffer_for_workers,
         sidecar: sidecar_manager,
+        pg_pool: pg_pool.clone(),
+        pg_obligation_store,
+        pg_contact_store,
+        pg_session_event_writer,
     });
 
     // Extract Telegram client and chat_id for reactions

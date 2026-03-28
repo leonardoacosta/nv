@@ -222,6 +222,8 @@ pub struct HttpState {
     ///
     /// `None` in unit tests and when the daemon is in a minimal config mode.
     pub tool_dispatch: Option<Arc<ToolDispatch>>,
+    /// Postgres-backed contact store for dual-write migration.
+    pub pg_contact_store: Option<crate::pg_contact_store::PgContactStore>,
 }
 
 /// Request body for POST /ask.
@@ -1748,6 +1750,7 @@ pub async fn run_http_server(
     memory_base_path: Option<PathBuf>,
     activity_buffer: ActivityRingBuffer,
     tool_dispatch: Option<Arc<ToolDispatch>>,
+    pg_contact_store: Option<crate::pg_contact_store::PgContactStore>,
 ) -> anyhow::Result<()> {
     let state = Arc::new(HttpState {
         trigger_tx,
@@ -1770,6 +1773,7 @@ pub async fn run_http_server(
         memory_base_path,
         activity_buffer,
         tool_dispatch,
+        pg_contact_store,
     });
     let app = build_router(state);
 
@@ -1935,8 +1939,25 @@ async fn create_contact_handler(
         return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "contact store not configured" }))).into_response();
     };
 
-    match store.create(&req.name, req.channel_ids, &req.relationship_type, req.notes.as_deref()) {
-        Ok(contact) => (StatusCode::CREATED, Json(serde_json::to_value(contact).unwrap_or_default())).into_response(),
+    match store.create(&req.name, req.channel_ids.clone(), &req.relationship_type, req.notes.as_deref()) {
+        Ok(contact) => {
+            // Dual-write to Postgres (fire-and-forget).
+            if let Some(pg_store) = state.pg_contact_store.clone() {
+                let name = req.name.clone();
+                let channel_ids = req.channel_ids.clone();
+                let rt = req.relationship_type.clone();
+                let notes = req.notes.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = pg_store
+                        .create(&name, &channel_ids, &rt, notes.as_deref())
+                        .await
+                    {
+                        tracing::warn!(error = %e, "pg dual-write: contact create failed");
+                    }
+                });
+            }
+            (StatusCode::CREATED, Json(serde_json::to_value(contact).unwrap_or_default())).into_response()
+        }
         Err(e) => {
             let msg = format!("{e}");
             tracing::warn!(error = %msg, "contact create failed");
@@ -1975,8 +1996,26 @@ async fn update_contact_handler(
         return (StatusCode::SERVICE_UNAVAILABLE, Json(serde_json::json!({ "error": "contact store not configured" }))).into_response();
     };
 
-    match store.update(&id, req.name.as_deref(), req.channel_ids, req.relationship_type.as_deref(), req.notes.as_deref()) {
-        Ok(contact) => (StatusCode::OK, Json(serde_json::to_value(contact).unwrap_or_default())).into_response(),
+    match store.update(&id, req.name.as_deref(), req.channel_ids.clone(), req.relationship_type.as_deref(), req.notes.as_deref()) {
+        Ok(contact) => {
+            // Dual-write to Postgres (fire-and-forget).
+            if let Some(pg_store) = state.pg_contact_store.clone() {
+                let id = id.clone();
+                let name = req.name.clone();
+                let channel_ids = req.channel_ids.clone();
+                let rt = req.relationship_type.clone();
+                let notes = req.notes.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = pg_store
+                        .update(&id, name.as_deref(), channel_ids.as_ref(), rt.as_deref(), notes.as_deref())
+                        .await
+                    {
+                        tracing::warn!(error = %e, "pg dual-write: contact update failed");
+                    }
+                });
+            }
+            (StatusCode::OK, Json(serde_json::to_value(contact).unwrap_or_default())).into_response()
+        }
         Err(e) => {
             let msg = format!("{e}");
             let status = if msg.contains("not found") { StatusCode::NOT_FOUND } else { StatusCode::BAD_REQUEST };
@@ -1995,7 +2034,18 @@ async fn delete_contact_handler(
     };
 
     match store.delete(&id) {
-        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(true) => {
+            // Dual-write to Postgres (fire-and-forget).
+            if let Some(pg_store) = state.pg_contact_store.clone() {
+                let id = id.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = pg_store.delete(&id).await {
+                        tracing::warn!(error = %e, "pg dual-write: contact delete failed");
+                    }
+                });
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
         Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => {
             tracing::warn!(error = %e, "contact delete failed");
@@ -2389,6 +2439,7 @@ mod tests {
             memory_base_path: None,
             activity_buffer: ActivityRingBuffer::new(),
             tool_dispatch: None,
+            pg_contact_store: None,
         });
         (state, rx, tmp)
     }
@@ -2620,6 +2671,7 @@ mod tests {
             memory_base_path: None,
             activity_buffer: ActivityRingBuffer::new(),
             tool_dispatch: None,
+            pg_contact_store: None,
         });
         (state, rx, tmp)
     }
@@ -2679,6 +2731,7 @@ mod tests {
             memory_base_path: None,
             activity_buffer: ActivityRingBuffer::new(),
             tool_dispatch: None,
+            pg_contact_store: None,
         });
         drop(rx);
 
@@ -2740,6 +2793,7 @@ mod tests {
             memory_base_path: None,
             activity_buffer: ActivityRingBuffer::new(),
             tool_dispatch: None,
+            pg_contact_store: None,
         });
         drop(rx);
 
@@ -2813,6 +2867,7 @@ mod tests {
             memory_base_path: Some(tmp.path().join("memory")),
             activity_buffer: ActivityRingBuffer::new(),
             tool_dispatch: None,
+            pg_contact_store: None,
         });
         (state, rx, tmp)
     }

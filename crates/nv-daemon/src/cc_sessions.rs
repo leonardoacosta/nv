@@ -123,6 +123,8 @@ impl From<&CcSessionHandle> for CcSessionSummary {
 pub struct CcSessionManager {
     dispatcher: TeamAgentDispatcher,
     sessions: Arc<Mutex<HashMap<String, CcSessionHandle>>>,
+    /// Optional Postgres pool for writing session lifecycle to the `sessions` table.
+    pg_pool: Option<crate::pg_pool::PgPool>,
 }
 
 impl CcSessionManager {
@@ -131,7 +133,14 @@ impl CcSessionManager {
         Self {
             dispatcher,
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            pg_pool: None,
         }
+    }
+
+    /// Attach a PgPool for writing session lifecycle to Postgres.
+    pub fn with_pg_pool(mut self, pool: crate::pg_pool::PgPool) -> Self {
+        self.pg_pool = Some(pool);
+        self
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -167,6 +176,34 @@ impl CcSessionManager {
             sessions.insert(session_id.clone(), handle);
         }
 
+        // Write session start to Postgres (fire-and-forget).
+        if let Some(ref pg_pool) = self.pg_pool {
+            // Extract UUID portion from "ta-<uuid>" format for the PG uuid column.
+            let pg_id = session_id
+                .strip_prefix("ta-")
+                .and_then(|s| uuid::Uuid::parse_str(s).ok())
+                .unwrap_or_else(uuid::Uuid::new_v4);
+
+            let project_owned = project.to_string();
+            let command = args.first().cloned().unwrap_or_default();
+            let pool = pg_pool.clone();
+            tokio::spawn(async move {
+                if let Some(guard) = pool.client().await {
+                    let client = guard.get();
+                    if let Err(e) = client
+                        .execute(
+                            "INSERT INTO sessions (id, project, command, status, trigger_type, started_at)
+                             VALUES ($1, $2, $3, 'running', 'agent', NOW())",
+                            &[&pg_id, &project_owned, &command],
+                        )
+                        .await
+                    {
+                        tracing::warn!(error = %e, session_id = %pg_id, "pg: session start insert failed");
+                    }
+                }
+            });
+        }
+
         tracing::info!(session_id = %session_id, project, "CcSession started");
         Ok(session_id)
     }
@@ -184,8 +221,43 @@ impl CcSessionManager {
             }
         }
 
+        // Write session stop to Postgres (fire-and-forget).
+        self.pg_update_session_status(session_id, "stopped").await;
+
         tracing::info!(session_id, "CcSession stopped by user");
         Ok(result)
+    }
+
+    // ── Postgres Helpers ───────────────────────────────────────────────────
+
+    /// Update session status and stopped_at in Postgres (fire-and-forget).
+    async fn pg_update_session_status(&self, session_id: &str, status: &str) {
+        let Some(ref pg_pool) = self.pg_pool else {
+            return;
+        };
+        let pg_id = session_id
+            .strip_prefix("ta-")
+            .and_then(|s| uuid::Uuid::parse_str(s).ok());
+        let Some(pg_id) = pg_id else {
+            return;
+        };
+
+        let pool = pg_pool.clone();
+        let status_owned = status.to_string();
+        tokio::spawn(async move {
+            if let Some(guard) = pool.client().await {
+                let client = guard.get();
+                if let Err(e) = client
+                    .execute(
+                        "UPDATE sessions SET status = $1, stopped_at = NOW() WHERE id = $2",
+                        &[&status_owned, &pg_id],
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, session_id = %pg_id, status = %status_owned, "pg: session status update failed");
+                }
+            }
+        });
     }
 
     // ── Query ─────────────────────────────────────────────────────────────
@@ -247,6 +319,8 @@ impl CcSessionManager {
             .collect();
 
         let mut to_restart: Vec<(String, String, Vec<String>, Option<String>)> = Vec::new();
+        // Session IDs that transitioned to a terminal state (for PG updates).
+        let mut pg_status_updates: Vec<(String, String)> = Vec::new();
 
         {
             let mut sessions = self.sessions.lock().await;
@@ -269,6 +343,8 @@ impl CcSessionManager {
                             "CcSession completed (exited 0)"
                         );
                         handle.state = CcSessionState::Completed;
+                        pg_status_updates
+                            .push((handle.id.clone(), "completed".to_string()));
                     }
                     Some("errored") | Some(_) => {
                         // Non-zero exit — attempt restart if budget remains.
@@ -284,6 +360,8 @@ impl CcSessionManager {
                                 exit_code: -1,
                                 restart_attempts: handle.restart_attempts,
                             };
+                            pg_status_updates
+                                .push((handle.id.clone(), "failed".to_string()));
                             to_restart.push((
                                 handle.project.clone(),
                                 handle.cwd.clone(),
@@ -303,10 +381,17 @@ impl CcSessionManager {
                             handle.state = CcSessionState::Error {
                                 reason: reason.clone(),
                             };
+                            pg_status_updates
+                                .push((handle.id.clone(), "error".to_string()));
                         }
                     }
                 }
             }
+        }
+
+        // Update Postgres session status for transitions detected this cycle.
+        for (sid, status) in pg_status_updates {
+            self.pg_update_session_status(&sid, &status).await;
         }
 
         // Restart outside the lock.

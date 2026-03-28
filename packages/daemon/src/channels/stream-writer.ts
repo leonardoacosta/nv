@@ -20,6 +20,7 @@ const EDIT_THROTTLE_MS = 1000;
 export class TelegramStreamWriter {
   private readonly adapter: TelegramAdapter;
   private readonly chatId: string;
+  private readonly replyToMessageId?: number;
   private readonly draftId: number;
 
   private currentText = "";
@@ -31,9 +32,10 @@ export class TelegramStreamWriter {
   private draftSupported: boolean | null = null;
   private fallbackMessageId: number | null = null;
 
-  constructor(adapter: TelegramAdapter, chatId: string) {
+  constructor(adapter: TelegramAdapter, chatId: string, replyToMessageId?: number) {
     this.adapter = adapter;
     this.chatId = chatId;
+    this.replyToMessageId = replyToMessageId;
     // Random non-zero integer for draft identification
     this.draftId = Math.floor(Math.random() * 2_147_483_646) + 1;
   }
@@ -73,17 +75,23 @@ export class TelegramStreamWriter {
     // Split into 4096-char chunks and send as final messages with Markdown
     const chunks = splitMessage(fullText);
 
-    for (const chunk of chunks) {
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      // Only the first chunk replies to the original message
+      const replyTo = i === 0 ? this.replyToMessageId : undefined;
       try {
         await this.adapter.sendMessage(this.chatId, chunk, {
           parseMode: "Markdown",
           disablePreview: true,
+          replyToMessageId: replyTo,
         });
       } catch {
         // Markdown failed -- strip formatting and send plain
         try {
           const plain = stripMarkdown(chunk);
-          await this.adapter.sendMessage(this.chatId, plain);
+          await this.adapter.sendMessage(this.chatId, plain, {
+            replyToMessageId: replyTo,
+          });
         } catch (sendErr: unknown) {
           log.warn({ chatId: this.chatId, err: sendErr }, "finalize sendMessage chunk failed");
         }
@@ -108,7 +116,9 @@ export class TelegramStreamWriter {
     }
 
     try {
-      await this.adapter.sendMessage(this.chatId, error);
+      await this.adapter.sendMessage(this.chatId, error, {
+        replyToMessageId: this.replyToMessageId,
+      });
     } catch (sendErr: unknown) {
       log.warn({ chatId: this.chatId, err: sendErr }, "abort sendMessage failed");
     }
@@ -167,7 +177,9 @@ export class TelegramStreamWriter {
     // Fallback: editMessageText on a single placeholder
     try {
       if (this.fallbackMessageId === null) {
-        const placeholderMsg = await this.adapter.sendMessage(this.chatId, "Thinking...");
+        const placeholderMsg = await this.adapter.sendMessage(this.chatId, "Thinking...", {
+          replyToMessageId: this.replyToMessageId,
+        });
         this.fallbackMessageId = placeholderMsg.message_id;
       }
       await this.adapter.editMessage(this.chatId, this.fallbackMessageId, truncated);

@@ -14,6 +14,8 @@ import { startDigestScheduler } from "./features/digest/index.js";
 import { startTokenRefresh } from "./features/token-refresh.js";
 import { setDigestDeps } from "./telegram/commands/digest.js";
 import { JobQueue } from "./queue/index.js";
+import { ThreadResolver } from "./queue/thread-resolver.js";
+import type { EnqueueResult } from "./queue/types.js";
 import { NovaAgent } from "./brain/agent.js";
 import { ConversationManager } from "./brain/conversation.js";
 import { KeywordRouter } from "./brain/keyword-router.js";
@@ -269,6 +271,7 @@ export async function main(): Promise<void> {
 
   // ── Job queue ────────────────────────────────────────────────────────────────
 
+  const threadResolver = new ThreadResolver(pool);
   const queue = new JobQueue(config.queue);
 
   queue.on("started", (event) => {
@@ -599,21 +602,32 @@ export async function main(): Promise<void> {
           // Determine priority: /brief and /dream get low, regular messages get normal
           const priority = /^\/(brief|dream)\b/i.test(data) ? "low" as const : "normal" as const;
 
-          let enqueueResult: { job: { id: string }; startedImmediately: boolean };
+          // Resolve thread for this message before enqueueing
+          const telegramMessageId = msg.metadata.messageId as number;
+          const replyToMessageId = msg.replyToMessageId;
+          const threadId = await threadResolver.resolve(
+            msg.chatId,
+            telegramMessageId,
+            replyToMessageId,
+          );
+
+          let enqueueResult: EnqueueResult;
           try {
             enqueueResult = queue.enqueue({
               chatId: msg.chatId,
+              threadId,
               content: data,
               priority,
               handler: async (signal: AbortSignal) => {
-                const writer = new TelegramStreamWriter(telegram!, msg.chatId);
+                const writer = new TelegramStreamWriter(telegram!, msg.chatId, telegramMessageId);
 
                 try {
-                  // Load conversation history for this chat
+                  // Load conversation history scoped to this thread
                   const channelKey = `telegram:${msg.chatId}`;
                   const history = await conversationManager.loadHistory(
                     channelKey,
                     config.conversationHistoryDepth,
+                    threadId,
                   );
 
                   let finalResponse: { text: string; toolCalls: { name: string }[]; stopReason: string } | null = null;
@@ -646,6 +660,9 @@ export async function main(): Promise<void> {
                   }
 
                   if (finalResponse && !signal.aborted) {
+                    // Attach threadId so saveExchange persists it
+                    msg.threadId = threadId;
+
                     // Save exchange fire-and-forget — never block the response path
                     void conversationManager.saveExchange(channelKey, msg, {
                       ...msg,
@@ -747,12 +764,17 @@ export async function main(): Promise<void> {
 
           // Send ack if queued (not immediately started)
           if (!enqueueResult.startedImmediately) {
-            const status = queue.getStatus(msg.chatId);
-            const position = status.position ?? 0;
-            void telegram!.sendMessage(
-              msg.chatId,
-              `Queued (${position} ahead). I'll respond when ready.`,
-            );
+            let ackText: string;
+            if (enqueueResult.threadState === "thread-busy") {
+              ackText = enqueueResult.position <= 1
+                ? "Processing your previous message. This one is next."
+                : `Queued (${enqueueResult.position} ahead in this thread).`;
+            } else {
+              ackText = "All workers busy. You're next when one frees up.";
+            }
+            void telegram!.sendMessage(msg.chatId, ackText, {
+              replyToMessageId: msg.metadata.messageId as number,
+            });
           }
         } catch (err: unknown) {
           log.error(

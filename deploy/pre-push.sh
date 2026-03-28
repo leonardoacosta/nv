@@ -177,6 +177,28 @@ else
     RESULTS+=("dashboard: skip (no changes)")
 fi
 
+# ── Ensure Daemon Is Running ──────────────────────────────────────────────
+# Starting a dead daemon is always safe — this does NOT restart a running one.
+# Respects the graceful deploy rule: only RESTART when code/config changed.
+
+if systemctl --user is-active --quiet nv.service; then
+    RESULTS+=("daemon-health: running")
+else
+    echo ""
+    echo "=== Nova: Daemon not running — starting nv.service ==="
+    systemctl --user start nv.service 2>&1 | tee -a "$LOG_FILE" || true
+    sleep 3
+    if systemctl --user is-active --quiet nv.service; then
+        echo "    Daemon started successfully."
+        RESULTS+=("daemon-health: started (was dead)")
+        _notify "Nova daemon was down — auto-started"
+    else
+        echo "    WARNING: Daemon failed to start. Check: journalctl --user -u nv.service"
+        RESULTS+=("daemon-health: FAILED to start")
+        _notify "Nova daemon failed to start after deploy"
+    fi
+fi
+
 # ── Post-Deploy Health Check ──────────────────────────────────────────────
 
 echo ""

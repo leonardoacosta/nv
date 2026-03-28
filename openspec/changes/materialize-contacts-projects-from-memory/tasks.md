@@ -6,19 +6,19 @@ _No schema changes required -- uses existing `contacts`, `projects`, and `memory
 
 ## API Batch
 
-- [ ] **T1** `api-engineer` — Move people-parser to API package
+- [x] **T1** `api-engineer` — Move people-parser to API package
   Create `packages/api/src/lib/people-parser.ts` with the `parsePeopleMemory()` function and `PersonProfile` interface copied from `apps/dashboard/lib/entity-resolution/people-parser.ts`. Update the dashboard file to re-export from `@nova/api` or keep as-is if cross-package import is not feasible.
 
-- [ ] **T2** `api-engineer` — Implement contact materialization logic [depends: T1]
+- [x] **T2** `api-engineer` — Implement contact materialization logic [depends: T1]
   Create `packages/api/src/lib/materialize-contacts.ts`. Read "people" memory topic from Postgres, parse via `parsePeopleMemory()`, match each profile to existing contacts by channel ID values (iterate contacts, check jsonb value overlap) then by case-insensitive name. Upsert: merge channelIds (union), update notes/relationshipType if enriched. Return `{ created, updated, unchanged }`.
 
-- [ ] **T3** `api-engineer` — Implement project materialization logic
+- [x] **T3** `api-engineer` — Implement project materialization logic
   Create `packages/api/src/lib/materialize-projects.ts`. Fetch daemon project registry via `GET http://localhost:8400/api/projects` (with fetch timeout + fallback to `NV_PROJECTS` env var). Read all `projects-*` memory topics. Deduplicate by project code. Match to existing projects by code. Upsert: set path from daemon if null, set description from memory content (first 500 chars) if null. Insert new projects with code, name, category "work", status "active". Return `{ created, updated, unchanged }`.
 
-- [ ] **T4** `api-engineer` — Add contact.materialize tRPC mutation [depends: T2]
+- [x] **T4** `api-engineer` — Add contact.materialize tRPC mutation [depends: T2]
   Add `materialize` mutation to `packages/api/src/routers/contact.ts` calling `materializeContacts()`. Return the result object.
 
-- [ ] **T5** `api-engineer` — Add project.materialize tRPC mutation [depends: T3]
+- [x] **T5** `api-engineer` — Add project.materialize tRPC mutation [depends: T3]
   Add `materialize` mutation to `packages/api/src/routers/project.ts` calling `materializeProjects()`. Return the result object.
 
 ## UI Batch

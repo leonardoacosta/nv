@@ -18,9 +18,17 @@ const FLEET_URLS: Record<string, { envVar: string; defaultUrl: string }> = {
     envVar: "MESSAGES_SVC_URL",
     defaultUrl: "http://host.docker.internal:4102",
   },
+  "channels-svc": {
+    envVar: "CHANNELS_SVC_URL",
+    defaultUrl: "http://host.docker.internal:4103",
+  },
   "meta-svc": {
     envVar: "META_SVC_URL",
     defaultUrl: "http://host.docker.internal:4108",
+  },
+  daemon: {
+    envVar: "DAEMON_URL",
+    defaultUrl: "http://host.docker.internal:8400",
   },
 };
 

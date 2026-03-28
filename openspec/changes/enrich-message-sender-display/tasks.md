@@ -3,10 +3,10 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Create `packages/api/src/lib/people-parser.ts` — move `parsePeopleMemory()` and supporting types/functions from `apps/dashboard/lib/entity-resolution/people-parser.ts` to the API package; export `PersonProfile` interface and `parsePeopleMemory` function [owner:api-engineer]
-- [ ] [2.2] [P-1] Create `packages/api/src/lib/telegram-metadata.ts` — implement `extractTelegramName(metadata: Record<string, unknown> | null): string | null` that extracts display name from Telegram message metadata JSONB; handle nested `from.first_name`/`from.last_name`/`from.username` and flat shapes; return `"first last"` trimmed, fallback to username, fallback to null [owner:api-engineer]
-- [ ] [2.3] [P-1] Create `packages/api/src/lib/sender-resolver.ts` — implement `resolveSenders(senders: Array<{ raw: string; channel: string; metadata: unknown }>, db: DbClient): Promise<Map<string, SenderResolution>>` that batches resolution across contacts table (single query with channel_ids JSONB match), Telegram metadata extraction, and memory people profiles (single query + parse); returns `{ displayName, avatarInitial, source }` per sender key [owner:api-engineer]
-- [ ] [2.4] [P-1] Modify `packages/api/src/routers/message.ts` message.list — after fetching rows, collect unique sender+channel pairs, call `resolveSenders()`, attach `senderResolved` object to each mapped message in the response [owner:api-engineer]
+- [x] [2.1] [P-1] Create `packages/api/src/lib/people-parser.ts` — move `parsePeopleMemory()` and supporting types/functions from `apps/dashboard/lib/entity-resolution/people-parser.ts` to the API package; export `PersonProfile` interface and `parsePeopleMemory` function [owner:api-engineer]
+- [x] [2.2] [P-1] Create `packages/api/src/lib/telegram-metadata.ts` — implement `extractTelegramName(metadata: Record<string, unknown> | null): string | null` that extracts display name from Telegram message metadata JSONB; handle nested `from.first_name`/`from.last_name`/`from.username` and flat shapes; return `"first last"` trimmed, fallback to username, fallback to null [owner:api-engineer]
+- [x] [2.3] [P-1] Create `packages/api/src/lib/sender-resolver.ts` — implement `resolveSenders(senders: Array<{ raw: string; channel: string; metadata: unknown }>, db: DbClient): Promise<Map<string, SenderResolution>>` that batches resolution across contacts table (single query with channel_ids JSONB match), Telegram metadata extraction, and memory people profiles (single query + parse); returns `{ displayName, avatarInitial, source }` per sender key [owner:api-engineer]
+- [x] [2.4] [P-1] Modify `packages/api/src/routers/message.ts` message.list — after fetching rows, collect unique sender+channel pairs, call `resolveSenders()`, attach `senderResolved` object to each mapped message in the response [owner:api-engineer]
 
 ## UI Batch
 

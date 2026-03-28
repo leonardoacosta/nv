@@ -22,6 +22,7 @@ import {
 } from "@nova/db";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { materializeProjects } from "../lib/materialize-projects.js";
 
 interface EnvProject {
   code: string;
@@ -286,6 +287,14 @@ export const projectRouter = createTRPCRouter({
         updated_at: created.updatedAt.toISOString(),
       };
     }),
+
+  /**
+   * Materialize projects from daemon registry and projects-* memory topics.
+   * Upserts new projects and enriches existing ones with path/description.
+   */
+  materialize: protectedProcedure.mutation(async () => {
+    return materializeProjects();
+  }),
 
   /**
    * Extract and assemble knowledge documents for all projects.

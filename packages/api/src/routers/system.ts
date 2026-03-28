@@ -1,4 +1,4 @@
-import { count, desc, eq, gte, ilike, sql } from "drizzle-orm";
+import { count, desc, eq, gte, ilike, max, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@nova/db";
@@ -120,6 +120,16 @@ const KNOWN_CHANNELS = [
   { name: "Discord", status: "configured" as const, direction: "bidirectional" as const },
   { name: "Microsoft Teams", status: "configured" as const, direction: "bidirectional" as const },
 ];
+
+// ── Shared types ──────────────────────────────────────────────────────────
+
+export interface ConfigSourceEntry {
+  key: string;
+  source: "env" | "file" | "default";
+  envVar?: string;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function getObligationSeverity(
   status: string,
@@ -405,4 +415,276 @@ export const systemRouter = createTRPCRouter({
 
       return { topic: input.topic, written: input.content.length };
     }),
+
+  /**
+   * Config sources: proxy GET /config/sources from the Rust daemon.
+   * Returns which env var, TOML file, or default resolved each config key.
+   * Falls back to an empty array if the daemon endpoint is not yet available.
+   */
+  configSources: protectedProcedure.query(async () => {
+    try {
+      const sources = await fleetFetch<ConfigSourceEntry[]>(
+        "daemon",
+        "/config/sources",
+      );
+      return Array.isArray(sources) ? sources : ([] as ConfigSourceEntry[]);
+    } catch {
+      // Daemon endpoint not yet implemented — return empty so UI degrades gracefully
+      return [] as ConfigSourceEntry[];
+    }
+  }),
+
+  /**
+   * Channel status: call channels-svc /channels for live connection status
+   * and enrich each channel with lastMessageAt from the messages table.
+   * Falls back to the static registry on error.
+   */
+  channelStatus: protectedProcedure.query(async () => {
+    interface ChannelStatusEntry {
+      name: string;
+      connected: boolean;
+      error?: string;
+      identity?: { username?: string; displayName?: string };
+    }
+
+    // Fetch live channel status from channels-svc
+    let liveChannels: ChannelStatusEntry[] = [];
+    try {
+      liveChannels = await fleetFetch<ChannelStatusEntry[]>(
+        "channels-svc",
+        "/channels",
+      );
+    } catch {
+      // channels-svc unreachable — fall back to static registry
+      liveChannels = KNOWN_CHANNELS.map((c) => ({
+        name: c.name,
+        connected: false,
+        error: "channels-svc unreachable",
+      }));
+    }
+
+    // Fetch last message timestamps per channel from DB
+    const lastMessageRows = await db
+      .select({
+        channel: messages.channel,
+        lastAt: max(messages.createdAt),
+      })
+      .from(messages)
+      .groupBy(messages.channel);
+
+    const lastMessageByChannel = new Map<string, string | null>();
+    for (const row of lastMessageRows) {
+      lastMessageByChannel.set(
+        row.channel,
+        row.lastAt ? row.lastAt.toISOString() : null,
+      );
+    }
+
+    return liveChannels.map((ch) => ({
+      name: ch.name,
+      connected: ch.connected,
+      error: ch.error ?? null,
+      identity: ch.identity ?? null,
+      lastMessageAt:
+        lastMessageByChannel.get(ch.name.toLowerCase()) ??
+        lastMessageByChannel.get(ch.name) ??
+        null,
+    }));
+  }),
+
+  /**
+   * Test channel: send a test message via channels-svc /send.
+   */
+  testChannel: protectedProcedure
+    .input(
+      z.object({
+        channel: z.string().min(1),
+        target: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const start = Date.now();
+      try {
+        await fleetFetch("channels-svc", "/send", {
+          method: "POST",
+          body: JSON.stringify({
+            channel: input.channel,
+            target: input.target,
+            message: `[Nova] Connection test at ${new Date().toISOString()}`,
+          }),
+        });
+        return {
+          valid: true,
+          error: null,
+          latencyMs: Date.now() - start,
+        };
+      } catch (err) {
+        return {
+          valid: false,
+          error: err instanceof Error ? err.message : "Unknown error",
+          latencyMs: Date.now() - start,
+        };
+      }
+    }),
+
+  /**
+   * Test integration: validate an external service API key by making a
+   * lightweight server-side request. Keys are never sent to the browser.
+   */
+  testIntegration: protectedProcedure
+    .input(
+      z.object({
+        service: z.enum([
+          "anthropic",
+          "openai",
+          "elevenlabs",
+          "github",
+          "sentry",
+          "posthog",
+        ]),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const start = Date.now();
+
+      const INTEGRATIONS: Record<
+        string,
+        { url: string; envVar: string; authHeader?: (key: string) => string }
+      > = {
+        anthropic: {
+          url: "https://api.anthropic.com/v1/models",
+          envVar: "ANTHROPIC_API_KEY",
+          authHeader: (key) => `x-api-key ${key}`,
+        },
+        openai: {
+          url: "https://api.openai.com/v1/models",
+          envVar: "OPENAI_API_KEY",
+          authHeader: (key) => `Bearer ${key}`,
+        },
+        elevenlabs: {
+          url: "https://api.elevenlabs.io/v1/voices",
+          envVar: "ELEVENLABS_API_KEY",
+          authHeader: (key) => `xi-api-key ${key}`,
+        },
+        github: {
+          url: "https://api.github.com/user",
+          envVar: "GITHUB_TOKEN",
+          authHeader: (key) => `Bearer ${key}`,
+        },
+        sentry: {
+          url: "https://sentry.io/api/0/",
+          envVar: "SENTRY_AUTH_TOKEN",
+          authHeader: (key) => `Bearer ${key}`,
+        },
+        posthog: {
+          url: "https://app.posthog.com/api/feature_flags/?token=",
+          envVar: "POSTHOG_API_KEY",
+        },
+      };
+
+      const config = INTEGRATIONS[input.service];
+      if (!config) {
+        return {
+          valid: false,
+          error: `Unknown service: ${input.service}`,
+          latencyMs: 0,
+        };
+      }
+
+      const apiKey = process.env[config.envVar];
+      if (!apiKey) {
+        return {
+          valid: false,
+          error: `${config.envVar} is not set`,
+          latencyMs: 0,
+        };
+      }
+
+      try {
+        const headers: Record<string, string> = {
+          Accept: "application/json",
+        };
+
+        if (config.authHeader) {
+          // Split "scheme key" into Authorization header
+          const [scheme, ...rest] = config.authHeader(apiKey).split(" ");
+          if (scheme && rest.length > 0) {
+            // Some APIs use custom header names (e.g., xi-api-key)
+            if (
+              scheme === "x-api-key" ||
+              scheme === "xi-api-key"
+            ) {
+              headers[scheme] = rest.join(" ");
+            } else {
+              headers["Authorization"] = `${scheme} ${rest.join(" ")}`;
+            }
+          }
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8_000);
+
+        let url = config.url;
+        if (input.service === "posthog") {
+          url = `${config.url}${apiKey}`;
+        }
+
+        const response = await fetch(url, {
+          headers,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok || response.status === 200) {
+          return {
+            valid: true,
+            error: null,
+            latencyMs: Date.now() - start,
+          };
+        }
+
+        return {
+          valid: false,
+          error: `HTTP ${response.status}`,
+          latencyMs: Date.now() - start,
+        };
+      } catch (err) {
+        return {
+          valid: false,
+          error: err instanceof Error ? err.message : "Network error",
+          latencyMs: Date.now() - start,
+        };
+      }
+    }),
+
+  /**
+   * Memory summary: returns topic count, topic names, last write timestamp,
+   * and total content size in bytes.
+   */
+  memorySummary: protectedProcedure.query(async () => {
+    const [countRow, topicsRow, lastWriteRow, sizeRow] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(memory)
+        .then((rows) => rows[0]),
+      db.select({ topic: memory.topic }).from(memory),
+      db
+        .select({ lastWriteAt: max(memory.updatedAt) })
+        .from(memory)
+        .then((rows) => rows[0]),
+      db
+        .select({
+          totalSizeBytes: sql<number>`SUM(LENGTH(content))::int`,
+        })
+        .from(memory)
+        .then((rows) => rows[0]),
+    ]);
+
+    return {
+      count: countRow?.count ?? 0,
+      topics: topicsRow.map((r) => r.topic),
+      lastWriteAt: lastWriteRow?.lastWriteAt?.toISOString() ?? null,
+      totalSizeBytes: sizeRow?.totalSizeBytes ?? 0,
+    };
+  }),
 });

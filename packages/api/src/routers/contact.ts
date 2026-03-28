@@ -16,6 +16,7 @@ import { db } from "@nova/db";
 import { contacts, messages, memory, obligations } from "@nova/db";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { materializeContacts } from "../lib/materialize-contacts.js";
 
 /** Shallow convert camelCase keys to snake_case, Date -> ISO string. */
 function toSnakeCase(obj: Record<string, unknown>): Record<string, unknown> {
@@ -325,6 +326,14 @@ export const contactRouter = createTRPCRouter({
         channels_active: channelsActive,
       };
     }),
+
+  /**
+   * Materialize contacts from the "people" memory topic.
+   * Parses PersonProfile records and upserts them into the contacts table.
+   */
+  materialize: protectedProcedure.mutation(async () => {
+    return materializeContacts();
+  }),
 
   /**
    * Get discovered contacts from message data.

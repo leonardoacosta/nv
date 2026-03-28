@@ -5,6 +5,8 @@ import { db } from "@nova/db";
 import { messages } from "@nova/db";
 
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
+import { resolveSenders } from "../lib/sender-resolver.js";
+import type { SenderInput } from "../lib/sender-resolver.js";
 
 export const messageRouter = createTRPCRouter({
   /**
@@ -69,6 +71,27 @@ export const messageRouter = createTRPCRouter({
 
       const total = countResult[0]?.total ?? 0;
 
+      // Collect unique sender+channel pairs for batch resolution
+      const senderInputs: SenderInput[] = [];
+      const senderKeySet = new Set<string>();
+      for (const row of rows) {
+        const rawSender = row.sender ?? "unknown";
+        const channel = row.channel ?? "unknown";
+        // "nova" is always outbound — resolve to a fixed brand entry
+        if (rawSender === "nova") continue;
+        const key = `${channel}:${rawSender}`;
+        if (!senderKeySet.has(key)) {
+          senderKeySet.add(key);
+          senderInputs.push({
+            raw: rawSender,
+            channel,
+            metadata: row.metadata,
+          });
+        }
+      }
+
+      const resolved = await resolveSenders(senderInputs);
+
       const mapped = rows.map((row, idx) => {
         const metadata = row.metadata as Record<string, unknown> | null;
         const messageType =
@@ -76,17 +99,42 @@ export const messageRouter = createTRPCRouter({
             ? (metadata.type as "conversation" | "tool-call" | "system")
             : "conversation";
 
+        const rawSender = row.sender ?? "unknown";
+        const channel = row.channel ?? "unknown";
+
+        let senderResolved: {
+          displayName: string;
+          avatarInitial: string;
+          source: "contact" | "telegram-meta" | "memory" | "raw";
+        };
+
+        if (rawSender === "nova") {
+          senderResolved = {
+            displayName: "Nova",
+            avatarInitial: "N",
+            source: "raw" as const,
+          };
+        } else {
+          const resolution = resolved.get(`${channel}:${rawSender}`);
+          senderResolved = resolution ?? {
+            displayName: rawSender,
+            avatarInitial: rawSender[0]?.toUpperCase() ?? "?",
+            source: "raw" as const,
+          };
+        }
+
         return {
           id: idx + input.offset,
           timestamp: row.createdAt.toISOString(),
-          direction: row.sender === "nova" ? "outbound" : "inbound",
-          channel: row.channel ?? "unknown",
-          sender: row.sender ?? "unknown",
+          direction: rawSender === "nova" ? "outbound" : "inbound",
+          channel,
+          sender: rawSender,
           content: row.content,
           response_time_ms: null,
           tokens_in: null,
           tokens_out: null,
           type: messageType,
+          senderResolved,
         };
       });
 

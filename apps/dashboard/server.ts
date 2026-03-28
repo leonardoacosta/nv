@@ -1,6 +1,7 @@
-import { createServer, type IncomingMessage } from "http";
+import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { parse } from "url";
 import next from "next";
+import httpProxy from "http-proxy";
 import { auth } from "@nova/auth";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -8,6 +9,18 @@ const port = parseInt(process.env.PORT ?? "3000", 10);
 
 const app = next({ dev });
 const handle = app.getRequestHandler();
+
+const DAEMON_URL = process.env.DAEMON_URL ?? "ws://127.0.0.1:3443";
+const DAEMON_WS_URL = DAEMON_URL.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
+
+const proxy = httpProxy.createProxyServer({});
+proxy.on("error", (err, _req, res) => {
+  console.error("[ws-proxy] error:", err.message);
+  if (res && "writeHead" in res) {
+    (res as ServerResponse).writeHead(502);
+    (res as ServerResponse).end("Bad Gateway");
+  }
+});
 
 /** Auth is enabled when BETTER_AUTH_SECRET or DASHBOARD_TOKEN is set. */
 function isAuthEnabled(): boolean {
@@ -77,10 +90,11 @@ app.prepare().then(() => {
         socket.destroy();
         return;
       }
+      proxy.ws(req, socket, _head, { target: DAEMON_WS_URL });
+      return;
     }
 
-    // Non-/ws/ upgrades (e.g. Next.js HMR) and authenticated /ws/ upgrades
-    // pass through to the default upgrade handler
+    // Non-/ws/ upgrades (e.g. Next.js HMR) pass through to the default handler
   });
 
   server.listen(port, () => {

@@ -19,6 +19,7 @@ services:
       # Better Auth session encryption
       - BETTER_AUTH_SECRET=pAGAOUJeoXAFYqs7BRdiybINOyJ+DVpiZp2NFbR8/Fs=
       - BETTER_AUTH_URL=https://nova.leonardoacosta.dev
+      - DAEMON_URL=ws://172.20.0.1:3443
     restart: unless-stopped
     labels:
       - "traefik.enable=true"

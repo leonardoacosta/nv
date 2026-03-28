@@ -29,6 +29,6 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Verify diary page renders collapsed row metadata (token badge, latency, tool pills) for an entry with tools and tokens [owner:e2e-engineer] [beads:nv-khka]
-- [ ] [4.2] Verify expanded view shows structured tool detail (input summary, duration) when new-format entry exists [owner:e2e-engineer] [beads:nv-1tq5]
-- [ ] [4.3] Verify aggregate stats bar displays total tokens and estimated cost for the selected date [owner:e2e-engineer] [beads:nv-6dzo]
+- [x] [4.1] Verify diary page renders collapsed row metadata (token badge, latency, tool pills) for an entry with tools and tokens [owner:e2e-engineer] [beads:nv-khka]
+- [x] [4.2] Verify expanded view shows structured tool detail (input summary, duration) when new-format entry exists [owner:e2e-engineer] [beads:nv-1tq5]
+- [x] [4.3] Verify aggregate stats bar displays total tokens and estimated cost for the selected date [owner:e2e-engineer] [beads:nv-6dzo]

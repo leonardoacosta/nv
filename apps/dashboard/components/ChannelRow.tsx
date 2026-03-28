@@ -17,9 +17,17 @@ const DIRECTION_CONFIG = {
 } as const;
 
 const STATUS_DOT: Record<ChannelStatus["status"], string> = {
+  connected: "bg-green-700",
   configured: "bg-ds-gray-700",
+  disconnected: "bg-red-700",
+  unconfigured: "bg-ds-gray-400",
   unknown: "bg-ds-gray-500",
 };
+
+function fmtCount(n: number): string {
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
 
 interface ChannelRowProps {
   channel: ChannelStatus;
@@ -31,9 +39,9 @@ export default function ChannelRow({ channel }: ChannelRowProps) {
 
   return (
     <div className="flex items-center gap-3 px-3 py-2 min-h-9 rounded-md hover:bg-ds-gray-alpha-100 transition-colors">
-      {/* Status dot */}
+      {/* Status dot — transition on background-color */}
       <span
-        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[channel.status]}`}
+        className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 transition-[background-color] duration-300 ease-in-out ${STATUS_DOT[channel.status]}`}
         aria-label={channel.status}
       />
 
@@ -41,6 +49,18 @@ export default function ChannelRow({ channel }: ChannelRowProps) {
       <span className="text-label-14 text-ds-gray-1000 flex-1 truncate">
         {channel.name}
       </span>
+
+      {/* Volume metrics (messages_24h and messages_per_hour) */}
+      {channel.messages_24h != null && (
+        <span className="text-label-12 text-ds-gray-900 font-mono shrink-0">
+          {fmtCount(channel.messages_24h)} msgs/24h
+        </span>
+      )}
+      {channel.messages_per_hour != null && (
+        <span className="text-label-12 text-ds-gray-700 font-mono shrink-0">
+          {channel.messages_per_hour.toFixed(1)}/hr
+        </span>
+      )}
 
       {/* Direction badge */}
       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-ds-gray-alpha-200 text-label-12 text-ds-gray-900 shrink-0">

@@ -9,6 +9,9 @@ import {
   Clock,
   Hash,
   Radio,
+  Zap,
+  DollarSign,
+  Terminal,
 } from "lucide-react";
 import DiaryEntryCard from "@/components/DiaryEntry";
 import ErrorBanner from "@/components/layout/ErrorBanner";
@@ -74,6 +77,25 @@ function dayLabel(dateStr: string): string {
   if (isToday(dateStr)) return "Today";
   if (isYesterday(dateStr)) return "Yesterday";
   return formatDisplayDate(dateStr);
+}
+
+// ── Aggregate formatting helpers ─────────────────────────────────────────────
+
+function fmtTokensLong(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function fmtCostLong(n: number): string {
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  if (n < 1) return `$${n.toFixed(3)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+function fmtLatencyLong(ms: number): string {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.round(ms)}ms`;
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -193,6 +215,44 @@ export default function DiaryPage() {
             }
             inline
           />
+          {/* Aggregate stats from API (task 3.4) */}
+          {data.aggregates && (
+            <>
+              <StatCard
+                icon={<Zap size={14} />}
+                label="Tokens"
+                value={fmtTokensLong(
+                  data.aggregates.total_tokens_in + data.aggregates.total_tokens_out,
+                )}
+                inline
+              />
+              {data.aggregates.total_cost_usd != null &&
+                data.aggregates.total_cost_usd > 0 && (
+                  <StatCard
+                    icon={<DollarSign size={14} />}
+                    label="Est. Cost"
+                    value={fmtCostLong(data.aggregates.total_cost_usd)}
+                    inline
+                  />
+                )}
+              {data.aggregates.avg_latency_ms > 0 && (
+                <StatCard
+                  icon={<Clock size={14} />}
+                  label="Avg Latency"
+                  value={fmtLatencyLong(data.aggregates.avg_latency_ms)}
+                  inline
+                />
+              )}
+              {data.aggregates.tool_frequency.length > 0 && (
+                <StatCard
+                  icon={<Terminal size={14} />}
+                  label="Top Tool"
+                  value={data.aggregates.tool_frequency[0]!.name}
+                  inline
+                />
+              )}
+            </>
+          )}
         </div>
       )}
 

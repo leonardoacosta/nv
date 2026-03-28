@@ -21,10 +21,10 @@
 - [x] [3.1] [P-1] Update `FleetServiceStatus` in `apps/dashboard/types/api.ts` -- add `last_checked: string | null`, `uptime_secs: number | null` [owner:ui-engineer]
 - [x] [3.2] [P-1] Update `ChannelStatus` in `apps/dashboard/types/api.ts` -- add `"connected" | "disconnected" | "unconfigured"` to status union, add `messages_24h: number | null`, `messages_per_hour: number | null` [owner:ui-engineer]
 - [x] [3.3] [P-1] Add `ErrorRateResponse`, `ChannelVolumeResponse`, `FleetHistoryResponse` types to `apps/dashboard/types/api.ts` [owner:ui-engineer]
-- [ ] [3.4] [P-1] Update `components/ServiceRow.tsx` -- show uptime_secs when available, show last_checked in expanded detail, add CSS transition on status dot background-color (300ms ease) [owner:ui-engineer]
-- [ ] [3.5] [P-1] Update `components/ChannelRow.tsx` -- add status dot colors for connected/disconnected/unconfigured, show messages_24h count and messages_per_hour as right-aligned metrics [owner:ui-engineer]
-- [ ] [3.6] [P-2] Update `app/integrations/page.tsx` -- add error rate summary line in Infrastructure section (query errorRates), add stale indicator when last fetch >60s ago, track previous status in ref map for transition detection [owner:ui-engineer]
-- [ ] [3.7] [P-2] Add sparkline component to `ServiceRow` -- inline `<canvas>` or SVG (48x16px), 96 points from fleetHistory, green=healthy/red=unhealthy/gray=missing, uptime_pct_24h on hover via title attr [owner:ui-engineer]
+- [x] [3.4] [P-1] Update `components/ServiceRow.tsx` -- show uptime_secs when available, show last_checked in expanded detail, add CSS transition on status dot background-color (300ms ease) [owner:ui-engineer]
+- [x] [3.5] [P-1] Update `components/ChannelRow.tsx` -- add status dot colors for connected/disconnected/unconfigured, show messages_24h count and messages_per_hour as right-aligned metrics [owner:ui-engineer]
+- [x] [3.6] [P-2] Update `app/integrations/page.tsx` -- add error rate summary line in Infrastructure section (query errorRates), add stale indicator when last fetch >60s ago, track previous status in ref map for transition detection [owner:ui-engineer]
+- [x] [3.7] [P-2] Add sparkline component to `ServiceRow` -- inline `<canvas>` or SVG (48x16px), 96 points from fleetHistory, green=healthy/red=unhealthy/gray=missing, uptime_pct_24h on hover via title attr [owner:ui-engineer]
 
 ## Daemon Batch
 
@@ -39,7 +39,7 @@
 
 - [ ] [5.1] `pnpm drizzle-kit generate` produces clean migration for fleet_health_snapshots [owner:db-engineer]
 - [x] [5.2] `pnpm --filter @nova/api exec tsc --noEmit` passes [owner:api-engineer]
-- [ ] [5.3] `pnpm --filter nova-dashboard exec tsc --noEmit` passes [owner:ui-engineer]
+- [x] [5.3] `pnpm --filter nova-dashboard exec tsc --noEmit` passes [owner:ui-engineer]
 - [x] [5.4] `pnpm --filter @nova/daemon exec tsc --noEmit` passes [owner:api-engineer]
 - [ ] [5.5] fleetStatus returns live data when meta-svc is running, falls back gracefully when meta-svc is down [owner:api-engineer]
 - [ ] [5.6] Channel status shows "connected" for Telegram when daemon is running with TELEGRAM_BOT_TOKEN set [owner:api-engineer]

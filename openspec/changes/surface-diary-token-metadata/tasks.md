@@ -22,10 +22,10 @@
 
 ## UI Batch
 
-- [ ] [3.1] [P-1] Add compact token badge (`1.2k+340`), latency badge, cost badge, and up to 3 tool pills with `+N` overflow to collapsed row in `DiaryEntry.tsx` [owner:ui-engineer] [beads:nv-hjch]
-- [ ] [3.2] [P-1] Add responsive hiding of metadata badges below `sm` breakpoint in `DiaryEntry.tsx` [owner:ui-engineer] [beads:nv-ay89]
-- [ ] [3.3] [P-2] Update expanded view in `DiaryEntry.tsx` to show structured tool details (name, input summary, duration) instead of plain tool name pills [owner:ui-engineer] [beads:nv-s5fi]
-- [ ] [3.4] [P-2] Add aggregate summary stats (total tokens, estimated cost, avg latency, top tool) to diary page summary bar in `page.tsx` [owner:ui-engineer] [beads:nv-gvus]
+- [x] [3.1] [P-1] Add compact token badge (`1.2k+340`), latency badge, cost badge, and up to 3 tool pills with `+N` overflow to collapsed row in `DiaryEntry.tsx` [owner:ui-engineer] [beads:nv-hjch]
+- [x] [3.2] [P-1] Add responsive hiding of metadata badges below `sm` breakpoint in `DiaryEntry.tsx` [owner:ui-engineer] [beads:nv-ay89]
+- [x] [3.3] [P-2] Update expanded view in `DiaryEntry.tsx` to show structured tool details (name, input summary, duration) instead of plain tool name pills [owner:ui-engineer] [beads:nv-s5fi]
+- [x] [3.4] [P-2] Add aggregate summary stats (total tokens, estimated cost, avg latency, top tool) to diary page summary bar in `page.tsx` [owner:ui-engineer] [beads:nv-gvus]
 
 ## E2E Batch
 

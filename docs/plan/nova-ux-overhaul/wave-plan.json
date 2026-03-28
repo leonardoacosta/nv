@@ -242,7 +242,7 @@
             "UI": 4,
             "E2E": 3
           },
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -251,8 +251,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T14:42:07.757296",
+          "merged_at": "2026-03-28T15:11:03.653149"
         },
         {
           "name": "wire-fleet-health-status",
@@ -267,7 +267,7 @@
             "UI": 10,
             "E2E": 5
           },
-          "status": "queued",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -276,8 +276,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T14:42:07.757298",
+          "merged_at": "2026-03-28T15:11:03.653156"
         }
       ],
       "total_tasks": 42
@@ -314,13 +314,14 @@
       "total_tasks": 54
     }
   ],
-  "current_wave": 4,
+  "current_wave": 5,
   "started_at": "2026-03-28T12:46:41.639231",
   "completed_at": null,
   "completed_waves": [
     1,
     2,
-    3
+    3,
+    4
   ],
   "completed_specs": [
     "migrate-daemon-writes-to-postgres",
@@ -329,15 +330,18 @@
     "declutter-home-command-center",
     "materialize-contacts-projects-from-memory",
     "enrich-message-sender-display",
-    "enhance-settings-verbosity"
+    "enhance-settings-verbosity",
+    "surface-diary-token-metadata",
+    "wire-fleet-health-status"
   ],
   "failed_specs": [],
   "mega_batch_state": {
     "current_phase": null,
     "phases_completed": [
-      "API_wave3",
-      "UI_wave3",
-      "E2E_wave3"
+      "DB_wave4",
+      "API_wave4",
+      "UI_wave4",
+      "E2E_wave4"
     ],
     "task_results": {
       "migrate-daemon-writes-to-postgres": {},
@@ -358,13 +362,20 @@
       "E2E_wave2": "2026-03-28T14:06:46.128138",
       "API_wave3": "2026-03-28T14:08:51.906208",
       "UI_wave3": "2026-03-28T14:18:24.576330",
-      "E2E_wave3": "2026-03-28T14:32:12.385461"
+      "E2E_wave3": "2026-03-28T14:32:12.385461",
+      "DB_wave4": "2026-03-28T14:42:07.757284",
+      "API_wave4": "2026-03-28T14:43:55.041634",
+      "UI_wave4": "2026-03-28T14:55:28.372353",
+      "E2E_wave4": "2026-03-28T15:04:39.628911"
     },
     "phase_completed_at": {
       "API_wave2": "2026-03-28T13:48:22.257938",
       "UI_wave2": "2026-03-28T14:06:46.128132",
       "API_wave3": "2026-03-28T14:18:24.576323",
-      "UI_wave3": "2026-03-28T14:32:12.385456"
+      "UI_wave3": "2026-03-28T14:32:12.385456",
+      "DB_wave4": "2026-03-28T14:43:55.041629",
+      "API_wave4": "2026-03-28T14:55:28.372347",
+      "UI_wave4": "2026-03-28T15:04:39.628904"
     }
   }
 }

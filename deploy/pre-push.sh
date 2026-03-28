@@ -89,13 +89,13 @@ RESULTS=()
 # mid-conversation for fleet-only or dashboard-only changes.
 
 if $DAEMON_CHANGED; then
-    DEPLOY_SCRIPT="${GIT_ROOT}/deploy/install.sh"
+    DEPLOY_SCRIPT="${GIT_ROOT}/deploy/install-ts.sh"
 
     if [[ ! -f "$DEPLOY_SCRIPT" ]]; then
-        echo "Warning: deploy/install.sh not found — skipping daemon deploy"
+        echo "Warning: deploy/install-ts.sh not found — skipping daemon deploy"
         RESULTS+=("daemon: SKIPPED (no script)")
     else
-        # install.sh builds Rust daemon + tool fleet
+        # install-ts.sh also calls install-tools.sh internally
         if bash "$DEPLOY_SCRIPT" 2>&1 | tee "$LOG_FILE"; then
             echo ""
             echo "Daemon + fleet deploy succeeded."

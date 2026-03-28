@@ -11,6 +11,7 @@ export interface Job {
   abortController: AbortController;
   handler: (signal: AbortSignal) => Promise<void>;
   threadId: string;
+  replyToMessageId?: number;
   createdAt: Date;
   startedAt?: Date;
   completedAt?: Date;

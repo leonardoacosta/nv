@@ -11,6 +11,7 @@ interface EnqueueOpts {
   threadId?: string;
   content: string;
   priority: JobPriority;
+  replyToMessageId?: number;
   handler: (signal: AbortSignal) => Promise<void>;
 }
 
@@ -33,11 +34,33 @@ export class JobQueue extends EventEmitter<JobQueueEvents> {
   private readonly threads = new Map<string, ThreadQueue>();
   private globalRunning = 0;
   private readonly globalConcurrency: number;
+  private readonly cleanupInterval: ReturnType<typeof setInterval>;
+
+  private static readonly CLEANUP_INTERVAL_MS = 30_000;
+  private static readonly THREAD_IDLE_TTL_MS = 60_000;
 
   constructor(config: QueueConfig) {
     super();
     this.config = config;
     this.globalConcurrency = config.concurrency;
+
+    // Periodically evict idle thread sub-queues to prevent unbounded Map growth.
+    this.cleanupInterval = setInterval(() => {
+      this.evictIdleThreads();
+    }, JobQueue.CLEANUP_INTERVAL_MS);
+
+    // Allow the process to exit even if this interval is still live.
+    if (typeof this.cleanupInterval.unref === "function") {
+      this.cleanupInterval.unref();
+    }
+  }
+
+  /**
+   * Stop the cleanup timer. Call during graceful shutdown to prevent the
+   * interval from keeping the event loop alive.
+   */
+  shutdown(): void {
+    clearInterval(this.cleanupInterval);
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -72,6 +95,7 @@ export class JobQueue extends EventEmitter<JobQueueEvents> {
       threadId,
       content: opts.content,
       priority: opts.priority,
+      replyToMessageId: opts.replyToMessageId,
       status: "queued",
       abortController: new AbortController(),
       handler: opts.handler,
@@ -306,6 +330,23 @@ export class JobQueue extends EventEmitter<JobQueueEvents> {
   }
 
   // ── Internal ────────────────────────────────────────────────────────────────
+
+  /**
+   * Remove thread sub-queues that have been idle (no running job, no waiting
+   * jobs) for longer than THREAD_IDLE_TTL_MS.
+   */
+  private evictIdleThreads(): void {
+    const now = Date.now();
+    for (const [threadId, tq] of this.threads) {
+      if (
+        tq.running === null &&
+        tq.waiting.length === 0 &&
+        now - tq.lastActivityAt > JobQueue.THREAD_IDLE_TTL_MS
+      ) {
+        this.threads.delete(threadId);
+      }
+    }
+  }
 
   /** Count total waiting jobs across all threads. */
   private totalWaiting(): number {

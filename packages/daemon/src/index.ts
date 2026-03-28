@@ -297,6 +297,14 @@ export async function main(): Promise<void> {
       { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, error: event.job.error, queueDepth: event.queueDepth },
       "Job failed",
     );
+    // Notify user of failure
+    if (telegram !== null) {
+      void telegram.sendMessage(
+        event.job.chatId,
+        "Sorry, something went wrong processing your message. Please try again.",
+        { replyToMessageId: event.job.replyToMessageId },
+      );
+    }
   });
 
   queue.on("cancelled", (event) => {
@@ -618,6 +626,7 @@ export async function main(): Promise<void> {
               threadId,
               content: data,
               priority,
+              replyToMessageId: replyToMessageId ?? undefined,
               handler: async (signal: AbortSignal) => {
                 const writer = new TelegramStreamWriter(telegram!, msg.chatId, telegramMessageId);
 

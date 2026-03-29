@@ -22,7 +22,8 @@ export function formatHistoryBlock(messages: Message[]): string {
   const lines = messages.map((msg) => {
     const sender = msg.senderId === "nova" ? "nova" : "user";
     const ts = msg.timestamp.toISOString().replace("T", " ").slice(0, 16);
-    return `[${sender}] (${ts}): ${msg.content}`;
+    const channel = msg.channel ?? "unknown";
+    return `[${sender} via ${channel}] (${ts}): ${msg.content}`;
   });
 
   return `\n\n<conversation_history>\n${lines.join("\n")}\n</conversation_history>`;

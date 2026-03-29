@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
+import { createNodeWebSocket } from "@hono/node-ws";
+import type { WSContext } from "hono/ws";
 import { bearerAuth } from "./middleware/auth.js";
 import { rateLimiter } from "./middleware/rate-limit.js";
 
@@ -17,8 +19,42 @@ import { gatherContext, synthesizeBriefing, blocksToMarkdown } from "./features/
 import { runMorningBriefing } from "./features/briefing/runner.js";
 import { runDream, getDreamStatus } from "./features/dream/index.js";
 import type { FleetHealthMonitor } from "./features/fleet-health/index.js";
+import type { TelegramAdapter } from "./channels/telegram.js";
 
 const startedAt = Date.now();
+
+// ── WebSocket Event Types ──────────────────────────────────────────────────────
+
+export interface WsEvent {
+  type: "message.user" | "message.chunk" | "message.complete" | "message.typing" | "ping";
+  channel?: string;
+  sender?: string;
+  messageId?: string;
+  content?: string;
+  chunk?: string;
+  timestamp: number;
+}
+
+// Active WebSocket connections — module-level so broadcast() can be called from index.ts
+const activeConnections = new Set<WSContext>();
+
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Serialize and broadcast a WsEvent to all active WebSocket connections.
+ * Failures on individual connections are caught to prevent one bad socket
+ * from interrupting the rest.
+ */
+export function broadcast(event: WsEvent): void {
+  const payload = JSON.stringify(event);
+  for (const ws of activeConnections) {
+    try {
+      ws.send(payload);
+    } catch {
+      // Connection may have closed between membership check and send — ignore
+    }
+  }
+}
 
 export type ChannelAdapterStatus =
   | "connected"
@@ -41,12 +77,24 @@ export interface HttpServerDeps {
   briefingDeps?: BriefingDeps;
   channelRegistry?: ChannelRegistryEntry[];
   fleetHealthMonitor?: FleetHealthMonitor;
+  /** Telegram adapter — used to relay dashboard messages/responses to Telegram. */
+  telegram?: TelegramAdapter;
+  /** Telegram chat ID to relay dashboard activity to. */
+  telegramChatId?: string;
 }
 
-export function createHttpApp(deps: HttpServerDeps): Hono {
+export interface HttpAppResult {
+  app: Hono;
+  injectWebSocket: (server: import("node:http").Server) => void;
+}
+
+export function createHttpApp(deps: HttpServerDeps): HttpAppResult {
   const { agent, conversationManager, config, logger } = deps;
 
   const app = new Hono();
+
+  // Set up Node.js WebSocket adapter — must be done before routes are added
+  const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
   // Middleware
   const allowedOrigin =
@@ -247,9 +295,12 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
       "Chat request received",
     );
 
+    // Stable message ID for this exchange — used for WS event correlation
+    const messageId = crypto.randomUUID();
+
     // Construct a Message object for the dashboard channel
     const msg: Message = {
-      id: crypto.randomUUID(),
+      id: messageId,
       channel: "dashboard",
       chatId: "dashboard:web",
       text: userMessage,
@@ -266,9 +317,27 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
       metadata: {},
     };
 
-    // Load conversation history
+    // Relay dashboard user message to Telegram (fire-and-forget)
+    if (deps.telegram && deps.telegramChatId) {
+      void deps.telegram
+        .sendMessage(deps.telegramChatId, `via Dashboard: ${userMessage}`)
+        .catch((err: unknown) => {
+          logger.warn({ service: "nova-daemon", err }, "Failed to relay dashboard user message to Telegram");
+        });
+    }
+
+    // Broadcast user message to all connected WebSocket clients
+    broadcast({
+      type: "message.user",
+      channel: "dashboard",
+      sender: "dashboard-user",
+      messageId,
+      content: userMessage,
+      timestamp: Date.now(),
+    });
+
+    // Load unified conversation history across all channels
     const history = await conversationManager.loadHistory(
-      "dashboard:web",
       config.conversationHistoryDepth,
     );
 
@@ -317,6 +386,15 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
             await stream.writeSSE({
               data: JSON.stringify({ type: "chunk", text: event.text }),
             });
+            // Broadcast streaming chunk to WebSocket clients
+            broadcast({
+              type: "message.chunk",
+              channel: "dashboard",
+              sender: "nova",
+              messageId,
+              chunk: event.text,
+              timestamp: Date.now(),
+            });
           } else if (event.type === "done") {
             fullText = event.response.text;
             toolCallCount = event.response.toolCalls.length;
@@ -327,6 +405,41 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
                 full_text: event.response.text,
               }),
             });
+            // Broadcast completion to WebSocket clients
+            broadcast({
+              type: "message.complete",
+              channel: "dashboard",
+              sender: "nova",
+              messageId,
+              content: event.response.text,
+              timestamp: Date.now(),
+            });
+            // Relay complete response to Telegram (fire-and-forget)
+            if (deps.telegram && deps.telegramChatId) {
+              void deps.telegram
+                .sendMessage(deps.telegramChatId, event.response.text, {
+                  parseMode: "Markdown",
+                  disablePreview: true,
+                })
+                .catch(() => {
+                  // Markdown failed — send plain text
+                  const plain = event.response.text
+                    .replace(/\*\*(.+?)\*\*/g, "$1")
+                    .replace(/\*(.+?)\*/g, "$1")
+                    .replace(/`([^`]+)`/g, "$1")
+                    .replace(/```[\s\S]*?```/g, (m) =>
+                      m.replace(/```\w*\n?/g, "").replace(/```/g, ""),
+                    );
+                  void deps.telegram!
+                    .sendMessage(deps.telegramChatId!, plain)
+                    .catch((plainErr: unknown) => {
+                      logger.warn(
+                        { service: "nova-daemon", err: plainErr },
+                        "Failed to relay dashboard response to Telegram (plain fallback)",
+                      );
+                    });
+                });
+            }
           } else if (event.type === "tool_start") {
             await stream.writeSSE({
               data: JSON.stringify({
@@ -423,5 +536,65 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
     }
   });
 
-  return app;
+  // ── GET /ws/events ─────────────────────────────────────────────────────────
+  app.get(
+    "/ws/events",
+    upgradeWebSocket((c) => {
+      // Validate token query parameter before upgrading
+      const token = c.req.query("token");
+      if (config.dashboardToken && token !== config.dashboardToken) {
+        // Returning null aborts the upgrade — the close with 4001 is handled
+        // by the onOpen guard below as a belt-and-suspenders measure
+        return {
+          onOpen(evt, ws) {
+            ws.close(4001, "unauthorized");
+          },
+          onMessage() {},
+          onClose() {},
+        };
+      }
+
+      return {
+        onOpen(_evt, ws) {
+          activeConnections.add(ws);
+          logger.info(
+            { service: "nova-daemon", connections: activeConnections.size },
+            "WebSocket client connected",
+          );
+
+          // Start heartbeat when first connection arrives
+          if (activeConnections.size === 1 && heartbeatInterval === null) {
+            heartbeatInterval = setInterval(() => {
+              broadcast({ type: "ping", timestamp: Date.now() });
+            }, 30_000);
+          }
+        },
+
+        onMessage(evt, _ws) {
+          // Clients may send pong/ack — ignore gracefully
+          logger.debug({ service: "nova-daemon", data: evt.data }, "WS message received (ignored)");
+        },
+
+        onClose(_evt, ws) {
+          activeConnections.delete(ws);
+          logger.info(
+            { service: "nova-daemon", connections: activeConnections.size },
+            "WebSocket client disconnected",
+          );
+
+          // Stop heartbeat when last connection leaves
+          if (activeConnections.size === 0 && heartbeatInterval !== null) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+          }
+        },
+
+        onError(evt) {
+          logger.error({ service: "nova-daemon", err: evt }, "WebSocket error");
+        },
+      };
+    }),
+  );
+
+  return { app, injectWebSocket };
 }

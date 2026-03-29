@@ -44,33 +44,23 @@ export class ConversationManager {
   }
 
   /**
-   * Load the most recent `limit` messages for a channel, returned in
+   * Load the most recent `limit` messages across ALL channels, returned in
    * chronological order (oldest first).
    *
-   * When `threadId` is provided only messages belonging to that thread are
-   * returned; omitting it preserves the original behaviour (all messages for
-   * the channel).
+   * Channel filter has been removed so the agent sees unified cross-channel
+   * conversation history. Each message retains its original `channel` value
+   * for provenance display.
    */
   async loadHistory(
-    channelId: string,
     limit: number,
-    threadId?: string,
   ): Promise<Message[]> {
-    const params: (string | number)[] = [channelId, limit];
-    const threadClause =
-      threadId != null
-        ? `AND thread_id = $${params.push(threadId)}`
-        : "";
-
     const result = await this.pool.query<MessageRow>(
       `SELECT id, channel, sender, content, metadata, created_at,
               thread_id, reply_to_message_id
        FROM messages
-       WHERE channel = $1
-       ${threadClause}
        ORDER BY created_at DESC
-       LIMIT $2`,
-      params,
+       LIMIT $1`,
+      [limit],
     );
 
     // Reverse so messages are in chronological order

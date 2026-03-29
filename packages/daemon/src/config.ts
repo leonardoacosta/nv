@@ -78,6 +78,8 @@ export interface Config {
   systemPromptPath: string;
   telegramChatId?: string;
   toolRouterUrl: string;
+  /** Token for authenticating WebSocket /ws/events connections from the dashboard. */
+  dashboardToken?: string;
   mcpServers: Record<string, McpServerEntry>;
   agent: AgentConfig;
   autonomy?: AutonomyConfig;
@@ -273,6 +275,7 @@ export async function loadConfig(
     apiToken,
     databaseUrl: validated.database.url,
     vercelGatewayKey: process.env["VERCEL_GATEWAY_KEY"],
+    dashboardToken: process.env["DASHBOARD_TOKEN"],
     telegramChatId: validated.telegram?.chatId,
     systemPromptPath: validated.agent.systemPromptPath,
     toolRouterUrl: validated.daemon.toolRouterUrl,

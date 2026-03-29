@@ -48,7 +48,7 @@ import {
 } from "./features/reminders/poller.js";
 import { serve } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
-import { createHttpApp } from "./http.js";
+import { createHttpApp, broadcast } from "./http.js";
 import type { ChannelRegistryEntry } from "./http.js";
 import { FleetHealthMonitor } from "./features/fleet-health/index.js";
 import { CallbackRouter } from "./telegram/callback-router.js";
@@ -429,7 +429,7 @@ export async function main(): Promise<void> {
 
   // ── HTTP server (Hono) ───────────────────────────────────────────────────
 
-  const httpApp = createHttpApp({
+  const { app: httpApp, injectWebSocket } = createHttpApp({
     agent,
     conversationManager,
     config,
@@ -438,6 +438,8 @@ export async function main(): Promise<void> {
     briefingDeps: briefingDeps ?? undefined,
     channelRegistry,
     fleetHealthMonitor: fleetHealthMonitor ?? undefined,
+    telegram: telegram ?? undefined,
+    telegramChatId: config.telegramChatId,
   });
 
   let httpServer: ServerType | null = null;
@@ -450,6 +452,9 @@ export async function main(): Promise<void> {
       );
     },
   );
+
+  // Inject WebSocket upgrade support into the Node.js HTTP server
+  injectWebSocket(httpServer as import("node:http").Server);
 
   // ── Message routing ────────────────────────────────────────────────────────
 
@@ -629,6 +634,40 @@ export async function main(): Promise<void> {
                 model: config.agent.model,
               });
 
+              // Persist Tier 1/2 exchange — fire-and-forget
+              const channelKeyTier12 = `telegram:${msg.chatId}`;
+              void conversationManager.saveExchange(channelKeyTier12, msg, {
+                ...msg,
+                senderId: "nova",
+                senderName: "nova",
+                content: responseText,
+                text: responseText,
+              }).catch((saveErr: unknown) => {
+                log.warn(
+                  { service: "nova-daemon", chatId: msg.chatId, err: saveErr },
+                  "Failed to save Tier 1/2 conversation exchange",
+                );
+              });
+
+              // Broadcast Tier 1/2 exchange to dashboard WebSocket clients
+              const tier12MessageId = crypto.randomUUID();
+              broadcast({
+                type: "message.user",
+                channel: "telegram",
+                sender: msg.senderId,
+                messageId: tier12MessageId,
+                content: msg.content,
+                timestamp: Date.now(),
+              });
+              broadcast({
+                type: "message.complete",
+                channel: "telegram",
+                sender: "nova",
+                messageId: tier12MessageId,
+                content: responseText,
+                timestamp: Date.now(),
+              });
+
               log.info(
                 {
                   service: "nova-daemon",
@@ -670,14 +709,26 @@ export async function main(): Promise<void> {
               handler: async (signal: AbortSignal) => {
                 const writer = new TelegramStreamWriter(telegram!, msg.chatId, telegramMessageId);
 
+                // Stable message ID for this exchange — used for WS event correlation
+                const messageId = crypto.randomUUID();
+
                 try {
-                  // Load conversation history — always channel-scoped.
+                  // Load unified conversation history across all channels.
                   // Thread routing controls queue ordering, not conversation context.
                   const channelKey = `telegram:${msg.chatId}`;
                   const history = await conversationManager.loadHistory(
-                    channelKey,
                     config.conversationHistoryDepth,
                   );
+
+                  // Broadcast user message to all connected dashboard clients
+                  broadcast({
+                    type: "message.user",
+                    channel: "telegram",
+                    sender: msg.senderId,
+                    messageId,
+                    content: msg.content,
+                    timestamp: Date.now(),
+                  });
 
                   let finalResponse: { text: string; toolCalls: { name: string }[]; stopReason: string } | null = null;
 
@@ -690,6 +741,15 @@ export async function main(): Promise<void> {
                     switch (event.type) {
                       case "text_delta":
                         writer.onTextDelta(event.text);
+                        // Broadcast streaming chunk to dashboard
+                        broadcast({
+                          type: "message.chunk",
+                          channel: "telegram",
+                          sender: "nova",
+                          messageId,
+                          chunk: event.text,
+                          timestamp: Date.now(),
+                        });
                         break;
                       case "tool_start":
                         writer.onToolStart(event.name, event.callId);
@@ -704,6 +764,15 @@ export async function main(): Promise<void> {
                           return;
                         }
                         await writer.finalize(event.response.text);
+                        // Broadcast completion to dashboard
+                        broadcast({
+                          type: "message.complete",
+                          channel: "telegram",
+                          sender: "nova",
+                          messageId,
+                          content: event.response.text,
+                          timestamp: Date.now(),
+                        });
                         break;
                     }
                   }

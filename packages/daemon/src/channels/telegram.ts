@@ -4,6 +4,8 @@ import TelegramBot from "node-telegram-bot-api";
 
 import { createLogger } from "../logger.js";
 import type { Message } from "../types.js";
+
+const logger = createLogger("telegram");
 import { buildDiaryReply } from "../telegram/commands/diary.js";
 import { buildHelpReply } from "../telegram/commands/help.js";
 import { buildMemoryReply } from "../telegram/commands/memory.js";
@@ -29,6 +31,7 @@ import { buildToolsKeyboard } from "../telegram/commands/tools.js";
 import { buildObligationReply } from "../telegram/commands/obligation.js";
 import type { ObligationStore } from "../features/obligations/store.js";
 import { ObligationStatus } from "../features/obligations/types.js";
+import { transcribe, SttError } from "../features/stt/client.js";
 
 // ─── HTML Escape ─────────────────────────────────────────────────────────────
 
@@ -164,15 +167,31 @@ export async function normalizeVoiceMessage(
 
   // Prepend quoted message content for voice replies
   const quotedText = msg.reply_to_message?.text;
-  const text = quotedText
-    ? `[Quoting: "${quotedText}"]`
-    : "";
+  const quotePrefix = quotedText ? `[Quoting: "${quotedText}"]\n` : "";
+
+  let voiceText: string;
+
+  if (!fileUrl) {
+    // fileUrl was never resolved — skip transcription entirely
+    logger.warn({ chatId, fileId }, "Voice message: could not retrieve audio file — skipping transcription");
+    voiceText = quotePrefix + "[Voice message — could not retrieve audio file]";
+  } else {
+    try {
+      const transcript = await transcribe(fileUrl);
+      voiceText = quotePrefix + transcript;
+    } catch (err: unknown) {
+      const code = err instanceof SttError ? err.code : "unknown";
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn({ chatId, fileId, code, err: message }, "Voice transcription failed — using fallback text");
+      voiceText = quotePrefix + "[Voice message — transcription unavailable]";
+    }
+  }
 
   return {
     id: randomUUID(),
     channel: "telegram",
     chatId,
-    text,
+    text: voiceText,
     type: "voice",
     from: normalizeUser(msg.from),
     timestamp,
@@ -187,7 +206,7 @@ export async function normalizeVoiceMessage(
     threadId: undefined,
     senderId,
     senderName,
-    content: text,
+    content: voiceText,
     receivedAt: timestamp,
   };
 }

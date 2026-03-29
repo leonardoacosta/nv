@@ -5,15 +5,15 @@
 - [x] [1.2] [P-1] Generate Drizzle migration for new columns via `pnpm drizzle-kit generate` [owner:db-engineer]
 
 ## API Batch
-- [ ] [2.1] [P-1] Create `packages/daemon/src/features/obligations/signal-detector.ts` with regex pattern matching, confidence scoring, and 2+ signal threshold logic [owner:api-engineer]
-- [ ] [2.2] [P-1] Add `DetectionSource` type ("tier1" | "tier2" | "tier3" | "manual") and `detectionSource`/`routedTool` fields to `ObligationRecord` and `CreateObligationInput` in `packages/daemon/src/features/obligations/types.ts` [owner:api-engineer]
-- [ ] [2.3] [P-2] Add `ObligationRow.detection_source` and `ObligationRow.routed_tool` to row interface and `rowToRecord` mapping in `packages/daemon/src/features/obligations/store.ts` [owner:api-engineer]
-- [ ] [2.4] [P-2] Update `ObligationStore.create()` INSERT query to include `detection_source` and `routed_tool` columns in `packages/daemon/src/features/obligations/store.ts` [owner:api-engineer]
-- [ ] [2.5] [P-2] Add Haiku-model lightweight detection function to `packages/daemon/src/features/obligations/detector.ts` that accepts signal-detector output and returns obligation or null [owner:api-engineer]
-- [ ] [2.6] [P-2] Add dedup-by-message-ID check to `ObligationStore` — skip creation if obligation already exists for the same `source_message` [owner:api-engineer]
-- [ ] [2.7] [P-3] Add post-routing obligation hook in `packages/daemon/src/brain/router.ts` — after Tier 1/2 dispatch, run signal-detector async (fire-and-forget), enqueue Haiku detection job if signals detected [owner:api-engineer]
-- [ ] [2.8] [P-3] Add in-memory hourly rate limiter (max 10 detection jobs/hour) to the post-routing hook in `packages/daemon/src/brain/router.ts` [owner:api-engineer]
-- [ ] [2.9] [P-3] Export `SignalResult` type and `detectSignals` function from `packages/daemon/src/features/obligations/index.ts` [owner:api-engineer]
+- [x] [2.1] [P-1] Create `packages/daemon/src/features/obligations/signal-detector.ts` with regex pattern matching, confidence scoring, and 2+ signal threshold logic [owner:api-engineer]
+- [x] [2.2] [P-1] Add `DetectionSource` type ("tier1" | "tier2" | "tier3" | "manual") and `detectionSource`/`routedTool` fields to `ObligationRecord` and `CreateObligationInput` in `packages/daemon/src/features/obligations/types.ts` [owner:api-engineer]
+- [x] [2.3] [P-2] Add `ObligationRow.detection_source` and `ObligationRow.routed_tool` to row interface and `rowToRecord` mapping in `packages/daemon/src/features/obligations/store.ts` [owner:api-engineer]
+- [x] [2.4] [P-2] Update `ObligationStore.create()` INSERT query to include `detection_source` and `routed_tool` columns in `packages/daemon/src/features/obligations/store.ts` [owner:api-engineer]
+- [x] [2.5] [P-2] Add Haiku-model lightweight detection function to `packages/daemon/src/features/obligations/detector.ts` that accepts signal-detector output and returns obligation or null [owner:api-engineer]
+- [x] [2.6] [P-2] Add dedup-by-message-ID check to `ObligationStore` — skip creation if obligation already exists for the same `source_message` [owner:api-engineer]
+- [x] [2.7] [P-3] Add post-routing obligation hook in `packages/daemon/src/brain/router.ts` — after Tier 1/2 dispatch, run signal-detector async (fire-and-forget), enqueue Haiku detection job if signals detected [owner:api-engineer]
+- [x] [2.8] [P-3] Add in-memory hourly rate limiter (max 10 detection jobs/hour) to the post-routing hook in `packages/daemon/src/brain/router.ts` [owner:api-engineer]
+- [x] [2.9] [P-3] Export `SignalResult` type and `detectSignals` function from `packages/daemon/src/features/obligations/index.ts` [owner:api-engineer]
 
 ## UI Batch
 (No UI tasks)

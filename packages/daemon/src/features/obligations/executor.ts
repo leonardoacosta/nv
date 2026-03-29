@@ -1,5 +1,3 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type TelegramBot from "node-telegram-bot-api";
 import { ObligationStatus, type ObligationRecord } from "./types.js";
 import type { ObligationStore } from "./store.js";
@@ -15,6 +13,7 @@ import type { AutonomyConfig, Config } from "../../config.js";
 import type { ProactiveWatcherConfig } from "../../features/watcher/types.js";
 import { isQuietHours } from "../../features/watcher/proactive.js";
 import { buildMcpServers, buildAllowedTools, type McpStdioServerConfig } from "../../brain/mcp-config.js";
+import { createAgentQuery } from "../../brain/query-factory.js";
 
 const log = createLogger("obligation-executor");
 
@@ -63,16 +62,6 @@ Use your available tools to fulfill this obligation completely. When finished, p
 summary (3–5 sentences) of what you accomplished and any relevant findings.`;
 }
 
-// ─── Timeout helper ───────────────────────────────────────────────────────────
-
-function createTimeout(ms: number): Promise<never> {
-  return new Promise<never>((_, reject) => {
-    setTimeout(() => {
-      reject(new Error(`Execution timed out after ${ms}ms`));
-    }, ms);
-  });
-}
-
 // ─── Model routing ───────────────────────────────────────────────────────────
 
 /**
@@ -95,58 +84,6 @@ export function estimateCost(
   const inputRate = isHaiku ? HAIKU_INPUT_PER_M : SONNET_INPUT_PER_M;
   const outputRate = isHaiku ? HAIKU_OUTPUT_PER_M : SONNET_OUTPUT_PER_M;
   return (inputTokens / 1_000_000) * inputRate + (outputTokens / 1_000_000) * outputRate;
-}
-
-// ─── Agent SDK query wrapper ──────────────────────────────────────────────────
-
-async function runAgentQuery(
-  prompt: string,
-  gatewayKey: string,
-  timeoutMs: number,
-  mcpServers: Record<string, McpStdioServerConfig>,
-  allowedTools: string[],
-  model: string,
-): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
-  const queryStream = query({
-    prompt,
-    options: {
-      allowedTools,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      maxTurns: 30,
-      mcpServers,
-      env: {
-        ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
-        ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
-        ANTHROPIC_MODEL: model,
-      },
-    },
-  });
-
-  let resultText = "";
-  let inputTokens = 0;
-  let outputTokens = 0;
-
-  const queryPromise = (async () => {
-    for await (const message of queryStream as AsyncIterable<SDKMessage>) {
-      if (message.type === "result") {
-        if (message.subtype === "success") {
-          resultText = message.result;
-        } else {
-          throw new Error(`Agent query failed: ${message.subtype}`);
-        }
-      }
-      // Accumulate token usage from assistant messages
-      if (message.type === "assistant" && message.message?.usage) {
-        const usage = message.message.usage as { input_tokens?: number; output_tokens?: number };
-        inputTokens += usage.input_tokens ?? 0;
-        outputTokens += usage.output_tokens ?? 0;
-      }
-    }
-    return { text: resultText, inputTokens, outputTokens };
-  })();
-
-  return Promise.race([queryPromise, createTimeout(timeoutMs)]);
 }
 
 // ─── ObligationExecutor ───────────────────────────────────────────────────────
@@ -286,14 +223,15 @@ export class ObligationExecutor {
       await this.store.updateLastAttemptAt(obligation.id, new Date());
 
       const prompt = buildExecutionPrompt(obligation);
-      const result = await runAgentQuery(
+      const result = await createAgentQuery({
         prompt,
-        this.gatewayKey,
-        this.config.timeoutMs,
-        this.mcpServers,
-        this.allowedTools,
+        gatewayKey: this.gatewayKey,
+        timeoutMs: this.config.timeoutMs,
+        mcpServers: this.mcpServers,
+        allowedTools: this.allowedTools,
         model,
-      );
+        maxTurns: 30,
+      });
 
       // Track spend
       const cost = estimateCost(result.inputTokens, result.outputTokens, model);

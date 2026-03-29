@@ -1,5 +1,4 @@
 import { readFile } from "node:fs/promises";
-import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Config } from "../config.js";
 import type { Message } from "../types.js";
@@ -9,6 +8,7 @@ import { writeEntry } from "../features/diary/index.js";
 import { buildToolCallDetail } from "../features/diary/writer.js";
 import { estimateCost } from "../features/diary/pricing.js";
 import { buildMcpServers, buildAllowedTools } from "./mcp-config.js";
+import { createAgentQueryStream } from "./query-factory.js";
 import type { DreamScheduler } from "../features/dream/scheduler.js";
 
 /**
@@ -96,13 +96,6 @@ export class NovaAgent {
     const gatewayKey =
       this.config.vercelGatewayKey ?? process.env["VERCEL_GATEWAY_KEY"];
 
-    if (!gatewayKey) {
-      throw new Error(
-        "Vercel AI Gateway key is required but not configured. " +
-          "Set VERCEL_GATEWAY_KEY environment variable or vercelGatewayKey in config.",
-      );
-    }
-
     const toolCalls: ToolCall[] = [];
     let resultText = "";
     let stopReason = "end_turn";
@@ -113,21 +106,14 @@ export class NovaAgent {
     const historyBlock = formatHistoryBlock(history);
     const systemPromptWithHistory = this.systemPrompt + historyBlock;
 
-    const queryStream = query({
+    const queryStream = createAgentQueryStream({
       prompt: message.content,
-      options: {
-        systemPrompt: systemPromptWithHistory,
-        model: this.config.agent.model,
-        allowedTools: this.allowedTools,
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        maxTurns: this.config.agent.maxTurns,
-        mcpServers: this.mcpServers,
-        env: {
-          ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
-          ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
-        },
-      },
+      systemPrompt: systemPromptWithHistory,
+      model: this.config.agent.model,
+      allowedTools: this.allowedTools,
+      maxTurns: this.config.agent.maxTurns,
+      mcpServers: this.mcpServers,
+      gatewayKey: gatewayKey ?? undefined,
     });
 
     for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {
@@ -207,13 +193,6 @@ export class NovaAgent {
     const gatewayKey =
       this.config.vercelGatewayKey ?? process.env["VERCEL_GATEWAY_KEY"];
 
-    if (!gatewayKey) {
-      throw new Error(
-        "Vercel AI Gateway key is required but not configured. " +
-          "Set VERCEL_GATEWAY_KEY environment variable or vercelGatewayKey in config.",
-      );
-    }
-
     const toolCalls: ToolCall[] = [];
     // Parallel array to toolCalls, populated as tool_done events fire
     const toolCallDetails: { name: string; input: Record<string, unknown>; duration_ms: number | null }[] = [];
@@ -229,21 +208,14 @@ export class NovaAgent {
     const historyBlock = formatHistoryBlock(history);
     const systemPromptWithHistory = this.systemPrompt + historyBlock;
 
-    const queryStream = query({
+    const queryStream = createAgentQueryStream({
       prompt: message.content,
-      options: {
-        systemPrompt: systemPromptWithHistory,
-        model: this.config.agent.model,
-        allowedTools: this.allowedTools,
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        maxTurns: this.config.agent.maxTurns,
-        mcpServers: this.mcpServers,
-        env: {
-          ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
-          ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
-        },
-      },
+      systemPrompt: systemPromptWithHistory,
+      model: this.config.agent.model,
+      allowedTools: this.allowedTools,
+      maxTurns: this.config.agent.maxTurns,
+      mcpServers: this.mcpServers,
+      gatewayKey: gatewayKey ?? undefined,
     });
 
     for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {

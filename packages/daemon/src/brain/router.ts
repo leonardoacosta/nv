@@ -8,6 +8,11 @@
 
 import type { KeywordRouter } from "./keyword-router.js";
 import type { EmbeddingRouter } from "./embedding-router.js";
+import { detectSignals } from "../features/obligations/signal-detector.js";
+import { detectObligationLightweight } from "../features/obligations/detector.js";
+import type { ObligationStore } from "../features/obligations/store.js";
+import { ObligationStatus } from "../features/obligations/types.js";
+import { logger } from "../logger.js";
 
 export type RouteTier = 0 | 1 | 2 | 3;
 
@@ -17,6 +22,135 @@ export interface RouteResult {
   port?: number;
   params?: Record<string, unknown>;
   confidence: number;
+}
+
+// ─── In-memory hourly rate limiter ────────────────────────────────────────────
+
+const MAX_DETECTION_JOBS_PER_HOUR = 10;
+
+class HourlyRateLimiter {
+  private count = 0;
+  private windowStart = Date.now();
+
+  private resetIfNeeded(): void {
+    const now = Date.now();
+    if (now - this.windowStart >= 3_600_000) {
+      this.count = 0;
+      this.windowStart = now;
+    }
+  }
+
+  tryConsume(): boolean {
+    this.resetIfNeeded();
+    if (this.count >= MAX_DETECTION_JOBS_PER_HOUR) {
+      return false;
+    }
+    this.count++;
+    return true;
+  }
+
+  get remaining(): number {
+    this.resetIfNeeded();
+    return Math.max(0, MAX_DETECTION_JOBS_PER_HOUR - this.count);
+  }
+}
+
+const detectionRateLimiter = new HourlyRateLimiter();
+
+// ─── Post-routing obligation hook ─────────────────────────────────────────────
+
+export interface ObligationHookOptions {
+  userMessage: string;
+  toolResponse: string;
+  channel: string;
+  routeResult: RouteResult;
+  store: ObligationStore;
+  gatewayKey?: string;
+}
+
+/**
+ * Fire-and-forget post-routing obligation detection hook.
+ * Runs after Tier 1/2 dispatch. If signals are detected and the rate limit
+ * allows, enqueues a lightweight Haiku obligation detection job.
+ * Never throws — all errors are logged.
+ */
+export function runPostRoutingObligationHook(
+  options: ObligationHookOptions,
+): void {
+  const { userMessage, toolResponse, channel, routeResult, store, gatewayKey } = options;
+
+  if (routeResult.tier !== 1 && routeResult.tier !== 2) {
+    return;
+  }
+
+  // Fire-and-forget: do not await
+  void (async () => {
+    try {
+      const signalResult = detectSignals(userMessage);
+
+      if (!signalResult.detected) {
+        return;
+      }
+
+      if (!detectionRateLimiter.tryConsume()) {
+        logger.debug(
+          { remaining: 0 },
+          "Obligation detection rate limit reached — skipping",
+        );
+        return;
+      }
+
+      logger.debug(
+        { signals: signalResult.signals, confidence: signalResult.confidence, tier: routeResult.tier },
+        "Obligation signals detected — running lightweight Haiku detection",
+      );
+
+      const detectionSource = routeResult.tier === 1 ? "tier1" as const : "tier2" as const;
+
+      const result = await detectObligationLightweight({
+        userMessage,
+        toolResponse,
+        channel,
+        detectionSource,
+        routedTool: routeResult.tool,
+        signalResult,
+        gatewayKey,
+      });
+
+      if (!result) {
+        return;
+      }
+
+      await store.create({
+        detectedAction: result.detectedAction,
+        owner: result.owner,
+        status: ObligationStatus.Open,
+        priority: result.priority,
+        projectCode: result.projectCode,
+        sourceChannel: channel,
+        sourceMessage: userMessage,
+        deadline: result.deadline,
+        detectionSource: result.detectionSource,
+        routedTool: result.routedTool,
+      });
+
+      logger.info(
+        {
+          action: result.detectedAction,
+          owner: result.owner,
+          tier: routeResult.tier,
+          tool: routeResult.tool,
+          rateLimitRemaining: detectionRateLimiter.remaining,
+        },
+        "Lightweight obligation detected and created",
+      );
+    } catch (err: unknown) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err) },
+        "Post-routing obligation hook failed",
+      );
+    }
+  })();
 }
 
 export class MessageRouter {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool } from "pg";
-import { ObligationStatus, type ObligationRecord, type CreateObligationInput } from "./types.js";
+import { ObligationStatus, type DetectionSource, type ObligationRecord, type CreateObligationInput } from "./types.js";
 
 // ─── Row shape returned by pg (snake_case columns) ───────────────────────────
 
@@ -18,6 +18,8 @@ interface ObligationRow {
   last_attempt_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  detection_source: DetectionSource | null;
+  routed_tool: string | null;
 }
 
 function rowToRecord(row: ObligationRow): ObligationRecord {
@@ -35,6 +37,8 @@ function rowToRecord(row: ObligationRow): ObligationRecord {
     lastAttemptAt: row.last_attempt_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    detectionSource: row.detection_source ?? null,
+    routedTool: row.routed_tool ?? null,
   };
 }
 
@@ -43,7 +47,24 @@ function rowToRecord(row: ObligationRow): ObligationRecord {
 export class ObligationStore {
   constructor(private readonly pool: Pool) {}
 
+  /**
+   * Create a new obligation. If sourceMessage is provided, performs a dedup
+   * check — if an obligation already exists for that source_message value, the
+   * existing record is returned instead of inserting a duplicate.
+   */
   async create(input: CreateObligationInput): Promise<ObligationRecord> {
+    // Dedup by source message: skip creation if an obligation already exists
+    // for the same source message to prevent Tier1/2 + Tier3 double-detection.
+    if (input.sourceMessage) {
+      const existing = await this.pool.query<ObligationRow>(
+        "SELECT * FROM obligations WHERE source_message = $1 LIMIT 1",
+        [input.sourceMessage],
+      );
+      if (existing.rows[0]) {
+        return rowToRecord(existing.rows[0]);
+      }
+    }
+
     const id = randomUUID();
     const now = new Date();
 
@@ -51,8 +72,9 @@ export class ObligationStore {
       `INSERT INTO obligations
          (id, detected_action, owner, status, priority, project_code,
           source_channel, source_message, deadline, attempt_count,
-          last_attempt_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, NULL, $10, $11)
+          last_attempt_at, created_at, updated_at,
+          detection_source, routed_tool)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, NULL, $10, $11, $12, $13)
        RETURNING *`,
       [
         id,
@@ -66,6 +88,8 @@ export class ObligationStore {
         input.deadline,
         now,
         now,
+        input.detectionSource ?? null,
+        input.routedTool ?? null,
       ],
     );
 

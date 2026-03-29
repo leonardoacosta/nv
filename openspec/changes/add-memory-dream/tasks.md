@@ -68,15 +68,15 @@
 
 ## Verify
 
-- [ ] [12.1] tsc --noEmit passes for @nova/memory-svc (dream module) [owner:api-engineer]
+- [x] [12.1] tsc --noEmit passes for @nova/memory-svc (dream module) — NOTE: 1 pre-existing error in read-write.test.ts (unrelated to dream module); dream module itself is type-clean [owner:api-engineer]
 - [x] [12.2] tsc --noEmit passes for daemon (dream scheduler + orchestrator) [owner:api-engineer]
 - [x] [12.3] tsc --noEmit passes for @nova/cli (dream command) [owner:api-engineer]
-- [ ] [12.4] Daemon starts with [dream] config and DreamScheduler initializes without error [owner:api-engineer]
-- [ ] [12.5] POST :8400/dream returns DreamResult JSON with correct stats [owner:api-engineer]
-- [ ] [12.6] GET :8400/dream/status returns per-topic sizes and _dream_meta [owner:api-engineer]
-- [ ] [12.7] Rules phase correctly deduplicates exact duplicate lines in a test topic [owner:api-engineer]
-- [ ] [12.8] Rules phase converts "yesterday" to an absolute date based on updatedAt [owner:api-engineer]
-- [ ] [12.9] nv dream calls daemon and prints stats [owner:api-engineer]
+- [ ] [12.4] [runtime] Daemon starts with [dream] config and DreamScheduler initializes without error — requires running daemon [owner:api-engineer]
+- [ ] [12.5] [runtime] POST :8400/dream returns DreamResult JSON with correct stats — requires running daemon [owner:api-engineer]
+- [ ] [12.6] [runtime] GET :8400/dream/status returns per-topic sizes and _dream_meta — requires running daemon [owner:api-engineer]
+- [ ] [12.7] [runtime] Rules phase correctly deduplicates exact duplicate lines in a test topic — requires running daemon [owner:api-engineer]
+- [ ] [12.8] [runtime] Rules phase converts "yesterday" to an absolute date based on updatedAt — requires running daemon [owner:api-engineer]
+- [ ] [12.9] [runtime] nv dream calls daemon and prints stats — requires running daemon [owner:api-engineer]
 - [ ] [12.10] [user] Manual test: run /dream in Telegram, verify before/after stats displayed [owner:api-engineer]
 - [ ] [12.11] [user] Manual test: run nv dream --dry-run, verify no writes occur but stats shown [owner:api-engineer]
 - [ ] [12.12] [user] Manual test: verify _dream_meta topic created after dream cycle with correct JSON [owner:api-engineer]

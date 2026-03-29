@@ -1,8 +1,7 @@
 import type { Pool } from "pg";
 import type { Logger } from "pino";
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Config } from "../../config.js";
+import { createAgentQuery } from "../../brain/query-factory.js";
 import type { TelegramAdapter } from "../../channels/telegram.js";
 import { gatherDigest } from "./gather.js";
 import { classifyItems } from "./classify.js";
@@ -137,37 +136,15 @@ async function runTier2Digest(deps: DigestSchedulerDeps): Promise<void> {
     const gatewayKey = config.vercelGatewayKey;
 
     if (gatewayKey) {
-      const resultPromise = (async (): Promise<string> => {
-        let result = "";
-        const stream = query({
-          prompt,
-          options: {
-            systemPrompt: TIER2_SYSTEM_PROMPT,
-            allowedTools: [],
-            permissionMode: "bypassPermissions",
-            allowDangerouslySkipPermissions: true,
-            maxTurns: 1,
-            env: {
-              ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
-              ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
-            },
-          },
-        });
-
-        for await (const msg of stream as AsyncIterable<SDKMessage>) {
-          if (msg.type === "result" && msg.subtype === "success") {
-            result = msg.result;
-          }
-        }
-        return result;
-      })();
-
-      synthesisText = await Promise.race([
-        resultPromise,
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error("Tier 2 synthesis timed out")), TIER2_TIMEOUT_MS),
-        ),
-      ]);
+      const queryResult = await createAgentQuery({
+        prompt,
+        systemPrompt: TIER2_SYSTEM_PROMPT,
+        maxTurns: 1,
+        timeoutMs: TIER2_TIMEOUT_MS,
+        allowedTools: [],
+        gatewayKey,
+      });
+      synthesisText = queryResult.text;
     } else {
       // Fallback: produce a static summary without LLM
       synthesisText = buildStaticWeeklySummary(stats);

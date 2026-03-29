@@ -2,11 +2,10 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { db, memory } from "@nova/db";
 import { eq } from "drizzle-orm";
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { logger } from "../../logger.js";
 import { writeEntry } from "../diary/index.js";
+import { createAgentQuery } from "../../brain/query-factory.js";
 import type { DreamResult, TopicStats, RuleResult } from "./types.js";
 
 // ── Orient Phase ──────────────────────────────────────────────────────────────
@@ -223,44 +222,21 @@ async function compressTopic(
     "Output only the compressed content -- no preamble, no explanation.";
 
   try {
-    let resultText = "";
-
-    const queryStream = query({
+    const queryResult = await createAgentQuery({
       prompt: content,
-      options: {
-        systemPrompt,
-        allowedTools: [],
-        permissionMode: "bypassPermissions",
-        allowDangerouslySkipPermissions: true,
-        maxTurns: 1,
-        env: {
-          ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
-          ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
-        },
-      },
+      systemPrompt,
+      maxTurns: 1,
+      timeoutMs: 60_000,
+      allowedTools: [],
+      gatewayKey,
     });
 
-    const timeoutPromise = new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), 60_000);
-    });
-
-    const streamPromise = (async () => {
-      for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {
-        if (sdkMsg.type === "result" && sdkMsg.subtype === "success") {
-          resultText = sdkMsg.result;
-        }
-      }
-      return resultText;
-    })();
-
-    const result = await Promise.race([streamPromise, timeoutPromise]);
-
-    if (!result) {
-      logger.warn({ topic }, "LLM compression timed out or returned empty");
+    if (!queryResult.text) {
+      logger.warn({ topic }, "LLM compression returned empty result");
       return null;
     }
 
-    return result;
+    return queryResult.text;
   } catch (err) {
     logger.warn({ err, topic }, "LLM compression failed — keeping rules-phase result");
     return null;

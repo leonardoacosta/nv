@@ -1,9 +1,8 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { Pool } from "pg";
 import type { Logger } from "pino";
 import type { Config } from "../../config.js";
 import { buildMcpServers, buildAllowedTools } from "../../brain/mcp-config.js";
+import { createAgentQuery } from "../../brain/query-factory.js";
 import { getEntriesByDate } from "../diary/reader.js";
 import type { DiaryEntryItem } from "../diary/reader.js";
 import { BriefingBlocksSchema } from "@nova/db";
@@ -77,6 +76,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     ),
   ]);
 }
+
+// NOTE: withTimeout is retained for use in gatherContext (non-agent fetch calls).
 
 // ─── gatherContext ─────────────────────────────────────────────────────────────
 
@@ -488,36 +489,17 @@ export async function synthesizeBriefing(
   const allowedTools = buildAllowedTools(mcpServers, []);
 
   try {
-    const result = await withTimeout(
-      (async (): Promise<string> => {
-        let resultText = "";
+    const queryResult = await createAgentQuery({
+      prompt: contextPrompt,
+      systemPrompt: BRIEFING_SYSTEM_PROMPT,
+      maxTurns: 1,
+      timeoutMs: SYNTHESIS_TIMEOUT_MS,
+      mcpServers,
+      allowedTools,
+      gatewayKey,
+    });
 
-        const queryStream = query({
-          prompt: contextPrompt,
-          options: {
-            systemPrompt: BRIEFING_SYSTEM_PROMPT,
-            allowedTools,
-            permissionMode: "bypassPermissions",
-            allowDangerouslySkipPermissions: true,
-            maxTurns: 1,
-            mcpServers,
-            env: {
-              ANTHROPIC_BASE_URL: "https://ai-gateway.vercel.sh",
-              ANTHROPIC_CUSTOM_HEADERS: `x-ai-gateway-api-key: Bearer ${gatewayKey}`,
-            },
-          },
-        });
-
-        for await (const sdkMsg of queryStream as AsyncIterable<SDKMessage>) {
-          if (sdkMsg.type === "result" && sdkMsg.subtype === "success") {
-            resultText = sdkMsg.result;
-          }
-        }
-
-        return resultText;
-      })(),
-      SYNTHESIS_TIMEOUT_MS,
-    );
+    const result = queryResult.text;
 
     // Attempt JSON parsing + Zod validation
     try {

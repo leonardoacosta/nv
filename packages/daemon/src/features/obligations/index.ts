@@ -1,12 +1,15 @@
 export {
   ObligationStatus,
+  type DetectionSource,
   type ObligationRecord,
   type CreateObligationInput,
 } from "./types.js";
 
 export { ObligationStore } from "./store.js";
 
-export { detectObligations, type DetectedObligation } from "./detector.js";
+export { detectObligations, detectObligationLightweight, type DetectedObligation, type LightweightDetectionInput, type LightweightDetectionResult } from "./detector.js";
+
+export { detectSignals, type SignalResult } from "./signal-detector.js";
 
 export {
   ObligationExecutor,

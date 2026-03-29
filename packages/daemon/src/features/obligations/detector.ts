@@ -1,4 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { SignalResult } from "./signal-detector.js";
+import type { DetectionSource } from "./types.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,109 @@ function parseRawObligation(raw: RawObligation): DetectedObligation | null {
     projectCode,
     deadline,
   };
+}
+
+// ─── Lightweight Haiku detection ─────────────────────────────────────────────
+
+export interface LightweightDetectionInput {
+  userMessage: string;
+  toolResponse: string;
+  channel: string;
+  detectionSource: DetectionSource;
+  routedTool?: string;
+  signalResult: SignalResult;
+  gatewayKey?: string;
+}
+
+export interface LightweightDetectionResult {
+  detectedAction: string;
+  owner: "nova" | "leo";
+  priority: 1 | 2 | 3;
+  projectCode: string | null;
+  deadline: Date | null;
+  detectionSource: DetectionSource;
+  routedTool: string | null;
+}
+
+/**
+ * Lightweight obligation detection using Claude Haiku.
+ * Intended for Tier 1/2 routed messages where signal detection has already
+ * flagged potential obligations. Returns null if no obligation is found.
+ * Never throws — returns null on any error.
+ */
+export async function detectObligationLightweight(
+  input: LightweightDetectionInput,
+): Promise<LightweightDetectionResult | null> {
+  const key = input.gatewayKey ?? process.env["VERCEL_GATEWAY_KEY"] ?? "";
+  if (!key) {
+    return null;
+  }
+
+  const prompt = `You are analyzing a message and a tool response to identify if there is a clear obligation or follow-up action item.
+
+Channel: ${input.channel}
+${input.routedTool ? `Handled by tool: ${input.routedTool}` : ""}
+Detected signals: ${input.signalResult.signals.join(", ")}
+
+User message:
+${input.userMessage}
+
+Tool response:
+${input.toolResponse}
+
+Task: Is there a clear action item, commitment, or follow-up obligation? If yes, return a JSON object. If no, return null.
+
+If an obligation exists, return:
+{
+  "detectedAction": "<imperative verb phrase>",
+  "owner": "nova" or "leo",
+  "priority": 1, 2, or 3,
+  "projectCode": "<string or null>",
+  "deadline": "<ISO 8601 or null>"
+}
+
+Respond with ONLY the JSON object or the literal null. No other text.`;
+
+  try {
+    const anthropic = createClient(key);
+
+    const completion = await anthropic.messages.create({
+      model: "claude-haiku-3-5",
+      max_tokens: 256,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const block = completion.content[0];
+    if (!block || block.type !== "text") {
+      return null;
+    }
+
+    const trimmed = block.text.trim();
+    if (trimmed === "null") {
+      return null;
+    }
+
+    const raw = extractJsonArray(trimmed);
+    const parsed: unknown = JSON.parse(raw);
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return null;
+    }
+
+    const rawOb = parsed as RawObligation;
+    const obligation = parseRawObligation(rawOb);
+    if (!obligation) {
+      return null;
+    }
+
+    return {
+      ...obligation,
+      detectionSource: input.detectionSource,
+      routedTool: input.routedTool ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

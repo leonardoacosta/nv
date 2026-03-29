@@ -49,6 +49,7 @@ import { serve } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
 import { createHttpApp } from "./http.js";
 import type { ChannelRegistryEntry } from "./http.js";
+import { CallbackRouter } from "./telegram/callback-router.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -399,129 +400,64 @@ export async function main(): Promise<void> {
   // ── Message routing ────────────────────────────────────────────────────────
 
   if (telegram !== null) {
+    // ── Callback router setup ────────────────────────────────────────────────
+    const callbackRouter = new CallbackRouter();
+
+    // digest: — log and acknowledge only
+    callbackRouter.register("digest:", (_id, _meta, msg) => {
+      log.info({ service: "nova-daemon", action: msg.text ?? "" }, "Digest callback received");
+    });
+
+    // reminder:done:
+    callbackRouter.register("reminder:done:", (id, meta) => {
+      void handleReminderDone(id, pool, telegram!, meta.chatId, meta.messageId, meta.callbackQueryId);
+    });
+
+    // reminder:snooze:<duration>:<id>
+    callbackRouter.register("reminder:snooze:", (id, meta) => {
+      const lastColon = id.lastIndexOf(":");
+      const duration = id.slice(0, lastColon);
+      const reminderId = id.slice(lastColon + 1);
+      void handleReminderSnooze(reminderId, duration, pool, telegram!, meta.chatId, meta.messageId, meta.callbackQueryId);
+    });
+
+    // watcher: — receives full data string (not suffix)
+    callbackRouter.register("watcher:", (_id, meta, msg) => {
+      void handleWatcherCallback(
+        msg.text ?? "",
+        pool,
+        telegram!,
+        meta.messageId,
+        meta.chatId,
+        meta.callbackQueryId,
+      );
+    });
+
+    callbackRouter.register(OBLIGATION_CONFIRM_PREFIX, (id, meta) => {
+      void handleObligationConfirm(id, obligationStore, telegram!, meta.chatId, meta.messageId);
+    });
+
+    callbackRouter.register(OBLIGATION_REOPEN_PREFIX, (id, meta) => {
+      void handleObligationReopen(id, obligationStore, telegram!, meta.chatId, meta.messageId);
+    });
+
+    callbackRouter.register(OBLIGATION_ESCALATION_RETRY_PREFIX, (id, meta) => {
+      void handleEscalationRetry(id, obligationStore, telegram!, meta.chatId, meta.messageId);
+    });
+
+    callbackRouter.register(OBLIGATION_ESCALATION_DISMISS_PREFIX, (id, meta) => {
+      void handleEscalationDismiss(id, obligationStore, telegram!, meta.chatId, meta.messageId);
+    });
+
+    callbackRouter.register(OBLIGATION_ESCALATION_TAKEOVER_PREFIX, (id, meta) => {
+      void handleEscalationTakeover(id, obligationStore, telegram!, meta.chatId, meta.messageId);
+    });
+
     telegram.onMessage((msg) => {
       const data = msg.text ?? "";
 
-      // Route digest inline keyboard callbacks (log + acknowledge for now)
-      if (data.startsWith("digest:")) {
-        log.info({ service: "nova-daemon", action: data }, "Digest callback received");
-        // Callbacks are out-of-scope — acknowledge and log
-        return;
-      }
-
-      // Route reminder inline keyboard callbacks
-      if (data.startsWith("reminder:")) {
-        const callbackQueryId = String(
-          (msg.metadata as { callbackQueryId?: string } | undefined)
-            ?.callbackQueryId ?? "",
-        );
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-
-        if (data.startsWith("reminder:done:")) {
-          const reminderId = data.slice("reminder:done:".length);
-          void handleReminderDone(reminderId, pool, telegram!, msg.chatId, messageId, callbackQueryId);
-        } else if (data.startsWith("reminder:snooze:")) {
-          // Format: reminder:snooze:<duration>:<id>
-          const rest = data.slice("reminder:snooze:".length);
-          const lastColon = rest.lastIndexOf(":");
-          const duration = rest.slice(0, lastColon);
-          const reminderId = rest.slice(lastColon + 1);
-          void handleReminderSnooze(reminderId, duration, pool, telegram!, msg.chatId, messageId, callbackQueryId);
-        }
-
-        return;
-      }
-
-      // Route watcher inline keyboard callbacks
-      if (data.startsWith("watcher:")) {
-        const callbackQueryId = String(
-          (msg.metadata as { callbackQueryId?: string } | undefined)
-            ?.callbackQueryId ?? "",
-        );
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-
-        void handleWatcherCallback(
-          data,
-          pool,
-          telegram!,
-          messageId,
-          msg.chatId,
-          callbackQueryId,
-        );
-        return;
-      }
-
-      // Route obligation inline keyboard callbacks
-      if (data.startsWith(OBLIGATION_CONFIRM_PREFIX)) {
-        const id = data.slice(OBLIGATION_CONFIRM_PREFIX.length);
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-
-        void handleObligationConfirm(
-          id,
-          obligationStore,
-          telegram!,
-          msg.chatId,
-          messageId,
-        );
-        return;
-      }
-
-      if (data.startsWith(OBLIGATION_REOPEN_PREFIX)) {
-        const id = data.slice(OBLIGATION_REOPEN_PREFIX.length);
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-
-        void handleObligationReopen(
-          id,
-          obligationStore,
-          telegram!,
-          msg.chatId,
-          messageId,
-        );
-        return;
-      }
-
-      // Route escalation inline keyboard callbacks
-      if (data.startsWith(OBLIGATION_ESCALATION_RETRY_PREFIX)) {
-        const id = data.slice(OBLIGATION_ESCALATION_RETRY_PREFIX.length);
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-        void handleEscalationRetry(id, obligationStore, telegram!, msg.chatId, messageId);
-        return;
-      }
-
-      if (data.startsWith(OBLIGATION_ESCALATION_DISMISS_PREFIX)) {
-        const id = data.slice(OBLIGATION_ESCALATION_DISMISS_PREFIX.length);
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-        void handleEscalationDismiss(id, obligationStore, telegram!, msg.chatId, messageId);
-        return;
-      }
-
-      if (data.startsWith(OBLIGATION_ESCALATION_TAKEOVER_PREFIX)) {
-        const id = data.slice(OBLIGATION_ESCALATION_TAKEOVER_PREFIX.length);
-        const messageId = Number(
-          (msg.metadata as { originalMessageId?: number } | undefined)
-            ?.originalMessageId ?? 0,
-        );
-        void handleEscalationTakeover(id, obligationStore, telegram!, msg.chatId, messageId);
-        return;
-      }
+      // Route all inline keyboard callbacks through the callback router
+      if (callbackRouter.route(msg)) return;
 
       // Route regular messages to the agent loop
 

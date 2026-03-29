@@ -42,9 +42,9 @@
 
 ## E2E: Typecheck + Verification
 
-- [ ] [5.1] [P-1] `pnpm --filter daemon exec tsc --noEmit` passes -- all daemon TypeScript changes compile without errors [owner:api-engineer] [beads:nv-lswg]
-- [ ] [5.2] [P-1] `pnpm --filter dashboard exec tsc --noEmit` passes -- all dashboard TypeScript changes compile without errors [owner:ui-engineer] [beads:nv-gvpr]
-- [ ] [5.3] [P-2] `pnpm build` passes -- full monorepo build succeeds [owner:api-engineer] [beads:nv-ig62]
+- [x] [5.1] [P-1] `pnpm --filter daemon exec tsc --noEmit` passes -- all daemon TypeScript changes compile without errors [owner:api-engineer] [beads:nv-lswg]
+- [x] [5.2] [P-1] `pnpm --filter dashboard exec tsc --noEmit` passes -- all dashboard TypeScript changes compile without errors [owner:ui-engineer] [beads:nv-gvpr]
+- [x] [5.3] [P-2] `pnpm build` passes -- full monorepo build succeeds [owner:api-engineer] [beads:nv-ig62]
 - [ ] [5.4] [P-2] [user] Manual: send a message via Telegram, verify it appears in dashboard chat in real time via WebSocket (with Telegram badge) [owner:leo] [beads:nv-7s3y]
 - [ ] [5.5] [P-2] [user] Manual: send a message via dashboard, verify Nova's response appears in Telegram and the dashboard simultaneously [owner:leo] [beads:nv-o2p7]
 - [ ] [5.6] [P-2] [user] Manual: send a message via Telegram that triggers Tier 1 keyword route, verify the exchange appears in `/api/chat/history` and in the dashboard chat view [owner:leo] [beads:nv-4wjd]

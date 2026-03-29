@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { Logger } from "pino";
 import type { SignalResult } from "./signal-detector.js";
 import type { DetectionSource } from "./types.js";
 
@@ -24,6 +25,8 @@ interface RawObligation {
 
 // ─── Anthropic client factory ─────────────────────────────────────────────────
 
+// TODO(extract-agent-query-factory): Replace with createAgentQuery() once that spec lands.
+// This file uses the raw Anthropic SDK — different auth flow from the rest of the daemon.
 function createClient(gatewayKey: string): Anthropic {
   return new Anthropic({
     baseURL: "https://ai-gateway.vercel.sh",
@@ -230,12 +233,20 @@ Respond with ONLY the JSON object or the literal null. No other text.`;
 /**
  * Analyzes a user message and Nova's response to detect any obligations.
  * Returns [] on any error — never throws.
+ *
+ * @param message    - The user's original message text
+ * @param response   - Nova's response text
+ * @param channel    - The channel identifier (e.g. "telegram", "dashboard")
+ * @param gatewayKey - Optional Vercel AI Gateway key; falls back to env var
+ * @param logger     - Optional pino logger; when provided, warnings are logged on
+ *                     catch instead of silently swallowed
  */
 export async function detectObligations(
   message: string,
   response: string,
   channel: string,
   gatewayKey?: string,
+  logger?: Logger,
 ): Promise<DetectedObligation[]> {
   const key = gatewayKey ?? process.env["VERCEL_GATEWAY_KEY"] ?? "";
   if (!key) {
@@ -274,8 +285,14 @@ export async function detectObligations(
     }
 
     return results;
-  } catch {
-    // Any parse failure, network error, or API error returns []
+  } catch (err) {
+    // Graceful degradation: return [] so callers are never blocked.
+    // Log at warn (not error) because returning [] is an acceptable fallback,
+    // not a crash — but the error must be visible for debugging.
+    logger?.warn(
+      { err, channel },
+      "detectObligations: API call failed — returning empty obligations array",
+    );
     return [];
   }
 }

@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { secureHeaders } from "hono/secure-headers";
 import { streamSSE } from "hono/streaming";
+import { bearerAuth } from "./middleware/auth.js";
+import { rateLimiter } from "./middleware/rate-limit.js";
 
 import type { NovaAgent } from "./brain/agent.js";
 import type { ConversationManager } from "./brain/conversation.js";
@@ -32,6 +34,7 @@ export interface HttpServerDeps {
   conversationManager: ConversationManager;
   config: Config;
   logger: Logger;
+  apiToken: string;
   briefingDeps?: BriefingDeps;
   channelRegistry?: ChannelRegistryEntry[];
 }
@@ -42,8 +45,18 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
   const app = new Hono();
 
   // Middleware
-  app.use("*", cors({ origin: "*" }));
+  const allowedOrigin =
+    process.env["NV_DASHBOARD_ORIGIN"] ?? "http://localhost:3101";
+  app.use("*", cors({ origin: allowedOrigin, credentials: true }));
   app.use("*", secureHeaders());
+
+  // Bearer auth — applied to all protected routes (health remains public)
+  app.use("*", bearerAuth(deps.apiToken));
+
+  // Per-route rate limiting for expensive endpoints
+  app.use("/chat", rateLimiter("/chat", 10));
+  app.use("/briefing/generate", rateLimiter("/briefing/generate", 10));
+  app.use("/dream", rateLimiter("/dream", 10));
 
   // Global error handler
   app.onError((err, c) => {

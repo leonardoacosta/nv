@@ -8,6 +8,7 @@ import { classifyItems } from "./classify.js";
 import { suppressItems, markItemsSent, consumeWeeklyStats } from "./suppress.js";
 import { formatDigest, formatWeeklySynthesis } from "./format.js";
 import { checkP0 } from "./realtime.js";
+import { isQuietHours } from "../../lib/quiet-hours.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,31 +18,6 @@ export interface DigestSchedulerDeps {
   telegram: TelegramAdapter | null;
   telegramChatId: string | null;
   config: Config;
-}
-
-// ─── Quiet Hours ──────────────────────────────────────────────────────────────
-
-function isQuietHours(quietStart: string, quietEnd: string): boolean {
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-  const [startH, startM] = quietStart.split(":").map(Number);
-  const [endH, endM] = quietEnd.split(":").map(Number);
-
-  if (startH === undefined || startM === undefined || endH === undefined || endM === undefined) {
-    return false;
-  }
-
-  const startMinutes = startH * 60 + startM;
-  const endMinutes = endH * 60 + endM;
-
-  if (startMinutes <= endMinutes) {
-    // Same-day range (e.g., 08:00-17:00)
-    return currentMinutes >= startMinutes && currentMinutes < endMinutes;
-  }
-
-  // Cross-midnight range (e.g., 22:00-07:00)
-  return currentMinutes >= startMinutes || currentMinutes < endMinutes;
 }
 
 // ─── Tier 1 Runner ────────────────────────────────────────────────────────────
@@ -236,7 +212,7 @@ export function startDigestScheduler(deps: DigestSchedulerDeps): () => void {
     if (day === 0 || day === 6) return;
 
     // Skip quiet hours
-    if (isQuietHours(digestConfig.quietStart, digestConfig.quietEnd)) return;
+    if (isQuietHours(new Date(), digestConfig.quietStart, digestConfig.quietEnd)) return;
 
     // Check if current hour is a Tier 1 hour
     if (!digestConfig.tier1Hours.includes(hour)) return;
@@ -269,7 +245,7 @@ export function startDigestScheduler(deps: DigestSchedulerDeps): () => void {
     if (hour !== digestConfig.tier2Hour) return;
 
     // Skip quiet hours for Tier 2
-    if (isQuietHours(digestConfig.quietStart, digestConfig.quietEnd)) return;
+    if (isQuietHours(new Date(), digestConfig.quietStart, digestConfig.quietEnd)) return;
 
     // Dedup
     if (lastTier2Date === todayStr) return;

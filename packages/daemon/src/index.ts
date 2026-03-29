@@ -382,6 +382,7 @@ export async function main(): Promise<void> {
     conversationManager,
     config,
     logger: log,
+    apiToken: config.apiToken,
     briefingDeps: briefingDeps ?? undefined,
     channelRegistry,
   });

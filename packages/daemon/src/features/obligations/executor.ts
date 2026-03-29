@@ -11,7 +11,7 @@ import {
 } from "./callbacks.js";
 import type { AutonomyConfig, Config } from "../../config.js";
 import type { ProactiveWatcherConfig } from "../../features/watcher/types.js";
-import { isQuietHours } from "../../features/watcher/proactive.js";
+import { isQuietHours } from "../../lib/quiet-hours.js";
 import { buildMcpServers, buildAllowedTools, type McpStdioServerConfig } from "../../brain/mcp-config.js";
 import { createAgentQuery } from "../../brain/query-factory.js";
 
@@ -168,7 +168,7 @@ export class ObligationExecutor {
 
   private tick(): void {
     // Quiet hours check
-    if (isQuietHours(new Date(), this.watcherConfig)) {
+    if (isQuietHours(new Date(), this.watcherConfig.quietStart, this.watcherConfig.quietEnd)) {
       return;
     }
 

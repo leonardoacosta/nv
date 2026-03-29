@@ -5,6 +5,7 @@ import type { ProactiveWatcherConfig } from "./types.js";
 import { watcherKeyboard } from "./callbacks.js";
 import type { ObligationStore } from "../obligations/store.js";
 import { ObligationStatus } from "../obligations/types.js";
+import { isQuietHours } from "../../lib/quiet-hours.js";
 
 // ─── Row shape returned by pg (snake_case columns) ───────────────────────────
 
@@ -26,37 +27,6 @@ interface ObligationRow {
 // ─── Scan type ────────────────────────────────────────────────────────────────
 
 export type ScanType = "overdue" | "stale" | "approaching";
-
-// ─── isQuietHours ─────────────────────────────────────────────────────────────
-
-/**
- * Returns true if `now` falls within the quiet hours window defined by
- * `config.quietStart` and `config.quietEnd` (HH:MM 24-hour strings).
- *
- * Handles the midnight wrap-around case (e.g. 22:00–07:00 spans midnight).
- * Uses local system time — no UTC conversion. The server TZ should match the
- * user's timezone for correct behaviour.
- */
-export function isQuietHours(now: Date, config: ProactiveWatcherConfig): boolean {
-  const [startHour = 0, startMin = 0] = config.quietStart.split(":").map(Number);
-  const [endHour = 0, endMin = 0] = config.quietEnd.split(":").map(Number);
-
-  const startMinutes = startHour * 60 + startMin;
-  const endMinutes = endHour * 60 + endMin;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-  // When start === end, quiet hours are disabled (zero-length window)
-  if (startMinutes === endMinutes) return false;
-
-  if (startMinutes < endMinutes) {
-    // Normal window: e.g. 09:00–17:00 — no midnight wrap
-    return nowMinutes >= startMinutes && nowMinutes < endMinutes;
-  } else {
-    // Midnight wrap: e.g. 22:00–07:00
-    // Active when: nowMinutes >= 22:00 OR nowMinutes < 07:00
-    return nowMinutes >= startMinutes || nowMinutes < endMinutes;
-  }
-}
 
 // ─── formatReminderCard ───────────────────────────────────────────────────────
 
@@ -161,7 +131,7 @@ export class ProactiveWatcher {
    * Exposed for testing.
    */
   async scan(): Promise<void> {
-    if (isQuietHours(new Date(), this.config)) {
+    if (isQuietHours(new Date(), this.config.quietStart, this.config.quietEnd)) {
       this.logger.debug("quiet hours — skipping notification");
       return;
     }

@@ -67,6 +67,7 @@ export interface Config {
   logLevel: string;
   daemonPort: number;
   configPath: string;
+  apiToken: string;
   vercelGatewayKey?: string;
   databaseUrl: string;
   systemPromptPath: string;
@@ -233,10 +234,16 @@ export async function loadConfig(
     ? parseInt(historyDepthRaw, 10)
     : (toml.conversation?.history_depth ?? 20);
 
+  const apiToken = process.env["NV_API_TOKEN"];
+  if (!apiToken) {
+    throw new Error("NV_API_TOKEN environment variable is required but not set.");
+  }
+
   return {
     logLevel: validated.daemon.logLevel,
     daemonPort: validated.daemon.port,
     configPath,
+    apiToken,
     databaseUrl: validated.database.url,
     vercelGatewayKey: process.env["VERCEL_GATEWAY_KEY"],
     telegramChatId: validated.telegram?.chatId,

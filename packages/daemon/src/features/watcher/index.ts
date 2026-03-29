@@ -1,9 +1,10 @@
 export {
   ProactiveWatcher,
-  isQuietHours,
   formatReminderCard,
   type ScanType,
 } from "./proactive.js";
+
+export { isQuietHours } from "../../lib/quiet-hours.js";
 
 export {
   watcherKeyboard,

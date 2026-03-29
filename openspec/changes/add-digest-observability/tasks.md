@@ -1,9 +1,9 @@
 # Implementation Tasks
 
 ## DB Batch
-- [ ] [1.1] [P-1] Create `digest_suppression` table schema in `packages/db/src/schema/digest-suppression.ts` (hash TEXT PK, source TEXT NOT NULL, priority INT NOT NULL, last_sent_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL) [owner:db-engineer]
-- [ ] [1.2] [P-1] Export new table from `packages/db/src/schema/index.ts` barrel file [owner:db-engineer]
-- [ ] [1.3] [P-2] Run `pnpm drizzle-kit generate` to create migration for the new table [owner:db-engineer]
+- [x] [1.1] [P-1] Create `digest_suppression` table schema in `packages/db/src/schema/digest-suppression.ts` (hash TEXT PK, source TEXT NOT NULL, priority INT NOT NULL, last_sent_at TIMESTAMPTZ NOT NULL, expires_at TIMESTAMPTZ NOT NULL) [owner:db-engineer]
+- [x] [1.2] [P-1] Export new table from `packages/db/src/schema/index.ts` barrel file [owner:db-engineer]
+- [x] [1.3] [P-2] Run `pnpm drizzle-kit generate` to create migration for the new table [owner:db-engineer]
 
 ## API Batch
 - [ ] [2.1] [P-1] Rewrite `suppressItems` in `packages/daemon/src/features/digest/suppress.ts` to query `digest_suppression` table instead of deserializing `sentHashes` JSON blob [owner:api-engineer]

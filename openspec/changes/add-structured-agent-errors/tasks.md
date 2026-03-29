@@ -27,4 +27,4 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Verify daemon compiles after changes -- run `pnpm typecheck` in `packages/daemon`. Confirm zero type errors introduced by the new module and the four throw-site replacements. Confirm `classifyAgentError` is reachable from both import sites in `index.ts`. [owner:e2e-engineer]
+- [x] [4.1] Verify daemon compiles after changes -- run `pnpm typecheck` in `packages/daemon`. Confirm zero type errors introduced by the new module and the four throw-site replacements. Confirm `classifyAgentError` is reachable from both import sites in `index.ts`. [owner:e2e-engineer]

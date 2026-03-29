@@ -44,7 +44,7 @@ const noopLogger = {
 describe("handleRead — 404 when topic not found", () => {
   // mock.module persists for the duration of the test file.
   // We set up the mock before any dynamic import of the module under test.
-  const mockFindFirst = mock.fn(async () => undefined);
+  const mockFindFirst = mock.fn(async () => undefined as { topic: string; content: string; updatedAt: Date } | undefined);
 
   before(async () => {
     mock.module("@nova/db", {

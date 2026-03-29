@@ -111,9 +111,11 @@ export function sshCloudPC(
           }
 
           // Command error (non-zero exit)
-          const errMsg = stderrStr.trim() || error.message;
+          // Prefer stdout (az errors go there via 2>&1), then stderr, then execFile message
+          const stdoutStr = (stdout ?? "").trim();
+          const errMsg = stdoutStr || stderrStr.trim() || error.message;
           log.warn(
-            { host, command: cmdPreview, durationMs, error: errMsg.slice(0, 200) },
+            { host, command: cmdPreview, durationMs, error: errMsg.slice(0, 500) },
             "SSH command failed",
           );
           return reject(

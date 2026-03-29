@@ -55,7 +55,7 @@ export async function runAzureCli(
     sanitizedArgs.includes("--output ") || sanitizedArgs.includes("-o ");
   const outputSuffix = hasOutputFlag ? "" : " --output json";
 
-  const sshCommand = `az ${sanitizedArgs}${outputSuffix} 2>&1`;
+  const sshCommand = `az ${sanitizedArgs}${outputSuffix}`;
   const result = await sshCloudPC(config.cloudpcHost, sshCommand);
 
   log.info(

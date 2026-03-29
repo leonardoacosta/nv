@@ -9,14 +9,19 @@ set -euo pipefail
 #
 #   ~/.local/lib/nova-ts/
 #   ├── package.json           (private workspace root, no deps)
-#   ├── pnpm-workspace.yaml    (packages: ["packages/*"])
+#   ├── pnpm-workspace.yaml    (packages: ["packages/*", "packages/tools/*"])
 #   └── packages/
 #       ├── daemon/
 #       │   ├── dist/
 #       │   └── package.json
-#       └── db/
-#           ├── dist/
-#           └── package.json
+#       ├── db/
+#       │   ├── dist/
+#       │   └── package.json
+#       └── tools/
+#           ├── memory-svc/    (MCP stdio for Agent SDK)
+#           ├── graph-svc/
+#           ├── azure-svc/
+#           └── ...            (9 services total)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -86,6 +91,7 @@ EOF
 cat > "${INSTALL_DIR}/pnpm-workspace.yaml" <<'EOF'
 packages:
   - "packages/*"
+  - "packages/tools/*"
 EOF
 
 # Copy daemon dist + manifest
@@ -95,6 +101,24 @@ cp "${PROJECT_DIR}/packages/daemon/package.json" "${INSTALL_DIR}/packages/daemon
 # Copy db dist + manifest
 cp -r "${PROJECT_DIR}/packages/db/dist/." "${INSTALL_DIR}/packages/db/dist/"
 cp "${PROJECT_DIR}/packages/db/package.json" "${INSTALL_DIR}/packages/db/package.json"
+
+# Copy tool service dists for MCP stdio mode.
+# The daemon spawns these as Agent SDK MCP subprocesses — paths in nv.toml are
+# resolved relative to INSTALL_DIR.  Without these, MCP tools silently fail.
+echo "    Copying tool services..."
+TOOL_SERVICES=(
+    memory-svc messages-svc channels-svc discord-svc teams-svc
+    schedule-svc graph-svc meta-svc azure-svc tool-router
+)
+for svc in "${TOOL_SERVICES[@]}"; do
+    svc_src="${PROJECT_DIR}/packages/tools/${svc}"
+    svc_dst="${INSTALL_DIR}/packages/tools/${svc}"
+    if [ -d "${svc_src}/dist" ]; then
+        mkdir -p "${svc_dst}"
+        cp -r "${svc_src}/dist/." "${svc_dst}/dist/"
+        cp "${svc_src}/package.json" "${svc_dst}/package.json"
+    fi
+done
 
 # Copy config/ directory (system prompt, identity, soul, user context, toml)
 # The daemon resolves config/system-prompt.md relative to its working directory

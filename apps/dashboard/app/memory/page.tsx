@@ -1,92 +1,86 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Brain, AlertCircle, RefreshCw, Search, FileText } from "lucide-react";
+import { useState } from "react";
+import { Brain, RefreshCw, Search, FileText } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "@/lib/trpc/react";
 import MemoryPreview, { type MemoryFile } from "@/components/MemoryPreview";
 import PageShell from "@/components/layout/PageShell";
 import ErrorBanner from "@/components/layout/ErrorBanner";
 import type { MemoryListResponse, MemoryTopicResponse } from "@/types/api";
-import { trpcClient } from "@/lib/trpc/client";
 
 export default function MemoryPage() {
-  const [files, setFiles] = useState<MemoryFile[]>([]);
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+
+  // 1. Local state
   const [selected, setSelected] = useState<MemoryFile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  const fetchTopicContent = async (topic: string): Promise<string> => {
-    try {
-      const data = await trpcClient.system.memory.query({ topic });
-      return (data as MemoryTopicResponse).content ?? "";
-    } catch {
-      return "";
-    }
-  };
+  // 2. Queries
+  const topicsQuery = useQuery(trpc.system.memory.queryOptions({}));
 
-  const fetchMemory = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const raw = (await trpcClient.system.memory.query({})) as MemoryListResponse;
+  // Derive the file list from the topics query
+  const rawTopics = topicsQuery.data as MemoryListResponse | undefined;
+  const files: MemoryFile[] = (rawTopics?.topics ?? []).map((topic) => ({
+    name: topic,
+    path: topic,
+    content: "",
+  }));
+  const loading = topicsQuery.isLoading;
+  const error = topicsQuery.error?.message ?? null;
 
-      let parsed: MemoryFile[] = [];
-      if (Array.isArray(raw.topics)) {
-        parsed = raw.topics.map((topic) => ({
-          name: topic,
-          path: topic,
-          content: "",
-        }));
-      }
+  // Per-topic content query — only fires when a topic is selected
+  const topicContentQuery = useQuery(
+    trpc.system.memory.queryOptions(
+      { topic: selected?.path },
+      { enabled: !!selected?.path },
+    ),
+  );
 
-      setFiles(parsed);
-      if (parsed.length > 0 && !selected && parsed[0]) {
-        // Auto-select first file and fetch its content
-        const first = parsed[0];
-        setSelected(first);
-        const content = await fetchTopicContent(first.path);
-        const updated = { ...first, content };
-        setSelected(updated);
-        setFiles((prev) =>
-          prev.map((f) => (f.path === first.path ? updated : f)),
+  // 3. Mutations
+  const updateMemoryMutation = useMutation(
+    trpc.system.updateMemory.mutationOptions({
+      onSuccess: (_, variables) => {
+        // Update the selected file's content in local state optimistically
+        setSelected((prev) =>
+          prev?.path === variables.topic
+            ? { ...prev, content: variables.content }
+            : prev,
         );
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load memory");
-    } finally {
-      setLoading(false);
-    }
-  };
+        // Invalidate the topic content so it reflects the save
+        void queryClient.invalidateQueries({
+          queryKey: trpc.system.memory.queryKey({ topic: variables.topic }),
+        });
+      },
+    }),
+  );
 
-  const handleSelect = async (file: MemoryFile) => {
+  // 4. Sync topic content into selected when the query resolves
+  const topicContentData = topicContentQuery.data as MemoryTopicResponse | undefined;
+  const resolvedContent = topicContentData?.content ?? "";
+
+  // Merge the fetched content into the selected file view
+  const selectedWithContent: MemoryFile | null = selected
+    ? { ...selected, content: resolvedContent }
+    : null;
+
+  // 5. Handlers
+  const handleSelect = (file: MemoryFile) => {
     setSelected(file);
-    // Lazy-load content if not yet fetched
-    if (!file.content) {
-      const content = await fetchTopicContent(file.path);
-      const updated = { ...file, content };
-      setSelected(updated);
-      setFiles((prev) =>
-        prev.map((f) => (f.path === file.path ? updated : f)),
-      );
-    }
   };
-
-  useEffect(() => {
-    void fetchMemory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleSave = async (path: string, content: string): Promise<void> => {
-    await trpcClient.system.updateMemory.mutate({ topic: path, content });
-
-    setFiles((prev) =>
-      prev.map((f) => (f.path === path ? { ...f, content } : f)),
-    );
-    if (selected?.path === path) {
-      setSelected((prev) => (prev ? { ...prev, content } : prev));
-    }
+    await updateMemoryMutation.mutateAsync({ topic: path, content });
   };
 
+  const handleRefresh = () => {
+    void queryClient.invalidateQueries({
+      queryKey: trpc.system.memory.queryKey({}),
+    });
+  };
+
+  // 6. Filter
   const filtered = files.filter(
     (f) =>
       search === "" ||
@@ -96,10 +90,11 @@ export default function MemoryPage() {
       ),
   );
 
+  // 7. Header action
   const headerAction = (
     <button
       type="button"
-      onClick={() => void fetchMemory()}
+      onClick={handleRefresh}
       disabled={loading}
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-label-13 text-ds-gray-900 hover:text-ds-gray-1000 border border-ds-gray-400 hover:border-ds-gray-500 transition-colors disabled:opacity-50"
     >
@@ -108,6 +103,7 @@ export default function MemoryPage() {
     </button>
   );
 
+  // 8. Render
   return (
     <PageShell
       title="Memory"
@@ -119,7 +115,7 @@ export default function MemoryPage() {
           <ErrorBanner
             message="Failed to load memory"
             detail={error}
-            onRetry={() => void fetchMemory()}
+            onRetry={handleRefresh}
           />
         )}
 
@@ -159,7 +155,7 @@ export default function MemoryPage() {
                   <button
                     key={file.path}
                     type="button"
-                    onClick={() => void handleSelect(file)}
+                    onClick={() => handleSelect(file)}
                     className={[
                       "w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left transition-colors",
                       selected?.path === file.path
@@ -213,7 +209,7 @@ export default function MemoryPage() {
 
           {/* Preview panel */}
           <div className="lg:col-span-2 min-h-0">
-            <MemoryPreview file={selected} onSave={handleSave} />
+            <MemoryPreview file={selectedWithContent} onSave={handleSave} />
           </div>
         </div>
       </div>

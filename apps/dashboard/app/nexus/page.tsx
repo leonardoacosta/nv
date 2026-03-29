@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import {
   Cpu,
   MemoryStick,
@@ -171,24 +170,14 @@ function DaemonStatusBadge({ status }: { status: string }) {
 
 export default function NexusPage() {
   const trpc = useTRPC();
-  const [data, setData] = useState<ServerHealthGetResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const healthQuery = useQuery(
     trpc.system.health.queryOptions(undefined, { refetchInterval: 15_000 }),
   );
 
-  useEffect(() => {
-    if (healthQuery.data) {
-      setData(healthQuery.data as ServerHealthGetResponse);
-      setLoading(false);
-    }
-    if (healthQuery.error) {
-      setError(healthQuery.error.message);
-      setLoading(false);
-    }
-  }, [healthQuery.data, healthQuery.error]);
+  const data = (healthQuery.data as ServerHealthGetResponse | undefined) ?? null;
+  const loading = healthQuery.isLoading;
+  const error = healthQuery.error?.message ?? null;
 
   const fetchHealth = () => void healthQuery.refetch();
 

@@ -35,8 +35,8 @@ export async function isSocksAvailable(): Promise<boolean> {
   }
 
   try {
-    // Quick connectivity check — try to reach graph.microsoft.com through the proxy
-    await socksExec("GET", "https://graph.microsoft.com/v1.0/$metadata", undefined, undefined, 5_000);
+    // Quick connectivity check — hit the root endpoint (0.2s) not $metadata (4s+)
+    await socksExec("GET", "https://graph.microsoft.com/v1.0/", undefined, undefined, 5_000);
     socksAvailableCache = { available: true, checkedAt: now };
     return true;
   } catch {

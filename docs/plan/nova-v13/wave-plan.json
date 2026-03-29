@@ -35,7 +35,7 @@
       "specs": [
         {
           "name": "extract-agent-query-factory",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -45,11 +45,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T19:44:38.851549",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:08:10.024514"
         },
         {
           "name": "extract-callback-router",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -59,11 +59,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T19:44:38.851551",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:08:10.024522"
         },
         {
           "name": "add-universal-obligation-detection",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -73,11 +73,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T19:44:38.851553",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:08:10.024524"
         },
         {
           "name": "add-memory-dream",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -87,11 +87,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T19:44:38.851553",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:08:10.024526"
         },
         {
           "name": "add-voice-transcription",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -101,7 +101,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T19:44:38.851554",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:08:10.024527"
         }
       ]
     },
@@ -111,7 +111,7 @@
       "specs": [
         {
           "name": "add-http-api-auth",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -120,12 +120,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:08:47.818582",
+          "merged_at": "2026-03-28T20:14:18.057188"
         },
         {
           "name": "fix-silent-errors",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -134,12 +134,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:08:47.818584",
+          "merged_at": "2026-03-28T20:14:18.057189"
         },
         {
           "name": "add-dashboard-auth",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -148,12 +148,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:08:47.818585",
+          "merged_at": "2026-03-28T20:14:18.057191"
         },
         {
           "name": "rewire-dashboard-api",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -162,12 +162,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:08:47.818586",
+          "merged_at": "2026-03-28T20:14:18.057191"
         },
         {
           "name": "wire-conversation-history",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -176,12 +176,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:08:47.818587",
+          "merged_at": "2026-03-28T20:14:18.057192"
         },
         {
           "name": "add-chat-page",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -190,8 +190,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:08:47.818588",
+          "merged_at": "2026-03-28T20:14:18.057192"
         }
       ]
     },
@@ -424,20 +424,31 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 1,
+  "current_wave": 3,
   "started_at": "2026-03-28T19:44:10.275831",
   "completed_at": null,
-  "completed_waves": [],
-  "completed_specs": [],
+  "completed_waves": [
+    1,
+    2
+  ],
+  "completed_specs": [
+    "extract-agent-query-factory",
+    "extract-callback-router",
+    "add-universal-obligation-detection",
+    "add-memory-dream",
+    "add-voice-transcription",
+    "add-http-api-auth",
+    "fix-silent-errors",
+    "add-dashboard-auth",
+    "rewire-dashboard-api",
+    "wire-conversation-history",
+    "add-chat-page"
+  ],
   "failed_specs": [],
   "mode": "consolidated",
   "mega_batch_state": {
     "current_phase": null,
-    "phases_completed": [
-      "DB",
-      "API",
-      "E2E"
-    ],
+    "phases_completed": [],
     "task_results": {
       "extract-agent-query-factory": {},
       "extract-callback-router": {},
@@ -460,16 +471,8 @@
       "generative-ui-briefings": {},
       "unify-conversation-streaming": {}
     },
-    "phase_started_at": {
-      "DB": "2026-03-28T19:44:38.851543",
-      "API": "2026-03-28T19:45:47.207448",
-      "E2E": "2026-03-28T19:56:35.846257"
-    },
-    "phase_completed_at": {
-      "DB": "2026-03-28T19:45:47.207441",
-      "API": "2026-03-28T19:56:35.846249",
-      "E2E": "2026-03-28T20:07:13.704193"
-    }
+    "phase_started_at": {},
+    "phase_completed_at": {}
   },
   "pre_audit_sha": "a51ec53"
 }

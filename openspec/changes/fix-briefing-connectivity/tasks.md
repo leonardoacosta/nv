@@ -9,7 +9,7 @@
 
 ## UI Batch
 
-- [ ] [3.1] [P-1] Update `docker-compose.yml` — change `DAEMON_URL=ws://172.20.0.1:8400` to `DAEMON_URL=http://172.20.0.1:7700` [owner:devops-engineer] [beads:nv-u4p2]
+- [x] [3.1] [P-1] Update `docker-compose.yml` — change `DAEMON_URL=ws://172.20.0.1:8400` to `DAEMON_URL=http://172.20.0.1:7700` [owner:devops-engineer] [beads:nv-u4p2]
 
 ## E2E Batch
 

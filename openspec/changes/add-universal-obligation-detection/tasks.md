@@ -1,8 +1,8 @@
 # Implementation Tasks
 
 ## DB Batch
-- [ ] [1.1] [P-1] Add `detection_source` (text, nullable) and `routed_tool` (text, nullable) columns to obligations schema in `packages/db/src/schema/obligations.ts` [owner:db-engineer]
-- [ ] [1.2] [P-1] Generate Drizzle migration for new columns via `pnpm drizzle-kit generate` [owner:db-engineer]
+- [x] [1.1] [P-1] Add `detection_source` (text, nullable) and `routed_tool` (text, nullable) columns to obligations schema in `packages/db/src/schema/obligations.ts` [owner:db-engineer]
+- [x] [1.2] [P-1] Generate Drizzle migration for new columns via `pnpm drizzle-kit generate` [owner:db-engineer]
 
 ## API Batch
 - [ ] [2.1] [P-1] Create `packages/daemon/src/features/obligations/signal-detector.ts` with regex pattern matching, confidence scoring, and 2+ signal threshold logic [owner:api-engineer]

@@ -12,6 +12,8 @@ export const obligations = pgTable("obligations", {
   deadline: timestamp("deadline"),
   attemptCount: integer("attempt_count").notNull().default(0),
   lastAttemptAt: timestamp("last_attempt_at"),
+  detectionSource: text("detection_source"),
+  routedTool: text("routed_tool"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

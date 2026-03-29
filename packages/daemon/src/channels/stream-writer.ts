@@ -23,12 +23,11 @@ export class TelegramStreamWriter {
 
   private currentText = "";
   private readonly activeTools = new Map<string, { name: string; humanized: string; startedAt: number }>();
-  /** Completed tools with their actual durations, capped to last 3 */
-  private readonly completedTools: Array<{ humanized: string; durationMs: number }> = [];
   /** Timestamp of the first event (first tool start or text delta) */
   private firstEventAt: number | null = null;
   private lastFlushAt = 0;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private tickInterval: ReturnType<typeof setInterval> | null = null;
 
   /** null = untested, true = supported, false = unsupported */
   private draftSupported: boolean | null = null;
@@ -46,12 +45,14 @@ export class TelegramStreamWriter {
 
   onTextDelta(text: string): void {
     if (this.firstEventAt === null) this.firstEventAt = Date.now();
+    this.startTick();
     this.currentText += text;
     this.scheduleFlush();
   }
 
   onToolStart(name: string, callId: string): void {
     if (this.firstEventAt === null) this.firstEventAt = Date.now();
+    this.startTick();
     const humanized = humanizeToolName(name);
     this.activeTools.set(callId, { name, humanized, startedAt: Date.now() });
     this.scheduleFlush();
@@ -65,20 +66,18 @@ export class TelegramStreamWriter {
     const secs = Math.round(durationMs / 1000);
     log.debug({ tool: name, callId, durationMs }, `${label} completed (${secs}s)`);
 
-    // Track completed tool with its actual duration (keep last 3)
-    this.completedTools.push({ humanized: label, durationMs });
-    if (this.completedTools.length > 3) {
-      this.completedTools.shift();
-    }
-
     this.scheduleFlush();
   }
 
   async finalize(fullText: string): Promise<void> {
-    // Cancel any pending flush
+    // Cancel any pending flush and tick
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
+    }
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+      this.tickInterval = null;
     }
 
     // Split into 4096-char chunks and send as final messages with Markdown
@@ -123,6 +122,10 @@ export class TelegramStreamWriter {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
 
     try {
       await this.adapter.sendMessage(this.chatId, error, {
@@ -144,6 +147,14 @@ export class TelegramStreamWriter {
   }
 
   // ── Internal ────────────────────────────────────────────────────────────────
+
+  private startTick(): void {
+    if (this.tickInterval === null) {
+      this.tickInterval = setInterval(() => {
+        this.scheduleFlush();
+      }, 1000);
+    }
+  }
 
   private scheduleFlush(): void {
     if (this.flushTimer) return; // Already scheduled
@@ -201,25 +212,22 @@ export class TelegramStreamWriter {
     const parts: string[] = [];
     const now = Date.now();
 
-    // Build tool status line: completed tools with real durations + active tools with live timer
-    const toolParts: string[] = [];
+    // Show only the most recently started active tool
+    if (this.activeTools.size > 0) {
+      let latest: { humanized: string; startedAt: number } | null = null;
+      for (const [, info] of this.activeTools) {
+        if (latest === null || info.startedAt > latest.startedAt) {
+          latest = info;
+        }
+      }
 
-    for (const completed of this.completedTools) {
-      const secs = Math.round(completed.durationMs / 1000);
-      toolParts.push(`${completed.humanized} (${secs}s)`);
-    }
-
-    for (const [, info] of this.activeTools) {
-      const elapsed = Math.round((now - info.startedAt) / 1000);
-      toolParts.push(`${info.humanized} (${elapsed}s)`);
-    }
-
-    if (toolParts.length > 0) {
-      // Total elapsed since first event
-      const totalElapsed = this.firstEventAt !== null
-        ? Math.round((now - this.firstEventAt) / 1000)
-        : 0;
-      parts.push(`${toolParts.join(" | ")} — ${totalElapsed}s total`);
+      if (latest) {
+        const toolElapsed = Math.round((now - latest.startedAt) / 1000);
+        const totalElapsed = this.firstEventAt !== null
+          ? Math.round((now - this.firstEventAt) / 1000)
+          : 0;
+        parts.push(`${latest.humanized} (${toolElapsed}s) — ${totalElapsed}s total`);
+      }
     }
 
     // Accumulated text with incomplete Markdown stripped

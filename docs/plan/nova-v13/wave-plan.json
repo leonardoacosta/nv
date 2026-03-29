@@ -297,7 +297,7 @@
       "specs": [
         {
           "name": "add-structured-agent-errors",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -306,12 +306,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:52:11.383596",
+          "merged_at": "2026-03-28T21:08:37.421634"
         },
         {
           "name": "generative-ui-briefings",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -320,8 +320,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T20:52:11.383598",
+          "merged_at": "2026-03-28T21:08:37.421636"
         }
       ]
     },
@@ -424,14 +424,15 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 5,
+  "current_wave": 6,
   "started_at": "2026-03-28T19:44:10.275831",
   "completed_at": null,
   "completed_waves": [
     1,
     2,
     3,
-    4
+    4,
+    5
   ],
   "completed_specs": [
     "extract-agent-query-factory",
@@ -450,7 +451,9 @@
     "add-digest-observability",
     "add-dashboard-tool-events",
     "add-fleet-health-monitor",
-    "add-tanstack-query"
+    "add-tanstack-query",
+    "add-structured-agent-errors",
+    "generative-ui-briefings"
   ],
   "failed_specs": [],
   "mode": "consolidated",

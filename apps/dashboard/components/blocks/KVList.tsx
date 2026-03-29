@@ -23,14 +23,10 @@ export default function KVList({ title, data, className }: KVListProps) {
       )}
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5">
         {data.items.map((item, i) => (
-          <>
-            <dt key={`k-${i}`} className="text-label-13 text-ds-gray-700">
-              {item.key}
-            </dt>
-            <dd key={`v-${i}`} className="text-copy-13 text-ds-gray-1000">
-              {item.value}
-            </dd>
-          </>
+          <div key={i} className="contents">
+            <dt className="text-label-13 text-ds-gray-700">{item.key}</dt>
+            <dd className="text-copy-13 text-ds-gray-1000">{item.value}</dd>
+          </div>
         ))}
       </dl>
     </div>

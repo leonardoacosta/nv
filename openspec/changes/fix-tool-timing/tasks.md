@@ -16,4 +16,4 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Test: verify buildDisplayText output with completed tools and elapsed timer [owner:e2e-engineer] [beads:nv-htbv]
+- [x] [4.1] Test: verify buildDisplayText output with completed tools and elapsed timer [owner:e2e-engineer] [beads:nv-htbv]

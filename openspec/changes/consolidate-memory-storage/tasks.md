@@ -17,6 +17,6 @@
 (No UI changes)
 
 ## E2E Batch
-- [ ] [4.1] [P-2] Test: verify handleRead returns 404 JSON when topic not found in DB (no filesystem fallback) [owner:e2e-engineer]
-- [ ] [4.2] [P-2] Test: verify handleWrite succeeds without filesystem side-effects (mock fs to confirm no writes) [owner:e2e-engineer]
-- [ ] [4.3] [P-3] Test: verify migration script upserts filesystem topics into DB and skips topics with newer DB entries [owner:e2e-engineer]
+- [x] [4.1] [P-2] Test: verify handleRead returns 404 JSON when topic not found in DB (no filesystem fallback) [owner:e2e-engineer]
+- [x] [4.2] [P-2] Test: verify handleWrite succeeds without filesystem side-effects (mock fs to confirm no writes) [owner:e2e-engineer]
+- [x] [4.3] [P-3] Test: verify migration script upserts filesystem topics into DB and skips topics with newer DB entries [owner:e2e-engineer]

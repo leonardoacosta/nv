@@ -14,6 +14,6 @@
 (No UI tasks)
 
 ## E2E Batch
-- [ ] [4.1] [P-3] Test: valid config passes startup validation — supply complete config via TOML + env, assert daemon starts and logs source breakdown [owner:e2e-engineer]
-- [ ] [4.2] [P-3] Test: missing required fields fail startup — omit `database.url`, assert exit code 1 and formatted error listing missing fields [owner:e2e-engineer]
-- [ ] [4.3] [P-3] Test: precedence order respected — set `daemon.port` in TOML, DB, and env var with different values, assert env var wins [owner:e2e-engineer]
+- [x] [4.1] [P-3] Test: valid config passes startup validation — supply complete config via TOML + env, assert daemon starts and logs source breakdown [owner:e2e-engineer]
+- [x] [4.2] [P-3] Test: missing required fields fail startup — omit `database.url`, assert exit code 1 and formatted error listing missing fields [owner:e2e-engineer]
+- [x] [4.3] [P-3] Test: precedence order respected — set `daemon.port` in TOML, DB, and env var with different values, assert env var wins [owner:e2e-engineer]

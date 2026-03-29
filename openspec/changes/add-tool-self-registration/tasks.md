@@ -14,7 +14,7 @@
 (No UI tasks)
 
 ## E2E Batch
-- [ ] [4.1] Test: verify `GET /registry` returns valid response from a tool service (correct shape: `service`, `tools[]` with `name`/`description`/`inputSchema`, `healthUrl`) [owner:e2e-engineer]
-- [ ] [4.2] Test: verify tool-router startup registers tools from all available services and `getServiceForTool()` resolves correctly [owner:e2e-engineer]
-- [ ] [4.3] Test: verify periodic refresh detects a newly added tool on a running service and updates the registry [owner:e2e-engineer]
-- [ ] [4.4] Test: verify stale service handling — service goes down during refresh, tools retained but marked stale; service recovers, stale flag clears [owner:e2e-engineer]
+- [x] [4.1] Test: verify `GET /registry` returns valid response from a tool service (correct shape: `service`, `tools[]` with `name`/`description`/`inputSchema`, `healthUrl`) [owner:e2e-engineer]
+- [x] [4.2] Test: verify tool-router startup registers tools from all available services and `getServiceForTool()` resolves correctly [owner:e2e-engineer]
+- [x] [4.3] Test: verify periodic refresh detects a newly added tool on a running service and updates the registry [owner:e2e-engineer]
+- [x] [4.4] Test: verify stale service handling — service goes down during refresh, tools retained but marked stale; service recovers, stale flag clears [owner:e2e-engineer]

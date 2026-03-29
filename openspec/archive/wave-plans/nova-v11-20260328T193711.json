@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-03-27T03:50:00.000000",
+  "generated_by": "plan:roadmap",
+  "project": "nv",
+  "stack": "typescript",
+  "git_sha": "",
+  "plan_dir": "docs/plan/nova-v11",
+  "execution_mode": "consolidated",
+  "spec_names": [
+    "add-smart-routing",
+    "add-proactive-digest",
+    "add-response-streaming",
+    "add-async-job-queue",
+    "revive-obligations"
+  ],
+  "specs": [
+    {"name": "add-smart-routing", "wave": 1, "priority": "P1", "phase": 1, "feature_area": "intelligence", "files": ["packages/daemon/src/brain/"], "conflicts_with": [], "depends_on": []},
+    {"name": "add-proactive-digest", "wave": 1, "priority": "P1", "phase": 1, "feature_area": "monitoring", "files": ["packages/daemon/src/features/digest/"], "conflicts_with": [], "depends_on": []},
+    {"name": "add-response-streaming", "wave": 2, "priority": "P2", "phase": 2, "feature_area": "ux", "files": ["packages/daemon/src/brain/agent.ts", "packages/daemon/src/channels/telegram.ts", "packages/daemon/src/index.ts"], "conflicts_with": ["add-async-job-queue"], "depends_on": ["add-smart-routing"]},
+    {"name": "add-async-job-queue", "wave": 3, "priority": "P2", "phase": 2, "feature_area": "infrastructure", "files": ["packages/daemon/src/queue/", "packages/daemon/src/index.ts"], "conflicts_with": ["add-response-streaming"], "depends_on": ["add-response-streaming"]},
+    {"name": "revive-obligations", "wave": 4, "priority": "P2", "phase": 3, "feature_area": "autonomy", "files": ["packages/daemon/src/features/obligations/", "packages/daemon/src/config.ts", "packages/daemon/src/index.ts"], "conflicts_with": [], "depends_on": ["add-async-job-queue"]}
+  ],
+  "dependency_map": {
+    "add-response-streaming": ["add-smart-routing"],
+    "add-async-job-queue": ["add-response-streaming"],
+    "revive-obligations": ["add-async-job-queue"]
+  },
+  "waves": [
+    {"number": 1, "label": "Wave 1 — Intelligence + Monitoring", "specs": [{"name": "add-smart-routing"}, {"name": "add-proactive-digest"}]},
+    {"number": 2, "label": "Wave 2 — Response Streaming", "specs": [{"name": "add-response-streaming"}]},
+    {"number": 3, "label": "Wave 3 — Async Job Queue", "specs": [{"name": "add-async-job-queue"}]},
+    {"number": 4, "label": "Wave 4 — Autonomous Obligations", "specs": [{"name": "revive-obligations"}]}
+  ],
+  "decisions": [
+    {"date": "2026-03-27", "decision": "Streaming before queue — streaming modifies index.ts handler, queue replaces it", "rationale": "Queue needs to wrap the streaming handler, not the other way around.", "source": "system"},
+    {"date": "2026-03-27", "decision": "Obligations after queue — executor runs as queued jobs", "rationale": "Autonomous obligation execution should use the job queue for concurrency control and budget tracking.", "source": "system"},
+    {"date": "2026-03-27", "decision": "4 waves instead of 3 — streaming and queue must be sequential", "rationale": "Both modify index.ts message handler. Must be applied in order.", "source": "guardrail", "affected_waves": [2, 3], "affected_specs": ["add-response-streaming", "add-async-job-queue"]}
+  ]
+}

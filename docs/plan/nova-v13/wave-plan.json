@@ -1,0 +1,475 @@
+{
+  "generated_at": "2026-03-29T00:43:32.274737+00:00",
+  "generated_by": "apply:all",
+  "project": "nv",
+  "stack": "typescript",
+  "git_sha": "a51ec53",
+  "plan_dir": "docs/plan/nova-v13",
+  "execution_mode": "consolidated",
+  "spec_names": [
+    "extract-agent-query-factory",
+    "extract-callback-router",
+    "add-universal-obligation-detection",
+    "add-memory-dream",
+    "add-voice-transcription",
+    "add-http-api-auth",
+    "fix-silent-errors",
+    "add-dashboard-auth",
+    "rewire-dashboard-api",
+    "wire-conversation-history",
+    "add-chat-page",
+    "deduplicate-shared-utils",
+    "add-persistent-watcher-config",
+    "add-digest-observability",
+    "add-dashboard-tool-events",
+    "add-fleet-health-monitor",
+    "add-tanstack-query",
+    "add-structured-agent-errors",
+    "generative-ui-briefings",
+    "unify-conversation-streaming"
+  ],
+  "waves": [
+    {
+      "number": 1,
+      "label": "Wave 1 \u2014 Foundation Refactors + Isolated",
+      "specs": [
+        {
+          "name": "extract-agent-query-factory",
+          "status": "running",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T19:44:38.851549",
+          "merged_at": null
+        },
+        {
+          "name": "extract-callback-router",
+          "status": "running",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T19:44:38.851551",
+          "merged_at": null
+        },
+        {
+          "name": "add-universal-obligation-detection",
+          "status": "running",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T19:44:38.851553",
+          "merged_at": null
+        },
+        {
+          "name": "add-memory-dream",
+          "status": "running",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T19:44:38.851553",
+          "merged_at": null
+        },
+        {
+          "name": "add-voice-transcription",
+          "status": "running",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-28T19:44:38.851554",
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "label": "Wave 2 \u2014 Auth + Error Handling",
+      "specs": [
+        {
+          "name": "add-http-api-auth",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "fix-silent-errors",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-dashboard-auth",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "rewire-dashboard-api",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "wire-conversation-history",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-chat-page",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "label": "Wave 3 \u2014 Observability + Watcher Config",
+      "specs": [
+        {
+          "name": "deduplicate-shared-utils",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-persistent-watcher-config",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-digest-observability",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-dashboard-tool-events",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "label": "Wave 4 \u2014 Fleet Health + TanStack Query",
+      "specs": [
+        {
+          "name": "add-fleet-health-monitor",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "add-tanstack-query",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "label": "Wave 5 \u2014 Generative UI + Agent Errors",
+      "specs": [
+        {
+          "name": "add-structured-agent-errors",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        },
+        {
+          "name": "generative-ui-briefings",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    },
+    {
+      "number": 6,
+      "label": "Wave 6 \u2014 Unified Conversation Streaming",
+      "specs": [
+        {
+          "name": "unify-conversation-streaming",
+          "status": "pending",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": null
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "date": "2026-03-28",
+      "decision": "Archive nova-v11 and nova-v12 \u2014 both completed",
+      "rationale": "All specs merged. Archived to openspec/archive/wave-plans/.",
+      "source": "system",
+      "affected_waves": [],
+      "affected_specs": []
+    },
+    {
+      "date": "2026-03-28",
+      "decision": "16 verification-only specs excluded \u2014 only [user] tasks remain",
+      "rationale": "Zero implementation tasks. Manual verification only. Not in wave plan.",
+      "source": "system",
+      "affected_waves": [],
+      "affected_specs": [
+        "add-automations-page",
+        "add-channels-svc",
+        "add-discord-svc",
+        "add-memory-svc",
+        "add-meta-svc",
+        "add-proactive-digest",
+        "add-response-streaming",
+        "consolidate-briefing-pipeline",
+        "declutter-home-command-center",
+        "global-density-pass",
+        "improve-obligation-ux",
+        "migrate-to-better-auth",
+        "redesign-contacts-graph",
+        "redesign-dashboard-home",
+        "revive-obligations",
+        "upgrade-tailwind-v4"
+      ]
+    },
+    {
+      "date": "2026-03-28",
+      "decision": "unify-conversation-streaming solo in Wave 6",
+      "rationale": "12 conflict pairs \u2014 most-connected spec. Must run after all others.",
+      "source": "system",
+      "affected_waves": [
+        6
+      ],
+      "affected_specs": [
+        "unify-conversation-streaming"
+      ]
+    },
+    {
+      "date": "2026-03-28",
+      "decision": "Wave 5 exceeds 40-task guardrail (41 tasks)",
+      "rationale": "Only 2 specs with zero overlap. Guardrail overridden.",
+      "source": "guardrail",
+      "affected_waves": [
+        5
+      ],
+      "affected_specs": [
+        "add-structured-agent-errors",
+        "generative-ui-briefings"
+      ]
+    },
+    {
+      "date": "2026-03-28",
+      "decision": "Refactors (extract-*) in Wave 1 before feature specs",
+      "rationale": "brain/agent.ts and index.ts refactored before features build on them.",
+      "source": "system",
+      "affected_waves": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "affected_specs": [
+        "extract-agent-query-factory",
+        "extract-callback-router"
+      ]
+    }
+  ],
+  "status": "in_progress",
+  "current_wave": 1,
+  "started_at": "2026-03-28T19:44:10.275831",
+  "completed_at": null,
+  "completed_waves": [],
+  "completed_specs": [],
+  "failed_specs": [],
+  "mode": "consolidated",
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [
+      "DB",
+      "API",
+      "E2E"
+    ],
+    "task_results": {
+      "extract-agent-query-factory": {},
+      "extract-callback-router": {},
+      "add-universal-obligation-detection": {},
+      "add-memory-dream": {},
+      "add-voice-transcription": {},
+      "add-http-api-auth": {},
+      "fix-silent-errors": {},
+      "add-dashboard-auth": {},
+      "rewire-dashboard-api": {},
+      "wire-conversation-history": {},
+      "add-chat-page": {},
+      "deduplicate-shared-utils": {},
+      "add-persistent-watcher-config": {},
+      "add-digest-observability": {},
+      "add-dashboard-tool-events": {},
+      "add-fleet-health-monitor": {},
+      "add-tanstack-query": {},
+      "add-structured-agent-errors": {},
+      "generative-ui-briefings": {},
+      "unify-conversation-streaming": {}
+    },
+    "phase_started_at": {
+      "DB": "2026-03-28T19:44:38.851543",
+      "API": "2026-03-28T19:45:47.207448",
+      "E2E": "2026-03-28T19:56:35.846257"
+    },
+    "phase_completed_at": {
+      "DB": "2026-03-28T19:45:47.207441",
+      "API": "2026-03-28T19:56:35.846249",
+      "E2E": "2026-03-28T20:07:13.704193"
+    }
+  },
+  "pre_audit_sha": "a51ec53"
+}

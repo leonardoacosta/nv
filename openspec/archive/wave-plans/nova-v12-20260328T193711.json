@@ -1,0 +1,288 @@
+{
+  "generated_at": "2026-03-27T05:50:00.000Z",
+  "generated_by": "apply:all",
+  "project": "nv",
+  "stack": "typescript",
+  "git_sha": "cb4cf76",
+  "plan_dir": "docs/plan/nova-v12",
+  "execution_mode": "consolidated",
+  "spec_names": [
+    "entity-resolution-layer",
+    "obligations-kanban-board",
+    "automations-ux-overhaul",
+    "messages-dense-view",
+    "sessions-resilience",
+    "dashboard-density-pass",
+    "geist-token-standardization"
+  ],
+  "waves": [
+    {
+      "number": 1,
+      "label": "Wave 1 \u2014 Foundation API",
+      "specs": [
+        {
+          "name": "entity-resolution-layer",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "DB_typecheck",
+            "API_typecheck",
+            "E2E_typecheck"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-27T01:20:36.106211",
+          "merged_at": "2026-03-27T01:30:59.499317"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "label": "Wave 2 \u2014 Obligations + Automations",
+      "specs": [
+        {
+          "name": "obligations-kanban-board",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "API_typecheck",
+            "UI_build",
+            "E2E_typecheck"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-27T01:36:26.398177",
+          "merged_at": "2026-03-27T02:28:25.467848"
+        },
+        {
+          "name": "automations-ux-overhaul",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "API_typecheck",
+            "UI_build",
+            "E2E_typecheck"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-27T01:36:26.398179",
+          "merged_at": "2026-03-27T02:28:25.467850"
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "label": "Wave 3 \u2014 Messages + Sessions",
+      "specs": [
+        {
+          "name": "messages-dense-view",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "API_typecheck",
+            "UI_typecheck"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-27T03:02:02.199159",
+          "merged_at": "2026-03-27T03:14:42.903174"
+        },
+        {
+          "name": "sessions-resilience",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "API_typecheck",
+            "UI_typecheck"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": "2026-03-27T03:02:02.199160",
+          "merged_at": "2026-03-27T03:14:42.903176"
+        }
+      ]
+    },
+    {
+      "number": 4,
+      "label": "Wave 4 \u2014 Dashboard Density",
+      "specs": [
+        {
+          "name": "dashboard-density-pass",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "API_typecheck",
+            "UI_typecheck"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-27T03:21:43.587070"
+        }
+      ]
+    },
+    {
+      "number": 5,
+      "label": "Wave 5 \u2014 Geist Token Sweep",
+      "specs": [
+        {
+          "name": "geist-token-standardization",
+          "status": "merged",
+          "phase": null,
+          "branch": null,
+          "pr": null,
+          "pr_url": null,
+          "pr_state": null,
+          "gates_passed": [
+            "UI_typecheck",
+            "UI_build",
+            "deploy"
+          ],
+          "gates_failed": [],
+          "ci": null,
+          "dispatched_at": null,
+          "merged_at": "2026-03-27T08:18:45.842138"
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "date": "2026-03-27",
+      "decision": "Archive nova-v11 plan \u2014 old 6 specs are completed or superseded by new 7",
+      "rationale": "All 3 cherry-pick candidates (add-briefing-cron, redesign-integrations-status, redesign-contacts-graph) have 0 or only verification tasks remaining",
+      "source": "system",
+      "affected_waves": [],
+      "affected_specs": [
+        "global-density-pass",
+        "redesign-dashboard-home",
+        "add-briefing-cron",
+        "add-automations-page",
+        "redesign-integrations-status",
+        "redesign-contacts-graph"
+      ]
+    },
+    {
+      "date": "2026-03-27",
+      "decision": "entity-resolution-layer runs solo in Wave 1 \u2014 foundational API layer",
+      "rationale": "All other specs consume entity resolution. Single-spec guardrail overridden \u2014 this is a dependency.",
+      "source": "system",
+      "affected_waves": [
+        1
+      ],
+      "affected_specs": [
+        "entity-resolution-layer"
+      ]
+    },
+    {
+      "date": "2026-03-27",
+      "decision": "geist-token-standardization runs LAST in Wave 5",
+      "rationale": "Mechanical sweep must run after page rewrites establish new structure. 58 tasks exceeds 40-task guardrail but it's a single mechanical spec.",
+      "source": "system",
+      "affected_waves": [
+        5
+      ],
+      "affected_specs": [
+        "geist-token-standardization"
+      ]
+    },
+    {
+      "date": "2026-03-27",
+      "decision": "dashboard-density-pass runs solo in Wave 4 before geist sweep",
+      "rationale": "Conflicts with geist-tokens on page.tsx and ServerHealth.tsx. Must complete before the token sweep.",
+      "source": "system",
+      "affected_waves": [
+        4
+      ],
+      "affected_specs": [
+        "dashboard-density-pass"
+      ]
+    },
+    {
+      "date": "2026-03-27",
+      "decision": "types/api.ts treated as soft conflict (additive types)",
+      "rationale": "All specs append new type interfaces \u2014 no destructive overwrites. Safe within same wave.",
+      "source": "system",
+      "affected_waves": [
+        2,
+        3
+      ],
+      "affected_specs": [
+        "messages-dense-view",
+        "sessions-resilience",
+        "automations-ux-overhaul"
+      ]
+    }
+  ],
+  "status": "completed",
+  "current_wave": 5,
+  "started_at": "2026-03-27T01:19:58.504122",
+  "completed_at": "2026-03-27T08:18:45.842146",
+  "completed_waves": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "completed_specs": [
+    "entity-resolution-layer",
+    "obligations-kanban-board",
+    "automations-ux-overhaul",
+    "messages-dense-view",
+    "sessions-resilience",
+    "dashboard-density-pass",
+    "geist-token-standardization"
+  ],
+  "failed_specs": [],
+  "pre_audit_sha": "372d13e",
+  "mode": "consolidated",
+  "mega_batch_state": {
+    "current_phase": null,
+    "phases_completed": [],
+    "task_results": {
+      "entity-resolution-layer": {},
+      "obligations-kanban-board": {},
+      "automations-ux-overhaul": {},
+      "messages-dense-view": {},
+      "sessions-resilience": {},
+      "dashboard-density-pass": {},
+      "geist-token-standardization": {}
+    },
+    "phase_started_at": {
+      "DB": "2026-03-27T01:20:36.106203",
+      "API": "2026-03-27T03:02:02.199151",
+      "UI": "2026-03-27T03:05:18.479106"
+    },
+    "phase_completed_at": {
+      "DB": "2026-03-27T01:23:57.749848",
+      "API": "2026-03-27T03:21:43.587056",
+      "E2E": "2026-03-27T03:21:43.587067",
+      "UI": "2026-03-27T03:21:43.587065"
+    }
+  }
+}

@@ -676,6 +676,8 @@ export async function main(): Promise<void> {
                   tool: route.tool,
                   confidence: route.confidence,
                   latencyMs: elapsed,
+                  responseLength: responseText.length,
+                  responsePreview: responseText.slice(0, 200),
                 },
                 "Smart-routed response sent",
               );
@@ -801,6 +803,9 @@ export async function main(): Promise<void> {
                         chatId: msg.chatId,
                         stopReason: finalResponse.stopReason,
                         toolCalls: finalResponse.toolCalls.length,
+                        toolNames: finalResponse.toolCalls.map((t: { name: string }) => t.name),
+                        responseLength: finalResponse.text.length,
+                        responsePreview: finalResponse.text.slice(0, 200),
                       },
                       "Agent response sent (streaming)",
                     );

@@ -188,7 +188,7 @@
             "UI": 0,
             "E2E": 4
           },
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -198,7 +198,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-28T19:28:18.776494"
         },
         {
           "name": "consolidate-memory-storage",
@@ -211,7 +211,7 @@
             "UI": 0,
             "E2E": 3
           },
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -221,7 +221,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-28T19:28:18.776496"
         },
         {
           "name": "add-unified-config-schema",
@@ -234,7 +234,7 @@
             "UI": 0,
             "E2E": 3
           },
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -244,7 +244,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-28T19:28:18.776497"
         },
         {
           "name": "fix-tool-timing",
@@ -257,7 +257,7 @@
             "UI": 0,
             "E2E": 0
           },
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -267,7 +267,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": null,
-          "merged_at": null
+          "merged_at": "2026-03-28T19:28:18.776497"
         }
       ],
       "total_tasks": 30,
@@ -532,11 +532,12 @@
       "rationale": "Universal obligation detection (depends on revived obligations from wave 5) + response streaming (depends on agent refactors from waves 3-4). Different subsystems."
     }
   ],
-  "current_wave": 2,
+  "current_wave": 3,
   "started_at": "2026-03-28T18:29:42.186762",
   "completed_at": null,
   "completed_waves": [
-    1
+    1,
+    2
   ],
   "completed_specs": [
     "cleanup-rust-daemon",
@@ -545,7 +546,11 @@
     "add-meta-svc",
     "add-memory-svc",
     "add-fleet-client-retry",
-    "add-circuit-breaking"
+    "add-circuit-breaking",
+    "add-tool-self-registration",
+    "consolidate-memory-storage",
+    "add-unified-config-schema",
+    "fix-tool-timing"
   ],
   "failed_specs": [],
   "pre_audit_sha": "a58519b",
@@ -554,7 +559,8 @@
     "phases_completed": [
       "API_wave1",
       "E2E_wave1",
-      "API_wave2"
+      "API_wave2",
+      "E2E_wave2"
     ],
     "task_results": {
       "cleanup-rust-daemon": {},
@@ -582,12 +588,14 @@
     "phase_started_at": {
       "API_wave1": "2026-03-28T18:30:36.909867",
       "E2E_wave1": "2026-03-28T18:36:19.459170",
-      "API_wave2": "2026-03-28T18:53:16.298660"
+      "API_wave2": "2026-03-28T18:53:16.298660",
+      "E2E_wave2": "2026-03-28T19:10:42.394092"
     },
     "phase_completed_at": {
       "API_wave1": "2026-03-28T18:36:07.956506",
       "E2E_wave1": "2026-03-28T18:41:20.794853",
-      "API_wave2": "2026-03-28T19:07:49.200415"
+      "API_wave2": "2026-03-28T19:07:49.200415",
+      "E2E_wave2": "2026-03-28T19:28:18.776486"
     }
   }
 }

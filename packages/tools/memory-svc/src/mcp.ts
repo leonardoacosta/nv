@@ -7,7 +7,6 @@ import { db, memory } from "@nova/db";
 import { loadConfig } from "./config.js";
 import { createLogger } from "./logger.js";
 import { generateEmbedding } from "./embedding.js";
-import { writeMemoryFile, readMemoryFile } from "./filesystem.js";
 
 const config = loadConfig();
 const logger = createLogger(config.serviceName, { destination: process.stderr });
@@ -49,23 +48,6 @@ server.registerTool(
               topic: row.topic,
               content: truncate(row.content),
               updatedAt: row.updatedAt.toISOString(),
-            }),
-          },
-        ],
-      };
-    }
-
-    // Fallback to filesystem
-    const fileResult = await readMemoryFile(config.memoryDir, topic);
-    if (fileResult) {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              topic,
-              content: truncate(fileResult.content),
-              updatedAt: fileResult.updatedAt.toISOString(),
             }),
           },
         ],
@@ -119,12 +101,6 @@ server.registerTool(
       });
 
     const action = existing ? "updated" : "created";
-
-    try {
-      await writeMemoryFile(config.memoryDir, topic, content);
-    } catch (err) {
-      logger.error({ err, topic }, "Failed to sync memory to filesystem");
-    }
 
     return {
       content: [{ type: "text" as const, text: JSON.stringify({ topic, action }) }],

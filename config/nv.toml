@@ -98,6 +98,48 @@ realtime_interval_ms = 300000
 [telegram]
 chat_id = 7380462766
 
+# Tool router — HTTP service discovery and self-registration.
+# Services listed here are queried at startup and periodically refreshed.
+# This section is separate from [tools.mcp_servers] which configures stdio MCP mode.
+[tool_router]
+refresh_interval_s = 60
+
+[[tool_router.services]]
+name = "memory-svc"
+url = "http://127.0.0.1:4101"
+
+[[tool_router.services]]
+name = "messages-svc"
+url = "http://127.0.0.1:4102"
+
+[[tool_router.services]]
+name = "channels-svc"
+url = "http://127.0.0.1:4103"
+
+[[tool_router.services]]
+name = "discord-svc"
+url = "http://127.0.0.1:4104"
+
+[[tool_router.services]]
+name = "teams-svc"
+url = "http://127.0.0.1:4105"
+
+[[tool_router.services]]
+name = "schedule-svc"
+url = "http://127.0.0.1:4106"
+
+[[tool_router.services]]
+name = "graph-svc"
+url = "http://127.0.0.1:4107"
+
+[[tool_router.services]]
+name = "meta-svc"
+url = "http://127.0.0.1:4108"
+
+[[tool_router.services]]
+name = "azure-svc"
+url = "http://127.0.0.1:4109"
+
 # Tool fleet MCP servers — each entry is a stdio MCP server launched by the Agent SDK.
 # Relative paths in `args` are resolved against NOVA_INSTALL_DIR (~/.local/lib/nova-ts/).
 # The `--mcp` flag activates the stdio MCP transport in each service.

@@ -35,6 +35,41 @@ export function createHttpApp(config: ServiceConfig): Hono {
     });
   });
 
+  // Registry endpoint — exposes tool definitions for tool-router self-registration
+  app.get("/registry", (c) => {
+    return c.json({
+      service: "messages-svc",
+      tools: [
+        {
+          name: "get_recent_messages",
+          description: "Get recent conversation messages, optionally filtered by channel. Returns sender, content, and timestamp.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              channel: { type: "string", description: "Filter to a specific channel (telegram, discord, teams, etc.)" },
+              limit: { type: "number", description: "Number of messages to return (default: 20, max: 100)" },
+            },
+            required: [],
+          },
+        },
+        {
+          name: "search_messages",
+          description: "Search conversation messages by keyword or phrase. Returns matching messages with context.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query string" },
+              channel: { type: "string", description: "Filter to a specific channel" },
+              limit: { type: "number", description: "Maximum number of results (default: 20, max: 100)" },
+            },
+            required: ["query"],
+          },
+        },
+      ],
+      healthUrl: `http://127.0.0.1:${config.servicePort}/health`,
+    });
+  });
+
   // GET /recent — get_recent_messages
   app.get("/recent", async (c) => {
     try {

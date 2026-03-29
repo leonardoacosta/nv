@@ -25,6 +25,10 @@ export class TelegramStreamWriter {
 
   private currentText = "";
   private readonly activeTools = new Map<string, { name: string; humanized: string; startedAt: number }>();
+  /** Completed tools with their actual durations, capped to last 3 */
+  private readonly completedTools: Array<{ humanized: string; durationMs: number }> = [];
+  /** Timestamp of the first event (first tool start or text delta) */
+  private firstEventAt: number | null = null;
   private lastFlushAt = 0;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -43,11 +47,13 @@ export class TelegramStreamWriter {
   // ── Event Handlers ──────────────────────────────────────────────────────────
 
   onTextDelta(text: string): void {
+    if (this.firstEventAt === null) this.firstEventAt = Date.now();
     this.currentText += text;
     this.scheduleFlush();
   }
 
   onToolStart(name: string, callId: string): void {
+    if (this.firstEventAt === null) this.firstEventAt = Date.now();
     const humanized = humanizeToolName(name);
     this.activeTools.set(callId, { name, humanized, startedAt: Date.now() });
     this.scheduleFlush();
@@ -57,10 +63,15 @@ export class TelegramStreamWriter {
     const info = this.activeTools.get(callId);
     this.activeTools.delete(callId);
 
-    // Log completion (the status line will update on next flush)
     const label = info?.humanized ?? humanizeToolName(name);
     const secs = Math.round(durationMs / 1000);
     log.debug({ tool: name, callId, durationMs }, `${label} completed (${secs}s)`);
+
+    // Track completed tool with its actual duration (keep last 3)
+    this.completedTools.push({ humanized: label, durationMs });
+    if (this.completedTools.length > 3) {
+      this.completedTools.shift();
+    }
 
     this.scheduleFlush();
   }
@@ -190,15 +201,27 @@ export class TelegramStreamWriter {
 
   private buildDisplayText(): string {
     const parts: string[] = [];
+    const now = Date.now();
 
-    // Status line for active tools
-    if (this.activeTools.size > 0) {
-      const toolLines: string[] = [];
-      for (const [, info] of this.activeTools) {
-        const elapsed = Math.round((Date.now() - info.startedAt) / 1000);
-        toolLines.push(`${info.humanized} (${elapsed}s)`);
-      }
-      parts.push(toolLines.join(" | "));
+    // Build tool status line: completed tools with real durations + active tools with live timer
+    const toolParts: string[] = [];
+
+    for (const completed of this.completedTools) {
+      const secs = Math.round(completed.durationMs / 1000);
+      toolParts.push(`${completed.humanized} (${secs}s)`);
+    }
+
+    for (const [, info] of this.activeTools) {
+      const elapsed = Math.round((now - info.startedAt) / 1000);
+      toolParts.push(`${info.humanized} (${elapsed}s)`);
+    }
+
+    if (toolParts.length > 0) {
+      // Total elapsed since first event
+      const totalElapsed = this.firstEventAt !== null
+        ? Math.round((now - this.firstEventAt) / 1000)
+        : 0;
+      parts.push(`${toolParts.join(" | ")} — ${totalElapsed}s total`);
     }
 
     // Accumulated text with incomplete Markdown stripped

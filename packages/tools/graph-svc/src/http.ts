@@ -65,6 +65,21 @@ export function createHttpApp(
     });
   });
 
+  // Registry endpoint — exposes tool definitions for tool-router self-registration
+  app.get("/registry", (c) => {
+    return c.json({
+      service: config.serviceName,
+      tools: registry.list()
+        .filter((t) => t.name !== "ping")
+        .map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema,
+        })),
+      healthUrl: `http://127.0.0.1:${config.servicePort}/health`,
+    });
+  });
+
   // ── Generic tool dispatch ─────────────────────────────────────
   // All tools are accessible via POST /tools/:name.
   // The named routes below are convenience aliases.

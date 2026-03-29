@@ -40,6 +40,59 @@ export function createHttpApp(): Hono {
     });
   });
 
+  // Registry endpoint — exposes tool definitions for tool-router self-registration
+  app.get("/registry", (c) => {
+    return c.json({
+      service: "meta-svc",
+      tools: [
+        {
+          name: "check_services",
+          description: "Check the health status of all Nova fleet services.",
+          inputSchema: { type: "object", properties: {}, required: [] },
+        },
+        {
+          name: "self_assessment_run",
+          description: "Run a self-assessment to evaluate Nova's current operational state.",
+          inputSchema: { type: "object", properties: {}, required: [] },
+        },
+        {
+          name: "update_soul",
+          description: "Update Nova's soul document with new content.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              content: { type: "string", description: "New soul document content" },
+            },
+            required: ["content"],
+          },
+        },
+        {
+          name: "typecheck_project",
+          description: "Run TypeScript type checking on a project package.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              package: { type: "string", description: "Package name to typecheck (omit to check entire workspace)" },
+            },
+            required: [],
+          },
+        },
+        {
+          name: "build_project",
+          description: "Build a project package.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              package: { type: "string", description: "Package name to build (omit to build entire workspace)" },
+            },
+            required: [],
+          },
+        },
+      ],
+      healthUrl: "http://127.0.0.1:4108/health",
+    });
+  });
+
   // GET /services — probe all fleet services
   app.get("/services", async (c) => {
     const services = await probeFleet();

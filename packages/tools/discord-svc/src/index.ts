@@ -65,6 +65,44 @@ if (isMcpMode) {
     });
   });
 
+  // Registry endpoint — exposes tool definitions for tool-router self-registration
+  app.get("/registry", (c) => {
+    return c.json({
+      service: "discord-svc",
+      tools: [
+        {
+          name: "discord_list_guilds",
+          description: "List all Discord guilds (servers) the bot is a member of.",
+          inputSchema: { type: "object", properties: {}, required: [] },
+        },
+        {
+          name: "discord_list_channels",
+          description: "List text channels in a Discord guild.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              guild_id: { type: "string", description: "Discord guild (server) ID" },
+            },
+            required: ["guild_id"],
+          },
+        },
+        {
+          name: "discord_read_messages",
+          description: "Read recent messages from a Discord channel.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              channel_id: { type: "string", description: "Discord channel ID" },
+              limit: { type: "number", description: "Number of messages to return (max: 100)" },
+            },
+            required: ["channel_id"],
+          },
+        },
+      ],
+      healthUrl: `http://127.0.0.1:${servicePort}/health`,
+    });
+  });
+
   // GET /guilds — list all guilds the bot is in
   app.get("/guilds", async (c) => {
     try {

@@ -58,6 +58,51 @@ app.post("/read", (c) => handleRead(c, config));
 app.post("/write", (c) => handleWrite(c, config, logger));
 app.post("/search", (c) => handleSearch(c, config, logger));
 
+// Registry endpoint — exposes tool definitions for tool-router self-registration
+app.get("/registry", (c) => {
+  return c.json({
+    service: "memory-svc",
+    tools: [
+      {
+        name: "read_memory",
+        description: "Read a memory file by topic name. Returns the full content. Always check memory before responding.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            topic: { type: "string", description: "The memory topic to read" },
+          },
+          required: ["topic"],
+        },
+      },
+      {
+        name: "write_memory",
+        description: "Create or update a memory file. Upserts by topic name. Use proactively to store useful context.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            topic: { type: "string", description: "The memory topic name" },
+            content: { type: "string", description: "The memory content to store" },
+          },
+          required: ["topic", "content"],
+        },
+      },
+      {
+        name: "search_memory",
+        description: "Search memory files by keyword. Returns matching topics with relevance scores.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search query string" },
+            limit: { type: "number", description: "Max results to return (default: 10, max: 50)" },
+          },
+          required: ["query"],
+        },
+      },
+    ],
+    healthUrl: `http://127.0.0.1:${config.port}/health`,
+  });
+});
+
 // Start server
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   logger.info(

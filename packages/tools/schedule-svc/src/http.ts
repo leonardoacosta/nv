@@ -37,6 +37,19 @@ export function createHttpApp(
     });
   });
 
+  // Registry endpoint — exposes tool definitions for tool-router self-registration
+  app.get("/registry", (c) => {
+    return c.json({
+      service: config.serviceName,
+      tools: registry.list().map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
+      healthUrl: `http://127.0.0.1:${config.servicePort}/health`,
+    });
+  });
+
   // --- Reminder routes ---
 
   app.post("/reminders", async (c) => {

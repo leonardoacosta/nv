@@ -2,15 +2,16 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import * as TOML from "@iarna/toml";
-import "dotenv/config";
 import {
   type ProactiveWatcherConfig,
   defaultProactiveWatcherConfig,
 } from "./features/watcher/types.js";
 import type { DreamSchedulerConfig } from "./features/dream/types.js";
 import type { QueueConfig } from "./queue/index.js";
+import { resolveConfig, type ConfigWithSources } from "./config/resolver.js";
 
 export type { ProactiveWatcherConfig, DreamSchedulerConfig, QueueConfig };
+export type { ConfigWithSources };
 
 export interface DigestConfig {
   enabled: boolean;
@@ -83,40 +84,7 @@ export interface Config {
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
 
-const DEFAULTS: Omit<Config, "configPath" | "databaseUrl" | "autonomy" | "proactiveWatcher" | "dream" | "digest" | "queue" | "vercelGatewayKey"> = {
-  logLevel: "info",
-  daemonPort: 7700,
-  systemPromptPath: "config/system-prompt.md",
-  toolRouterUrl: "http://localhost:4100",
-  mcpServers: {},
-  agent: { model: "claude-opus-4-6", maxTurns: 100 },
-  conversationHistoryDepth: 20,
-};
-
-interface TomlConfig {
-  daemon?: {
-    port?: number;
-    health_port?: number;
-    log_level?: string;
-    tool_router_url?: string;
-  };
-  agent?: {
-    model?: string;
-    max_turns?: number;
-  };
-  telegram?: {
-    chat_id?: number | string;
-  };
-  autonomy?: {
-    enabled?: boolean;
-    timeout_ms?: number;
-    cooldown_hours?: number;
-    idle_debounce_ms?: number;
-    poll_interval_ms?: number;
-    daily_budget_usd?: number;
-    autonomy_budget_pct?: number;
-    max_attempts?: number;
-  };
+interface SupplementalToml {
   proactive_watcher?: {
     enabled?: boolean;
     interval_minutes?: number;
@@ -135,24 +103,15 @@ interface TomlConfig {
     topic_max_kb?: number;
   };
   digest?: {
-    enabled?: boolean;
-    quiet_start?: string;
-    quiet_end?: string;
-    tier1_hours?: number[];
     tier2_day?: number;
     tier2_hour?: number;
     realtime_interval_ms?: number;
-    p0_cooldown_ms?: number;
-    p1_cooldown_ms?: number;
-    p2_cooldown_ms?: number;
-    hash_ttl_ms?: number;
   };
-  queue?: {
-    concurrency?: number;
-    max_queue_size?: number;
-  };
-  conversation?: {
-    history_depth?: number;
+  autonomy?: {
+    idle_debounce_ms?: number;
+    poll_interval_ms?: number;
+    autonomy_budget_pct?: number;
+    max_attempts?: number;
   };
   tools?: {
     mcp_servers?: Record<
@@ -160,73 +119,39 @@ interface TomlConfig {
       { command: string; args: string[]; env?: Record<string, string> }
     >;
   };
+  conversation?: {
+    history_depth?: number;
+  };
 }
 
+/**
+ * Load and validate configuration from all sources.
+ *
+ * Delegates to the Zod schema resolver for core sections (daemon, agent,
+ * digest, queue, database). Supplemental fields (proactiveWatcher, dream,
+ * mcpServers, etc.) are loaded from TOML with defaults.
+ *
+ * Throws a descriptive error if any required config is invalid.
+ */
 export async function loadConfig(
   configPath: string = DEFAULT_CONFIG_PATH,
 ): Promise<Config> {
-  let toml: TomlConfig = {};
+  // Delegate to schema-validated resolver — throws on invalid config
+  const { config: validated } = await resolveConfig(configPath);
 
+  // Load raw TOML for supplemental fields not covered by the Zod schema
+  let toml: SupplementalToml = {};
   try {
     const raw = await readFile(configPath, "utf-8");
-    toml = TOML.parse(raw) as TomlConfig;
+    toml = TOML.parse(raw) as SupplementalToml;
   } catch (err: unknown) {
-    // Fall back to defaults if file does not exist or cannot be parsed
     const isNotFound =
       err instanceof Error &&
       "code" in err &&
       (err as NodeJS.ErrnoException).code === "ENOENT";
-    if (!isNotFound) {
-      // Re-throw unexpected errors (permissions, parse errors, etc.)
-      throw err;
-    }
+    if (!isNotFound) throw err;
+    // File not found — use defaults for all supplemental fields
   }
-
-  const logLevel =
-    process.env["NV_LOG_LEVEL"] ??
-    toml.daemon?.log_level ??
-    DEFAULTS.logLevel;
-
-  const daemonPortRaw = process.env["NV_DAEMON_PORT"];
-  const daemonPort = daemonPortRaw
-    ? parseInt(daemonPortRaw, 10)
-    : (toml.daemon?.port ?? toml.daemon?.health_port ?? DEFAULTS.daemonPort);
-
-  const databaseUrl = process.env["DATABASE_URL"];
-  if (!databaseUrl) {
-    throw new Error(
-      "DATABASE_URL environment variable is required but not set. " +
-        "Set it to a valid PostgreSQL connection string.",
-    );
-  }
-
-  const vercelGatewayKey = process.env["VERCEL_GATEWAY_KEY"];
-
-  const telegramChatIdRaw =
-    process.env["TELEGRAM_CHAT_ID"] ??
-    (toml.telegram?.chat_id !== undefined
-      ? String(toml.telegram.chat_id)
-      : undefined);
-  const telegramChatId = telegramChatIdRaw;
-
-  const systemPromptPath =
-    process.env["NV_SYSTEM_PROMPT_PATH"] ?? DEFAULTS.systemPromptPath;
-
-  const toolRouterUrl =
-    process.env["TOOL_ROUTER_URL"] ??
-    toml.daemon?.tool_router_url ??
-    DEFAULTS.toolRouterUrl;
-
-  const autonomy: AutonomyConfig = {
-    enabled: toml.autonomy?.enabled ?? true,
-    timeoutMs: toml.autonomy?.timeout_ms ?? 300_000,
-    cooldownHours: toml.autonomy?.cooldown_hours ?? 2,
-    idleDebounceMs: toml.autonomy?.idle_debounce_ms ?? 60_000,
-    pollIntervalMs: toml.autonomy?.poll_interval_ms ?? 30_000,
-    dailyBudgetUsd: toml.autonomy?.daily_budget_usd ?? 5.0,
-    autonomyBudgetPct: toml.autonomy?.autonomy_budget_pct ?? 0.20,
-    maxAttempts: toml.autonomy?.max_attempts ?? 3,
-  };
 
   const proactiveWatcher: ProactiveWatcherConfig = {
     enabled:
@@ -261,42 +186,36 @@ export async function loadConfig(
     topicMaxKb: toml.dream?.topic_max_kb ?? 4,
   };
 
+  // Digest: merge Zod-validated fields with supplemental TOML fields
   const digest: DigestConfig = {
-    enabled: toml.digest?.enabled ?? defaultDigestConfig.enabled,
-    quietStart: toml.digest?.quiet_start ?? defaultDigestConfig.quietStart,
-    quietEnd: toml.digest?.quiet_end ?? defaultDigestConfig.quietEnd,
-    tier1Hours: toml.digest?.tier1_hours ?? defaultDigestConfig.tier1Hours,
+    enabled: validated.digest.enabled,
+    quietStart: validated.digest.quietStart,
+    quietEnd: validated.digest.quietEnd,
+    tier1Hours: validated.digest.tier1Hours,
     tier2Day: toml.digest?.tier2_day ?? defaultDigestConfig.tier2Day,
     tier2Hour: toml.digest?.tier2_hour ?? defaultDigestConfig.tier2Hour,
-    realtimeIntervalMs: toml.digest?.realtime_interval_ms ?? defaultDigestConfig.realtimeIntervalMs,
-    p0CooldownMs: toml.digest?.p0_cooldown_ms ?? defaultDigestConfig.p0CooldownMs,
-    p1CooldownMs: toml.digest?.p1_cooldown_ms ?? defaultDigestConfig.p1CooldownMs,
-    p2CooldownMs: toml.digest?.p2_cooldown_ms ?? defaultDigestConfig.p2CooldownMs,
-    hashTtlMs: toml.digest?.hash_ttl_ms ?? defaultDigestConfig.hashTtlMs,
+    realtimeIntervalMs:
+      toml.digest?.realtime_interval_ms ?? defaultDigestConfig.realtimeIntervalMs,
+    p0CooldownMs: validated.digest.cooldowns.p0Ms,
+    p1CooldownMs: validated.digest.cooldowns.p1Ms,
+    p2CooldownMs: validated.digest.cooldowns.p2Ms,
+    hashTtlMs: validated.digest.cooldowns.hashTtlMs,
   };
 
-  const queueConcurrencyRaw = process.env["NV_QUEUE_CONCURRENCY"];
-  const queueMaxSizeRaw = process.env["NV_QUEUE_MAX_SIZE"];
-  const queue: QueueConfig = {
-    concurrency: queueConcurrencyRaw
-      ? parseInt(queueConcurrencyRaw, 10)
-      : (toml.queue?.concurrency ?? 2),
-    maxQueueSize: queueMaxSizeRaw
-      ? parseInt(queueMaxSizeRaw, 10)
-      : (toml.queue?.max_queue_size ?? 20),
-  };
+  // Autonomy: merge Zod-validated fields with supplemental TOML fields
+  const autonomy: AutonomyConfig | undefined = validated.autonomy
+    ? {
+        enabled: validated.autonomy.enabled,
+        timeoutMs: validated.autonomy.timeoutMs,
+        cooldownHours: validated.autonomy.cooldownHours,
+        dailyBudgetUsd: validated.autonomy.dailyBudgetUsd,
+        idleDebounceMs: toml.autonomy?.idle_debounce_ms ?? 60_000,
+        pollIntervalMs: toml.autonomy?.poll_interval_ms ?? 30_000,
+        autonomyBudgetPct: toml.autonomy?.autonomy_budget_pct ?? 0.20,
+        maxAttempts: toml.autonomy?.max_attempts ?? 3,
+      }
+    : undefined;
 
-  const historyDepthRaw = process.env["NV_HISTORY_DEPTH"];
-  const conversationHistoryDepth = historyDepthRaw
-    ? parseInt(historyDepthRaw, 10)
-    : (toml.conversation?.history_depth ?? 20);
-
-  const agent: AgentConfig = {
-    model: toml.agent?.model ?? "claude-opus-4-6",
-    maxTurns: toml.agent?.max_turns ?? 100,
-  };
-
-  // Parse [tools.mcp_servers] section — each entry becomes an McpServerEntry
   const mcpServers: Record<string, McpServerEntry> = {};
   const tomlMcpServers = toml.tools?.mcp_servers;
   if (tomlMcpServers) {
@@ -309,22 +228,33 @@ export async function loadConfig(
     }
   }
 
+  const historyDepthRaw = process.env["NV_HISTORY_DEPTH"];
+  const conversationHistoryDepth = historyDepthRaw
+    ? parseInt(historyDepthRaw, 10)
+    : (toml.conversation?.history_depth ?? 20);
+
   return {
-    logLevel,
-    daemonPort,
+    logLevel: validated.daemon.logLevel,
+    daemonPort: validated.daemon.port,
     configPath,
-    databaseUrl,
-    vercelGatewayKey,
-    telegramChatId,
-    systemPromptPath,
-    toolRouterUrl,
+    databaseUrl: validated.database.url,
+    vercelGatewayKey: process.env["VERCEL_GATEWAY_KEY"],
+    telegramChatId: validated.telegram?.chatId,
+    systemPromptPath: validated.agent.systemPromptPath,
+    toolRouterUrl: validated.daemon.toolRouterUrl,
     mcpServers,
-    agent,
+    agent: {
+      model: validated.agent.model,
+      maxTurns: validated.agent.maxTurns,
+    },
     autonomy,
     proactiveWatcher,
     dream,
     digest,
-    queue,
+    queue: {
+      concurrency: validated.queue.concurrency,
+      maxQueueSize: validated.queue.maxQueueSize,
+    },
     conversationHistoryDepth,
   };
 }

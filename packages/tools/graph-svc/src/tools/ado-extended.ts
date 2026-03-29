@@ -1,4 +1,5 @@
 import type { ServiceConfig } from "../config.js";
+import { lookupAdoRepo } from "../config/repo-registry.js";
 import { sshAdoCommand } from "../ssh.js";
 import { socksGet, socksPost, socksPut, socksDelete, isSocksAvailable } from "../socks-client.js";
 import { getAdoToken, clearTokenCache, ADO_ORG } from "./ado-rest.js";
@@ -38,25 +39,39 @@ function trimList<T>(raw: string, mapper: (item: Record<string, unknown>) => T):
 }
 
 const trimPrs = (raw: string) =>
-  trimList(raw, (pr) => ({
-    id: pr.pullRequestId,
-    title: pr.title,
-    status: pr.status,
-    createdBy: (pr.createdBy as Record<string, unknown>)?.displayName,
-    sourceBranch: pr.sourceRefName,
-    targetBranch: pr.targetRefName,
-    creationDate: pr.creationDate,
-    url: pr.url,
-  }));
+  trimList(raw, (pr) => {
+    const repo = pr.repository as Record<string, unknown> | undefined;
+    const repoName = repo?.name as string | undefined;
+    const projectName = (repo?.project as Record<string, unknown>)?.name as string | undefined;
+    const match = lookupAdoRepo(repoName, projectName);
+    return {
+      id: pr.pullRequestId,
+      title: pr.title,
+      status: pr.status,
+      repo: match?.code ?? repoName ?? "unknown",
+      project: match?.display ?? projectName,
+      createdBy: (pr.createdBy as Record<string, unknown>)?.displayName,
+      sourceBranch: pr.sourceRefName,
+      targetBranch: pr.targetRefName,
+      creationDate: pr.creationDate,
+    };
+  });
 
 const trimRepos = (raw: string) =>
-  trimList(raw, (r) => ({
-    id: r.id,
-    name: r.name,
-    defaultBranch: r.defaultBranch,
-    size: r.size,
-    webUrl: r.webUrl,
-  }));
+  trimList(raw, (r) => {
+    const projectRef = r.project as Record<string, unknown> | undefined;
+    const projectName = projectRef?.name as string | undefined;
+    const repoName = r.name as string | undefined;
+    const match = lookupAdoRepo(repoName, projectName);
+    return {
+      code: match?.code,
+      id: r.id,
+      name: r.name,
+      project: match?.display ?? projectName,
+      defaultBranch: r.defaultBranch,
+      size: r.size,
+    };
+  });
 
 const trimCommits = (raw: string) =>
   trimList(raw, (c) => ({

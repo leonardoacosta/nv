@@ -2,7 +2,6 @@ import type { Context } from "hono";
 import { eq, sql } from "drizzle-orm";
 import { db, memory } from "@nova/db";
 import { generateEmbedding } from "../embedding.js";
-import { writeMemoryFile } from "../filesystem.js";
 import type { MemorySvcConfig } from "../config.js";
 import type { Logger } from "../logger.js";
 
@@ -53,13 +52,6 @@ export async function handleWrite(
     });
 
   const action = existing ? "updated" : "created";
-
-  // Sync to filesystem
-  try {
-    await writeMemoryFile(config.memoryDir, topic, content);
-  } catch (err) {
-    logger.error({ err, topic }, "Failed to sync memory to filesystem");
-  }
 
   return c.json({ topic, action });
 }

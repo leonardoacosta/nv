@@ -8,7 +8,7 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Refactor stream-writer.ts: add completedTools list, track firstEventAt timestamp, update buildDisplayText to show completed durations + total elapsed [owner:api-engineer] [beads:nv-akao]
+- [x] [2.1] [P-1] Refactor stream-writer.ts: add completedTools list, track firstEventAt timestamp, update buildDisplayText to show completed durations + total elapsed [owner:api-engineer] [beads:nv-akao]
 
 ## UI Batch
 

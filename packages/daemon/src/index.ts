@@ -65,11 +65,21 @@ function readVersion(): string {
 }
 
 export async function main(): Promise<void> {
-  const config = await loadConfig();
   const log = createLogger("nova-daemon");
+
+  // ── Config validation (fail-fast) ─────────────────────────────────────────
+  let config: Awaited<ReturnType<typeof loadConfig>>;
+  try {
+    config = await loadConfig();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`\nFATAL: ${message}\n\n`);
+    process.exit(1);
+  }
 
   const version = readVersion();
 
+  // Log source breakdown for diagnostics
   log.info(
     {
       service: "nova-daemon",
@@ -77,7 +87,7 @@ export async function main(): Promise<void> {
       configPath: config.configPath,
       daemonPort: config.daemonPort,
     },
-    "Nova daemon starting",
+    "Configuration loaded — Nova daemon starting",
   );
 
   // ── Fleet client initialization ───────────────────────────────────────────

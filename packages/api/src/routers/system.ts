@@ -960,4 +960,106 @@ export const systemRouter = createTRPCRouter({
       totalSizeBytes: sizeRow?.totalSizeBytes ?? 0,
     };
   }),
+
+  /**
+   * Config source introspection.
+   *
+   * Returns per-key source (env/toml/db/default) and redacts sensitive values.
+   * Sources are determined by probing the environment variables that override config.
+   * TOML and default are inferred by absence of env override.
+   */
+  configSources: protectedProcedure.query(() => {
+    type Source = "env" | "toml" | "db" | "default";
+
+    interface ConfigKeyInfo {
+      source: Source;
+      /** Redacted value for sensitive keys, actual value for safe keys */
+      value: string | number | boolean | null;
+      validated: boolean;
+    }
+
+    const SENSITIVE_KEYS = new Set([
+      "database.url",
+      "telegram.botToken",
+      "discord.botToken",
+      "teams.webhookUrl",
+    ]);
+
+    function redact(key: string, value: string | undefined): string | null {
+      if (value === undefined || value === "") return null;
+      if (SENSITIVE_KEYS.has(key)) return "***set***";
+      return value;
+    }
+
+    function envSource(envVar: string): Source {
+      return process.env[envVar] !== undefined ? "env" : "default";
+    }
+
+    const keys: Record<string, ConfigKeyInfo> = {
+      "daemon.port": {
+        source: envSource("NV_DAEMON_PORT"),
+        value: process.env["NV_DAEMON_PORT"] ? parseInt(process.env["NV_DAEMON_PORT"]!, 10) : 7700,
+        validated: true,
+      },
+      "daemon.logLevel": {
+        source: envSource("NV_LOG_LEVEL"),
+        value: process.env["NV_LOG_LEVEL"] ?? "info",
+        validated: true,
+      },
+      "daemon.toolRouterUrl": {
+        source: envSource("TOOL_ROUTER_URL"),
+        value: process.env["TOOL_ROUTER_URL"] ?? "http://localhost:4100",
+        validated: true,
+      },
+      "database.url": {
+        source: process.env["DATABASE_URL"] ? "env" : "default",
+        value: redact("database.url", process.env["DATABASE_URL"]),
+        validated: true,
+      },
+      "telegram.botToken": {
+        source: process.env["TELEGRAM_BOT_TOKEN"] ? "env" : "default",
+        value: redact("telegram.botToken", process.env["TELEGRAM_BOT_TOKEN"]),
+        validated: false,
+      },
+      "telegram.chatId": {
+        source: envSource("TELEGRAM_CHAT_ID"),
+        value: process.env["TELEGRAM_CHAT_ID"] ?? null,
+        validated: false,
+      },
+      "discord.botToken": {
+        source: process.env["DISCORD_BOT_TOKEN"] ? "env" : "default",
+        value: redact("discord.botToken", process.env["DISCORD_BOT_TOKEN"]),
+        validated: false,
+      },
+      "teams.webhookUrl": {
+        source: process.env["TEAMS_WEBHOOK_URL"] ? "env" : "default",
+        value: redact("teams.webhookUrl", process.env["TEAMS_WEBHOOK_URL"]),
+        validated: false,
+      },
+      "queue.concurrency": {
+        source: envSource("NV_QUEUE_CONCURRENCY"),
+        value: process.env["NV_QUEUE_CONCURRENCY"]
+          ? parseInt(process.env["NV_QUEUE_CONCURRENCY"]!, 10)
+          : 2,
+        validated: true,
+      },
+      "queue.maxQueueSize": {
+        source: envSource("NV_QUEUE_MAX_SIZE"),
+        value: process.env["NV_QUEUE_MAX_SIZE"]
+          ? parseInt(process.env["NV_QUEUE_MAX_SIZE"]!, 10)
+          : 20,
+        validated: true,
+      },
+      "agent.systemPromptPath": {
+        source: envSource("NV_SYSTEM_PROMPT_PATH"),
+        value: process.env["NV_SYSTEM_PROMPT_PATH"] ?? "config/system-prompt.md",
+        validated: true,
+      },
+    };
+
+    return {
+      keys,
+      note: "TOML-sourced and default values reflect compiled-in defaults. Set env vars to override.",
+    };
+  }),
 });

@@ -103,6 +103,86 @@ if (isMcpMode) {
     });
   });
 
+  // Registry endpoint — exposes tool definitions for tool-router self-registration
+  app.get("/registry", (c) => {
+    return c.json({
+      service: "teams-svc",
+      tools: [
+        {
+          name: "teams_list_chats",
+          description: "List recent Microsoft Teams chats.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              limit: { type: "number", description: "Maximum number of chats to return" },
+            },
+            required: [],
+          },
+        },
+        {
+          name: "teams_read_chat",
+          description: "Read messages from a specific Microsoft Teams chat.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              chat_id: { type: "string", description: "Teams chat ID" },
+              limit: { type: "number", description: "Maximum number of messages to return" },
+            },
+            required: ["chat_id"],
+          },
+        },
+        {
+          name: "teams_messages",
+          description: "Read messages from a Microsoft Teams channel.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              team_name: { type: "string", description: "Name of the Teams team" },
+              channel_name: { type: "string", description: "Name of the channel (optional)" },
+              count: { type: "number", description: "Number of messages to return" },
+            },
+            required: ["team_name"],
+          },
+        },
+        {
+          name: "teams_channels",
+          description: "List channels in a Microsoft Teams team.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              team_name: { type: "string", description: "Name of the Teams team" },
+            },
+            required: ["team_name"],
+          },
+        },
+        {
+          name: "teams_presence",
+          description: "Check the presence/availability status of a Teams user.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              user: { type: "string", description: "User display name or email" },
+            },
+            required: ["user"],
+          },
+        },
+        {
+          name: "teams_send",
+          description: "Send a message to a Microsoft Teams chat.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              chat_id: { type: "string", description: "Teams chat ID" },
+              message: { type: "string", description: "Message text to send" },
+            },
+            required: ["chat_id", "message"],
+          },
+        },
+      ],
+      healthUrl: `http://127.0.0.1:${servicePort}/health`,
+    });
+  });
+
   // GET /chats -- list recent chats
   app.get("/chats", async (c) => {
     const limitParam = c.req.query("limit");

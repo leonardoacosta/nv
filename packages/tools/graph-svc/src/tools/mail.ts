@@ -3,7 +3,9 @@ import { sshCloudPC } from "../ssh.js";
 import { socksGet, socksPost, socksPatch, isSocksAvailable } from "../socks-client.js";
 import { getO365Token, clearO365TokenCache } from "../token-cache.js";
 import { sanitize } from "../utils.js";
+import { createLogger } from "../logger.js";
 
+const log = createLogger("mail");
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const OUTLOOK_SCRIPT = "graph-outlook.ps1";
 
@@ -92,15 +94,23 @@ const MSG_SELECT = "$select=id,subject,from,toRecipients,receivedDateTime,sentDa
 
 async function graphGet(config: ServiceConfig, path: string): Promise<string> {
   const url = `${GRAPH_BASE}${path}`;
+  const startMs = Date.now();
+  log.info({ path: path.slice(0, 120) }, "Graph GET request");
   const token = await getO365Token(config.cloudpcHost);
   try {
-    return await socksGet(url, token);
+    const result = await socksGet(url, token);
+    log.info({ path: path.slice(0, 80), durationMs: Date.now() - startMs, responseBytes: result.length }, "Graph GET completed");
+    return result;
   } catch (err) {
     if (err instanceof Error && err.message.includes("401")) {
+      log.warn({ path: path.slice(0, 80), durationMs: Date.now() - startMs }, "Graph GET 401 — refreshing token");
       clearO365TokenCache();
       const freshToken = await getO365Token(config.cloudpcHost);
-      return await socksGet(url, freshToken);
+      const result = await socksGet(url, freshToken);
+      log.info({ path: path.slice(0, 80), durationMs: Date.now() - startMs, responseBytes: result.length }, "Graph GET completed (after token refresh)");
+      return result;
     }
+    log.error({ path: path.slice(0, 80), durationMs: Date.now() - startMs, error: err instanceof Error ? err.message : String(err) }, "Graph GET failed");
     throw err;
   }
 }
@@ -144,11 +154,13 @@ export async function outlookInbox(
   config: ServiceConfig,
   limit: number = 10,
 ): Promise<string> {
+  log.info({ limit }, "outlook_inbox called");
   if (!(await isSocksAvailable())) {
     return sshCloudPC(config.cloudpcHost, config.cloudpcUserPath, OUTLOOK_SCRIPT, `-Action Inbox -Count ${limit}`);
   }
   const raw = await graphGet(config, `/me/mailFolders/Inbox/messages?$top=${limit}&${MSG_SELECT}&$orderby=receivedDateTime desc`);
   const data = JSON.parse(raw) as { value?: GraphMessage[] };
+  log.info({ limit, resultCount: data.value?.length ?? 0 }, "outlook_inbox completed");
   return formatMessages(data.value ?? []);
 }
 
@@ -159,11 +171,24 @@ export async function outlookRead(
   config: ServiceConfig,
   messageId: string,
 ): Promise<string> {
+  log.info({ messageId: messageId.slice(0, 40) }, "outlook_read called");
   if (!(await isSocksAvailable())) {
+    log.info({ transport: "ssh" }, "outlook_read via SSH fallback");
     return sshCloudPC(config.cloudpcHost, config.cloudpcUserPath, OUTLOOK_SCRIPT, `-Action Read -MessageId '${sanitize(messageId)}'`);
   }
   const raw = await graphGet(config, `/me/messages/${encodeURIComponent(messageId)}?$select=id,subject,from,toRecipients,receivedDateTime,body,hasAttachments,importance`);
   const msg = JSON.parse(raw) as GraphMessage;
+  const hasBody = !!msg.body?.content && msg.body.content.length > 0;
+  const hasPreview = !!msg.bodyPreview && msg.bodyPreview.length > 0;
+  log.info({
+    messageId: messageId.slice(0, 40),
+    subject: msg.subject?.slice(0, 80),
+    bodyContentType: msg.body?.contentType ?? "none",
+    bodyLength: msg.body?.content?.length ?? 0,
+    previewLength: msg.bodyPreview?.length ?? 0,
+    hasBody,
+    hasPreview,
+  }, hasBody ? "outlook_read body found" : "outlook_read EMPTY BODY");
   return formatMessageFull(msg);
 }
 
@@ -175,11 +200,13 @@ export async function outlookSearch(
   query: string,
   limit: number = 10,
 ): Promise<string> {
+  log.info({ query: query.slice(0, 80), limit }, "outlook_search called");
   if (!(await isSocksAvailable())) {
     return sshCloudPC(config.cloudpcHost, config.cloudpcUserPath, OUTLOOK_SCRIPT, `-Action Search -Query '${sanitize(query)}' -Count ${limit}`);
   }
   const raw = await graphGet(config, `/me/messages?$search="${encodeURIComponent(query)}"&$top=${limit}&${MSG_SELECT}`);
   const data = JSON.parse(raw) as { value?: GraphMessage[] };
+  log.info({ query: query.slice(0, 80), resultCount: data.value?.length ?? 0 }, "outlook_search completed");
   return formatMessages(data.value ?? []);
 }
 

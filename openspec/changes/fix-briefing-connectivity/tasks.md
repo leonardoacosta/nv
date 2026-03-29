@@ -4,8 +4,8 @@
 
 ## API Batch
 
-- [ ] [2.1] [P-1] Create `apps/dashboard/app/api/briefing/stream/route.ts` — GET handler that reads `DAEMON_URL` from env (default `http://localhost:7700`), opens fetch to `${DAEMON_URL}/api/briefing/stream`, returns a streaming Response that pipes each SSE chunk to the client; on daemon connection failure return 503 with SSE error event `{ type: "error", message: "daemon_unavailable" }` [owner:api-engineer] [beads:nv-rqq5]
-- [ ] [2.2] [P-1] Update `apps/dashboard/app/briefing/page.tsx` — change EventSource URL from `${DAEMON_URL}/api/briefing/stream` to `/api/briefing/stream` (relative); remove `NEXT_PUBLIC_DAEMON_URL` env var usage and the `typeof window` conditional; keep the tRPC mutation fallback in `es.onerror` unchanged [owner:ui-engineer] [beads:nv-547p]
+- [x] [2.1] [P-1] Create `apps/dashboard/app/api/briefing/stream/route.ts` — GET handler that reads `DAEMON_URL` from env (default `http://localhost:7700`), opens fetch to `${DAEMON_URL}/api/briefing/stream`, returns a streaming Response that pipes each SSE chunk to the client; on daemon connection failure return 503 with SSE error event `{ type: "error", message: "daemon_unavailable" }` [owner:api-engineer] [beads:nv-rqq5]
+- [x] [2.2] [P-1] Update `apps/dashboard/app/briefing/page.tsx` — change EventSource URL from `${DAEMON_URL}/api/briefing/stream` to `/api/briefing/stream` (relative); remove `NEXT_PUBLIC_DAEMON_URL` env var usage and the `typeof window` conditional; keep the tRPC mutation fallback in `es.onerror` unchanged [owner:ui-engineer] [beads:nv-547p]
 
 ## UI Batch
 

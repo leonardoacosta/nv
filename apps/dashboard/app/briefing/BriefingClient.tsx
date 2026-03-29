@@ -233,14 +233,9 @@ export default function BriefingClient() {
     setStreamingBlocks([]);
     setStreamExpectedCount(4);
 
-    // Attempt SSE stream from daemon
-    const DAEMON_URL =
-      typeof window !== "undefined"
-        ? (process.env.NEXT_PUBLIC_DAEMON_URL ?? "http://localhost:7700")
-        : "http://localhost:7700";
-
+    // Attempt SSE stream via Next.js proxy route
     try {
-      const es = new EventSource(`${DAEMON_URL}/api/briefing/stream`);
+      const es = new EventSource(`/api/briefing/stream`);
       eventSourceRef.current = es;
       setIsStreaming(true);
       setSelectedId(null);

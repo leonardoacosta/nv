@@ -4,9 +4,9 @@
 
 ## DB Batch
 
-- [ ] [1.1] [P-1] Add `blocks` JSONB column (nullable) to `briefings` table in packages/db/src/schema/briefings.ts -- `blocks: jsonb("blocks")` with no default (null when omitted). Update Briefing/NewBriefing inferred types [owner:db-engineer] [beads:nv-ya2l]
-- [ ] [1.2] [P-1] Run `pnpm drizzle-kit generate` in packages/db/ to produce the migration SQL for the new column [owner:db-engineer] [beads:nv-py5q]
-- [ ] [1.3] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:db-engineer] [beads:nv-fx3u]
+- [x] [1.1] [P-1] Add `blocks` JSONB column (nullable) to `briefings` table in packages/db/src/schema/briefings.ts -- `blocks: jsonb("blocks")` with no default (null when omitted). Update Briefing/NewBriefing inferred types [owner:db-engineer] [beads:nv-ya2l]
+- [x] [1.2] [P-1] Run `pnpm drizzle-kit generate` in packages/db/ to produce the migration SQL for the new column [owner:db-engineer] [beads:nv-py5q]
+- [x] [1.3] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:db-engineer] [beads:nv-fx3u]
 
 ## API Batch 1: Block Types
 

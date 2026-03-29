@@ -20,4 +20,4 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Test: FleetHealthMonitor detects service up/down transitions [owner:e2e-engineer]
+- [x] [4.1] Test: FleetHealthMonitor detects service up/down transitions [owner:e2e-engineer]

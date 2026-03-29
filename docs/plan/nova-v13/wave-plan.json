@@ -331,7 +331,7 @@
       "specs": [
         {
           "name": "unify-conversation-streaming",
-          "status": "pending",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -340,8 +340,8 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
-          "merged_at": null
+          "dispatched_at": "2026-03-28T21:09:04.034778",
+          "merged_at": "2026-03-28T21:20:24.332318"
         }
       ]
     }
@@ -423,16 +423,17 @@
       ]
     }
   ],
-  "status": "in_progress",
+  "status": "completed",
   "current_wave": 6,
   "started_at": "2026-03-28T19:44:10.275831",
-  "completed_at": null,
+  "completed_at": "2026-03-28T21:21:00.783732",
   "completed_waves": [
     1,
     2,
     3,
     4,
-    5
+    5,
+    6
   ],
   "completed_specs": [
     "extract-agent-query-factory",
@@ -453,7 +454,8 @@
     "add-fleet-health-monitor",
     "add-tanstack-query",
     "add-structured-agent-errors",
-    "generative-ui-briefings"
+    "generative-ui-briefings",
+    "unify-conversation-streaming"
   ],
   "failed_specs": [],
   "mode": "consolidated",

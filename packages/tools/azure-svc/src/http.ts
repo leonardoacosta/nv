@@ -7,6 +7,7 @@ import type { ServiceConfig } from "./config.js";
 import type { ToolRegistry } from "./tools.js";
 import { SshError } from "./ssh.js";
 import { runAzureCli } from "./tools/azure-cli.js";
+import { runSshCommand } from "./tools/ssh-command.js";
 
 const startedAt = Date.now();
 
@@ -74,6 +75,30 @@ export function createHttpApp(
       }
 
       const result = await runAzureCli(config, command);
+      return c.json({ result, error: null });
+    } catch (err) {
+      if (err instanceof SshError) {
+        return c.json({ result: null, error: err.message }, err.httpStatus);
+      }
+      const message = err instanceof Error ? err.message : "Unknown error";
+      return c.json({ result: null, error: message }, 400);
+    }
+  });
+
+  // ── SSH command route ─────────────────────────────────────────
+  app.post("/ssh", async (c) => {
+    try {
+      const body = await c.req.json<{ command?: string }>();
+      const command = body?.command;
+
+      if (typeof command !== "string" || !command.trim()) {
+        return c.json(
+          { result: null, error: "Missing required 'command' field. Example: Get-Process | Sort CPU -Desc" },
+          400,
+        );
+      }
+
+      const result = await runSshCommand(config, command);
       return c.json({ result, error: null });
     } catch (err) {
       if (err instanceof SshError) {

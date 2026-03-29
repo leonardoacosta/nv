@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { ServiceConfig } from "./config.js";
 import type { Logger } from "./logger.js";
 import { runAzureCli } from "./tools/azure-cli.js";
+import { runSshCommand } from "./tools/ssh-command.js";
 
 export async function startMcpServer(
   config: ServiceConfig,
@@ -46,6 +47,46 @@ export async function startMcpServer(
         logger.error(
           { command: command.slice(0, 80), error: errorMessage },
           "MCP: azure_cli failed",
+        );
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ ok: false, error: errorMessage }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // SSH command execution on CloudPC
+  server.registerTool(
+    "ssh_command",
+    {
+      description:
+        "Run any command on the CloudPC via SSH. " +
+        "Accepts PowerShell, CMD, or any CLI tool available on the machine. " +
+        "Returns stdout.",
+      inputSchema: z.object({
+        command: z
+          .string()
+          .describe("The command to execute on the CloudPC"),
+      }),
+    },
+    async ({ command }) => {
+      try {
+        const result = await runSshCommand(config, command);
+        return {
+          content: [{ type: "text" as const, text: result }],
+        };
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        logger.error(
+          { command: command.slice(0, 80), error: errorMessage },
+          "MCP: ssh_command failed",
         );
         return {
           content: [

@@ -201,7 +201,7 @@
       "specs": [
         {
           "name": "deduplicate-shared-utils",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -211,11 +211,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T20:15:06.056886",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:33:12.469541"
         },
         {
           "name": "add-persistent-watcher-config",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -225,11 +225,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T20:15:06.056888",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:33:12.469543"
         },
         {
           "name": "add-digest-observability",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -239,11 +239,11 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T20:15:06.056889",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:33:12.469545"
         },
         {
           "name": "add-dashboard-tool-events",
-          "status": "running",
+          "status": "merged",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -253,7 +253,7 @@
           "gates_failed": [],
           "ci": null,
           "dispatched_at": "2026-03-28T20:15:06.056890",
-          "merged_at": null
+          "merged_at": "2026-03-28T20:33:12.469546"
         }
       ]
     },
@@ -424,12 +424,13 @@
     }
   ],
   "status": "in_progress",
-  "current_wave": 3,
+  "current_wave": 4,
   "started_at": "2026-03-28T19:44:10.275831",
   "completed_at": null,
   "completed_waves": [
     1,
-    2
+    2,
+    3
   ],
   "completed_specs": [
     "extract-agent-query-factory",
@@ -442,15 +443,17 @@
     "add-dashboard-auth",
     "rewire-dashboard-api",
     "wire-conversation-history",
-    "add-chat-page"
+    "add-chat-page",
+    "deduplicate-shared-utils",
+    "add-persistent-watcher-config",
+    "add-digest-observability",
+    "add-dashboard-tool-events"
   ],
   "failed_specs": [],
   "mode": "consolidated",
   "mega_batch_state": {
-    "current_phase": "API",
-    "phases_completed": [
-      "DB"
-    ],
+    "current_phase": null,
+    "phases_completed": [],
     "task_results": {
       "extract-agent-query-factory": {},
       "extract-callback-router": {},
@@ -473,13 +476,8 @@
       "generative-ui-briefings": {},
       "unify-conversation-streaming": {}
     },
-    "phase_started_at": {
-      "DB": "2026-03-28T20:15:06.056880",
-      "API": "2026-03-28T20:18:27.264354"
-    },
-    "phase_completed_at": {
-      "DB": "2026-03-28T20:18:27.264347"
-    }
+    "phase_started_at": {},
+    "phase_completed_at": {}
   },
   "pre_audit_sha": "a51ec53"
 }

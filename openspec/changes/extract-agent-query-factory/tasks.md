@@ -21,4 +21,4 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Verify the refactor is structurally correct — grep that `@anthropic-ai/claude-agent-sdk` `query` is imported only in `query-factory.ts` and nowhere else under `packages/daemon/src/`; confirm `createTimeout` and `runAgentQuery` identifiers no longer exist in `executor.ts`; confirm `ANTHROPIC_BASE_URL` string literal does not appear outside `query-factory.ts` [owner:e2e-engineer]
+- [x] [4.1] Verify the refactor is structurally correct — grep that `@anthropic-ai/claude-agent-sdk` `query` is imported only in `query-factory.ts` and nowhere else under `packages/daemon/src/`; confirm `createTimeout` and `runAgentQuery` identifiers no longer exist in `executor.ts`; confirm `ANTHROPIC_BASE_URL` string literal does not appear outside `query-factory.ts` [owner:e2e-engineer]

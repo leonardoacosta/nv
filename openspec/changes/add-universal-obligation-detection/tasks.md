@@ -19,9 +19,9 @@
 (No UI tasks)
 
 ## E2E Batch
-- [ ] [4.1] [P-1] Test: signal-detector returns correct signals and confidence for obligation-bearing messages (deadline patterns, commitment phrases) in `packages/daemon/src/features/obligations/obligations.test.ts` [owner:e2e-engineer]
-- [ ] [4.2] [P-1] Test: signal-detector returns `detected: false` for casual messages without obligation signals [owner:e2e-engineer]
-- [ ] [4.3] [P-2] Test: Tier 1 routed message with obligation signals triggers Haiku detection and creates obligation with `detectionSource: "tier1"` and correct `routedTool` [owner:e2e-engineer]
-- [ ] [4.4] [P-2] Test: Tier 2 routed message with obligation signals creates obligation with `detectionSource: "tier2"` [owner:e2e-engineer]
-- [ ] [4.5] [P-2] Test: rate limiter caps detection jobs at 10/hour — 11th signal-detected message is skipped [owner:e2e-engineer]
-- [ ] [4.6] [P-2] Test: dedup prevents duplicate obligation when same message triggers both Tier 1/2 signal detection and Tier 3 full detection [owner:e2e-engineer]
+- [x] [4.1] [P-1] Test: signal-detector returns correct signals and confidence for obligation-bearing messages (deadline patterns, commitment phrases) in `packages/daemon/src/features/obligations/obligations.test.ts` [owner:e2e-engineer]
+- [x] [4.2] [P-1] Test: signal-detector returns `detected: false` for casual messages without obligation signals [owner:e2e-engineer]
+- [x] [4.3] [P-2] Test: Tier 1 routed message with obligation signals triggers Haiku detection and creates obligation with `detectionSource: "tier1"` and correct `routedTool` [owner:e2e-engineer]
+- [x] [4.4] [P-2] Test: Tier 2 routed message with obligation signals creates obligation with `detectionSource: "tier2"` [owner:e2e-engineer]
+- [x] [4.5] [P-2] Test: rate limiter caps detection jobs at 10/hour — 11th signal-detected message is skipped [owner:e2e-engineer]
+- [x] [4.6] [P-2] Test: dedup prevents duplicate obligation when same message triggers both Tier 1/2 signal detection and Tier 3 full detection [owner:e2e-engineer]

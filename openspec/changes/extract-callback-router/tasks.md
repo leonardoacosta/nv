@@ -17,4 +17,4 @@
 
 ## E2E Batch
 
-- [ ] [4.1] Verify structural correctness — confirm `data.startsWith("digest:")`, `data.startsWith("reminder:")`, `data.startsWith("watcher:")`, `data.startsWith(OBLIGATION_CONFIRM_PREFIX)` no longer appear in `packages/daemon/src/index.ts`; confirm `callbackQueryId` metadata cast appears exactly once (inside `callback-router.ts`) and zero times in `index.ts` [owner:e2e-engineer]
+- [x] [4.1] Verify structural correctness — confirm `data.startsWith("digest:")`, `data.startsWith("reminder:")`, `data.startsWith("watcher:")`, `data.startsWith(OBLIGATION_CONFIRM_PREFIX)` no longer appear in `packages/daemon/src/index.ts`; confirm `callbackQueryId` metadata cast appears exactly once (inside `callback-router.ts`) and zero times in `index.ts` [owner:e2e-engineer]

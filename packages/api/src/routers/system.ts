@@ -16,6 +16,15 @@ import {
 import { createTRPCRouter, protectedProcedure } from "../trpc.js";
 import { fleetFetch } from "../lib/fleet.js";
 
+// ── Config sources types (used by configSources procedure) ──────────
+export type ConfigSource = "env" | "toml" | "db" | "default";
+
+export interface ConfigKeyInfo {
+  source: ConfigSource;
+  value: string | number | boolean | null;
+  validated: boolean;
+}
+
 // ── Static fleet service registry ────────────────────────────────────
 
 interface FleetServiceEntry {
@@ -953,13 +962,6 @@ export const systemRouter = createTRPCRouter({
    * TOML and default are inferred by absence of env override.
    */
   configSources: protectedProcedure.query(() => {
-    type Source = "env" | "toml" | "db" | "default";
-
-    interface ConfigKeyInfo {
-      source: Source;
-      value: string | number | boolean | null;
-      validated: boolean;
-    }
 
     const SENSITIVE_KEYS = new Set([
       "database.url",
@@ -974,7 +976,7 @@ export const systemRouter = createTRPCRouter({
       return value;
     }
 
-    function envSource(envVar: string): Source {
+    function envSource(envVar: string): ConfigSource {
       return process.env[envVar] !== undefined ? "env" : "default";
     }
 

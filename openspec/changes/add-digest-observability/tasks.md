@@ -20,7 +20,7 @@
 (No UI tasks)
 
 ## E2E Batch
-- [ ] [4.1] [P-3] Test: suppression persistence survives across digest runs -- insert suppression, run suppress, verify item is still suppressed via DB query [owner:e2e-engineer]
-- [ ] [4.2] [P-3] Test: expired suppressions are cleaned up -- insert suppression with past `expires_at`, run suppress, verify row deleted [owner:e2e-engineer]
-- [ ] [4.3] [P-3] Test: `system.digestStats` returns valid shape with correct `active_suppressions_count` matching DB state [owner:e2e-engineer]
-- [ ] [4.4] [P-3] Test: `system.digestSuppressions` returns only non-expired entries ordered by `last_sent_at DESC` [owner:e2e-engineer]
+- [x] [4.1] [P-3] Test: suppression persistence survives across digest runs -- insert suppression, run suppress, verify item is still suppressed via DB query [owner:e2e-engineer]
+- [x] [4.2] [P-3] Test: expired suppressions are cleaned up -- insert suppression with past `expires_at`, run suppress, verify row deleted [owner:e2e-engineer]
+- [x] [4.3] [P-3] Test: `system.digestStats` returns valid shape with correct `active_suppressions_count` matching DB state [owner:e2e-engineer]
+- [x] [4.4] [P-3] Test: `system.digestSuppressions` returns only non-expired entries ordered by `last_sent_at DESC` [owner:e2e-engineer]

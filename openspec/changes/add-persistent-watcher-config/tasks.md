@@ -12,4 +12,4 @@
 (No UI tasks)
 
 ## E2E Batch
-- [ ] [4.1] Test: watcher config persists across daemon restart — PATCH interval_minutes, restart daemon, GET watcher config, assert new value retained [owner:e2e-engineer]
+- [x] [4.1] Test: watcher config persists across daemon restart — PATCH interval_minutes, restart daemon, GET watcher config, assert new value retained [owner:e2e-engineer]

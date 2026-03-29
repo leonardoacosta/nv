@@ -17,6 +17,7 @@ import { JobQueue } from "./queue/index.js";
 import { ThreadResolver } from "./queue/thread-resolver.js";
 import type { EnqueueResult } from "./queue/types.js";
 import { NovaAgent } from "./brain/agent.js";
+import { classifyAgentError, USER_MESSAGES } from "./brain/agent-error.js";
 import { ConversationManager } from "./brain/conversation.js";
 import { KeywordRouter } from "./brain/keyword-router.js";
 import { EmbeddingRouter } from "./brain/embedding-router.js";
@@ -355,15 +356,16 @@ export async function main(): Promise<void> {
   });
 
   queue.on("failed", (event) => {
+    const category = classifyAgentError(event.job.error);
     log.error(
-      { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, error: event.job.error, queueDepth: event.queueDepth },
+      { service: "nova-daemon", jobId: event.job.id, chatId: event.job.chatId, error: event.job.error, errorCategory: category, queueDepth: event.queueDepth },
       "Job failed",
     );
-    // Notify user of failure
+    // Notify user of failure with category-specific message
     if (telegram !== null) {
       void telegram.sendMessage(
         event.job.chatId,
-        "Sorry, something went wrong processing your message. Please try again.",
+        USER_MESSAGES[category],
         { replyToMessageId: event.job.replyToMessageId },
       );
     }
@@ -791,11 +793,12 @@ export async function main(): Promise<void> {
                   if (signal.aborted) {
                     return;
                   }
+                  const category = classifyAgentError(err);
                   log.error(
-                    { service: "nova-daemon", chatId: msg.chatId, err },
+                    { service: "nova-daemon", chatId: msg.chatId, err, errorCategory: category },
                     "Agent processing failed",
                   );
-                  await writer.abort("Sorry, something went wrong.");
+                  await writer.abort(USER_MESSAGES[category]);
                 }
               },
             });

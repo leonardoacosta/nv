@@ -10,6 +10,7 @@ import { estimateCost } from "../features/diary/pricing.js";
 import { buildMcpServers, buildAllowedTools } from "./mcp-config.js";
 import { createAgentQueryStream } from "./query-factory.js";
 import type { DreamScheduler } from "../features/dream/scheduler.js";
+import { AgentError, AgentErrorCategory, classifyAgentError } from "./agent-error.js";
 
 /**
  * Format an array of messages into a `<conversation_history>` block
@@ -186,7 +187,8 @@ export class NovaAgent {
           resultText = sdkMsg.result;
           stopReason = sdkMsg.stop_reason ?? "end_turn";
         } else {
-          throw new Error(
+          throw new AgentError(
+            classifyAgentError(new Error(sdkMsg.subtype)),
             `Agent query failed: ${sdkMsg.subtype}`,
           );
         }

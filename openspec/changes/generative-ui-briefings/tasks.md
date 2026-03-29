@@ -10,25 +10,25 @@
 
 ## API Batch 1: Block Types
 
-- [ ] [2.1] [P-1] Create packages/db/src/blocks.ts -- Zod discriminated union on `type` field for 10 block types: section, status_table, metric_card, timeline, action_group, kv_list, alert, source_pills, pr_list, pipeline_table. Each block has `type` (required), `title` (optional), and type-specific `data` object. Export BriefingBlockSchema (single block), BriefingBlocksSchema (z.array), inferred types BriefingBlock and BriefingBlocks [owner:api-engineer] [beads:nv-gkh1]
-- [ ] [2.2] [P-2] Add barrel export for blocks.ts in packages/db/src/index.ts -- export { BriefingBlockSchema, BriefingBlocksSchema, type BriefingBlock, type BriefingBlocks } [owner:api-engineer] [beads:nv-8g0d]
-- [ ] [2.3] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:api-engineer] [beads:nv-ktvi]
+- [x] [2.1] [P-1] Create packages/db/src/blocks.ts -- Zod discriminated union on `type` field for 10 block types: section, status_table, metric_card, timeline, action_group, kv_list, alert, source_pills, pr_list, pipeline_table. Each block has `type` (required), `title` (optional), and type-specific `data` object. Export BriefingBlockSchema (single block), BriefingBlocksSchema (z.array), inferred types BriefingBlock and BriefingBlocks [owner:api-engineer] [beads:nv-gkh1]
+- [x] [2.2] [P-2] Add barrel export for blocks.ts in packages/db/src/index.ts -- export { BriefingBlockSchema, BriefingBlocksSchema, type BriefingBlock, type BriefingBlocks } [owner:api-engineer] [beads:nv-8g0d]
+- [x] [2.3] [P-1] Gate: `tsc --noEmit` passes for @nova/db [owner:api-engineer] [beads:nv-ktvi]
 
 ## API Batch 2: Synthesizer Update
 
-- [ ] [3.1] [P-1] Update BRIEFING_SYSTEM_PROMPT in packages/daemon/src/features/briefing/synthesizer.ts -- replace markdown instructions with JSON block schema definition, include examples for each of the 10 block types, instruct Claude to output a raw JSON array (no code fences) [owner:api-engineer] [beads:nv-q85s]
-- [ ] [3.2] [P-1] Add JSON parsing + Zod validation to synthesizeBriefing() -- parse Claude response as JSON, validate with BriefingBlocksSchema from @nova/db. On parse/validation failure, log warning and fall back to buildStaticSummary() [owner:api-engineer] [beads:nv-csjk]
-- [ ] [3.3] [P-1] Add blocksToMarkdown() helper in synthesizer.ts -- convert validated BriefingBlock[] to readable markdown string for Telegram delivery. Section blocks become ### headers, status_table becomes ASCII table, metric_card becomes "Label: Value (delta)", etc. [owner:api-engineer] [beads:nv-qxsc]
-- [ ] [3.4] [P-1] Extract suggestedActions from action_group blocks -- find blocks with type "action_group", map their actions to SuggestedAction[]. Remove the old parseSuggestedActions() JSON code fence parser [owner:api-engineer] [beads:nv-b43m]
-- [ ] [3.5] [P-1] Update SynthesisResult type to include `blocks: BriefingBlock[] | null` -- set to validated block array on success, null on fallback to markdown [owner:api-engineer] [beads:nv-ivg7]
-- [ ] [3.6] [P-1] Gate: `tsc --noEmit` passes for daemon [owner:api-engineer] [beads:nv-wpn3]
+- [x] [3.1] [P-1] Update BRIEFING_SYSTEM_PROMPT in packages/daemon/src/features/briefing/synthesizer.ts -- replace markdown instructions with JSON block schema definition, include examples for each of the 10 block types, instruct Claude to output a raw JSON array (no code fences) [owner:api-engineer] [beads:nv-q85s]
+- [x] [3.2] [P-1] Add JSON parsing + Zod validation to synthesizeBriefing() -- parse Claude response as JSON, validate with BriefingBlocksSchema from @nova/db. On parse/validation failure, log warning and fall back to buildStaticSummary() [owner:api-engineer] [beads:nv-csjk]
+- [x] [3.3] [P-1] Add blocksToMarkdown() helper in synthesizer.ts -- convert validated BriefingBlock[] to readable markdown string for Telegram delivery. Section blocks become ### headers, status_table becomes ASCII table, metric_card becomes "Label: Value (delta)", etc. [owner:api-engineer] [beads:nv-qxsc]
+- [x] [3.4] [P-1] Extract suggestedActions from action_group blocks -- find blocks with type "action_group", map their actions to SuggestedAction[]. Remove the old parseSuggestedActions() JSON code fence parser [owner:api-engineer] [beads:nv-b43m]
+- [x] [3.5] [P-1] Update SynthesisResult type to include `blocks: BriefingBlock[] | null` -- set to validated block array on success, null on fallback to markdown [owner:api-engineer] [beads:nv-ivg7]
+- [x] [3.6] [P-1] Gate: `tsc --noEmit` passes for daemon [owner:api-engineer] [beads:nv-wpn3]
 
 ## API Batch 3: Runner + SSE Streaming
 
-- [ ] [4.1] [P-1] Update runMorningBriefing() in packages/daemon/src/features/briefing/runner.ts -- add `$4` parameter for `blocks` (JSON.stringify(synthesis.blocks) or null) in the INSERT query. Update SQL to `INSERT INTO briefings (content, sources_status, suggested_actions, blocks) VALUES ($1, $2, $3, $4)` [owner:api-engineer] [beads:nv-yd5b]
-- [ ] [4.2] [P-1] Add GET /api/briefing/stream SSE endpoint in packages/daemon/src/http.ts -- use streamSSE pattern from Hono (same as POST /chat). Call gatherContext(), then stream blocks as they are synthesized. Emit `{ type: "block", index, block }` per block, `{ type: "done", blocks }` on completion, `{ type: "error", message }` on failure. After streaming, persist briefing to DB and send Telegram notification [owner:api-engineer] [beads:nv-b576]
-- [ ] [4.3] [P-2] Return 503 if briefingDeps is not configured on the stream endpoint [owner:api-engineer] [beads:nv-qbzc]
-- [ ] [4.4] [P-1] Gate: `tsc --noEmit` passes for daemon [owner:api-engineer] [beads:nv-a1ut]
+- [x] [4.1] [P-1] Update runMorningBriefing() in packages/daemon/src/features/briefing/runner.ts -- add `$4` parameter for `blocks` (JSON.stringify(synthesis.blocks) or null) in the INSERT query. Update SQL to `INSERT INTO briefings (content, sources_status, suggested_actions, blocks) VALUES ($1, $2, $3, $4)` [owner:api-engineer] [beads:nv-yd5b]
+- [x] [4.2] [P-1] Add GET /api/briefing/stream SSE endpoint in packages/daemon/src/http.ts -- use streamSSE pattern from Hono (same as POST /chat). Call gatherContext(), then stream blocks as they are synthesized. Emit `{ type: "block", index, block }` per block, `{ type: "done", blocks }` on completion, `{ type: "error", message }` on failure. After streaming, persist briefing to DB and send Telegram notification [owner:api-engineer] [beads:nv-b576]
+- [x] [4.3] [P-2] Return 503 if briefingDeps is not configured on the stream endpoint [owner:api-engineer] [beads:nv-qbzc]
+- [x] [4.4] [P-1] Gate: `tsc --noEmit` passes for daemon [owner:api-engineer] [beads:nv-a1ut]
 
 ## UI Batch 1: Block Components
 

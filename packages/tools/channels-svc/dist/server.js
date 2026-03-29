@@ -21,6 +21,37 @@ export function createHttpApp(registry, config, logger) {
             uptime_secs: Math.floor((Date.now() - startedAt) / 1000),
         });
     });
+    // Registry endpoint — exposes tool definitions for tool-router self-registration
+    app.get("/registry", (c) => {
+        return c.json({
+            service: "channels-svc",
+            tools: [
+                {
+                    name: "list_channels",
+                    description: "List available messaging channels (Telegram, Discord, Teams, etc.) with connection status.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {},
+                        required: [],
+                    },
+                },
+                {
+                    name: "send_to_channel",
+                    description: "Send a message to a specific channel. Requires operator confirmation for outbound messages.",
+                    inputSchema: {
+                        type: "object",
+                        properties: {
+                            channel: { type: "string", description: "Channel name" },
+                            target: { type: "string", description: "Target identifier (chat ID, channel ID, email address)" },
+                            message: { type: "string", description: "Message body" },
+                        },
+                        required: ["channel", "target", "message"],
+                    },
+                },
+            ],
+            healthUrl: `http://127.0.0.1:${config.servicePort}/health`,
+        });
+    });
     // List channels
     app.get("/channels", (c) => {
         return c.json({ channels: registry.list() });

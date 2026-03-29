@@ -638,6 +638,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.19.11
         version: 1.19.11(hono@4.12.9)
+      '@iarna/toml':
+        specifier: ^2.2.5
+        version: 2.2.5
       hono:
         specifier: ^4.12.9
         version: 4.12.9
@@ -645,6 +648,9 @@ importers:
         specifier: ^9.5.0
         version: 9.14.0
     devDependencies:
+      '@types/iarna__toml':
+        specifier: ^2.0.4
+        version: 2.0.5
       '@types/node':
         specifier: ^22.10.7
         version: 22.19.15
@@ -2422,6 +2428,9 @@ packages:
 
   '@types/http-proxy@1.17.17':
     resolution: {integrity: sha512-ED6LB+Z1AVylNTu7hdzuBqOgMnvG/ld6wGCG8wFnAzKX5uyW2K3WD52v0gnLCTK/VLpXtKckgWuyScYK6cSPaw==}
+
+  '@types/iarna__toml@2.0.5':
+    resolution: {integrity: sha512-I55y+SxI0ayM4MBU6yfGJGmi4wRll6wtSeKiFYAZj+Z5Q1DVbMgBSVDYY+xQZbjIlLs/pN4fidnvR8faDrmxPg==}
 
   '@types/long@4.0.2':
     resolution: {integrity: sha512-MqTGEo5bj5t157U6fA/BiDynNkn0YknVdh48CMPkTSpFTVmvao5UQmm7uEF6xBEo7qIMAlY/JSleYaE6VOdpaA==}
@@ -5979,6 +5988,10 @@ snapshots:
       '@types/unist': 3.0.3
 
   '@types/http-proxy@1.17.17':
+    dependencies:
+      '@types/node': 22.19.15
+
+  '@types/iarna__toml@2.0.5':
     dependencies:
       '@types/node': 22.19.15
 

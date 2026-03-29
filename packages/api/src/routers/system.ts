@@ -689,23 +689,7 @@ export const systemRouter = createTRPCRouter({
       return { topic: input.topic, written: input.content.length };
     }),
 
-  /**
-   * Config sources: proxy GET /config/sources from the Rust daemon.
-   * Returns which env var, TOML file, or default resolved each config key.
-   * Falls back to an empty array if the daemon endpoint is not yet available.
-   */
-  configSources: protectedProcedure.query(async () => {
-    try {
-      const sources = await fleetFetch<ConfigSourceEntry[]>(
-        "daemon",
-        "/config/sources",
-      );
-      return Array.isArray(sources) ? sources : ([] as ConfigSourceEntry[]);
-    } catch {
-      // Daemon endpoint not yet implemented — return empty so UI degrades gracefully
-      return [] as ConfigSourceEntry[];
-    }
-  }),
+  /* configSources: moved below — Zod-based implementation replaces Rust daemon proxy */
 
   /**
    * Channel status: call channels-svc /channels for live connection status
@@ -973,7 +957,6 @@ export const systemRouter = createTRPCRouter({
 
     interface ConfigKeyInfo {
       source: Source;
-      /** Redacted value for sensitive keys, actual value for safe keys */
       value: string | number | boolean | null;
       validated: boolean;
     }

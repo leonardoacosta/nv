@@ -49,6 +49,7 @@ import { serve } from "@hono/node-server";
 import type { ServerType } from "@hono/node-server";
 import { createHttpApp } from "./http.js";
 import type { ChannelRegistryEntry } from "./http.js";
+import { FleetHealthMonitor } from "./features/fleet-health/index.js";
 import { CallbackRouter } from "./telegram/callback-router.js";
 import { readSettings, mergeOverToml } from "./features/settings/persistent-settings.js";
 
@@ -165,6 +166,24 @@ export async function main(): Promise<void> {
     log.warn(
       { service: "nova-daemon" },
       "TELEGRAM_BOT_TOKEN not set — Telegram adapter disabled",
+    );
+  }
+
+  // ── Fleet health monitor ───────────────────────────────────────────────────
+
+  let fleetHealthMonitor: FleetHealthMonitor | null = null;
+
+  if (config.fleetHealthMonitor.enabled) {
+    fleetHealthMonitor = new FleetHealthMonitor(
+      config.fleetHealthMonitor,
+      log,
+      telegram ?? undefined,
+      config.telegramChatId,
+    );
+    fleetHealthMonitor.start();
+    log.info(
+      { service: "nova-daemon", intervalMs: config.fleetHealthMonitor.intervalMs },
+      "Fleet health monitor started",
     );
   }
 
@@ -416,6 +435,7 @@ export async function main(): Promise<void> {
     apiToken: config.apiToken,
     briefingDeps: briefingDeps ?? undefined,
     channelRegistry,
+    fleetHealthMonitor: fleetHealthMonitor ?? undefined,
   });
 
   let httpServer: ServerType | null = null;
@@ -846,6 +866,10 @@ export async function main(): Promise<void> {
     }
 
     stopTokenRefresh();
+
+    if (fleetHealthMonitor !== null) {
+      fleetHealthMonitor.stop();
+    }
 
     if (watcher !== null) {
       watcher.stop();

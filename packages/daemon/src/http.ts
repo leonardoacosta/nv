@@ -16,6 +16,7 @@ import type { BriefingDeps } from "./features/briefing/synthesizer.js";
 import { gatherContext, synthesizeBriefing, blocksToMarkdown } from "./features/briefing/synthesizer.js";
 import { runMorningBriefing } from "./features/briefing/runner.js";
 import { runDream, getDreamStatus } from "./features/dream/index.js";
+import type { FleetHealthMonitor } from "./features/fleet-health/index.js";
 
 const startedAt = Date.now();
 
@@ -39,6 +40,7 @@ export interface HttpServerDeps {
   apiToken: string;
   briefingDeps?: BriefingDeps;
   channelRegistry?: ChannelRegistryEntry[];
+  fleetHealthMonitor?: FleetHealthMonitor;
 }
 
 export function createHttpApp(deps: HttpServerDeps): Hono {
@@ -71,10 +73,61 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
 
   // ── GET /health ────────────────────────────────────────────────────────────
   app.get("/health", (c) => {
+    const uptimeSecs = Math.floor((Date.now() - startedAt) / 1000);
+
+    if (!deps.fleetHealthMonitor) {
+      return c.json({
+        status: "ok",
+        service: "nova-daemon",
+        uptime_secs: uptimeSecs,
+      });
+    }
+
+    const snapshot = deps.fleetHealthMonitor.getSnapshot();
+
+    // Not yet probed — fleet is null, status remains ok
+    if (snapshot.length === 0) {
+      return c.json({
+        status: "ok",
+        service: "nova-daemon",
+        uptime_secs: uptimeSecs,
+        fleet: null,
+      });
+    }
+
+    const CRITICAL_SERVICE_NAMES = new Set(["tool-router", "memory-svc", "graph-svc"]);
+
+    const healthyCount = snapshot.filter((s) => s.status === "healthy").length;
+    const unhealthyCount = snapshot.length - healthyCount;
+
+    const hasCriticalDown = snapshot.some(
+      (s) => s.status === "unhealthy" && CRITICAL_SERVICE_NAMES.has(s.name),
+    );
+
+    const lastCheckedAt = snapshot.reduce<Date | null>((latest, s) => {
+      if (!latest || s.lastCheckedAt > latest) return s.lastCheckedAt;
+      return latest;
+    }, null);
+
     return c.json({
-      status: "ok",
+      status: hasCriticalDown ? "degraded" : "ok",
       service: "nova-daemon",
-      uptime_secs: Math.floor((Date.now() - startedAt) / 1000),
+      uptime_secs: uptimeSecs,
+      fleet: {
+        summary: {
+          healthy: healthyCount,
+          unhealthy: unhealthyCount,
+          total: snapshot.length,
+        },
+        last_checked_at: lastCheckedAt?.toISOString() ?? null,
+        services: snapshot.map((s) => ({
+          name: s.name,
+          port: s.port,
+          status: s.status,
+          latency_ms: s.latencyMs,
+          ...(s.error !== undefined ? { error: s.error } : {}),
+        })),
+      },
     });
   });
 

@@ -9,9 +9,14 @@ import {
 import type { DreamSchedulerConfig } from "./features/dream/types.js";
 import type { QueueConfig } from "./queue/index.js";
 import { resolveConfig, type ConfigWithSources } from "./config/resolver.js";
+import {
+  type FleetHealthMonitorConfig,
+  defaultFleetHealthMonitorConfig,
+} from "./features/fleet-health/types.js";
 
 export type { ProactiveWatcherConfig, DreamSchedulerConfig, QueueConfig };
 export type { ConfigWithSources };
+export type { FleetHealthMonitorConfig };
 
 export interface DigestConfig {
   enabled: boolean;
@@ -81,6 +86,7 @@ export interface Config {
   digest: DigestConfig;
   queue: QueueConfig;
   conversationHistoryDepth: number;
+  fleetHealthMonitor: FleetHealthMonitorConfig;
 }
 
 const DEFAULT_CONFIG_PATH = join(homedir(), ".nv", "config", "nv.toml");
@@ -122,6 +128,12 @@ interface SupplementalToml {
   };
   conversation?: {
     history_depth?: number;
+  };
+  fleet_health_monitor?: {
+    enabled?: boolean;
+    interval_ms?: number;
+    probe_timeout_ms?: number;
+    notify_on_critical?: boolean;
   };
 }
 
@@ -234,6 +246,21 @@ export async function loadConfig(
     ? parseInt(historyDepthRaw, 10)
     : (toml.conversation?.history_depth ?? 20);
 
+  const fleetHealthMonitor: FleetHealthMonitorConfig = {
+    enabled:
+      toml.fleet_health_monitor?.enabled ??
+      defaultFleetHealthMonitorConfig.enabled,
+    intervalMs:
+      toml.fleet_health_monitor?.interval_ms ??
+      defaultFleetHealthMonitorConfig.intervalMs,
+    probeTimeoutMs:
+      toml.fleet_health_monitor?.probe_timeout_ms ??
+      defaultFleetHealthMonitorConfig.probeTimeoutMs,
+    notifyOnCritical:
+      toml.fleet_health_monitor?.notify_on_critical ??
+      defaultFleetHealthMonitorConfig.notifyOnCritical,
+  };
+
   const apiToken = process.env["NV_API_TOKEN"];
   if (!apiToken) {
     throw new Error("NV_API_TOKEN environment variable is required but not set.");
@@ -263,5 +290,6 @@ export async function loadConfig(
       maxQueueSize: validated.queue.maxQueueSize,
     },
     conversationHistoryDepth,
+    fleetHealthMonitor,
   };
 }

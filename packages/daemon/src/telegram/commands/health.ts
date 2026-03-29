@@ -1,4 +1,5 @@
 import { fleetGet, FleetClientError } from "../../fleet-client.js";
+import { FLEET_SERVICES } from "../../features/fleet-health/index.js";
 
 const TOOL_ROUTER_PORT = 4100;
 
@@ -47,17 +48,7 @@ export async function buildHealthReply(): Promise<string> {
  * Used as fallback when tool-router /health doesn't return per-service detail.
  */
 export async function probeFleetHealth(): Promise<string> {
-  const services = [
-    { name: "tool-router", port: 4100 },
-    { name: "memory-svc", port: 4101 },
-    { name: "messages-svc", port: 4102 },
-    { name: "channels-svc", port: 4103 },
-    { name: "discord-svc", port: 4104 },
-    { name: "teams-svc", port: 4105 },
-    { name: "schedule-svc", port: 4106 },
-    { name: "graph-svc", port: 4107 },
-    { name: "meta-svc", port: 4108 },
-  ];
+  const services = FLEET_SERVICES;
 
   const results = await Promise.allSettled(
     services.map(async (svc) => {

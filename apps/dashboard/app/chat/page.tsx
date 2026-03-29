@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { Bot, Send, User, Loader2 } from "lucide-react";
+import { Bot, Send, User, Loader2, WifiOff } from "lucide-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "@/lib/trpc/react";
 import PageShell from "@/components/layout/PageShell";
@@ -19,12 +19,35 @@ import { channelAccentColor } from "@/lib/channel-colors";
 // (no tRPC chat router exists for send/SSE)
 import { apiFetch } from "@/lib/api-client";
 import type { StoredMessage, ChatSSEEvent } from "@/types/api";
+import {
+  useDaemonEvents,
+  type DaemonEvent,
+  type WsStatus,
+} from "@/components/providers/DaemonEventContext";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 type TransportMode = "direct" | "telegram";
+
+/** Shape of the WsEvent payload the daemon broadcasts for message.* events */
+interface MessageWsEvent {
+  type: "message.user" | "message.chunk" | "message.complete" | "message.typing" | "ping";
+  channel?: string;
+  sender?: string;
+  messageId?: string;
+  content?: string;
+  chunk?: string;
+  timestamp: number;
+}
+
+/** Per-message streaming accumulation state */
+interface StreamingEntry {
+  messageId: string;
+  channel: string;
+  accumulated: string;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,6 +56,15 @@ type TransportMode = "direct" | "telegram";
 function formatTimestamp(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function isMessageWsEvent(payload: unknown): payload is MessageWsEvent {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    "type" in payload &&
+    typeof (payload as Record<string, unknown>).type === "string"
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -142,9 +174,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
 // ---------------------------------------------------------------------------
 // StreamingBubble — Nova bubble that shows typing indicator then streaming text
+// Task 4.5: accepts optional channel prop to show correct ChannelBadge
 // ---------------------------------------------------------------------------
 
-function StreamingBubble({ text }: { text: string }) {
+function StreamingBubble({ text, channel = "dashboard" }: { text: string; channel?: string }) {
   return (
     <div className="flex gap-2.5 justify-start">
       <div className="w-7 h-7 rounded-full bg-ds-gray-300 flex items-center justify-center shrink-0 mt-1">
@@ -156,7 +189,7 @@ function StreamingBubble({ text }: { text: string }) {
           <span className="text-[11px] font-medium text-ds-gray-900">
             Nova
           </span>
-          <ChannelBadge channel="dashboard" />
+          <ChannelBadge channel={channel} />
         </div>
         {text ? (
           <div className="text-ds-gray-1000">
@@ -186,6 +219,24 @@ function TransportBadge({ mode }: { mode: TransportMode }) {
         {mode === "direct" ? "Direct" : "Telegram"}
       </span>
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DisconnectionBanner — Task 4.7
+// ---------------------------------------------------------------------------
+
+function DisconnectionBanner({ status }: { status: WsStatus }) {
+  if (status === "connected") return null;
+  return (
+    <div className="shrink-0 mb-2 flex items-center gap-2 px-3 py-2 rounded-md bg-ds-gray-200 border border-ds-gray-400 text-ds-gray-700 text-[12px]">
+      <WifiOff size={13} className="shrink-0" />
+      <span>
+        {status === "reconnecting"
+          ? "Live updates paused — reconnecting..."
+          : "Live updates disconnected — check daemon status."}
+      </span>
+    </div>
   );
 }
 
@@ -292,6 +343,11 @@ export default function ChatPage() {
   const [transportMode, setTransportMode] = useState<TransportMode>("direct");
   const [telegramPolling, setTelegramPolling] = useState(false);
 
+  // --- Task 4.3: cross-channel streaming state (keyed by messageId) ---
+  const [crossChannelStreams, setCrossChannelStreams] = useState<
+    Map<string, StreamingEntry>
+  >(new Map());
+
   // --- Refs ---
   const scrollRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -374,6 +430,89 @@ export default function ChatPage() {
     const maxHeight = 96;
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Tasks 4.1–4.4: WebSocket message event handler
+  // ---------------------------------------------------------------------------
+
+  const prevWsStatusRef = useRef<WsStatus>("disconnected");
+
+  const wsStatus = useDaemonEvents(
+    useCallback(
+      (event: DaemonEvent) => {
+        if (!isMessageWsEvent(event.payload)) return;
+        const ev = event.payload;
+
+        if (event.type === "message.user") {
+          // Task 4.2: append inbound StoredMessage; skip dashboard messages from self
+          if (ev.channel === "dashboard") return; // SSE already handled on dashboard channel
+          const incoming: StoredMessage = {
+            id: Date.now(),
+            timestamp: new Date(ev.timestamp).toISOString(),
+            direction: "inbound",
+            channel: ev.channel ?? "unknown",
+            sender: ev.sender ?? "unknown",
+            content: ev.content ?? "",
+            response_time_ms: null,
+            tokens_in: null,
+            tokens_out: null,
+            type: "conversation",
+          };
+          setPendingMessages((prev) => [incoming, ...prev]);
+        } else if (event.type === "message.chunk") {
+          // Task 4.3: accumulate chunks for cross-channel streams only
+          // Dashboard SSE already handles dashboard channel streaming
+          if (ev.channel === "dashboard") return;
+          const id = ev.messageId ?? "unknown";
+          setCrossChannelStreams((prev) => {
+            const existing = prev.get(id);
+            const updated = new Map(prev);
+            updated.set(id, {
+              messageId: id,
+              channel: ev.channel ?? "unknown",
+              accumulated: (existing?.accumulated ?? "") + (ev.chunk ?? ""),
+            });
+            return updated;
+          });
+        } else if (event.type === "message.complete") {
+          // Task 4.4: finalize cross-channel streaming; skip dashboard (SSE handles it)
+          if (ev.channel === "dashboard") return;
+          const id = ev.messageId ?? "unknown";
+          const finalMsg: StoredMessage = {
+            id: Date.now() + 1,
+            timestamp: new Date(ev.timestamp).toISOString(),
+            direction: "outbound",
+            channel: ev.channel ?? "unknown",
+            sender: ev.sender ?? "nova",
+            content: ev.content ?? "",
+            response_time_ms: null,
+            tokens_in: null,
+            tokens_out: null,
+            type: "conversation",
+          };
+          setPendingMessages((prev) => [finalMsg, ...prev]);
+          setCrossChannelStreams((prev) => {
+            const updated = new Map(prev);
+            updated.delete(id);
+            return updated;
+          });
+        }
+      },
+      [],
+    ),
+    "message", // Task 4.1: filter to "message" prefix
+  );
+
+  // ---------------------------------------------------------------------------
+  // Task 4.6: reconnection catch-up — reload history on WS reconnect
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (prevWsStatusRef.current === "reconnecting" && wsStatus === "connected") {
+      void refetch();
+    }
+    prevWsStatusRef.current = wsStatus;
+  }, [wsStatus, refetch]);
 
   // --- Send message ---
   const handleSend = useCallback(
@@ -507,10 +646,16 @@ export default function ChatPage() {
   // Combine errors — show history error unless there's a send error
   const displayError = sendError ?? (historyError?.message ?? null);
 
+  // Cross-channel streaming bubbles as array for rendering
+  const crossChannelStreamList = Array.from(crossChannelStreams.values());
+
   // --- Render ---
   return (
     <PageShell title="Chat" subtitle="Talk to Nova directly">
       <div className="flex flex-col h-[calc(100vh-12rem)]">
+        {/* Task 4.7: Disconnection banner */}
+        <DisconnectionBanner status={wsStatus} />
+
         {/* Error banner */}
         {displayError && (
           <div className="shrink-0 mb-3">
@@ -553,7 +698,7 @@ export default function ChatPage() {
           ) : (
             <div className="flex flex-col gap-3 py-4">
               {/* Empty state */}
-              {allMessages.length === 0 && !sending && (
+              {allMessages.length === 0 && !sending && crossChannelStreamList.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <Bot size={32} className="text-ds-gray-700 mb-3" />
                   <p className="text-copy-13 text-ds-gray-900">
@@ -562,10 +707,19 @@ export default function ChatPage() {
                 </div>
               )}
 
-              {/* Streaming / typing indicator */}
+              {/* Dashboard SSE streaming / typing indicator */}
               {sending && !telegramPolling && (
-                <StreamingBubble text={streamingText} />
+                <StreamingBubble text={streamingText} channel="dashboard" />
               )}
+
+              {/* Task 4.3: cross-channel streaming bubbles */}
+              {crossChannelStreamList.map((stream) => (
+                <StreamingBubble
+                  key={stream.messageId}
+                  text={stream.accumulated}
+                  channel={stream.channel}
+                />
+              ))}
 
               {/* Telegram polling indicator */}
               {telegramPolling && (

@@ -32,13 +32,13 @@
 
 ## UI Batch: Dashboard Chat Unified Stream
 
-- [ ] [4.1] [P-1] Subscribe to WebSocket message events in `apps/dashboard/app/chat/page.tsx` -- import and call `useDaemonEvents` with filter `"message"`, handle message.user, message.chunk, message.complete event types [owner:ui-engineer] [beads:nv-9z0i]
-- [ ] [4.2] [P-1] Handle `message.user` events -- append new inbound StoredMessage to messages array with event's channel and sender; skip if channel is "dashboard" and sender matches current user (already optimistically added) [owner:ui-engineer] [beads:nv-71vh]
-- [ ] [4.3] [P-1] Handle `message.chunk` events -- track streaming state per messageId; accumulate chunks; render StreamingBubble for cross-channel streams [owner:ui-engineer] [beads:nv-g99x]
-- [ ] [4.4] [P-1] Handle `message.complete` events -- replace streaming bubble with finalized StoredMessage; clear streaming state for that messageId; skip if channel is "dashboard" (SSE already handles) [owner:ui-engineer] [beads:nv-hvid]
-- [ ] [4.5] [P-2] Extend `StreamingBubble` component to accept optional `channel` prop -- pass through to `ChannelBadge` so cross-channel streams show correct badge (e.g. "telegram" badge for Telegram-originated streams) [owner:ui-engineer] [beads:nv-um6r]
-- [ ] [4.6] [P-2] Add reconnection catch-up logic -- when `useDaemonEvents` status transitions from "reconnecting" to "connected", call `loadHistory()` and merge results with existing messages (deduplicate by timestamp + content) [owner:ui-engineer] [beads:nv-yysk]
-- [ ] [4.7] [P-2] Show disconnection banner -- when WS status is "reconnecting" or "disconnected", render a subtle top banner: "Live updates paused -- reconnecting..." [owner:ui-engineer] [beads:nv-37xl]
+- [x] [4.1] [P-1] Subscribe to WebSocket message events in `apps/dashboard/app/chat/page.tsx` -- import and call `useDaemonEvents` with filter `"message"`, handle message.user, message.chunk, message.complete event types [owner:ui-engineer] [beads:nv-9z0i]
+- [x] [4.2] [P-1] Handle `message.user` events -- append new inbound StoredMessage to messages array with event's channel and sender; skip if channel is "dashboard" and sender matches current user (already optimistically added) [owner:ui-engineer] [beads:nv-71vh]
+- [x] [4.3] [P-1] Handle `message.chunk` events -- track streaming state per messageId; accumulate chunks; render StreamingBubble for cross-channel streams [owner:ui-engineer] [beads:nv-g99x]
+- [x] [4.4] [P-1] Handle `message.complete` events -- replace streaming bubble with finalized StoredMessage; clear streaming state for that messageId; skip if channel is "dashboard" (SSE already handles) [owner:ui-engineer] [beads:nv-hvid]
+- [x] [4.5] [P-2] Extend `StreamingBubble` component to accept optional `channel` prop -- pass through to `ChannelBadge` so cross-channel streams show correct badge (e.g. "telegram" badge for Telegram-originated streams) [owner:ui-engineer] [beads:nv-um6r]
+- [x] [4.6] [P-2] Add reconnection catch-up logic -- when `useDaemonEvents` status transitions from "reconnecting" to "connected", call `loadHistory()` and merge results with existing messages (deduplicate by timestamp + content) [owner:ui-engineer] [beads:nv-yysk]
+- [x] [4.7] [P-2] Show disconnection banner -- when WS status is "reconnecting" or "disconnected", render a subtle top banner: "Live updates paused -- reconnecting..." [owner:ui-engineer] [beads:nv-37xl]
 
 ## E2E: Typecheck + Verification
 

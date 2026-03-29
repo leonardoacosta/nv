@@ -1,10 +1,7 @@
 import type TelegramBot from "node-telegram-bot-api";
 import { buildKeyboard } from "../../channels/telegram.js";
 import type { DigestItem, Priority } from "./classify.js";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const TELEGRAM_MAX_LEN = 4096;
+import { TELEGRAM_MAX_LEN, splitForTelegram } from "../../utils/telegram.js";
 
 const SOURCE_ICONS: Record<string, string> = {
   email: "[Mail]",
@@ -145,11 +142,15 @@ export function formatDigest(
     { text: "Dismiss All", callbackData: "digest:dismiss:all" },
   ]);
 
-  // Truncate text if needed
+  // Truncate text if needed — take first chunk only for digest summary
   if (text.length > TELEGRAM_MAX_LEN) {
     const moreCount = items.length;
     const suffix = `\n... [${moreCount} more items]`;
-    text = text.slice(0, TELEGRAM_MAX_LEN - suffix.length) + suffix;
+    text = splitForTelegram(text)[0] ?? text.slice(0, TELEGRAM_MAX_LEN - suffix.length);
+    if (text.length > TELEGRAM_MAX_LEN - suffix.length) {
+      text = text.slice(0, TELEGRAM_MAX_LEN - suffix.length);
+    }
+    text = text + suffix;
   }
 
   const keyboard = allKeyboardRows.length > 0
@@ -184,7 +185,12 @@ export function formatWeeklySynthesis(synthesis: string): FormatResult {
   let text = `*Weekly Digest* -- ${dateStr}\n\n${synthesis}`;
 
   if (text.length > TELEGRAM_MAX_LEN) {
-    text = text.slice(0, TELEGRAM_MAX_LEN - 30) + "\n... [truncated]";
+    const suffix = "\n... [truncated]";
+    text = splitForTelegram(text)[0] ?? text.slice(0, TELEGRAM_MAX_LEN - suffix.length);
+    if (text.length > TELEGRAM_MAX_LEN - suffix.length) {
+      text = text.slice(0, TELEGRAM_MAX_LEN - suffix.length);
+    }
+    text = text + suffix;
   }
 
   return { text, keyboard: null };

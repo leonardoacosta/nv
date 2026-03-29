@@ -10,6 +10,8 @@ import type { ConversationManager } from "./brain/conversation.js";
 import type { Config } from "./config.js";
 import type { Message } from "./types.js";
 import type { Logger } from "./logger.js";
+import { humanizeToolName } from "./channels/tool-names.js";
+import { TELEGRAM_MAX_LEN } from "./utils/telegram.js";
 import type { BriefingDeps } from "./features/briefing/synthesizer.js";
 import { gatherContext, synthesizeBriefing, blocksToMarkdown } from "./features/briefing/synthesizer.js";
 import { runMorningBriefing } from "./features/briefing/runner.js";
@@ -146,7 +148,6 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
 
         // Send Telegram notification (fire-and-forget)
         if (row && briefingDeps.telegram && briefingDeps.telegramChatId) {
-          const TELEGRAM_MAX_LEN = 4096;
           const DASHBOARD_SUFFIX = "\n\n... [view full briefing on dashboard]";
           const content =
             synthesis.content.length <= TELEGRAM_MAX_LEN
@@ -273,8 +274,24 @@ export function createHttpApp(deps: HttpServerDeps): Hono {
                 full_text: event.response.text,
               }),
             });
+          } else if (event.type === "tool_start") {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "tool_start",
+                name: humanizeToolName(event.name),
+                callId: event.callId,
+              }),
+            });
+          } else if (event.type === "tool_done") {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "tool_done",
+                name: humanizeToolName(event.name),
+                callId: event.callId,
+                durationMs: event.durationMs,
+              }),
+            });
           }
-          // tool_start and tool_done are ignored in SSE output for now
         }
 
         // Save exchange -- fire-and-forget

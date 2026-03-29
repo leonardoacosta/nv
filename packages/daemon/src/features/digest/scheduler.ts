@@ -9,6 +9,7 @@ import { suppressItems, markItemsSent, consumeWeeklyStats } from "./suppress.js"
 import { formatDigest, formatWeeklySynthesis } from "./format.js";
 import { checkP0 } from "./realtime.js";
 import { isQuietHours } from "../../lib/quiet-hours.js";
+import { writeEntry } from "../diary/writer.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,7 +42,8 @@ async function runTier1Digest(deps: DigestSchedulerDeps): Promise<void> {
     return;
   }
 
-  const unsuppressed = await suppressItems(classified, pool, config.digest);
+  const suppressResult = await suppressItems(classified, pool, config.digest);
+  const { passed: unsuppressed } = suppressResult;
 
   if (unsuppressed.length === 0) {
     logger.debug("Digest Tier 1: nothing new to report");
@@ -62,8 +64,18 @@ async function runTier1Digest(deps: DigestSchedulerDeps): Promise<void> {
       ...(keyboard ? { keyboard } : {}),
     });
 
-    await markItemsSent(unsuppressed, pool);
+    await markItemsSent(unsuppressed, pool, config.digest);
     logger.info({ itemCount: unsuppressed.length }, "Digest Tier 1: sent");
+
+    // Write diary entry for observability
+    void writeEntry({
+      triggerType: "digest_run",
+      triggerSource: "scheduler",
+      channel: "telegram",
+      slug: `digest:tier1:${new Date().toISOString().slice(0, 10)}`,
+      content: `Tier 1 digest: ${unsuppressed.length} items sent (${suppressResult.suppressedCount} suppressed of ${suppressResult.totalItems} total, ${Math.round((suppressResult.suppressedCount / Math.max(suppressResult.totalItems, 1)) * 100)}% suppression rate)`,
+      toolsUsed: [],
+    });
   } catch (err) {
     logger.warn({ err }, "Digest Tier 1: failed to send");
   }

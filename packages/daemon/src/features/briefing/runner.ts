@@ -1,5 +1,6 @@
 import { gatherContext, synthesizeBriefing } from "./synthesizer.js";
 import type { BriefingDeps } from "./synthesizer.js";
+import { splitForTelegram, TELEGRAM_MAX_LEN } from "../../utils/telegram.js";
 
 // ─── BriefingRow ──────────────────────────────────────────────────────────────
 
@@ -10,12 +11,11 @@ interface BriefingRow {
 
 // ─── Telegram helpers ─────────────────────────────────────────────────────────
 
-const TELEGRAM_MAX_LEN = 4096;
 const DASHBOARD_SUFFIX = "\n\n... [view full briefing on dashboard]";
 
 function truncateForTelegram(content: string): string {
   if (content.length <= TELEGRAM_MAX_LEN) return content;
-  return content.slice(0, TELEGRAM_MAX_LEN - DASHBOARD_SUFFIX.length) + DASHBOARD_SUFFIX;
+  return splitForTelegram(content)[0]!.slice(0, TELEGRAM_MAX_LEN - DASHBOARD_SUFFIX.length) + DASHBOARD_SUFFIX;
 }
 
 // ─── runMorningBriefing ───────────────────────────────────────────────────────

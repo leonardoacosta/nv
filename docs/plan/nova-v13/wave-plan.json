@@ -201,7 +201,7 @@
       "specs": [
         {
           "name": "deduplicate-shared-utils",
-          "status": "pending",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -210,12 +210,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T20:15:06.056886",
           "merged_at": null
         },
         {
           "name": "add-persistent-watcher-config",
-          "status": "pending",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -224,12 +224,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T20:15:06.056888",
           "merged_at": null
         },
         {
           "name": "add-digest-observability",
-          "status": "pending",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -238,12 +238,12 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T20:15:06.056889",
           "merged_at": null
         },
         {
           "name": "add-dashboard-tool-events",
-          "status": "pending",
+          "status": "running",
           "phase": null,
           "branch": null,
           "pr": null,
@@ -252,7 +252,7 @@
           "gates_passed": [],
           "gates_failed": [],
           "ci": null,
-          "dispatched_at": null,
+          "dispatched_at": "2026-03-28T20:15:06.056890",
           "merged_at": null
         }
       ]
@@ -447,8 +447,10 @@
   "failed_specs": [],
   "mode": "consolidated",
   "mega_batch_state": {
-    "current_phase": null,
-    "phases_completed": [],
+    "current_phase": "API",
+    "phases_completed": [
+      "DB"
+    ],
     "task_results": {
       "extract-agent-query-factory": {},
       "extract-callback-router": {},
@@ -471,8 +473,13 @@
       "generative-ui-briefings": {},
       "unify-conversation-streaming": {}
     },
-    "phase_started_at": {},
-    "phase_completed_at": {}
+    "phase_started_at": {
+      "DB": "2026-03-28T20:15:06.056880",
+      "API": "2026-03-28T20:18:27.264354"
+    },
+    "phase_completed_at": {
+      "DB": "2026-03-28T20:18:27.264347"
+    }
   },
   "pre_audit_sha": "a51ec53"
 }

@@ -406,7 +406,8 @@ export const automationRouter = createTRPCRouter({
   }),
 
   /**
-   * Update watcher configuration (in-memory, reverts on restart).
+   * Update watcher configuration — persisted to DB and updated in-memory.
+   * DB write happens first; in-memory state only updates on DB success.
    */
   updateWatcher: protectedProcedure
     .input(
@@ -417,7 +418,38 @@ export const automationRouter = createTRPCRouter({
         quiet_end: z.string().regex(HH_MM_RE).optional(),
       }),
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
+      // Build the set of key-value pairs to persist
+      const dbEntries: { key: string; value: string }[] = [];
+
+      if (input.enabled !== undefined) {
+        dbEntries.push({ key: "watcher.enabled", value: String(input.enabled) });
+      }
+      if (input.interval_minutes !== undefined) {
+        dbEntries.push({ key: "watcher.interval_minutes", value: String(input.interval_minutes) });
+      }
+      if (input.quiet_start !== undefined) {
+        dbEntries.push({ key: "watcher.quiet_start", value: input.quiet_start });
+      }
+      if (input.quiet_end !== undefined) {
+        dbEntries.push({ key: "watcher.quiet_end", value: input.quiet_end });
+      }
+
+      // Persist to DB (upsert each key)
+      for (const entry of dbEntries) {
+        await db
+          .insert(settings)
+          .values({ key: entry.key, value: entry.value })
+          .onConflictDoUpdate({
+            target: settings.key,
+            set: {
+              value: entry.value,
+              updatedAt: sql`now()`,
+            },
+          });
+      }
+
+      // Update in-memory state only after DB success
       if (input.enabled !== undefined) watcherOverrides.enabled = input.enabled;
       if (input.interval_minutes !== undefined)
         watcherOverrides.interval_minutes = input.interval_minutes;

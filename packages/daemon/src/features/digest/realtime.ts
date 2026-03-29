@@ -22,7 +22,8 @@ export async function checkP0(deps: DigestSchedulerDeps): Promise<number> {
   }
 
   // Apply suppression (30min cooldown for P0)
-  const unsuppressed = await suppressItems(p0Items, pool, config.digest);
+  const suppressResult = await suppressItems(p0Items, pool, config.digest);
+  const { passed: unsuppressed } = suppressResult;
 
   if (unsuppressed.length === 0) {
     logger.debug("Digest P0 check: all P0 items suppressed (within cooldown)");
@@ -49,7 +50,7 @@ export async function checkP0(deps: DigestSchedulerDeps): Promise<number> {
 
   // Mark items as sent so cooldown applies
   if (sentCount > 0) {
-    await markItemsSent(unsuppressed, pool);
+    await markItemsSent(unsuppressed, pool, config.digest);
     logger.info({ count: sentCount }, "Digest P0: sent urgent alerts");
   }
 

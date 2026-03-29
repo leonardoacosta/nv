@@ -1,11 +1,9 @@
 import type { TelegramAdapter } from "./telegram.js";
 import { humanizeToolName } from "./tool-names.js";
 import { createLogger } from "../logger.js";
+import { TELEGRAM_MAX_LEN, splitForTelegram } from "../utils/telegram.js";
 
 const log = createLogger("stream-writer");
-
-/** Maximum Telegram message length. */
-const MAX_LEN = 4096;
 
 /** Minimum ms between sendDraft calls. */
 const DRAFT_THROTTLE_MS = 300;
@@ -84,7 +82,7 @@ export class TelegramStreamWriter {
     }
 
     // Split into 4096-char chunks and send as final messages with Markdown
-    const chunks = splitMessage(fullText);
+    const chunks = splitForTelegram(fullText);
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
@@ -169,8 +167,8 @@ export class TelegramStreamWriter {
     if (!displayText) return;
 
     // Truncate to Telegram limit
-    const truncated = displayText.length > MAX_LEN
-      ? displayText.slice(0, MAX_LEN - 3) + "..."
+    const truncated = displayText.length > TELEGRAM_MAX_LEN
+      ? displayText.slice(0, TELEGRAM_MAX_LEN - 3) + "..."
       : displayText;
 
     this.lastFlushAt = Date.now();
@@ -278,22 +276,3 @@ function stripMarkdown(text: string): string {
     );
 }
 
-/** Split text into chunks at 4096-char boundaries, preferring newline splits. */
-function splitMessage(text: string): string[] {
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= MAX_LEN) {
-      chunks.push(remaining);
-      break;
-    }
-    // Split at last newline before limit to avoid mid-word breaks
-    let splitAt = remaining.lastIndexOf("\n", MAX_LEN);
-    if (splitAt < MAX_LEN * 0.5) splitAt = MAX_LEN; // no good newline, hard split
-    chunks.push(remaining.slice(0, splitAt));
-    remaining = remaining.slice(splitAt).replace(/^\n/, "");
-  }
-
-  return chunks;
-}

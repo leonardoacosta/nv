@@ -1,12 +1,18 @@
 import { createHash } from "node:crypto";
 import type { Pool } from "pg";
+import { createLogger } from "../../logger.js";
 import type { DigestConfig } from "../../config.js";
 import type { DigestItem, Priority } from "./classify.js";
 
+const log = createLogger("digest:suppress");
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * DigestMeta no longer carries sentHashes — suppression state lives in
+ * the digest_suppression table. Retained fields: lastDigestAt, weeklyStats.
+ */
 interface DigestMeta {
-  sentHashes: Record<string, number>; // hash -> unix timestamp (ms) of when it was sent
   lastDigestAt: number | null;
   weeklyStats?: WeeklyStats;
 }
@@ -18,9 +24,16 @@ export interface WeeklyStats {
   digestRuns: number;
 }
 
+export interface SuppressResult {
+  passed: DigestItem[];
+  totalItems: number;
+  suppressedCount: number;
+  passedCount: number;
+}
+
 const DIGEST_META_TOPIC = "_digest_meta";
 
-// ─── State Persistence ────────────────────────────────────────────────────────
+// ─── State Persistence (meta only) ───────────────────────────────────────────
 
 interface MemoryRow {
   content: string;
@@ -34,18 +47,18 @@ async function readDigestMeta(pool: Pool): Promise<DigestMeta> {
     );
 
     if (result.rows[0]) {
-      const parsed = JSON.parse(result.rows[0].content) as DigestMeta;
+      const parsed = JSON.parse(result.rows[0].content) as Partial<DigestMeta & { sentHashes: unknown }>;
       return {
-        sentHashes: parsed.sentHashes ?? {},
         lastDigestAt: parsed.lastDigestAt ?? null,
         weeklyStats: parsed.weeklyStats,
+        // sentHashes intentionally dropped — migrated to digest_suppression table
       };
     }
   } catch {
     // Malformed JSON or missing row — start fresh
   }
 
-  return { sentHashes: {}, lastDigestAt: null };
+  return { lastDigestAt: null };
 }
 
 async function writeDigestMeta(pool: Pool, meta: DigestMeta): Promise<void> {
@@ -67,6 +80,16 @@ function computeItemHash(item: DigestItem): string {
     .digest("hex");
 }
 
+// ─── Priority Numeric Mapping ─────────────────────────────────────────────────
+
+function priorityToInt(priority: Priority): number {
+  switch (priority) {
+    case "P0": return 0;
+    case "P1": return 1;
+    case "P2": return 2;
+  }
+}
+
 // ─── Cooldown Resolution ──────────────────────────────────────────────────────
 
 function getCooldownMs(priority: Priority, config: DigestConfig): number {
@@ -82,62 +105,183 @@ function getCooldownMs(priority: Priority, config: DigestConfig): number {
 
 // ─── Suppression ──────────────────────────────────────────────────────────────
 
+interface SuppressionRow {
+  hash: string;
+  source: string;
+  priority: number;
+  last_sent_at: Date;
+  expires_at: Date;
+}
+
+/**
+ * Suppress digest items that are within their cooldown window.
+ *
+ * Steps:
+ * 1. Delete expired rows (expires_at < now) — cleanup pass.
+ * 2. Query active suppressions for the incoming item hashes.
+ * 3. For each item: if a matching suppression row exists and its cooldown
+ *    has not elapsed, suppress it; otherwise pass it through.
+ *
+ * Returns a SuppressResult with the passed items and aggregate stats for logging.
+ */
 export async function suppressItems(
   items: DigestItem[],
   pool: Pool,
   config: DigestConfig,
-): Promise<DigestItem[]> {
-  const meta = await readDigestMeta(pool);
-  const now = Date.now();
+): Promise<SuppressResult> {
+  const now = new Date();
 
-  // Phase 1: Prune hashes older than hashTtlMs (48h default)
-  const prunedHashes: Record<string, number> = {};
-  for (const [hash, timestamp] of Object.entries(meta.sentHashes)) {
-    if (now - timestamp < config.hashTtlMs) {
-      prunedHashes[hash] = timestamp;
-    }
+  // Phase 1: Clean up expired suppression rows
+  await pool.query(
+    `DELETE FROM digest_suppression WHERE expires_at < NOW()`,
+  );
+
+  if (items.length === 0) {
+    return { passed: [], totalItems: 0, suppressedCount: 0, passedCount: 0 };
   }
-  meta.sentHashes = prunedHashes;
 
-  // Phase 2: Filter items based on cooldown
+  // Phase 2: Look up existing suppression rows for these hashes
+  const hashes = items.map(computeItemHash);
+
+  const suppressionResult = await pool.query<SuppressionRow>(
+    `SELECT hash, source, priority, last_sent_at, expires_at
+     FROM digest_suppression
+     WHERE hash = ANY($1)`,
+    [hashes],
+  );
+
+  const suppressionMap = new Map<string, SuppressionRow>();
+  for (const row of suppressionResult.rows) {
+    suppressionMap.set(row.hash, row);
+  }
+
+  // Phase 3: Filter items
   const passed: DigestItem[] = [];
+  let suppressedCount = 0;
 
   for (const item of items) {
     const hash = computeItemHash(item);
-    const lastSent = meta.sentHashes[hash];
+    const existing = suppressionMap.get(hash);
 
-    if (lastSent !== undefined) {
-      const cooldown = getCooldownMs(item.priority, config);
-      if (now - lastSent < cooldown) {
-        continue; // Still within cooldown — suppress
+    if (existing) {
+      const cooldownMs = getCooldownMs(item.priority, config);
+      const lastSentMs = existing.last_sent_at.getTime();
+      const elapsedMs = now.getTime() - lastSentMs;
+
+      if (elapsedMs < cooldownMs) {
+        // Within cooldown — suppress
+        suppressedCount++;
+        log.debug(
+          {
+            item_hash: hash,
+            source: item.source,
+            priority: item.priority,
+            reason: "cooldown",
+            last_sent_at: existing.last_sent_at.toISOString(),
+            cooldown_remaining_ms: cooldownMs - elapsedMs,
+          },
+          "Item suppressed",
+        );
+        continue;
       }
+
+      // Cooldown expired — pass through
+      log.debug(
+        {
+          item_hash: hash,
+          source: item.source,
+          priority: item.priority,
+          reason: "cooldown_expired",
+        },
+        "Item passed (cooldown expired)",
+      );
+    } else {
+      // No suppression row — new item
+      log.debug(
+        {
+          item_hash: hash,
+          source: item.source,
+          priority: item.priority,
+          reason: "new",
+        },
+        "Item passed (new)",
+      );
     }
 
     passed.push(item);
   }
 
-  return passed;
+  const suppressionRatePct =
+    items.length > 0
+      ? Math.round((suppressedCount / items.length) * 100)
+      : 0;
+
+  log.debug(
+    {
+      total_items: items.length,
+      passed: passed.length,
+      suppressed: suppressedCount,
+      suppression_rate_pct: suppressionRatePct,
+    },
+    "Suppression run complete",
+  );
+
+  return {
+    passed,
+    totalItems: items.length,
+    suppressedCount,
+    passedCount: passed.length,
+  };
 }
 
 /**
- * Record that items have been sent — update the sentHashes timestamps.
+ * Record that items have been sent — upsert into digest_suppression
+ * with last_sent_at = now and expires_at = now + cooldown.
  * Also accumulate weekly stats for Tier 2 synthesis.
  */
 export async function markItemsSent(
   items: DigestItem[],
   pool: Pool,
+  config?: DigestConfig,
 ): Promise<void> {
-  const meta = await readDigestMeta(pool);
-  const now = Date.now();
+  const now = new Date();
 
-  for (const item of items) {
-    const hash = computeItemHash(item);
-    meta.sentHashes[hash] = now;
+  if (items.length > 0 && config) {
+    // Upsert suppression rows
+    for (const item of items) {
+      const hash = computeItemHash(item);
+      const cooldownMs = getCooldownMs(item.priority, config);
+      const expiresAt = new Date(now.getTime() + cooldownMs);
+
+      await pool.query(
+        `INSERT INTO digest_suppression (hash, source, priority, last_sent_at, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (hash) DO UPDATE
+           SET last_sent_at = EXCLUDED.last_sent_at,
+               expires_at = EXCLUDED.expires_at`,
+        [hash, item.source, priorityToInt(item.priority), now, expiresAt],
+      );
+    }
+  } else if (items.length > 0) {
+    // No config provided — upsert with a 24h default expiry
+    const defaultExpiry = new Date(now.getTime() + 86_400_000);
+    for (const item of items) {
+      const hash = computeItemHash(item);
+      await pool.query(
+        `INSERT INTO digest_suppression (hash, source, priority, last_sent_at, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (hash) DO UPDATE
+           SET last_sent_at = EXCLUDED.last_sent_at,
+               expires_at = EXCLUDED.expires_at`,
+        [hash, item.source, priorityToInt(item.priority), now, defaultExpiry],
+      );
+    }
   }
 
-  meta.lastDigestAt = now;
+  // Update meta (lastDigestAt + weeklyStats)
+  const meta = await readDigestMeta(pool);
+  meta.lastDigestAt = now.getTime();
 
-  // Accumulate weekly stats
   if (!meta.weeklyStats) {
     meta.weeklyStats = {
       itemsBySource: {},

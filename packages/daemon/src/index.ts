@@ -50,6 +50,7 @@ import type { ServerType } from "@hono/node-server";
 import { createHttpApp } from "./http.js";
 import type { ChannelRegistryEntry } from "./http.js";
 import { CallbackRouter } from "./telegram/callback-router.js";
+import { readSettings, mergeOverToml } from "./features/settings/persistent-settings.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -121,6 +122,36 @@ export async function main(): Promise<void> {
 
   const pool = new Pool({ connectionString: config.databaseUrl });
   const obligationStore = new ObligationStore(pool);
+
+  // ── Settings hydration (DB overrides TOML defaults) ────────────────────────
+
+  try {
+    const dbSettings = await readSettings(pool);
+    const merged = mergeOverToml(dbSettings);
+
+    if (merged.overriddenKeys.length > 0) {
+      log.info(
+        { service: "nova-daemon", overriddenKeys: merged.overriddenKeys },
+        "Settings hydrated from DB — overriding TOML defaults",
+      );
+    }
+
+    // Apply watcher overrides
+    if (merged.watcher.enabled !== undefined) {
+      config.proactiveWatcher.enabled = merged.watcher.enabled;
+    }
+    if (merged.watcher.intervalMinutes !== undefined) {
+      config.proactiveWatcher.intervalMinutes = merged.watcher.intervalMinutes;
+    }
+    if (merged.watcher.quietStart !== undefined) {
+      config.proactiveWatcher.quietStart = merged.watcher.quietStart;
+    }
+    if (merged.watcher.quietEnd !== undefined) {
+      config.proactiveWatcher.quietEnd = merged.watcher.quietEnd;
+    }
+  } catch (err) {
+    log.warn({ service: "nova-daemon", err }, "Settings hydration failed — using TOML defaults");
+  }
 
   // ── Telegram adapter ───────────────────────────────────────────────────────
 

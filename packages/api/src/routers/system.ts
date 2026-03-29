@@ -1,10 +1,11 @@
-import { count, desc, eq, gte, ilike, lt, max, sql } from "drizzle-orm";
+import { count, desc, eq, gte, gt, ilike, lt, max, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "@nova/db";
 import {
   contacts,
   diary,
+  digestSuppression,
   fleetHealthSnapshots,
   memory,
   messages,
@@ -952,6 +953,79 @@ export const systemRouter = createTRPCRouter({
       lastWriteAt: lastWriteRow?.lastWriteAt?.toISOString() ?? null,
       totalSizeBytes: sizeRow?.totalSizeBytes ?? 0,
     };
+  }),
+
+  /**
+   * Digest stats: aggregate digest run metrics from the diary table plus
+   * a live count of active (non-expired) suppressions.
+   */
+  digestStats: protectedProcedure.query(async () => {
+    const now = new Date();
+
+    // Count active suppressions (not yet expired)
+    const [activeCountRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(digestSuppression)
+      .where(gt(digestSuppression.expiresAt, now));
+
+    const activeCount = activeCountRow?.count ?? 0;
+
+    // Most recent digest_run diary entry
+    const [lastRunRow] = await db
+      .select({
+        createdAt: diary.createdAt,
+        content: diary.content,
+      })
+      .from(diary)
+      .where(eq(diary.triggerType, "digest_run"))
+      .orderBy(desc(diary.createdAt))
+      .limit(1);
+
+    // Suppression counts by priority from active rows
+    const byPriorityRows = await db
+      .select({
+        priority: digestSuppression.priority,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(digestSuppression)
+      .where(gt(digestSuppression.expiresAt, now))
+      .groupBy(digestSuppression.priority)
+      .orderBy(digestSuppression.priority);
+
+    const suppressionByPriority: Record<string, number> = {};
+    for (const row of byPriorityRows) {
+      const label = row.priority === 0 ? "P0" : row.priority === 1 ? "P1" : "P2";
+      suppressionByPriority[label] = row.count;
+    }
+
+    return {
+      last_run_at: lastRunRow?.createdAt.toISOString() ?? null,
+      last_run_summary: lastRunRow?.content ?? null,
+      active_suppressions_count: activeCount,
+      suppression_by_priority: suppressionByPriority,
+    };
+  }),
+
+  /**
+   * Digest suppressions: active (non-expired) suppression entries ordered
+   * by last_sent_at DESC.
+   */
+  digestSuppressions: protectedProcedure.query(async () => {
+    const now = new Date();
+
+    const rows = await db
+      .select()
+      .from(digestSuppression)
+      .where(gt(digestSuppression.expiresAt, now))
+      .orderBy(desc(digestSuppression.lastSentAt));
+
+    return rows.map((row) => ({
+      hash: row.hash,
+      source: row.source,
+      priority: row.priority === 0 ? "P0" : row.priority === 1 ? "P1" : "P2",
+      last_sent_at: row.lastSentAt.toISOString(),
+      expires_at: row.expiresAt.toISOString(),
+    }));
   }),
 
   /**

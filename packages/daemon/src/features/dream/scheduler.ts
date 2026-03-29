@@ -45,7 +45,7 @@ export class DreamScheduler {
   }
 
   /**
-   * Increment the interaction counter. Called from NovaAgent.processMessage().
+   * Increment the interaction counter. Called from NovaAgent.processMessageStream().
    * When the counter reaches the threshold, triggers a dream and resets.
    */
   incrementInteractionCount(): void {

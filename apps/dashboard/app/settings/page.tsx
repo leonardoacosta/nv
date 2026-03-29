@@ -265,8 +265,15 @@ export default function SettingsPage() {
 
   // Build source map from configSources query
   const sourceMap = new Map<string, ConfigSourceEntry>();
-  for (const entry of configSourcesQuery.data ?? []) {
-    sourceMap.set(entry.key, entry);
+  const configKeys = configSourcesQuery.data?.keys;
+  if (configKeys) {
+    for (const [key, info] of Object.entries(configKeys)) {
+      sourceMap.set(key, {
+        key,
+        source: info.source === "toml" ? "file" : info.source === "db" ? "file" : info.source,
+        envVar: info.source === "env" ? key : undefined,
+      });
+    }
   }
 
   // 4. Fetch config on mount
